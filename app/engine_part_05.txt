@@ -1,0 +1,1000 @@
+    // Glow effect behind the item
+    const glowPulse = (Math.sin(drop.bobPhase * 2) + 1) * 0.5;
+    const gradient = ctx.createRadialGradient(x, y, size * 0.3, x, y, size * 2);
+    gradient.addColorStop(0, `rgba(251, 191, 36, ${0.4 + glowPulse * 0.3})`);
+    gradient.addColorStop(0.5, `rgba(245, 158, 11, ${0.2 + glowPulse * 0.2})`);
+    gradient.addColorStop(1, 'rgba(245, 158, 11, 0)');
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(x, y, size * 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Outer ring animation
+    ctx.strokeStyle = `rgba(251, 191, 36, ${0.6 + glowPulse * 0.4})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y, size * (0.8 + glowPulse * 0.2), 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Inner ring (counter-rotating)
+    ctx.strokeStyle = `rgba(252, 211, 77, ${0.4 + glowPulse * 0.3})`;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(x, y, size * (0.6 - glowPulse * 0.1), drop.bobPhase, drop.bobPhase + Math.PI * 1.5);
+    ctx.stroke();
+
+    // Draw item icon using preloaded drop images
+    const itemImg = this._dropImages?.[drop.type];
+    if (itemImg) {
+      ctx.drawImage(itemImg, x - size / 2, y - size / 2, size, size);
+    } else {
+      // Fallback: draw a golden box with ?
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillRect(x - size / 2, y - size / 2, size, size);
+      ctx.fillStyle = '#000';
+      ctx.font = 'bold 28px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('?', x, y);
+    }
+
+    // Label above
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.font = 'bold 14px sans-serif';
+    ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+    ctx.lineWidth = 3;
+    ctx.strokeText(drop.name, x, y - size / 2 - 8);
+    ctx.fillStyle = '#fbbf24';
+    ctx.fillText(drop.name, x, y - size / 2 - 8);
+
+    // "Click to pick up" hint below
+    const hintAlpha = (Math.sin(drop.bobPhase * 1.5) + 1) * 0.5;
+    ctx.font = '12px sans-serif';
+    ctx.strokeStyle = `rgba(0,0,0,${0.6 + hintAlpha * 0.4})`;
+    ctx.lineWidth = 2;
+    ctx.strokeText('点击拾取', x, y + size / 2 + 18);
+    ctx.fillStyle = `rgba(252, 211, 77, ${0.6 + hintAlpha * 0.4})`;
+    ctx.fillText('点击拾取', x, y + size / 2 + 18);
+  }
+
+  // ========== BOSS UI RENDERING ==========
+  renderBossUI(ctx: CanvasRenderingContext2D, w: number, h: number) {
+    const bb = this.bossBattle;
+    if (!bb.active && !bb.bossKilled) return;
+
+    const barW = Math.min(400, w * 0.7);
+    const barH = 20;
+    const barX = (w - barW) / 2;
+    const barY = 82;
+
+    // Boss name + phase
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = 'rgba(0,0,0,0.8)';
+    ctx.shadowBlur = 4;
+    ctx.fillText(`螂老大 - ${bb.phaseName}`, w / 2, barY - 8);
+    ctx.shadowBlur = 0;
+
+    // ===== 4-LAYER HP BAR (egg wave progress) =====
+    const layerColors = ['#22c55e', '#eab308', '#f97316', '#ef4444'];
+    const layerWidth = barW / 4;
+
+    // Background
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.beginPath();
+    ctx.roundRect(barX, barY, barW, barH, 4);
+    ctx.fill();
+
+    // Draw 4 layers
+    for (let i = 0; i < 4; i++) {
+      const isActive = i < bb.currentWave;
+      const lx = barX + i * layerWidth;
+      ctx.fillStyle = isActive ? layerColors[i] : 'rgba(60,60,60,0.5)';
+      ctx.beginPath();
+      const roundL = i === 0 ? 4 : 0;
+      const roundR = i === 3 ? 4 : 0;
+      ctx.roundRect(lx, barY, layerWidth - 1, barH, [roundL, roundR, roundR, roundL]);
+      ctx.fill();
+
+      // Layer number
+      ctx.fillStyle = isActive ? '#fff' : 'rgba(150,150,150,0.4)';
+      ctx.font = 'bold 10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${i + 1}`, lx + layerWidth / 2, barY + barH / 2 + 3);
+
+      // Divider
+      if (i < 3) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(lx + layerWidth, barY + 3);
+        ctx.lineTo(lx + layerWidth, barY + barH - 3);
+        ctx.stroke();
+      }
+    }
+
+    // Wave progress text
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = 'rgba(0,0,0,0.8)';
+    ctx.shadowBlur = 3;
+    ctx.fillText(`第${bb.currentWave}/4波`, w / 2, barY + barH / 2 + 3);
+    ctx.shadowBlur = 0;
+
+    // Egg pod count
+    const intactPods = bb.eggPods.filter(p => p.state === 'intact').length;
+    if (intactPods > 0) {
+      ctx.fillStyle = '#fbbf24';
+      ctx.font = '11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`剩余虫卵: ${intactPods}`, w / 2, barY - 22);
+    }
+
+    // Time remaining
+    const timeText = `剩余时间: ${Math.ceil(bb.timeRemaining)}秒`;
+    ctx.fillStyle = bb.timeRemaining < 30 ? '#ef4444' : '#aaa';
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(timeText, w - 20, barY + barH + 18);
+
+    // ===== PHASE CHANGE BANNER =====
+    if (bb.phaseJustChanged && bb.phaseChangeTimer > 0) {
+      const alpha = Math.min(1, bb.phaseChangeTimer / 1.5);
+      ctx.fillStyle = `rgba(0, 0, 0, ${0.4 * alpha})`;
+      ctx.fillRect(0, h / 2 - 60, w, 120);
+      ctx.fillStyle = `rgba(255, 68, 68, ${alpha})`;
+      ctx.font = 'bold 36px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.shadowColor = 'rgba(0,0,0,0.9)';
+      ctx.shadowBlur = 8;
+      ctx.fillText(bb.phaseChangeText, w / 2, h / 2 - 10);
+      ctx.fillStyle = `rgba(255, 170, 0, ${alpha})`;
+      ctx.font = 'bold 18px sans-serif';
+      ctx.fillText(bb.phaseChangeSub, w / 2, h / 2 + 25);
+      ctx.shadowBlur = 0;
+    }
+  }
+
+  // ========== INSECTICIDE SPRAY RENDERING =========
+  renderInsecticideSpray(ctx: CanvasRenderingContext2D) {
+    if (!this.insecticideSpray.active) return;
+    const spray = this.insecticideSpray;
+    const cx = this.width / 2;
+    const cy = this.defenseLineY();
+    const range = 280;
+    const halfSpread = spray.spraySpread / 2;
+
+    // Pulsing alpha based on remaining time
+    const progress = spray.timer / spray.duration;
+    const pulseAlpha = 0.12 + 0.08 * Math.sin(this.time * 12) * progress;
+
+    // Draw fan-shaped spray zone with gradient
+    ctx.save();
+    ctx.globalAlpha = pulseAlpha;
+
+    // Create radial gradient for the spray cone
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, range);
+    grad.addColorStop(0, 'rgba(80, 255, 100, 0.5)');
+    grad.addColorStop(0.4, 'rgba(60, 220, 80, 0.3)');
+    grad.addColorStop(0.7, 'rgba(40, 180, 60, 0.15)');
+    grad.addColorStop(1, 'rgba(20, 120, 40, 0)');
+
+    // Draw spray cone
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, range, spray.sprayAngle - halfSpread, spray.sprayAngle + halfSpread);
+    ctx.closePath();
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Draw spray boundary lines
+    ctx.globalAlpha = 0.2 * progress;
+    ctx.strokeStyle = 'rgba(100, 255, 120, 0.4)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(spray.sprayAngle - halfSpread) * range, cy + Math.sin(spray.sprayAngle - halfSpread) * range);
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(spray.sprayAngle + halfSpread) * range, cy + Math.sin(spray.sprayAngle + halfSpread) * range);
+    ctx.stroke();
+
+    // Draw central spray line
+    ctx.globalAlpha = 0.3 * progress;
+    ctx.strokeStyle = 'rgba(150, 255, 160, 0.5)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([5, 5]);
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(spray.sprayAngle) * range, cy + Math.sin(spray.sprayAngle) * range);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Draw origin nozzle glow
+    ctx.globalAlpha = 0.4 * progress;
+    const nozzleGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, 20);
+    nozzleGrad.addColorStop(0, 'rgba(150, 255, 150, 0.8)');
+    nozzleGrad.addColorStop(1, 'rgba(50, 200, 50, 0)');
+    ctx.fillStyle = nozzleGrad;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 20, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Timer text
+    ctx.globalAlpha = 0.7;
+    ctx.fillStyle = '#86efac';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`杀虫剂 ${spray.timer.toFixed(1)}s`, cx, cy - 40);
+
+    ctx.restore();
+  }
+
+  // ========== RADAR LASER RENDERING =========
+  renderRadarLaser(ctx: CanvasRenderingContext2D) {
+    if (!this.radarLaser.active) return;
+    const rl = this.radarLaser;
+
+    // Find current target - fallback to nearest alive roach if targetId is stale
+    let target = this.roaches.find(r => r.id === rl.targetId && r.state === RoachState.ALIVE);
+    if (!target) {
+      // Target was killed or never set - search for nearest alive roach
+      let minDist = Infinity;
+      for (const r of this.roaches) {
+        if (r.state !== RoachState.ALIVE) continue;
+        const dx = r.x - this.player.x;
+        const dy = r.y - this.player.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < minDist) {
+          minDist = dist;
+          target = r;
+        }
+      }
+      if (target) {
+        rl.targetId = target.id;
+      }
+    }
+    if (!target) return;
+
+    const px = this.player.x;
+    const py = this.player.y - 20; // slightly above player
+    const tx = target.x;
+    const ty = target.y;
+
+    // Laser beam glow
+    const alpha = Math.min(1, rl.timer / 0.5) * (0.6 + Math.sin(this.time * 20) * 0.2);
+    ctx.save();
+
+    // Outer glow
+    ctx.strokeStyle = `rgba(34, 211, 238, ${alpha * 0.3})`;
+    ctx.lineWidth = 12;
+    ctx.beginPath();
+    ctx.moveTo(px, py);
+    ctx.lineTo(tx, ty);
+    ctx.stroke();
+
+    // Middle glow
+    ctx.strokeStyle = `rgba(34, 211, 238, ${alpha * 0.6})`;
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(px, py);
+    ctx.lineTo(tx, ty);
+    ctx.stroke();
+
+    // Core beam
+    ctx.strokeStyle = `rgba(103, 232, 249, ${alpha})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(px, py);
+    ctx.lineTo(tx, ty);
+    ctx.stroke();
+
+    // Target lock indicator
+    const lockPulse = 0.5 + Math.sin(this.time * 8) * 0.5;
+    ctx.strokeStyle = `rgba(34, 211, 238, ${lockPulse})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(tx, ty, 20 + lockPulse * 8, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.fillStyle = `rgba(34, 211, 238, ${lockPulse * 0.3})`;
+    ctx.beginPath();
+    ctx.arc(tx, ty, 15, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Player emitter glow
+    ctx.fillStyle = `rgba(34, 211, 238, ${alpha * 0.4})`;
+    ctx.beginPath();
+    ctx.arc(px, py, 10, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  renderBackground(ctx: CanvasRenderingContext2D, w: number, h: number) {
+    const scene = this.getSceneConfig();
+
+    if (this.bgImg && this.imagesLoaded && this.currentScene === SceneType.KITCHEN) {
+      ctx.drawImage(this.bgImg, 0, 0, w, h);
+    } else if (this.bgSewerImg && this.imagesLoaded && this.currentScene === SceneType.SEWER) {
+      ctx.drawImage(this.bgSewerImg, 0, 0, w, h);
+    } else if (this.bgDumpImg && this.imagesLoaded && this.currentScene === SceneType.DUMP) {
+      ctx.drawImage(this.bgDumpImg, 0, 0, w, h);
+    } else if (this.bgBasementImg && this.imagesLoaded && this.currentScene === SceneType.BASEMENT) {
+      ctx.drawImage(this.bgBasementImg, 0, 0, w, h);
+    } else if (this.bgRooftopImg && this.imagesLoaded && this.currentScene === SceneType.ROOFTOP) {
+      ctx.drawImage(this.bgRooftopImg, 0, 0, w, h);
+    } else if (this.bgStreetImg && this.imagesLoaded && this.currentScene === SceneType.STREET) {
+      ctx.drawImage(this.bgStreetImg, 0, 0, w, h);
+    } else {
+      // Scene-specific background
+      ctx.fillStyle = scene.bgColor;
+      ctx.fillRect(0, 0, w, h);
+      const tileSize = 48;
+      for (let x = 0; x < w; x += tileSize) {
+        for (let y = 0; y < h; y += tileSize) {
+          const isEven = ((x / tileSize) + (y / tileSize)) % 2 === 0;
+          ctx.fillStyle = isEven ? scene.tileColors[0] : scene.tileColors[1];
+          ctx.fillRect(x + 1, y + 1, tileSize - 2, tileSize - 2);
+        }
+      }
+    }
+
+    // Night overlay
+    const scene2 = this.getSceneConfig();
+    if (scene2.weather === WeatherType.NIGHT) {
+      const nightAlpha = 0.4 + (this.lightningFlash > 0 ? 0.2 : 0);
+      ctx.fillStyle = `rgba(0, 0, 20, ${nightAlpha})`;
+      ctx.fillRect(0, 0, w, h);
+    }
+
+    const grad = ctx.createRadialGradient(w / 2, h / 2, h * 0.4, w / 2, h / 2, h * 0.8);
+    grad.addColorStop(0, 'rgba(0,0,0,0)');
+    grad.addColorStop(1, 'rgba(0,0,0,0.5)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+  }
+
+  renderWeatherBackground(ctx: CanvasRenderingContext2D, w: number, h: number) {
+    // Lightning flash
+    if (this.lightningFlash > 0) {
+      ctx.fillStyle = `rgba(255, 255, 255, ${this.lightningFlash * 0.3})`;
+      ctx.fillRect(0, 0, w, h);
+    }
+  }
+
+  renderDefenseLine(ctx: CanvasRenderingContext2D, w: number) {
+    const dl = this.defenseLineY();
+    const scene = this.getSceneConfig();
+
+    ctx.save();
+    ctx.strokeStyle = scene.defenseLineColor;
+    ctx.lineWidth = 3;
+    ctx.setLineDash([12, 8]);
+    ctx.lineDashOffset = -this.time * 30;
+    ctx.beginPath();
+    ctx.moveTo(0, dl);
+    ctx.lineTo(w, dl);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = scene.defenseLineColor.replace('0.7', '0.08');
+    ctx.fillRect(0, dl, w, 25);
+    ctx.restore();
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+    ctx.font = 'bold 13px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('防 线', w / 2, dl - 8);
+  }
+
+  renderFireZones(ctx: CanvasRenderingContext2D) {
+    const p = this.player;
+    if (!p.isFiring || p.isOverheated || p.isReloading || p.gas <= 0) return;
+    if (p.currentWeapon === 'molotov') return;
+
+    const maxRange = p.fireRange * 0.5;
+    const nozzleY = p.y - 322;
+    const endY = nozzleY - maxRange;
+
+    // Gun positions
+    const gunXs: number[] = [p.x];
+    if (this.tripleFlame.active) {
+      gunXs.push(p.x - this.tripleFlame.sideOffset);
+      gunXs.push(p.x + this.tripleFlame.sideOffset);
+    }
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+
+    // Render flame for each gun
+    for (let gi = 0; gi < gunXs.length; gi++) {
+      const gunX = gunXs[gi];
+      const isSideGun = gi > 0;
+      const flameScale = isSideGun ? 0.6 : 1.0;
+
+      const segments = 50;
+      for (let i = 0; i < segments; i++) {
+        const t0 = i / segments;
+        const t1 = (i + 1) / segments;
+        const y0 = nozzleY + (endY - nozzleY) * t0;
+        const y1 = nozzleY + (endY - nozzleY) * t1;
+
+        const baseWidth = 32 * flameScale;
+        const w0 = baseWidth * (1 - t0 * 0.94) + Math.sin(t0 * Math.PI * 6 + this.time * 30 + gi) * 5;
+        const w1 = baseWidth * (1 - t1 * 0.94) + Math.sin(t1 * Math.PI * 6 + this.time * 30 + gi) * 5;
+
+        const c0 = this.getFlameColor(t0, p.currentWeapon);
+        const c1 = this.getFlameColor(t1, p.currentWeapon);
+
+        ctx.beginPath();
+        ctx.moveTo(gunX - w0, y0);
+        ctx.lineTo(gunX - w1, y1);
+        ctx.lineTo(gunX + w1, y1);
+        ctx.lineTo(gunX + w0, y0);
+        ctx.closePath();
+
+        const grad = ctx.createLinearGradient(gunX, y0, gunX, y1);
+        grad.addColorStop(0, c0);
+        grad.addColorStop(1, c1);
+        ctx.fillStyle = grad;
+        ctx.fill();
+      }
+
+      // Core glow per gun
+      let coreColor = '160, 210, 255';
+      if (p.currentWeapon === 'sticky') coreColor = '250, 200, 50';
+      else if (p.currentWeapon === 'poison') coreColor = '200, 160, 255';
+
+      const glowSize = 36 * flameScale;
+      const coreGrad = ctx.createRadialGradient(gunX, nozzleY, 0, gunX, nozzleY, glowSize);
+      coreGrad.addColorStop(0, `rgba(${coreColor}, 0.9)`);
+      coreGrad.addColorStop(0.3, `rgba(${coreColor}, 0.5)`);
+      coreGrad.addColorStop(0.6, `rgba(${coreColor}, 0.3)`);
+      coreGrad.addColorStop(1, 'rgba(255, 0, 0, 0)');
+      ctx.fillStyle = coreGrad;
+      ctx.beginPath();
+      ctx.arc(gunX, nozzleY, glowSize, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  renderFireWalls(ctx: CanvasRenderingContext2D) {
+    for (const wall of this.fireWalls) {
+      const progress = wall.life / wall.maxLife;
+      const alpha = Math.min(1, progress * 1.5);
+      const wallWidth = wall.x2 - wall.x1;
+
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+
+      // Main fire wall body - horizontal bar with animated fire
+      const segments = Math.max(10, Math.floor(wallWidth / 15));
+      for (let i = 0; i < segments; i++) {
+        const sx = wall.x1 + (wallWidth / segments) * i;
+        const segW = wallWidth / segments;
+
+        // Animated fire flicker per segment
+        const flicker = 0.7 + Math.sin(this.time * 12 + i * 2.5) * 0.3;
+        const h = wall.height * (2 + flicker);
+
+        // Fire gradient per segment
+        const fireGrad = ctx.createLinearGradient(sx, wall.y - h, sx, wall.y + h * 0.3);
+        fireGrad.addColorStop(0, `rgba(255, 255, 100, ${alpha * 0.9})`);
+        fireGrad.addColorStop(0.3, `rgba(255, 180, 20, ${alpha * 0.85})`);
+        fireGrad.addColorStop(0.6, `rgba(255, 80, 10, ${alpha * 0.7})`);
+        fireGrad.addColorStop(1, `rgba(200, 30, 5, ${alpha * 0.3})`);
+
+        ctx.fillStyle = fireGrad;
+        ctx.fillRect(sx - segW * 0.1, wall.y - h * 0.5, segW * 1.2, h);
+      }
+
+      // Core bright line (white-hot center)
+      ctx.strokeStyle = `rgba(255, 255, 220, ${alpha * 0.9})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(wall.x1, wall.y);
+      ctx.lineTo(wall.x2, wall.y);
+      ctx.stroke();
+
+      // Outer glow
+      const glowGrad = ctx.createLinearGradient(wall.x1, wall.y - 15, wall.x1, wall.y + 15);
+      glowGrad.addColorStop(0, `rgba(255, 100, 20, 0)`);
+      glowGrad.addColorStop(0.5, `rgba(255, 80, 10, ${alpha * 0.25})`);
+      glowGrad.addColorStop(1, `rgba(255, 100, 20, 0)`);
+      ctx.fillStyle = glowGrad;
+      ctx.fillRect(wall.x1, wall.y - 15, wallWidth, 30);
+
+      // Ember sparks floating up
+      for (let i = 0; i < 3; i++) {
+        const sparkX = wall.x1 + Math.random() * wallWidth;
+        const sparkY = wall.y - 5 - Math.random() * 15;
+        const sparkSize = 1 + Math.random() * 2;
+        ctx.fillStyle = `rgba(255, ${150 + Math.random() * 100}, 30, ${alpha * (0.5 + Math.random() * 0.5)})`;
+        ctx.beginPath();
+        ctx.arc(sparkX, sparkY, sparkSize, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Duration indicator
+      ctx.fillStyle = `rgba(255, 200, 100, ${alpha * 0.7})`;
+      ctx.font = 'bold 10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`火焰墙 ${wall.life.toFixed(1)}s`, (wall.x1 + wall.x2) / 2, wall.y + 20);
+
+      ctx.restore();
+    }
+  }
+
+  renderStickyBoards(_ctx: CanvasRenderingContext2D) {
+    // Legacy sticky board rendering removed - replaced by auto-targeting sticky drops
+    // Sticky boards array is kept for backwards compatibility but no longer rendered
+  }
+
+  renderStickyDrops(ctx: CanvasRenderingContext2D) {
+    for (const drop of this.stickyDrops) {
+      // Skip pre-spawn drops (still in delay phase)
+      if (drop.life > drop.maxLife) continue;
+
+      ctx.save();
+
+      if (drop.hit && drop.targetId !== null) {
+        // Drop is attached to a roach - rendered as wrap overlay in renderRoaches
+        // Just draw a small connecting drip effect
+        const target = this.roaches.find(r => r.id === drop.targetId);
+        if (target && target.state === RoachState.ALIVE) {
+          // Draw dripping lines from the wrap
+          ctx.strokeStyle = `rgba(250, 220, 50, ${0.4 + Math.sin(this.time * 8 + drop.id) * 0.2})`;
+          ctx.lineWidth = 2;
+          for (let d = 0; d < 3; d++) {
+            const angle = (Math.PI * 2 / 3) * d + this.time * 2 + drop.id;
+            const dripLen = 6 + Math.sin(this.time * 6 + d) * 3;
+            ctx.beginPath();
+            ctx.moveTo(target.x + Math.cos(angle) * 8, target.y + Math.sin(angle) * 8);
+            ctx.lineTo(target.x + Math.cos(angle) * (8 + dripLen), target.y + Math.sin(angle) * (8 + dripLen));
+            ctx.stroke();
+          }
+        }
+      } else {
+        // Flying drop - draw yellow liquid droplet
+        const pulse = 0.8 + Math.sin(this.time * 10 + drop.id) * 0.2;
+
+        // Outer glow
+        const glowGrad = ctx.createRadialGradient(drop.x, drop.y, 0, drop.x, drop.y, drop.size * 2);
+        glowGrad.addColorStop(0, `rgba(250, 220, 50, ${0.3 * pulse})`);
+        glowGrad.addColorStop(1, 'rgba(250, 200, 50, 0)');
+        ctx.fillStyle = glowGrad;
+        ctx.beginPath();
+        ctx.arc(drop.x, drop.y, drop.size * 2, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Main droplet body
+        ctx.fillStyle = `rgba(250, 220, 50, ${0.85 * pulse})`;
+        ctx.beginPath();
+        ctx.arc(drop.x, drop.y, drop.size, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Highlight (shininess)
+        ctx.fillStyle = `rgba(255, 250, 200, ${0.6 * pulse})`;
+        ctx.beginPath();
+        ctx.arc(drop.x - drop.size * 0.25, drop.y - drop.size * 0.25, drop.size * 0.35, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Trail effect
+        const trailLen = 3;
+        for (let t = 1; t <= trailLen; t++) {
+          const alpha = 0.3 * (1 - t / (trailLen + 1));
+          const size = drop.size * (1 - t * 0.2);
+          ctx.fillStyle = `rgba(250, 220, 50, ${alpha})`;
+          ctx.beginPath();
+          ctx.arc(drop.x - drop.vx * this.deltaTime * t * 3, drop.y - drop.vy * this.deltaTime * t * 3, size, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      ctx.restore();
+    }
+  }
+
+  getFlameColor(t: number, weapon: string = 'flamethrower'): string {
+    let r: number, g: number, b: number;
+
+    if (weapon === 'sticky') {
+      // Yellow to orange (sticky board)
+      r = Math.floor(250);
+      g = Math.floor(200 + t * 55);
+      b = Math.floor(50 + t * 50);
+    } else if (weapon === 'poison') {
+      // Purple to green
+      r = Math.floor(150 - t * 100);
+      g = Math.floor(100 + t * 100);
+      b = Math.floor(200 - t * 50);
+    } else if (weapon === 'shotgun') {
+      // Orange to yellow
+      r = 255;
+      g = Math.floor(150 + t * 105);
+      b = Math.floor(50 + t * 100);
+    } else {
+      // Default: blue to red
+      if (t < 0.5) {
+        const s = t * 2;
+        r = Math.floor(60 + s * 140);
+        g = Math.floor(140 - s * 80);
+        b = Math.floor(255 - s * 100);
+      } else {
+        const s = (t - 0.5) * 2;
+        r = Math.floor(200 + s * 55);
+        g = Math.floor(60 - s * 60);
+        b = Math.floor(155 - s * 155);
+      }
+    }
+
+    const a = 0.75 * (1 - t) * (1 - t);
+    return `rgba(${r}, ${g}, ${b}, ${a})`;
+  }
+
+  renderWeaponDrops(ctx: CanvasRenderingContext2D) {
+    // Pre-load item images for drops
+    if (!this._dropImages) {
+      this._dropImages = {};
+      const loadDropImg = (src: string, type: string) => {
+        const img = new Image();
+        img.onload = () => { if (this._dropImages) this._dropImages[type] = img; };
+        img.src = src;
+      };
+      loadDropImg('/assets/item_sticky.png', 'sticky');
+      loadDropImg('/assets/item_poison.png', 'poison');
+      loadDropImg('/assets/item_molotov.png', 'molotov');
+      loadDropImg('/assets/item_shotgun.jpg', 'shotgun');
+      loadDropImg('/assets/item_radar.png', 'radar');
+      loadDropImg('/assets/fan.png', 'fan');
+      loadDropImg('/assets/item_swatter.png', 'swatter');
+    }
+
+    for (const drop of this.weaponDrops) {
+      const t = drop.bobPhase;
+      // Floating animation: circular/elliptical motion
+      const bobY = Math.sin(t) * 10;           // vertical float ±10px
+      const bobX = Math.cos(t * 0.6) * 6;       // horizontal float ±6px
+      const breathe = 1 + Math.sin(t * 2) * 0.08; // scale breathe ±8%
+      const tilt = Math.sin(t * 1.5) * 0.15;    // slight tilt rotation
+      const alpha = Math.min(1, drop.life / 2);
+      const def = WEAPON_DROP_DEFS[drop.type];
+      if (!def) continue;
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+
+      const renderX = drop.x + bobX;
+      const renderY = drop.y + bobY;
+
+      // Check if we have an image for this drop type
+      const dropImg = this._dropImages?.[drop.type];
+      if (dropImg) {
+        // Draw item image with breathing scale and tilt
+        const baseSize = 32;
+        const imgSize = baseSize * breathe;
+        ctx.translate(renderX, renderY);
+        ctx.rotate(tilt);
+        ctx.drawImage(dropImg, -imgSize / 2, -imgSize / 2, imgSize, imgSize);
+        ctx.rotate(-tilt);
+        ctx.translate(-renderX, -renderY);
+        // Glow ring (pulses with breathe)
+        ctx.strokeStyle = def.color.replace(')', ', 0.6)').replace('rgb', 'rgba');
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(renderX, renderY, (baseSize / 2 + 2) * breathe, 0, Math.PI * 2);
+        ctx.stroke();
+      } else {
+        // Fallback: colored box with float
+        const glowGrad = ctx.createRadialGradient(renderX, renderY, 0, renderX, renderY, 25 * breathe);
+        glowGrad.addColorStop(0, def.color.replace(')', ', 0.4)').replace('rgb', 'rgba'));
+        glowGrad.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = glowGrad;
+        ctx.beginPath();
+        ctx.arc(renderX, renderY, 25 * breathe, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.save();
+        ctx.translate(renderX, renderY);
+        ctx.rotate(tilt);
+        ctx.fillStyle = def.color;
+        ctx.fillRect(-12 * breathe, -12 * breathe, 24 * breathe, 24 * breathe);
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(-12 * breathe, -12 * breathe, 24 * breathe, 24 * breathe);
+        ctx.restore();
+      }
+
+      // Label (also floats)
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 9px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.shadowColor = 'rgba(0,0,0,0.8)';
+      ctx.shadowBlur = 3;
+      ctx.fillText(def.name, renderX, renderY - 22 * breathe);
+      ctx.shadowBlur = 0;
+
+      ctx.restore();
+    }
+  }
+
+  renderParticles(ctx: CanvasRenderingContext2D) {
+    ctx.save();
+
+    for (const p of this.particles) {
+      const alpha = p.life / p.maxLife;
+
+      if (p.type === ParticleType.FIRE) {
+        ctx.globalAlpha = alpha * 0.7;
+        ctx.globalCompositeOperation = 'screen';
+        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size * 0.8);
+        grad.addColorStop(0, p.color);
+        grad.addColorStop(1, 'rgba(255, 50, 0, 0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size * 0.8, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (p.type === ParticleType.SMOKE) {
+        ctx.globalAlpha = alpha * 0.5;
+        ctx.globalCompositeOperation = 'source-over';
+        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size);
+        grad.addColorStop(0, p.color);
+        grad.addColorStop(1, 'rgba(80, 80, 80, 0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (p.type === ParticleType.EMBER) {
+        ctx.globalAlpha = alpha;
+        ctx.globalCompositeOperation = 'screen';
+        ctx.fillStyle = p.color;
+        ctx.shadowColor = p.color;
+        ctx.shadowBlur = 6;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      } else if (p.type === ParticleType.ASH) {
+        ctx.globalAlpha = alpha;
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.fillStyle = p.color;
+        ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+      } else if (p.type === ParticleType.SPARK) {
+        ctx.globalAlpha = alpha;
+        ctx.globalCompositeOperation = 'screen';
+        ctx.fillStyle = p.color;
+        ctx.shadowColor = p.color;
+        ctx.shadowBlur = 4;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      } else if (p.type === ParticleType.BLOOD) {
+        ctx.globalAlpha = alpha;
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = `rgba(10, 60, 10, ${alpha * 0.3})`;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size * 0.5, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (p.type === ParticleType.ICE) {
+        ctx.globalAlpha = alpha * 0.8;
+        ctx.globalCompositeOperation = 'screen';
+        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size);
+        grad.addColorStop(0, p.color);
+        grad.addColorStop(1, 'rgba(200, 250, 255, 0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (p.type === ParticleType.POISON_CLOUD) {
+        ctx.globalAlpha = alpha * 0.6;
+        ctx.globalCompositeOperation = 'screen';
+        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size * 2);
+        grad.addColorStop(0, p.color);
+        grad.addColorStop(1, 'rgba(150, 100, 255, 0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size * 2, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (p.type === ParticleType.EXPLOSION) {
+        ctx.globalAlpha = alpha;
+        ctx.globalCompositeOperation = 'screen';
+        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size * 1.5);
+        grad.addColorStop(0, p.color);
+        grad.addColorStop(1, 'rgba(255, 100, 0, 0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size * 1.5, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (p.type === ParticleType.LIGHTNING) {
+        ctx.globalAlpha = alpha;
+        ctx.globalCompositeOperation = 'screen';
+        ctx.fillStyle = p.color;
+        ctx.shadowColor = '#aaddff';
+        ctx.shadowBlur = 10;
+        ctx.fillRect(p.x - 1, p.y, 2, p.size * 3);
+        ctx.shadowBlur = 0;
+      } else if (p.type === ParticleType.RAIN) {
+        ctx.globalAlpha = alpha * 0.4;
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.strokeStyle = p.color;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.x + p.vx * 0.02, p.y + p.vy * 0.02);
+        ctx.stroke();
+      }
+    }
+
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.restore();
+  }
+
+  renderRoaches(ctx: CanvasRenderingContext2D) {
+    // ===== RENDER ORDER: normal roaches first, then charging BOSS on top =====
+    // First pass: render all non-boss or non-charging roaches
+    for (const r of this.roaches) {
+      // Skip charging BOSS - will be rendered in second pass on top
+      if (r.isBoss && r.type === RoachType.QUEEN && r.isCharging) continue;
+      this.renderRoach(ctx, r);
+    }
+    // Second pass: render charging BOSS last (on top of all other roaches)
+    for (const r of this.roaches) {
+      if (r.isBoss && r.type === RoachType.QUEEN && r.isCharging) {
+        this.renderRoach(ctx, r);
+      }
+    }
+  }
+
+  renderRoach(ctx: CanvasRenderingContext2D, r: Roach) {
+    // Flying roach death (including flying suicide): disintegration and falling animation
+    if ((r.type === RoachType.FLYING || r.type === RoachType.FLYING_SUICIDE) && r.state === RoachState.DEAD) {
+      const alpha = Math.max(0, r.deathTimer / 2.0);
+      ctx.globalAlpha = alpha;
+      const def = ENEMY_DEFS[r.type];
+      const size = def.size;
+      const w = size * 1.2;
+      const h = size;
+
+      ctx.save();
+      ctx.translate(r.x, r.y);
+      // Spin while falling
+      ctx.rotate(r.angle);
+
+      if (this.roachFlyingImg && this.imagesLoaded) {
+        ctx.drawImage(this.roachFlyingImg, -w / 2, -h / 2, w, h);
+      } else {
+        ctx.fillStyle = def.color;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, w / 2, h / 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Disintegration overlay: fading cracks
+      ctx.strokeStyle = `rgba(255, 255, 255, ${alpha * 0.5})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(-w * 0.3, -h * 0.2);
+      ctx.lineTo(w * 0.1, h * 0.1);
+      ctx.lineTo(-w * 0.1, h * 0.3);
+      ctx.stroke();
+
+      ctx.restore();
+      ctx.globalAlpha = 1;
+      return;
+    }
+
+    // ===== BOSS DEATH: use frame animation system =====
+    if (r.state === RoachState.DEAD && r.isBoss && r.type === RoachType.QUEEN && this.bossBattle.bossKilled) {
+      // Boss death: render die animation frames (controlled by deathAnimTimer / corpseStayTimer)
+      const bossScale = 3;
+      const def = ENEMY_DEFS[r.type];
+      const size = def.size;
+      const w = size * 1.2;
+      const bossW = w * bossScale;
+      const bossH = size * bossScale;
+
+      ctx.save();
+      ctx.translate(r.x, r.y);
+
+      const action = this.bossAnimState.action;
+      const frameIdx = this.bossAnimState.frameIndex;
+      let frames = this.bossAnimFrames.get(action);
+      // Fallback to idle if action has no frames
+      if (!frames || frames.length === 0) {
+        frames = this.bossAnimFrames.get('idle');
+      }
+      let animImg = frames?.[frameIdx];
+      if (!animImg && frames) {
+        animImg = frames.find(f => f !== undefined);
+      }
+
+      if (animImg) {
+        ctx.drawImage(animImg, -bossW / 2, -bossH / 2, bossW, bossH);
+      } else {
+        // Fallback to static image
+        if (this.roachQueenImg) ctx.drawImage(this.roachQueenImg, -bossW / 2, -bossH / 2, bossW, bossH);
+      }
+      ctx.restore();
+      return;
+    }
+
+    // Normal roach death (non-boss): fade out as a dark circle
+    if (r.state === RoachState.DEAD) {
+      const alpha = r.deathTimer / 0.6;
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = '#222';
+      ctx.beginPath();
+      const deadSize = r.type === RoachType.LARGE ? 16 : 10;
+      ctx.arc(r.x, r.y, deadSize, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#333';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(r.x - 5, r.y - 3);
+      ctx.lineTo(r.x + 3, r.y + 2);
+      ctx.lineTo(r.x - 2, r.y + 6);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      return;
+    }
+
+    const def = ENEMY_DEFS[r.type];
+    const size = r.isBoss ? def.size : def.size * (0.9 + Math.sin(this.time * 3 + r.wobbleOffset) * 0.1);
+    const w = size * 1.2;
+    const h = size;
+
+    ctx.save();
+    ctx.translate(r.x, r.y);
+
+    // ===== BOSS GROUND COMBAT: horizontal flip based on facing direction =====
+    if (r.isBoss && r.type === RoachType.QUEEN && this.bossBattle.phase >= 2) {
+      const faceScale = r.facingRight ? -1 : 1; // flip sprite to face walking direction
+      ctx.scale(faceScale, 1);
+    }
+
+    // Damage flash - BOSS gets bright RED flash
+    if (r.damageFlash > 0) {
+      if (r.isBoss && r.type === RoachType.QUEEN) {
+        // Strong red flash for BOSS
+        ctx.filter = `brightness(${1 + r.damageFlash * 0.5}) saturate(2) hue-rotate(-30deg)`;
+        // Additional red glow overlay
+        ctx.globalCompositeOperation = 'source-atop';
+        ctx.fillStyle = `rgba(255, 0, 0, ${Math.min(0.6, r.damageFlash * 0.3)})`;
+        const sz = r.size || 60;
+        ctx.fillRect(-sz, -sz, sz * 2, sz * 2);
+        ctx.globalCompositeOperation = 'source-over';
+      } else {
+        ctx.filter = `brightness(${1 + r.damageFlash})`;
+      }
+    }
+
+    // Stuck overlay (yellow tint for board-stuck roaches)
+    if (this.isStuckByBoard(r.id)) {
+      ctx.filter = 'brightness(1.3) sepia(0.5)';
+    }
+
+    // Rotation: downward (vy>0) = 0°, upward (vy<=0) = 180°
+    // Skip for BOSS — handled separately below with proper rotation
+    if (r.vy <= 0 && !r.isBoss) ctx.scale(1, -1);
+
+    if (this.roachImg && this.imagesLoaded) {
+      // Special handling for roaches with custom images
+      if (r.type === RoachType.SUICIDE && this.roachSuicideImg) {
+        ctx.drawImage(this.roachSuicideImg, -w / 2, -h / 2, w, h);
+      } else if (r.type === RoachType.FLYING && this.roachFlyingImg) {
+        ctx.drawImage(this.roachFlyingImg, -w / 2, -h / 2, w, h);
+      } else if (r.type === RoachType.FLYING_SUICIDE && this.roachFlyingSuicideImg) {
+        ctx.drawImage(this.roachFlyingSuicideImg, -w / 2, -h / 2, w, h);
+      } else if (r.type === RoachType.ARMORED && this.roachArmoredImg) {
+        // ARMORED roach: show armored image when armor intact, normal when broken

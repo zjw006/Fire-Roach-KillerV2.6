@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html><head><title>Test Shop</title></head><body style="background:#000;color:#fff;padding:20px;">
+<h2>商店测试工具</h2>
+<p>点击按钮设置测试数据，然后返回游戏</p>
+<button onclick="setTestData()" style="padding:10px 20px;font-size:16px;cursor:pointer;">设置测试数据(大量金钱+解锁关卡)</button>
+<p id="status"></p>
+<a href="/" style="color:#4ade80;font-size:18px;">返回游戏</a>
+<script>
+function setTestData() {
+  localStorage.setItem('roach_blaster_progress', JSON.stringify({
+    saveVersion: 1,
+    talentTree: { points: 100, talents: {} },
+    achievements: [],
+    highestWave: 10,
+    highestEndlessWave: 0,
+    totalKills: 500,
+    scenesUnlocked: ['kitchen', 'sewer', 'dump', 'basement', 'rooftop', 'street'],
+    scenesCompleted: ['kitchen'],
+    weaponsUnlocked: ['flamethrower', 'sticky', 'fan', 'molotov', 'swatter'],
+    encyclopedia: { entries: [] },
+    shopUpgrades: []
+  }));
+  document.getElementById('status').innerHTML = '<span style="color:green">测试数据已设置！</span>';
+}
+</script>
+</body></html>

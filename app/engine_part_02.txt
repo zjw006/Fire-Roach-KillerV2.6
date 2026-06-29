@@ -1,0 +1,1000 @@
+
+  pickupWeaponDrop(drop: WeaponDrop) {
+    const def = WEAPON_DROP_DEFS[drop.type];
+    if (!def) return;
+
+    // All throwable weapons go to inventory (including shotgun and swatter)
+    const itemType = drop.type as 'sticky' | 'poison' | 'molotov' | 'shotgun' | 'radar' | 'fan' | 'swatter';
+    const existing = this.inventory.find(item => item.type === itemType);
+    if (existing) {
+      existing.count++;
+    } else {
+      this.inventory.push({ type: itemType, count: 1 });
+    }
+
+    this.addFloatingText(this.player.x, this.player.y - 80, `拾取: ${def.name}!`, '#4ade80');
+    this.screenShake = 2;
+  }
+
+  // ========== ITEM PLACEMENT SYSTEM ==========
+  // ========== TRIPLE FLAME SHOTGUN =========
+  activateTripleFlame() {
+    if (this.tripleFlame.active) {
+      // Already active, extend duration
+      this.tripleFlame.timer = this.tripleFlame.duration;
+      return;
+    }
+    this.tripleFlame.active = true;
+    this.tripleFlame.timer = this.tripleFlame.duration;
+    this.audio.playShotgunActivate();
+    Vibration.vibrateItemUse();
+    this.addFloatingText(this.width / 2, this.height / 2 - 60, '三喷火枪模式! 持续10秒', '#fbbf24');
+  }
+
+  updateTripleFlame() {
+    if (!this.tripleFlame.active) return;
+    const prevTimer = this.tripleFlame.timer;
+    this.tripleFlame.timer -= this.deltaTime;
+
+    // Warning at 5 seconds
+    if (prevTimer > 5 && this.tripleFlame.timer <= 5) {
+      this.addFloatingText(this.width / 2, this.height / 2 - 80, '⚠ 三喷火枪即将消失! 5秒 ⚠', '#ef4444');
+    }
+
+    // Countdown at 3, 2, 1
+    for (const sec of [3, 2, 1]) {
+      if (prevTimer > sec && this.tripleFlame.timer <= sec) {
+        this.addFloatingText(this.width / 2, this.height / 2 - 50, `${sec}...`, sec <= 2 ? '#f87171' : '#fbbf24');
+      }
+    }
+
+    if (this.tripleFlame.timer <= 0) {
+      this.tripleFlame.active = false;
+      this.tripleFlame.timer = 0;
+      this.addFloatingText(this.width / 2, this.height / 2 - 50, '三喷火枪模式结束', '#9ca3af');
+    }
+  }
+
+  // ========== RADAR LASER =========
+  activateRadarLaser() {
+    if (this.radarLaser.active) {
+      this.radarLaser.timer = this.radarLaser.duration;
+      return;
+    }
+    this.radarLaser.active = true;
+    this.radarLaser.timer = this.radarLaser.duration;
+    this.radarLaser.fireTimer = 0;
+    this.radarLaser.targetId = null;
+    this.radarLaser.laserAlpha = 1;
+    this.radarLaser.shotsRemaining = 5;
+    this.audio.playRadarActivate();
+    Vibration.vibrateItemUse();
+    this.addFloatingText(this.width / 2, this.height / 2 - 60, '雷达激光启动! 自动追踪目标', '#22d3ee');
+    this.addFloatingText(this.width / 2, this.height / 2 - 40, '5发激光，伤害与小蟑螂一致', '#67e8f9');
+  }
+
+  updateRadarLaser() {
+    if (!this.radarLaser.active) return;
+
+    this.radarLaser.timer -= this.deltaTime;
+    this.radarLaser.fireTimer -= this.deltaTime;
+
+    // Countdown warnings
+    const prevTimer = this.radarLaser.timer + this.deltaTime;
+    if (prevTimer > 3 && this.radarLaser.timer <= 3) {
+      this.addFloatingText(this.width / 2, this.height / 2 - 80, '雷达激光 3秒...', '#67e8f9');
+    }
+    if (prevTimer > 1 && this.radarLaser.timer <= 1) {
+      this.addFloatingText(this.width / 2, this.height / 2 - 60, '雷达激光即将关闭!', '#f87171');
+    }
+
+    if (this.radarLaser.timer <= 0) {
+      this.radarLaser.active = false;
+      this.radarLaser.timer = 0;
+      this.radarLaser.laserAlpha = 0;
+      this.addFloatingText(this.width / 2, this.height / 2 - 50, '雷达激光关闭', '#9ca3af');
+      return;
+    }
+
+    // Find target if none or target dead
+    let target = this.roaches.find(r => r.id === this.radarLaser.targetId && r.state === RoachState.ALIVE);
+    if (!target) {
+      // Find closest alive roach (prefer unarmored, fallback to armored)
+      let minDistUnarmored = Infinity;
+      let closestUnarmored: Roach | undefined = undefined;
+      let minDistArmored = Infinity;
+      let closestArmored: Roach | undefined = undefined;
+      for (const r of this.roaches) {
+        if (r.state !== RoachState.ALIVE) continue;
+        const dx = r.x - this.player.x;
+        const dy = r.y - this.player.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (r.armorHp > 0) {
+          if (dist < minDistArmored) {
+            minDistArmored = dist;
+            closestArmored = r;
+          }
+        } else {
+          if (dist < minDistUnarmored) {
+            minDistUnarmored = dist;
+            closestUnarmored = r;
+          }
+        }
+      }
+      // Prefer unarmored target; only target armored if no unarmored roaches exist
+      target = closestUnarmored ?? closestArmored;
+      if (target) {
+        this.radarLaser.targetId = target.id;
+      }
+    }
+
+    if (!target || target.state !== RoachState.ALIVE) {
+      this.radarLaser.targetId = null;
+      return;
+    }
+
+    // Fire laser at intervals (only if shots remaining)
+    if (this.radarLaser.fireTimer <= 0 && this.radarLaser.shotsRemaining > 0) {
+      this.radarLaser.fireTimer = this.radarLaser.fireInterval;
+      this.radarLaser.shotsRemaining--;
+      this.audio.playRadarShot();
+
+      const damage = this.radarLaser.damage;
+
+      target.hp -= damage;
+      target.damageFlash = 1;
+
+      // Spawn laser hit particles
+      this.spawnSparkParticles(target.x, target.y, 8);
+      this.particles.push({
+        x: target.x, y: target.y,
+        vx: 0, vy: -20,
+        life: 0.3, maxLife: 0.3,
+        size: 8, color: '#22d3ee',
+        type: ParticleType.EXPLOSION,
+      });
+
+      // Show remaining shots
+      if (this.radarLaser.shotsRemaining > 0) {
+        this.addFloatingText(this.player.x + 30, this.player.y - 40, `激光 x${this.radarLaser.shotsRemaining}`, '#22d3ee');
+      } else {
+        this.addFloatingText(this.width / 2, this.height / 2 - 50, '激光发射完毕!', '#9ca3af');
+        this.radarLaser.active = false;
+        this.radarLaser.laserAlpha = 0;
+      }
+
+      // Kill if dead
+      if (target.hp <= 0) {
+        this.killRoach(target, this.roaches.indexOf(target));
+        this.addFloatingText(target.x, target.y - 20, '激光击杀!', '#22d3ee');
+        this.radarLaser.targetId = null;
+      } else {
+        this.addFloatingText(target.x, target.y - 30, `-${damage}`, '#22d3ee');
+      }
+    }
+  }
+
+  // ========== INSECTICIDE SPRAY =========
+  activateInsecticideSpray() {
+    if (this.insecticideSpray.active) {
+      this.insecticideSpray.timer = this.insecticideSpray.duration;
+      return;
+    }
+    this.insecticideSpray.active = true;
+    this.insecticideSpray.timer = this.insecticideSpray.duration;
+    this.insecticideSpray.damageTimer = 0;
+    this.audio.playInsecticideSpray();
+    Vibration.vibrateItemUse();
+    this.addFloatingText(this.width / 2, this.height / 2 - 60, '双侧毒气喷射!', '#4ade80');
+    this.addFloatingText(this.width / 2, this.height / 2 - 40, '两侧横向毒雾3秒', '#86efac');
+    this.screenShake = 4;
+  }
+
+  updateInsecticideSpray() {
+    if (!this.insecticideSpray.active) return;
+
+    const spray = this.insecticideSpray;
+    spray.timer -= this.deltaTime;
+    spray.damageTimer -= this.deltaTime;
+
+    // Countdown warnings
+    const prevTimer = spray.timer + this.deltaTime;
+    if (prevTimer > 1 && spray.timer <= 1) {
+      this.addFloatingText(this.width / 2, this.height / 2 - 80, '毒气喷射即将结束!', '#f87171');
+    }
+
+    if (spray.timer <= 0) {
+      spray.active = false;
+      spray.timer = 0;
+      this.spawnInsecticideFadeOut();
+      this.addFloatingText(this.width / 2, this.height / 2 - 50, '毒气喷射结束', '#9ca3af');
+      return;
+    }
+
+    // Spawn spray particles every frame
+    this.spawnInsecticideParticles();
+
+    // Apply damage at intervals
+    if (spray.damageTimer <= 0) {
+      spray.damageTimer = spray.damageInterval;
+      this.applyInsecticideDamage();
+    }
+  }
+
+  spawnInsecticideParticles() {
+    const h = this.height;
+    const w = this.width;
+    const cy = h / 2;
+
+    // Left side spray (spraying rightward)
+    for (let i = 0; i < 6; i++) {
+      const py = cy + (Math.random() - 0.5) * h * 0.6;
+      const life = 0.3 + Math.random() * 0.4;
+      const speed = 100 + Math.random() * 80;
+      const greenBase = 180 + Math.random() * 60;
+      const alpha = 0.25 + Math.random() * 0.25;
+      this.particles.push({
+        x: 10 + Math.random() * 30, y: py,
+        vx: speed * (0.5 + Math.random() * 0.5),
+        vy: (Math.random() - 0.5) * 30,
+        life, maxLife: life,
+        size: 5 + Math.random() * 10,
+        color: `rgba(${50 + Math.random() * 30}, ${greenBase}, ${50 + Math.random() * 20}, ${alpha})`,
+        type: ParticleType.POISON_CLOUD,
+      });
+    }
+
+    // Right side spray (spraying leftward)
+    for (let i = 0; i < 6; i++) {
+      const py = cy + (Math.random() - 0.5) * h * 0.6;
+      const life = 0.3 + Math.random() * 0.4;
+      const speed = 100 + Math.random() * 80;
+      const greenBase = 180 + Math.random() * 60;
+      const alpha = 0.25 + Math.random() * 0.25;
+      this.particles.push({
+        x: w - 10 - Math.random() * 30, y: py,
+        vx: -speed * (0.5 + Math.random() * 0.5),
+        vy: (Math.random() - 0.5) * 30,
+        life, maxLife: life,
+        size: 5 + Math.random() * 10,
+        color: `rgba(${50 + Math.random() * 30}, ${greenBase}, ${50 + Math.random() * 20}, ${alpha})`,
+        type: ParticleType.POISON_CLOUD,
+      });
+    }
+
+    // Fine droplet particles - smaller, faster
+    for (let side = 0; side < 2; side++) {
+      for (let i = 0; i < 3; i++) {
+        const px = side === 0 ? 15 + Math.random() * 20 : w - 15 - Math.random() * 20;
+        const py = cy + (Math.random() - 0.5) * h * 0.5;
+        const life = 0.2 + Math.random() * 0.25;
+        const vxDir = side === 0 ? 1 : -1;
+        this.particles.push({
+          x: px, y: py,
+          vx: vxDir * (80 + Math.random() * 60),
+          vy: (Math.random() - 0.5) * 40,
+          life, maxLife: life,
+          size: 2 + Math.random() * 4,
+          color: `rgba(${120 + Math.random() * 40}, 255, ${120 + Math.random() * 40}, ${0.5 + Math.random() * 0.3})`,
+          type: ParticleType.SPARK,
+        });
+      }
+    }
+
+    // Side nozzle burst effects
+    for (let side = 0; side < 2; side++) {
+      const nx = side === 0 ? 10 : w - 10;
+      for (let i = 0; i < 2; i++) {
+        const vxDir = side === 0 ? 1 : -1;
+        this.particles.push({
+          x: nx, y: cy + (Math.random() - 0.5) * 20,
+          vx: vxDir * (60 + Math.random() * 40),
+          vy: (Math.random() - 0.5) * 30,
+          life: 0.15 + Math.random() * 0.15,
+          maxLife: 0.15 + Math.random() * 0.15,
+          size: 4 + Math.random() * 6,
+          color: `rgba(${100 + Math.random() * 30}, 240, ${100 + Math.random() * 20}, ${0.6 + Math.random() * 0.3})`,
+          type: ParticleType.POISON_CLOUD,
+        });
+      }
+    }
+  }
+
+  spawnInsecticideFadeOut() {
+    const w = this.width;
+    const cy = this.height / 2;
+    // Dispersal particles from both sides
+    for (let side = 0; side < 2; side++) {
+      for (let i = 0; i < 8; i++) {
+        const px = side === 0 ? 10 + Math.random() * 40 : w - 10 - Math.random() * 40;
+        const speed = 30 + Math.random() * 50;
+        this.particles.push({
+          x: px, y: cy + (Math.random() - 0.5) * 200,
+          vx: (side === 0 ? 1 : -1) * Math.cos(Math.random() * Math.PI * 0.5) * speed,
+          vy: (Math.random() - 0.5) * speed,
+          life: 0.5 + Math.random() * 0.5,
+          maxLife: 0.5 + Math.random() * 0.5,
+          size: 5 + Math.random() * 10,
+          color: `rgba(${60 + Math.random() * 30}, ${160 + Math.random() * 50}, ${60 + Math.random() * 20}, ${0.2 + Math.random() * 0.2})`,
+          type: ParticleType.POISON_CLOUD,
+        });
+      }
+    }
+  }
+
+  applyInsecticideDamage() {
+    const w = this.width;
+    const h = this.height;
+    const cy = h / 2;
+    const spray = this.insecticideSpray;
+    const horizontalRange = w * 0.4; // horizontal spray range
+    const verticalRange = h * 0.4;   // vertical coverage
+    let hitCount = 0;
+
+    for (const r of this.roaches) {
+      if (r.state !== RoachState.ALIVE) continue;
+
+      // Check if roach is in left spray zone or right spray zone
+      const inLeftSpray = r.x < horizontalRange && Math.abs(r.y - cy) < verticalRange;
+      const inRightSpray = r.x > w - horizontalRange && Math.abs(r.y - cy) < verticalRange;
+
+      if (inLeftSpray || inRightSpray) {
+        // ===== ARMOR BUFF: spray completely ineffective vs armored roaches =====
+        if (r.armorHp > 0) {
+          this.addFloatingText(r.x, r.y - 20, '护甲免疫!', '#60a5fa');
+          continue; // skip this roach entirely
+        }
+        // Low initial damage (only vs unarmored)
+        const dmg = spray.baseDamage * 0.5;
+        r.hp -= dmg;
+        hitCount++;
+
+        // Apply poison: 3 seconds, damage over time
+        r.poisonTimer = 3;
+        r.poisonDamage = 1.0;
+
+        // Visual: damage flash (no reaction while armor intact)
+        r.damageFlash = (r.armorHp > 0) ? 0 : 0.15;
+
+        // Spawn hit particles on roach
+        if (Math.random() < 0.3) {
+          this.particles.push({
+            x: r.x + (Math.random() - 0.5) * 10,
+            y: r.y + (Math.random() - 0.5) * 10,
+            vx: (Math.random() - 0.5) * 30,
+            vy: -20 - Math.random() * 30,
+            life: 0.3,
+            maxLife: 0.3,
+            size: 2 + Math.random() * 3,
+            color: `rgba(${80 + Math.random() * 40}, 220, ${80 + Math.random() * 20}, 0.7)`,
+            type: ParticleType.POISON_CLOUD,
+          });
+        }
+      }
+    }
+
+    if (hitCount > 0) {
+      this.addFloatingText(w / 2, cy - 80, `毒气命中${hitCount}只!`, '#4ade80');
+    }
+  }
+
+  // ========== STICKY DROP SPRAY =========
+  activateStickySpray() {
+    const cx = this.width / 2;
+    const cy = this.defenseLineY();
+    const DROP_COUNT = 10;
+    const FIRE_INTERVAL = 0.08; // 80ms between each drop
+
+    // Schedule 10 drops with staggered spawn
+    for (let i = 0; i < DROP_COUNT; i++) {
+      const delay = i * FIRE_INTERVAL;
+      // Use a simple timer approach - store pending drops
+      this.scheduleStickyDrop(cx, cy, delay);
+    }
+
+    this.audio.playStickySpray();
+    Vibration.vibrateItemUse();
+    this.addFloatingText(cx, cy - 60, '蟑螂贴板发射!', '#facc15');
+    this.addFloatingText(cx, cy - 40, '10个追踪水滴', '#fde047');
+    this.screenShake = 3;
+  }
+
+  scheduleStickyDrop(cx: number, cy: number, delay: number) {
+    // Create a pre-spawn drop that will activate after delay
+    this.stickyDrops.push({
+      id: this.nextStickyDropId++,
+      x: cx,
+      y: cy,
+      vx: 0,
+      vy: -80 - Math.random() * 40, // initial upward burst
+      targetId: null,
+      speed: 250 + Math.random() * 100,
+      life: delay + 3, // extra life after delay
+      maxLife: 3,
+      size: 6 + Math.random() * 3,
+      hit: false,
+    });
+  }
+
+  updateStickyDrops() {
+    for (let i = this.stickyDrops.length - 1; i >= 0; i--) {
+      const drop = this.stickyDrops[i];
+      drop.life -= this.deltaTime;
+
+      // Pre-spawn phase (delay > life remaining > maxLife)
+      if (drop.life > drop.maxLife) {
+        // Still in delay phase - just do small idle animation at spawn point
+        drop.y += Math.sin(this.time * 10 + drop.id) * 0.5;
+        continue;
+      }
+
+      // Drop has expired
+      if (drop.life <= 0) {
+        // Release wrapped roach if this drop had one
+        if (drop.targetId !== null) {
+          const r = this.roaches.find(r => r.id === drop.targetId);
+          if (r && r.state === RoachState.ALIVE) {
+            r.wrappedByDropId = null;
+            r.wrapTimer = 0;
+            r.speed = r.baseSpeed; // restore speed
+          }
+        }
+        this.stickyDrops.splice(i, 1);
+        continue;
+      }
+
+      // If already hit a roach, keep it glued to the roach
+      if (drop.hit && drop.targetId !== null) {
+        const target = this.roaches.find(r => r.id === drop.targetId);
+        if (target && target.state === RoachState.ALIVE) {
+          drop.x = target.x;
+          drop.y = target.y;
+          // For BOSS: slow instead of immobilize; restore speed after timer expires
+          if (target.isBoss && this.bossBattle.active && target.type === RoachType.QUEEN) {
+            if (drop.life <= 0) {
+              // Slow expired - restore speed
+              target.speed = target.baseSpeed;
+              target.wrappedByDropId = null;
+              target.wrapTimer = 0;
+              this.stickyDrops.splice(i, 1);
+              continue;
+            }
+            target.wrappedByDropId = drop.id;
+            target.wrapTimer = drop.life;
+          } else {
+            // Normal roach: permanent immobilize
+            target.vx = 0;
+            target.vy = 0;
+            target.speed = 0;
+            target.wrappedByDropId = drop.id;
+            target.wrapTimer = drop.life;
+          }
+          // Periodic damage (only if no armor)
+          if (Math.random() < this.deltaTime * 2) {
+            if (target.armorHp > 0) {
+              // Armor blocks sticky board damage
+              if (Math.random() < 0.1) {
+                this.addFloatingText(target.x, target.y - 15, '护甲免疫', '#60a5fa');
+              }
+            } else {
+              target.hp -= 0.5;
+              target.damageFlash = 0.1;
+            }
+          }
+          // Emit yellow particles
+          if (Math.random() < 0.1) {
+            this.particles.push({
+              x: target.x + (Math.random() - 0.5) * 20,
+              y: target.y + (Math.random() - 0.5) * 20,
+              vx: (Math.random() - 0.5) * 20,
+              vy: -10 - Math.random() * 20,
+              life: 0.3, maxLife: 0.3,
+              size: 2 + Math.random() * 3,
+              color: `rgba(250, 200, 50, ${0.5 + Math.random() * 0.3})`,
+              type: ParticleType.ICE,
+            });
+          }
+        } else {
+          // Target dead - remove drop immediately and clean up
+          if (target) {
+            target.wrappedByDropId = null;
+            target.wrapTimer = 0;
+          }
+          this.stickyDrops.splice(i, 1);
+        }
+        continue;
+      }
+
+      // Flying phase - seek target
+      // Find closest alive roach that isn't already wrapped
+      let target: Roach | null = null;
+      let minDist = Infinity;
+      for (const r of this.roaches) {
+        if (r.state !== RoachState.ALIVE) continue;
+        if (r.wrappedByDropId !== null) continue; // already wrapped
+        const dx = r.x - drop.x;
+        const dy = r.y - drop.y;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d < minDist && d < 400) { // max tracking range
+          minDist = d;
+          target = r;
+        }
+      }
+
+      if (target) {
+        // Homing behavior
+        const dx = target.x - drop.x;
+        const dy = target.y - drop.y;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d > 1) {
+          const targetVx = (dx / d) * drop.speed;
+          const targetVy = (dy / d) * drop.speed;
+          // Smooth steering
+          drop.vx += (targetVx - drop.vx) * 5 * this.deltaTime;
+          drop.vy += (targetVy - drop.vy) * 5 * this.deltaTime;
+        }
+        drop.targetId = target.id;
+
+        // Check collision
+        const targetSize = (target.size ?? ENEMY_DEFS[target.type].size) * this.getPerspectiveScale(target.y);
+        if (d < targetSize * 0.5 + drop.size) {
+          // ===== STICKY DROP HIT =====
+          // If target is BOSS, apply Slow effect (3 seconds) instead of permanent wrap
+          if (target.isBoss && this.bossBattle.active && target.type === RoachType.QUEEN) {
+            drop.hit = true;
+            drop.targetId = target.id;
+            target.wrappedByDropId = drop.id;
+            target.wrapTimer = 3.0;
+            drop.life = 3.0;
+            this.screenShake = 4;
+          } else {
+            // Normal roach: permanent wrap
+            drop.hit = true;
+            drop.life = Infinity; // never expire while target is alive
+            drop.x = target.x;
+            drop.y = target.y;
+            target.wrappedByDropId = drop.id;
+            target.wrapTimer = Infinity; // permanent until death
+            target.speed = 0;
+            target.vx = 0;
+            target.vy = 0;
+            this.addFloatingText(target.x, target.y - 20, '粘住!', '#facc15');
+          }
+          // Hit particles
+          for (let p = 0; p < 8; p++) {
+            this.particles.push({
+              x: target.x + (Math.random() - 0.5) * 15,
+              y: target.y + (Math.random() - 0.5) * 15,
+              vx: (Math.random() - 0.5) * 60,
+              vy: (Math.random() - 0.5) * 60,
+              life: 0.3, maxLife: 0.3,
+              size: 2 + Math.random() * 4,
+              color: `rgba(250, 220, 50, ${0.6 + Math.random() * 0.4})`,
+              type: ParticleType.ICE,
+            });
+          }
+        }
+      } else {
+        // No target, fly upward and curve slightly
+        drop.vy -= 20 * this.deltaTime;
+        drop.vx += Math.sin(this.time * 3 + drop.id) * 30 * this.deltaTime;
+      }
+
+      // Move drop
+      drop.x += drop.vx * this.deltaTime;
+      drop.y += drop.vy * this.deltaTime;
+
+      // Bounds check
+      if (drop.y < -50 || drop.y > this.height + 50 || drop.x < -50 || drop.x > this.width + 50) {
+        this.stickyDrops.splice(i, 1);
+      }
+    }
+  }
+
+  // ========== ITEM PLACEMENT: icon click → screen click → drag → release =========
+  selectItem(index: number) {
+    if (index < 0 || index >= this.inventory.length) return;
+    if (this.inventory[index].count <= 0) return;
+
+    const item = this.inventory[index];
+
+    // Shotgun is instant-use (activates triple flame), not placement
+    if (item.type === 'shotgun') {
+      item.count--;
+      this.activateTripleFlame();
+      if (item.count <= 0) {
+        this.inventory.splice(index, 1);
+      }
+      return;
+    }
+
+    // Radar laser is instant-use (activates auto-targeting laser), not placement
+    if (item.type === 'radar') {
+      item.count--;
+      this.activateRadarLaser();
+      if (item.count <= 0) {
+        this.inventory.splice(index, 1);
+      }
+      return;
+    }
+
+    // Insecticide spray is instant-use (auto-spray from bottom center), not placement
+    if (item.type === 'poison') {
+      item.count--;
+      this.activateInsecticideSpray();
+      if (item.count <= 0) {
+        this.inventory.splice(index, 1);
+      }
+      return;
+    }
+
+    // Sticky board is instant-use (auto-fires 10 tracking drops), not placement
+    if (item.type === 'sticky') {
+      item.count--;
+      this.activateStickySpray();
+      if (item.count <= 0) {
+        this.inventory.splice(index, 1);
+      }
+      return;
+    }
+
+    // Molotov is instant-use (auto-finds roaches and creates flame wall), not placement
+    if (item.type === 'molotov') {
+      item.count--;
+      this.activateMolotovFireWall();
+      if (item.count <= 0) {
+        this.inventory.splice(index, 1);
+      }
+      return;
+    }
+
+    // Fan is instant-use (activates wind slow on all roaches), not placement
+    if (item.type === 'fan') {
+      item.count--;
+      this.activateFan();
+      if (item.count <= 0) {
+        this.inventory.splice(index, 1);
+      }
+      return;
+    }
+
+    // Swatter is instant-use (armor break + slow in area around player)
+    // useSwatter() handles its own consumption internally
+    if (item.type === 'swatter') {
+      this.useSwatter();
+      return;
+    }
+
+    // Placement items
+    if (this.selectedItemIndex === index && this.itemPlaceState !== 'idle') {
+      this.cancelItemPlacement();
+      return;
+    }
+
+    this.selectedItemIndex = index;
+    this.itemPlaceState = 'pending_click';
+    this.player.isFiring = false; // Stop firing
+  }
+
+  // First screen click: show range preview at click position
+  onItemFirstClick(x: number, y: number) {
+    if (this.itemPlaceState !== 'pending_click') return;
+    if (this.selectedItemIndex < 0) return;
+
+    this.itemPlaceCursorX = Math.max(0, Math.min(this.width, x));
+    this.itemPlaceCursorY = Math.max(0, Math.min(this.height, y));
+    this.itemPlaceState = 'placing';
+  }
+
+  // Dragging: update position
+  onItemDrag(x: number, y: number) {
+    if (this.itemPlaceState !== 'placing') return;
+    this.itemPlaceCursorX = Math.max(0, Math.min(this.width, x));
+    this.itemPlaceCursorY = Math.max(0, Math.min(this.height, y));
+  }
+
+  // Release: apply effect
+  onItemRelease() {
+    if (this.itemPlaceState !== 'placing') return;
+    if (this.selectedItemIndex < 0) return;
+
+    const item = this.inventory[this.selectedItemIndex];
+    if (!item || item.count <= 0) {
+      this.cancelItemPlacement();
+      return;
+    }
+
+    item.count--;
+
+    // Apply effect based on type at the placed location
+    // (molotov, shotgun, radar, poison, sticky, fan are all instant-use, handled in selectItem)
+
+    // Remove item if count reaches 0
+    if (item.count <= 0) {
+      this.inventory.splice(this.selectedItemIndex, 1);
+    }
+
+    this.itemPlaceState = 'idle';
+    this.selectedItemIndex = -1;
+  }
+
+  // ========== STICKY BOARD ==========
+  // Calculate perspective scale: smaller when higher (farther from bottom)
+  getPerspectiveScale(y: number): number {
+    const bottomY = this.defenseLineY();
+    const topY = this.height * 0.2; // horizon line
+    const t = Math.max(0, Math.min(1, (bottomY - y) / (bottomY - topY)));
+    // t=0 at bottom (scale=1.0), t=1 at top (scale=0.3)
+    return 0.3 + t * 0.7;
+  }
+
+  applyStickyBoardEffect(x: number, y: number) {
+    const BASE_W = 240;
+    const BASE_H = 240;
+    const scale = this.getPerspectiveScale(y);
+
+    this.stickyBoards.push({
+      id: Date.now() + Math.random(),
+      x: x,
+      y: y,
+      width: Math.round(BASE_W * scale),
+      height: Math.round(BASE_H * scale),
+      hitWidth: 240,
+      hitHeight: 240,
+      life: 5, // 5 seconds control duration
+      maxLife: 5,
+      stuckRoaches: [],
+      maxStuck: 5,
+    });
+
+    this.spawnSparkParticles(x, y, 10);
+    this.addFloatingText(x, y - 30, '蟑螂贴板放置!', '#facc15');
+  }
+
+  updateStickyBoards() {
+    for (let i = this.stickyBoards.length - 1; i >= 0; i--) {
+      const board = this.stickyBoards[i];
+      board.life -= this.deltaTime;
+
+      if (board.life <= 0) {
+        // Release stuck roaches
+        for (const roachId of board.stuckRoaches) {
+          const r = this.roaches.find(r => r.id === roachId);
+          if (r && r.state === RoachState.ALIVE) {
+            r.speed = r.baseSpeed; // restore speed
+          }
+        }
+        this.stickyBoards.splice(i, 1);
+        continue;
+      }
+
+      // Check roaches entering the board area (use hitWidth/hitHeight for real collision)
+      const hitHalfW = board.hitWidth / 2;
+      const hitHalfH = board.hitHeight / 2;
+
+      for (const r of this.roaches) {
+        if (r.state !== RoachState.ALIVE) continue;
+        // Already stuck by this board
+        if (board.stuckRoaches.includes(r.id)) {
+          // Keep roach inside hit area (real collision bounds)
+          r.x = Math.max(board.x - hitHalfW + 10, Math.min(board.x + hitHalfW - 10, r.x));
+          r.y = Math.max(board.y - hitHalfH + 10, Math.min(board.y + hitHalfH - 10, r.y));
+          r.vx = 0;
+          r.vy = 0;
+          r.speed = 0;
+          continue;
+        }
+
+        // Board is full
+        if (board.stuckRoaches.length >= board.maxStuck) continue;
+
+        // Check if roach is inside real hit area (240x240)
+        if (r.x > board.x - hitHalfW && r.x < board.x + hitHalfW &&
+            r.y > board.y - hitHalfH && r.y < board.y + hitHalfH) {
+          board.stuckRoaches.push(r.id);
+          r.speed = 0;
+          r.vx = 0;
+          r.vy = 0;
+          this.addFloatingText(r.x, r.y - 20, '粘住了!', '#facc15');
+        }
+      }
+    }
+  }
+
+  cancelItemPlacement() {
+    this.itemPlaceState = 'idle';
+    this.selectedItemIndex = -1;
+  }
+
+  applyPoisonEffect(x: number, y: number) {
+    const rx = this.itemEffectRadiusX;
+    const ry = this.itemEffectRadiusY;
+    let hitCount = 0;
+    for (const r of this.roaches) {
+      if (r.state !== RoachState.ALIVE) continue;
+      const dx = (r.x - x) / rx;
+      const dy = (r.y - y) / ry;
+      if (dx * dx + dy * dy < 1) {
+        r.poisonTimer = 6;
+        r.poisonDamage = 2;
+        r.hp -= 2;
+        hitCount++;
+      }
+    }
+    this.fireZones.push({
+      x, y, radius: rx * 0.5,
+      damagePerSecond: 25,
+      life: 6, maxLife: 6,
+      type: 'poison',
+    });
+    this.spawnPoisonExplosion(x, y, rx * 0.5);
+    this.addFloatingText(x, y - 20, hitCount > 0 ? `毒雾!(${hitCount}只)` : '毒雾!', '#a78bfa');
+    this.screenShake = 3;
+  }
+
+  // ========== FAN ACTIVATION =========
+  activateFan() {
+    this.fanState.active = true;
+    this.fanState.timer = this.fanState.duration;
+    this.fanState.bladeAngle = 0;
+    this.addFloatingText(this.width / 2, this.height * 0.3, '强力风扇启动!', '#a78bfa');
+    this.addFloatingText(this.width / 2, this.height * 0.3 + 20, '蟑螂被吹退8秒!', '#c4b5fd');
+    this.screenShake = 4;
+
+    // Apply slow to all current roaches
+    for (const r of this.roaches) {
+      if (r.state !== RoachState.ALIVE) continue;
+      this.applyFanEffect(r);
+    }
+  }
+
+  // Get fan effect parameters by roach type
+  // Returns [slowFactor, pushSpeed] - higher = more effect
+  getFanEffectByType(type: RoachType): [number, number] {
+    switch (type) {
+      // Flying roaches: most affected (light weight, large wing surface)
+      case RoachType.FLYING: return [0.70, 120];
+      // Flying suicide: also highly affected (flying)
+      case RoachType.FLYING_SUICIDE: return [0.65, 100];
+      // Small roaches: heavily affected (light, easy to blow)
+      case RoachType.SMALL: return [0.60, 80];
+      // Large roaches: moderately affected
+      case RoachType.LARGE: return [0.40, 50];
+      // Splitting roaches: same as large
+      case RoachType.SPLITTING: return [0.40, 50];
+      // Suicide roaches: somewhat affected (carrying bomb)
+      case RoachType.SUICIDE: return [0.30, 35];
+      // Armored roaches: slightly affected (heavy shell)
+      case RoachType.ARMORED: return [0.20, 25];
+      // Queen: barely affected (very heavy)
+      case RoachType.QUEEN: return [0.10, 15];
+      default: return [0.40, 50];
+    }
+  }
+
+  applyFanEffect(r: Roach) {
+    const [slowFactor] = this.getFanEffectByType(r.type);
+    r.fanSlowFactor = slowFactor;
+    r.fanSlowTimer = this.fanState.duration;
+    r.fanPushY = 0; // reset push accumulation
+  }
+
+  updateFan() {
+    const fan = this.fanState;
+    if (!fan.active) return;
+
+    fan.timer -= this.deltaTime;
+    fan.bladeAngle += fan.bladeSpeed * this.deltaTime;
+
+    const fanTopY = this.height / 2; // fan effect range: defense line to screen center
+
+    // Apply fan effect to new roaches that spawned during fan active
+    // Only affect roaches within fan range (defense line to screen center)
+    for (const r of this.roaches) {
+      if (r.state !== RoachState.ALIVE) continue;
+      if (r.fanSlowTimer <= 0 && fan.timer > 0 && r.y >= fanTopY && r.y <= this.defenseLineY()) {
+        this.applyFanEffect(r);
+      }
+    }
+
+    // Push all affected roaches upward (backward)
+    // Only push if roach is within fan range
+    for (const r of this.roaches) {
+      if (r.state !== RoachState.ALIVE) continue;
+      if (r.fanSlowTimer > 0 && r.y >= fanTopY) {
+        const [, pushSpeed] = this.getFanEffectByType(r.type);
+        // Accumulate upward push (negative Y = toward top of screen)
+        const pushAmount = pushSpeed * this.deltaTime;
+        r.fanPushY -= pushAmount;
+      }
+    }
+
+    if (fan.timer <= 0) {
+      fan.active = false;
+      fan.timer = 0;
+      this.addFloatingText(this.width / 2, this.height * 0.3, '风扇停止', '#9ca3af');
+      // Clear fan effects from all roaches
+      for (const r of this.roaches) {
+        r.fanSlowTimer = 0;
+        r.fanSlowFactor = 0;
+        r.fanPushY = 0;
+      }
+      return;
+    }
+
+    // Update slow timers on affected roaches
+    for (const r of this.roaches) {
+      if (r.fanSlowTimer > 0) {
+        r.fanSlowTimer -= this.deltaTime;
+        if (r.fanSlowTimer <= 0) {
+          r.fanSlowFactor = 0;
+        }
+      }
+    }
+  }
+
+  renderFan(ctx: CanvasRenderingContext2D) {
+    if (!this.fanState.active) return;
+    const fan = this.fanState;
+    const W = this.width;
+    const H = this.height;
+    const dl = this.defenseLineY();
+    const fanTopY = H / 2; // fan effect top boundary: screen center
+    const t = this.time;
+    const RANGE = dl - fanTopY; // total vertical range of fan effect
+    // fan source width at defense line (bottom)
+    const SOURCE_WIDTH = W * 0.7;
+
+    ctx.save();
+
+    // ========== PERSPECTIVE AIRFLOW - 底部最宽，向上逐渐收窄 ==========
+    const waveCount = 18;
+    for (let i = 0; i < waveCount; i++) {
+      // Spread waves across the fan source width at bottom
+      const srcX = (i / (waveCount - 1)) * SOURCE_WIDTH + (W - SOURCE_WIDTH) / 2;
+      const waveSpeed = 2.0 + i * 0.3;
+      const wavePhase = t * waveSpeed + i * 2.7;
+      // Perspective: wider waves at bottom, narrow at top
+      const baseAmplitude = 14 + i * 1.5;
+
+      ctx.globalAlpha = 0.04 + Math.sin(wavePhase * 0.5) * 0.03;
+      ctx.strokeStyle = i % 3 === 0 ? '#c4b5fd' : '#a78bfa';
+      ctx.lineWidth = 2.0 + Math.sin(wavePhase) * 1.0;
+      ctx.beginPath();
+
+      // Draw from defense line going UP to fanTopY with perspective taper
+      let firstPoint = true;
+      for (let y = dl; y >= fanTopY; y -= 5) {
+        const normalizedY = (dl - y) / RANGE; // 0 at bottom, 1 at top (within fan range)
+        // Perspective: width decreases as we go up (taper to 8% at top)
+        const perspectiveScale = 1.0 - normalizedY * 0.92;
+        const cx = W / 2 + (srcX - W / 2) * perspectiveScale;
+        const amplitude = baseAmplitude * perspectiveScale;
+        const x = cx + Math.sin(normalizedY * Math.PI * 6 + wavePhase) * amplitude;
+        if (firstPoint) { ctx.moveTo(x, y); firstPoint = false; }
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+
+    // ========== PERSPECTIVE GUST FRONTS - 扇形向上推进 ==========
+    const gustCount = 5;
+    for (let g = 0; g < gustCount; g++) {
+      const gustSpeed = 0.5 + g * 0.3;
+      const gustPhase = (t * gustSpeed + g / gustCount) % 1.0;
+      const gustY = dl - gustPhase * RANGE; // gust moves from dl up to fanTopY
+      const gustAlpha = Math.sin(gustPhase * Math.PI) * 0.15;
+      if (gustAlpha <= 0 || gustY < fanTopY) continue;
+
+      const normalizedY = (dl - gustY) / RANGE;
+      // Perspective: gust width decreases going up
+      const perspectiveScale = 1.0 - normalizedY * 0.92;
+      const gustHalfWidth = (SOURCE_WIDTH / 2) * perspectiveScale;
+      const gustHeight = 45 + g * 12;
+
+      // Tapered gust shape
+      const grad = ctx.createLinearGradient(0, gustY - gustHeight / 2, 0, gustY + gustHeight / 2);
+      grad.addColorStop(0, 'rgba(167, 139, 250, 0)');
+      grad.addColorStop(0.5, `rgba(196, 181, 253, ${gustAlpha})`);
+      grad.addColorStop(1, 'rgba(167, 139, 250, 0)');
+      ctx.fillStyle = grad;

@@ -1,0 +1,1000 @@
+      this.bossAnimState.timer = 0;
+    }
+    const animConfig = BOSS_ANIMATIONS[this.bossAnimState.action as keyof typeof BOSS_ANIMATIONS];
+    if (animConfig) {
+      this.bossAnimState.timer += this.deltaTime * 1000;
+      const interval = 1000 / animConfig.fps;
+      if (this.bossAnimState.timer >= interval) {
+        this.bossAnimState.timer = 0;
+        const maxFrames = this.bossAnimFrames.get(this.bossAnimState.action)?.length || 1;
+        this.bossAnimState.frameIndex = animConfig.loop
+          ? (this.bossAnimState.frameIndex + 1) % maxFrames
+          : Math.min(this.bossAnimState.frameIndex + 1, maxFrames - 1);
+      }
+    }
+
+    // ===== 4-WAVE EGG POD SYSTEM =====
+    this.updateEggPodSystem();
+
+    // Sync HP display (4 layers)
+    bb.bossHp = bb.currentWave;
+
+    // Notify UI
+    this.onBossUpdate?.(bb);
+  }
+
+  // ===== EGG POD SYSTEM (4-Wave Boss Mechanic) =====
+  updateEggPodSystem() {
+    const bb = this.bossBattle;
+
+    // Update existing egg pods
+    this.updateEggPods();
+
+    // Check if current wave is cleared
+    if (!bb.waveCleared && bb.eggPods.length === 0) {
+      // All egg pods destroyed/hatched and hatched roaches killed
+      const livingEnemies = this.roaches.filter(r =>
+        r.state === RoachState.ALIVE && !r.isBoss
+      ).length;
+      if (livingEnemies === 0) {
+        bb.waveCleared = true;
+        bb.waveSpawnTimer = 2; // 2s delay before next wave
+        bb.currentWave++;
+        // Update phase
+        if (bb.currentWave <= 4) {
+          bb.phase = bb.currentWave as 1 | 2 | 3 | 4;
+        }
+      }
+    }
+
+    // Spawn next wave after delay
+    if (bb.waveCleared) {
+      bb.waveSpawnTimer -= this.deltaTime;
+      if (bb.waveSpawnTimer <= 0) {
+        bb.waveCleared = false;
+        if (bb.currentWave >= 1 && bb.currentWave <= 4) {
+          this.spawnEggWave(bb.currentWave);
+        } else if (bb.currentWave > 4) {
+          // All 4 waves cleared! Boss dialogue then flee
+          this.startBossDialogue();
+        }
+      }
+    }
+
+    // Spawn first wave immediately
+    if (bb.currentWave === 0 && bb.eggPods.length === 0 && !bb.waveCleared) {
+      bb.currentWave = 1;
+      bb.phase = 1;
+      this.spawnEggWave(1);
+    }
+  }
+
+  spawnEggWave(wave: number) {
+    const bb = this.bossBattle;
+    const groundY = this.defenseLineY() - 30;
+    const isHard = this.difficulty === 'hard';
+
+    const waveConfigs = [
+      { count: 15, type: RoachType.SMALL, name: '小蟑螂', podHp: 1 },
+      { count: 8, type: RoachType.LARGE, name: '大蟑螂', podHp: isHard ? 3 : 2 },
+      { count: 6, type: RoachType.FLYING, name: '飞行蟑螂', podHp: isHard ? 2 : 1 },
+      { count: 6, type: RoachType.ARMORED, name: '分裂蟑螂', podHp: isHard ? 4 : 3 },
+      { count: 4, type: RoachType.FLYING_SUICIDE, name: '飞行自爆蟑螂', podHp: isHard ? 2 : 1 },
+    ];
+
+    const config = waveConfigs[wave - 1];
+    if (!config) return;
+
+    // Update phase name
+    const phaseNames = ['虫卵入侵', '大蟑螂卵', '飞行蟑螂卵', '精英蟑螂卵'];
+    bb.phaseName = phaseNames[wave - 1] || '';
+    bb.phaseJustChanged = true;
+    bb.phaseChangeTimer = 3;
+    bb.phaseChangeText = `【第${wave}波: ${config.name}】`;
+    bb.phaseChangeSub = `BOSS释放了${config.count}个虫卵!`;
+
+    // Spawn egg pods on ground
+    const margin = 80;
+    const spacing = (this.width - margin * 2) / Math.max(config.count - 1, 1);
+    for (let i = 0; i < config.count; i++) {
+      // Random position near ground
+      let px: number;
+      if (config.count === 1) {
+        px = this.width / 2;
+      } else {
+        px = margin + spacing * i + (Math.random() - 0.5) * spacing * 0.6;
+      }
+      px = Math.max(margin, Math.min(this.width - margin, px));
+      const py = groundY + (Math.random() - 0.5) * 40;
+
+      const pod: EggPod = {
+        id: nextId++,
+        x: px,
+        y: py,
+        hp: config.podHp,
+        maxHp: config.podHp,
+        state: 'intact',
+        hatchTimer: 2, // hatch after 2 seconds
+        hatchType: config.type,
+        wobbleOffset: Math.random() * Math.PI * 2,
+      };
+      bb.eggPods.push(pod);
+    }
+
+    this.addFloatingText(this.width / 2, this.height / 3, `第${wave}波虫卵释放!`, '#ef4444');
+    this.addFloatingText(this.width / 2, this.height / 3 + 25, `${config.count}个虫卵将在2秒后孵化`, '#fbbf24');
+    this.screenShake = 6;
+  }
+
+  updateEggPods() {
+    const bb = this.bossBattle;
+    const groundY = this.defenseLineY() - 30;
+
+    for (let i = bb.eggPods.length - 1; i >= 0; i--) {
+      const pod = bb.eggPods[i];
+
+      if (pod.state === 'intact') {
+        // Countdown to hatch
+        pod.hatchTimer -= this.deltaTime;
+
+        // Wobble animation
+        pod.x += Math.sin(this.time * 3 + pod.wobbleOffset) * 0.3;
+        pod.y = groundY + Math.sin(this.time * 5 + pod.wobbleOffset) * 3;
+
+        // Visual: egg cracking effect near hatch time
+        if (pod.hatchTimer <= 0.5 && pod.hatchTimer > 0) {
+          if (Math.random() < 0.3) {
+            this.spawnSparkParticles(pod.x, pod.y, 2);
+          }
+        }
+
+        // Hatch!
+        if (pod.hatchTimer <= 0) {
+          pod.state = 'hatched';
+          this.hatchEggPod(pod);
+          bb.eggPods.splice(i, 1);
+        }
+      }
+    }
+  }
+
+  hatchEggPod(pod: EggPod) {
+    // Spawn the roach at egg pod position
+    const isHard = this.difficulty === 'hard';
+    const def = ENEMY_DEFS[pod.hatchType as keyof typeof ENEMY_DEFS];
+    const hpMult = isHard ? 1.3 : 1.0;
+
+    const roach: Roach = {
+      id: nextId++,
+      type: pod.hatchType,
+      state: RoachState.ALIVE,
+      x: pod.x,
+      y: pod.y - 20,
+      vx: 0, vy: 0,
+      angle: Math.PI / 2,
+      speed: def.speed * (0.8 + Math.random() * 0.4),
+      baseSpeed: def.speed,
+      size: def.size,
+      hp: Math.floor(def.hp * hpMult),
+      maxHp: Math.floor(def.hp * hpMult),
+      armorHp: this.computeEggPodArmor(pod.hatchType, def, hpMult),
+      maxArmorHp: this.computeEggPodArmor(pod.hatchType, def, hpMult),
+      clusterId: undefined,
+      wobbleOffset: Math.random() * Math.PI * 2,
+      wobbleSpeed: 0.5 + Math.random() * 1,
+      isEnraged: false,
+      deathTimer: 0,
+      animFrame: 0,
+      animTimer: 0,
+      panicTimer: 0,
+      panicAngle: 0,
+      stunTimer: 0,
+      isStunned: false,
+      facingRight: Math.random() > 0.5,
+      altitude: 0,
+      wingPhase: 0,
+      hasSplit: false,
+      fuseTimer: 0,
+      isFused: false,
+      spawnTimer: 0,
+      isBoss: false,
+      isCharging: false,
+      stuckTimer: 0,
+      poisonTimer: 0,
+      poisonDamage: 0,
+      burnDamage: 0,
+      inFire: false,
+      fanSlowTimer: 0,
+      fanSlowFactor: 0,
+      fanPushY: 0,
+      wrappedByDropId: null,
+      wrapTimer: 0,
+      damageFlash: 0,
+      isBurnBack: false,
+      burnBackTimer: 0,
+      isBlind: false,
+      blindTimer: 0,
+      isJammed: false,
+      jamTimer: 0,
+      homeX: pod.x,
+      homeY: pod.y - 20,
+      returningHome: false,
+      chargeReturnDelay: 0,
+      reward: def.reward,
+    };
+
+    this.roaches.push(roach);
+
+    // Visual effects
+    this.spawnSparkParticles(pod.x, pod.y, 6);
+    this.particles.push({
+      x: pod.x, y: pod.y,
+      vx: 0, vy: -40,
+      life: 0.5, maxLife: 0.5,
+      size: 15,
+      color: 'rgba(180, 140, 100, 0.8)',
+      type: ParticleType.EXPLOSION,
+    });
+  }
+
+  // Damage an egg pod (called from fire weapon or other attacks)
+  damageEggPod(podId: number, damage: number) {
+    const bb = this.bossBattle;
+    const pod = bb.eggPods.find(p => p.id === podId);
+    if (!pod || pod.state !== 'intact') return;
+
+    pod.hp -= damage;
+
+    // Visual hit effect
+    this.spawnSparkParticles(pod.x, pod.y, 3);
+    this.addFloatingText(pod.x, pod.y - 15, `-${damage}`, '#fbbf24');
+
+    if (pod.hp <= 0) {
+      // Egg destroyed before hatching!
+      pod.state = 'hatched'; // mark as done
+      const idx = bb.eggPods.indexOf(pod);
+      if (idx >= 0) bb.eggPods.splice(idx, 1);
+
+      // Destroy effect
+      this.spawnExplosionParticles(pod.x, pod.y, 8);
+      this.addFloatingText(pod.x, pod.y - 20, '虫卵击破!', '#22c55e');
+      this.screenShake = 3;
+
+      // Bonus: small chance to drop a swatter item
+      if (Math.random() < 0.15) {
+        this.spawnSwatterPickup(pod.x, pod.y);
+      }
+    }
+  }
+
+  spawnSwatterPickup(x: number, y: number) {
+    // Add swatter to inventory (max 3)
+    const existing = this.inventory.find((item: InventoryItem) => item.type === 'swatter');
+    if (existing) {
+      if (existing.count < 3) {
+        existing.count++;
+        this.addFloatingText(x, y - 40, '获得电蚊拍!', '#4ade80');
+      }
+    } else {
+      this.inventory.push({ type: 'swatter', count: 1 });
+      this.addFloatingText(x, y - 40, '获得电蚊拍!', '#4ade80');
+    }
+    this.onInventoryUpdate?.(this.inventory);
+  }
+
+  // ===== BOSS DIALOGUE & FLEE (Victory Sequence) =====
+  startBossDialogue() {
+    const bb = this.bossBattle;
+    const boss = this.roaches.find(r => r.type === RoachType.QUEEN);
+    if (!boss) return;
+
+    bb.bossDialogue = '不...不可能!我的虫卵大军...';
+    bb.dialogueTimer = 3;
+    bb.dialogueIndex = 0;
+
+    // Show dialogue
+    this.addFloatingText(boss.x, boss.y - 100, '螂老大: "不...不可能!"', '#ef4444');
+
+    // Schedule dialogue sequence
+    setTimeout(() => {
+      if (!bb.active) return;
+      this.addFloatingText(boss.x, boss.y - 100, '螂老大: "我的虫卵大军...全灭了..."', '#ef4444');
+    }, 3000);
+
+    setTimeout(() => {
+      if (!bb.active) return;
+      this.addFloatingText(boss.x, boss.y - 100, '螂老大: "这次算你赢了!我会回来的!"', '#fbbf24');
+    }, 6000);
+
+    setTimeout(() => {
+      if (!bb.active) return;
+      // Boss starts fleeing
+      bb.bossFleeing = true;
+      bb.bossFleeTimer = 5;
+      this.addFloatingText(boss.x, boss.y - 80, '螂老大飞走了...', '#9ca3af');
+    }, 9000);
+  }
+
+  // Complete the item reveal and move to wave clear
+  completeItemReveal() {
+    this.state = GameState.WAVE_CLEAR;
+    this.onWaveClear?.();
+  }
+
+  gameVictory() {
+    this.addFloatingText(this.width / 2, this.height / 2, '战斗胜利! 螂老大撤退了!', '#22c55e', 3000, 22);
+    this.screenShake = 8;
+    // Stop all weapons (disable firing)
+    this.player.isFiring = false;
+    this.player.isOverheated = false;
+    this.player.heat = 0;
+    // Determine reward item for next scene
+    const reward = SCENE_REWARD_ITEMS[this.currentScene];
+    this.itemRevealData = reward;
+    // Create item drop immediately (no setTimeout to avoid state race conditions)
+    if (this.itemRevealData) {
+      this.itemDropOnField = {
+        type: this.itemRevealData.type,
+        name: this.itemRevealData.name,
+        icon: this.itemRevealData.icon,
+        x: this.width / 2,
+        y: this.height / 2 - 50,
+        bobPhase: 0,
+        collected: false,
+      };
+      this.state = GameState.ITEM_DROP;
+      this.onStateChange?.(GameState.ITEM_DROP);
+      this.addFloatingText(this.width / 2, this.height / 2 + 60, '【新道具掉落!点击拾取】', '#fbbf24', 3000, 20);
+    } else {
+      this.state = GameState.WAVE_CLEAR;
+      this.onWaveClear?.();
+    }
+  }
+
+  gameDefeat() {
+    this.addFloatingText(this.width / 2, this.height / 2, '防线被攻破! 战斗失败!', '#ef4444');
+    this.screenShake = 12;
+    // Transition to defeat after delay
+    setTimeout(() => {
+      this.state = GameState.GAME_OVER;
+      this.onGameOver?.(this.economy, this.bossBattle.currentWave);
+    }, 2000);
+  }
+
+  // Compute armor for egg-hatched roaches
+  computeEggPodArmor(type: RoachType, def: EnemyDef, hpMult: number): number {
+    if (type === RoachType.ARMORED) {
+      return Math.floor(def.hp * hpMult * 1.0);
+    } else if (type === RoachType.SUICIDE) {
+      const extraArmor = (this.gameMode === GameMode.ENDLESS && Math.random() < 0.3) ? 3 : 0;
+      return 6 + extraArmor;
+    } else if (type === RoachType.FLYING_SUICIDE) {
+      const extraArmor = (this.gameMode === GameMode.ENDLESS && Math.random() < 0.3) ? 2 : 0;
+      return 5 + extraArmor;
+    }
+    return 0;
+  }
+
+  canControlBoss(): boolean {
+    return true;
+  }
+
+  // ========== MAIN UPDATE ==========
+  update() {
+    // Skip all game logic during item drop / item reveal sequences
+    // Just update visual effects (particles, floating texts, screen shake)
+    if (this.state === GameState.ITEM_DROP || this.state === GameState.ITEM_REVEAL) {
+      this.updateParticles();
+      this.updateFloatingTexts();
+      this.updateScreenShake();
+      // Bobbing animation for the dropped item
+      if (this.itemDropOnField && !this.itemDropOnField.collected) {
+        this.itemDropOnField.bobPhase += this.deltaTime * 3;
+      }
+      return;
+    }
+    this.updatePlayer();
+    this.updateRoaches();
+    this.updateParticles();
+    this.updateFireZones();
+    this.updateFireWalls();
+    this.updateStickyBoards();
+    this.updateStickyDrops();
+    this.updateFloatingTexts();
+    if (this.gameMode === GameMode.BOSS) {
+      this.updateBossBattle();
+    } else {
+      this.updateWave();
+    }
+    this.updateScreenShake();
+    this.updateSwatter();
+    this.updateWeaponDrops();
+    this.updateAiming();
+    this.updateThrowables();
+    this.updateTripleFlame();
+    this.updateRadarLaser();
+    this.updateInsecticideSpray();
+    this.updateFan();
+    this.updateWeather();
+    this.checkCollisions();
+    this.checkDefense();
+    this.checkAchievements();
+
+    // ===== BOSS DEATH SAFETY NET =====
+    // All weapon systems have run. If boss is dead but death sequence hasn't
+    // triggered yet (because the killing blow came from a system that runs
+    // AFTER updateBossBattle), trigger it now.
+    if (this.gameMode === GameMode.BOSS && this.bossBattle.active && !this.bossBattle.bossKilled) {
+      const boss = this.roaches.find(r => r.type === RoachType.QUEEN);
+      if (boss && (boss.hp <= 0 || boss.state === RoachState.DEAD)) {
+        this.triggerBossDeathSequence();
+      }
+    }
+
+    // Endless mode timer
+    if (this.gameMode === GameMode.ENDLESS && this.state === GameState.PLAYING) {
+      this.endlessElapsedTime += this.deltaTime;
+      // Check new record
+      if (this.endlessBestTime > 0 && this.endlessElapsedTime > this.endlessBestTime && !this.endlessNewRecordShown) {
+        this.endlessNewRecordShown = true;
+        this.endlessNewRecordTimer = 3; // 3 seconds
+        this.addFloatingText(this.width * 0.75, 60, '你创造了新纪录!', '#fbbf24');
+        this.addFloatingText(this.width * 0.75, 80, '历史最高时长已刷新!', '#fde047');
+        this.screenShake = 6;
+        Vibration.vibrateNewRecord();
+      }
+      if (this.endlessNewRecordTimer > 0) {
+        this.endlessNewRecordTimer -= this.deltaTime;
+      }
+    }
+
+    this.onPlayerUpdate?.(this.player);
+    this.onEconomyUpdate?.(this.economy);
+    const actualTotalWaves = this.gameMode === GameMode.ENDLESS ? 999 : (SCENE_WAVE_CONFIGS[this.currentScene]?.length || 10);
+    this.onWaveUpdate?.(this.wave, actualTotalWaves);
+    this.onDefenseUpdate?.(this.defenseHp, this.maxDefenseHp);
+  }
+
+  // ========== PLAYER UPDATE WITH WEAPONS ==========
+  updatePlayer() {
+    const p = this.player;
+
+    // Update paralyze timer
+    if (p.paralyzeTimer > 0) {
+      p.paralyzeTimer -= this.deltaTime;
+      if (p.paralyzeTimer < 0) p.paralyzeTimer = 0;
+    }
+
+    // Movement: if paralyzed, cannot move + STOP flamethrower
+    if (p.paralyzeTimer > 0) {
+      p.isFiring = false; // Force stop flamethrower
+      // Paralyzed: show purple spark effects at defense line (visible position)
+      const defenseLineY = this.defenseLineY();
+      if (Math.random() < 0.4) {
+        this.particles.push({
+          x: p.x + (Math.random() - 0.5) * 40,
+          y: defenseLineY - 40 + (Math.random() - 0.5) * 60,
+          vx: (Math.random() - 0.5) * 50,
+          vy: -30 - Math.random() * 40,
+          life: 0.4, maxLife: 0.4,
+          size: 4, color: '#ff00ff',
+          type: 'spark' as ParticleType,
+        });
+      }
+      p.angle = -Math.PI / 2;
+      // Skip all other player logic while paralyzed
+      return;
+    }
+
+    p.x = Math.max(60, Math.min(this.width - 60, this.mouseX));
+    p.angle = -Math.PI / 2;
+
+    // Check if temp weapon expired
+    if (p.isTempWeapon && p.weaponTimer > 0) {
+      p.weaponTimer -= this.deltaTime;
+      if (p.weaponTimer <= 0) {
+        p.currentWeapon = 'flamethrower';
+        p.isTempWeapon = false;
+        this.addFloatingText(p.x, p.y - 60, '武器已过期', '#9ca3af');
+      }
+    }
+
+    // Firing logic based on current weapon
+    // Block firing if paralyzed
+    if (p.paralyzeTimer > 0) {
+      p.isFiring = false;
+    }
+    if (p.isFiring && !p.isOverheated && !p.isReloading && p.gas > 0 && p.paralyzeTimer <= 0) {
+      const ammoKey = p.currentWeapon;
+      const ammo = p.weaponAmmo[ammoKey] || 0;
+      if (ammo <= 0 && ammoKey !== 'flamethrower') {
+        p.currentWeapon = 'flamethrower';
+        p.isTempWeapon = false;
+        return;
+      }
+
+      this.audio.playFire();
+
+      switch (p.currentWeapon) {
+        case 'flamethrower':
+          this.updateFlamethrower(p);
+          break;
+        case 'sticky':
+          // Sticky board is a placement item, not a weapon - handled by selectItem/onItemRelease
+          break;
+        case 'poison':
+          this.updatePoisonSpray(p);
+          break;
+        case 'shotgun':
+          this.updateShotgun(p);
+          break;
+        case 'molotov':
+          // Molotov is thrown on click, not continuous
+          break;
+      }
+
+      if (p.isTempWeapon && ammoKey !== 'flamethrower') {
+        p.weaponAmmo[ammoKey] = Math.max(0, (p.weaponAmmo[ammoKey] || 0) - this.deltaTime * 3);
+      }
+    } else {
+      this.audio.stopFire();
+      p.heat -= this.deltaTime * 360 * p.heatDecayRate;
+      if (p.heat < 0) p.heat = 0;
+    }
+
+    if (p.isOverheated) {
+      p.overheatTimer -= this.deltaTime;
+      if (p.overheatTimer <= 0) {
+        p.isOverheated = false;
+        p.heat = 0;
+        // Show prominent "FIRE" text when overheat ends
+        this.addFloatingText(p.x, p.y - 80, '>>> 开 火 <<<', '#22c55e', 2000, 24);
+      }
+    }
+
+    if (p.isReloading) {
+      p.reloadTimer -= this.deltaTime;
+      if (p.reloadTimer <= 0) {
+        p.isReloading = false;
+        p.gas = p.maxGas;
+      }
+    }
+
+    if (p.gas <= 0 && !p.isReloading && !p.isOverheated) {
+      this.startReload();
+    }
+  }
+
+  updateFlamethrower(p: Player) {
+    const gasCost = this.deltaTime;
+    const heatGain = this.deltaTime * 1.5;
+    const baseDamage = (this.difficulty === 'hard' ? 200 : 300) * this.deltaTime * p.damageMultiplier;
+    const range = p.fireRange * 0.5;
+    this.spawnConeFire(p.x, p.y, -Math.PI / 2, range, Math.PI / 10, baseDamage, 'fire');
+    p.gas -= gasCost * p.gasCostMultiplier;
+    if (p.gas < 0) p.gas = 0;
+    p.heat += heatGain * 100;
+    if (p.heat >= p.overheatThreshold) {
+      p.heat = p.overheatThreshold;
+      p.isOverheated = true;
+      p.overheatTimer = 10;
+      this.spawnSmokeParticles(p.x, p.y, 30);
+      this.screenShake = 3;
+    }
+  }
+
+  updatePoisonSpray(p: Player) {
+    const gasCost = this.deltaTime;
+    const range = p.fireRange * 0.45;
+    const baseDamage = 30 * this.deltaTime;
+    this.spawnConeFire(p.x, p.y, -Math.PI / 2, range, Math.PI / 6, baseDamage, 'poison');
+    p.gas -= gasCost * p.gasCostMultiplier;
+    if (p.gas < 0) p.gas = 0;
+    p.heat += this.deltaTime * 80;
+    if (p.heat >= p.overheatThreshold) {
+      p.heat = p.overheatThreshold;
+      p.isOverheated = true;
+      p.overheatTimer = 6;
+    }
+  }
+
+  updateShotgun(p: Player) {
+    const gasCost = this.deltaTime * 1.5;
+    const range = p.fireRange * 0.35;
+    const baseDamage = 150 * this.deltaTime * p.damageMultiplier;
+    // Wide spread shotgun blast
+    for (let i = 0; i < p.shotgunPellets; i++) {
+      const spreadAngle = -Math.PI / 2 + (i - p.shotgunPellets / 2) * (Math.PI / 8);
+      this.spawnConeFire(p.x, p.y, spreadAngle, range, Math.PI / 12, baseDamage / p.shotgunPellets, 'fire');
+    }
+    p.gas -= gasCost * p.gasCostMultiplier;
+    if (p.gas < 0) p.gas = 0;
+    p.heat += this.deltaTime * 200;
+    if (p.heat >= p.overheatThreshold) {
+      p.heat = p.overheatThreshold;
+      p.isOverheated = true;
+      p.overheatTimer = 8;
+    }
+  }
+
+  throwMolotov() {
+    const p = this.player;
+    if (p.molotovCount <= 0 && !p.isTempWeapon) return;
+    if (p.isTempWeapon) {
+      p.weaponAmmo['molotov'] = Math.max(0, (p.weaponAmmo['molotov'] || 0) - 1);
+    } else {
+      p.molotovCount--;
+    }
+    // Create a fire zone projectile that arcs and lands
+    const targetX = p.x + (Math.random() - 0.5) * 200;
+    const targetY = this.height * 0.4 + Math.random() * 200;
+    this.spawnMolotovProjectile(p.x, p.y, targetX, targetY);
+    this.screenShake = 5;
+  }
+
+  spawnMolotovProjectile(fromX: number, fromY: number, toX: number, toY: number) {
+    // Create a fire zone at target after arc
+    const dx = toX - fromX;
+    const dist = Math.abs(toY - fromY);
+    const travelTime = 0.5;
+    const vx = dx / travelTime;
+    const vy = -dist / travelTime;
+
+    const proj: Particle = {
+      x: fromX, y: fromY,
+      vx, vy,
+      life: travelTime, maxLife: travelTime,
+      size: 8, color: '#ff4400',
+      type: ParticleType.EXPLOSION,
+    };
+    this.particles.push(proj);
+
+    // Schedule fire zone creation
+    setTimeout(() => {
+      this.fireZones.push({
+        x: toX, y: toY,
+        radius: 60,
+        damagePerSecond: 80,
+        life: 5, maxLife: 5,
+        type: 'fire',
+      });
+      this.spawnExplosionParticles(toX, toY, 20);
+      this.screenShake = 8;
+    }, travelTime * 1000);
+  }
+
+  startReload() {
+    if (this.player.isReloading) return;
+    this.audio.playReload();
+    this.player.isReloading = true;
+    this.player.reloadTimer = this.player.maxReloadTime;
+    this.economy.gasCanistersUsed++;
+    if (this.difficulty === 'hard') {
+      this.economy.money = Math.max(0, this.economy.money - 5);
+    }
+    this.spawnSmokeParticles(this.player.x, this.player.y, 15);
+    this.onEconomyUpdate?.(this.economy);
+  }
+
+  emergencyCool() {
+    const coolCost = this.difficulty === 'hard' ? 15 : 5;
+    if (this.player.isOverheated && this.economy.emergencyCoolsRemaining > 0 && this.economy.money >= coolCost) {
+      this.player.isOverheated = false;
+      this.player.overheatTimer = 0;
+      this.player.heat = 0;
+      this.economy.money -= coolCost;
+      this.economy.emergencyCools++;
+      this.economy.emergencyCoolsRemaining--;
+      this.spawnSmokeParticles(this.player.x, this.player.y, 20);
+      this.addFloatingText(this.player.x, this.player.y - 60, `紧急冷却! 剩余${this.economy.emergencyCoolsRemaining}次`, '#60a5fa');
+      this.onEconomyUpdate?.(this.economy);
+    } else if (this.economy.emergencyCoolsRemaining <= 0) {
+      this.addFloatingText(this.player.x, this.player.y - 60, '紧急冷却已用完!', '#ef4444');
+    }
+  }
+
+  // ========== THROWABLE AIMING & THROWING ==========
+  startAiming(weapon: 'sticky' | 'poison' | 'molotov') {
+    if (this.isAiming) return;
+    this.isAiming = true;
+    this.aimWeapon = weapon;
+    this.aimPower = 0;
+    this.aimStartTime = this.time;
+    // Initial target: straight up at min distance
+    this.aimTargetX = this.player.x;
+    this.aimTargetY = this.player.y - 322 - this.aimMinDist;
+  }
+
+  updateAiming() {
+    if (!this.isAiming) return;
+    // Power increases with hold time (0 to 1)
+    const holdDuration = this.time - this.aimStartTime;
+    this.aimPower = Math.min(1, holdDuration / this.aimMaxPowerTime);
+    // Y distance: min to max based on power
+    const dist = this.aimMinDist + (this.aimMaxDist - this.aimMinDist) * this.aimPower;
+    // Clamp target position
+    this.aimTargetX = Math.max(40, Math.min(this.width - 40, this.aimTargetX));
+    this.aimTargetY = Math.max(60, Math.min(this.defenseLineY() - 20, this.player.y - 322 - dist));
+  }
+
+  adjustAim(dx: number, _dy: number) {
+    if (!this.isAiming) return;
+    // dx from input is screen pixels, convert to game coords
+    this.aimTargetX += dx * 1.5;
+    this.aimTargetX = Math.max(40, Math.min(this.width - 40, this.aimTargetX));
+  }
+
+  throwAimedWeapon() {
+    if (!this.isAiming || !this.aimWeapon) return;
+    const weapon = this.aimWeapon;
+    const startX = this.player.x;
+    const startY = this.player.y - 322;
+    const targetX = this.aimTargetX;
+    const targetY = this.aimTargetY;
+
+    // Calculate velocity for arc trajectory
+    const dx = targetX - startX;
+    const dy = targetY - startY;
+    const travelTime = 0.5 + this.aimPower * 0.3;
+    const vx = dx / travelTime;
+    // vy is calculated to reach targetY considering gravity
+    // y = vy * t + 0.5 * g * t^2 => vy = (dy - 0.5 * g * t^2) / t
+    const gravity = 400;
+    const vy = (dy - 0.5 * gravity * travelTime * travelTime) / travelTime;
+
+    nextId++;
+    this.throwables.push({
+      id: nextId,
+      x: startX, y: startY,
+      vx, vy,
+      type: weapon,
+      life: travelTime * 2,
+      maxLife: travelTime * 2,
+      gravity,
+      hasLanded: false,
+      targetX, targetY,
+    });
+
+    // Deduct ammo if using temp weapon
+    if (this.player.isTempWeapon) {
+      this.player.weaponAmmo[weapon] = Math.max(0, (this.player.weaponAmmo[weapon] || 0) - 1);
+    }
+
+    // Floating text
+    const names = { sticky: '蟑螂贴板', poison: '杀虫剂', molotov: '燃烧瓶' };
+    this.addFloatingText(startX, startY - 30, `投掷${names[weapon]}!`, '#fbbf24');
+
+    this.isAiming = false;
+    this.aimWeapon = null;
+    this.aimPower = 0;
+  }
+
+  cancelAiming() {
+    this.isAiming = false;
+    this.aimWeapon = null;
+    this.aimPower = 0;
+  }
+
+  updateThrowables() {
+    for (let i = this.throwables.length - 1; i >= 0; i--) {
+      const t = this.throwables[i];
+      t.life -= this.deltaTime;
+
+      if (!t.hasLanded) {
+        // Apply gravity
+        t.vy += t.gravity * this.deltaTime;
+        t.x += t.vx * this.deltaTime;
+        t.y += t.vy * this.deltaTime;
+
+        // Check if reached or passed target Y (going down)
+        if (t.vy > 0 && t.y >= t.targetY) {
+          t.y = t.targetY;
+          t.hasLanded = true;
+          this.onThrowableLand(t);
+        }
+      }
+
+      if (t.life <= 0) {
+        if (!t.hasLanded) this.onThrowableLand(t);
+        this.throwables.splice(i, 1);
+      }
+    }
+  }
+
+  onThrowableLand(t: ThrowableProjectile) {
+
+    switch (t.type) {
+      case 'sticky': {
+        // Sticky zone: trap roaches in area
+        const radius = 80;
+        for (const r of this.roaches) {
+          if (r.state !== RoachState.ALIVE) continue;
+          const dx = r.x - t.x;
+          const dy = r.y - t.y;
+          if (Math.sqrt(dx * dx + dy * dy) < radius) {
+            r.stuckTimer = 5;
+            r.speed = r.baseSpeed * 0.2;
+            r.hp -= 2;
+          }
+        }
+        // Persistent ice zone
+        this.fireZones.push({
+          x: t.x, y: t.y, radius,
+          damagePerSecond: 30,
+          life: 4, maxLife: 4,
+          type: 'ice',
+        });
+        this.spawnIceExplosion(t.x, t.y, radius);
+        this.addFloatingText(t.x, t.y - 20, '冰冻!', '#facc15');
+        break;
+      }
+      case 'poison': {
+        // Poison cloud: damage over time
+        const radius = 90;
+        for (const r of this.roaches) {
+          if (r.state !== RoachState.ALIVE) continue;
+          const dx = r.x - t.x;
+          const dy = r.y - t.y;
+          if (Math.sqrt(dx * dx + dy * dy) < radius) {
+            // ===== ARMOR BUFF: poison ineffective vs armored roaches =====
+            if (r.armorHp > 0) {
+              this.addFloatingText(r.x, r.y - 15, '护甲免疫!', '#60a5fa');
+              continue;
+            }
+            r.poisonTimer = 6;
+            r.poisonDamage = 2;
+            r.hp -= 1;
+          }
+        }
+        this.fireZones.push({
+          x: t.x, y: t.y, radius,
+          damagePerSecond: 25,
+          life: 6, maxLife: 6,
+          type: 'poison',
+        });
+        this.spawnPoisonExplosion(t.x, t.y, radius);
+        this.addFloatingText(t.x, t.y - 20, '毒雾!', '#a78bfa');
+        break;
+      }
+      case 'molotov': {
+        // Fire explosion
+        const radius = 70;
+        for (const r of this.roaches) {
+          if (r.state !== RoachState.ALIVE) continue;
+          const dx = r.x - t.x;
+          const dy = r.y - t.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < radius) {
+            // ===== ARMOR BUFF: molotov ineffective vs armored roaches =====
+            if (r.armorHp > 0) {
+              this.addFloatingText(r.x, r.y - 15, '护甲免疫!', '#60a5fa');
+              continue;
+            }
+            const dmg = 8 * (1 - dist / radius);
+            r.hp -= dmg;
+            r.burnDamage = dmg * 2;
+          }
+        }
+        this.fireZones.push({
+          x: t.x, y: t.y, radius,
+          damagePerSecond: 60,
+          life: 5, maxLife: 5,
+          type: 'fire',
+        });
+        this.spawnExplosionParticles(t.x, t.y, 25);
+        this.screenShake = 8;
+        this.addFloatingText(t.x, t.y - 20, '燃烧!', '#f87171');
+        break;
+      }
+    }
+
+    this.spawnSparkParticles(t.x, t.y, 10);
+  }
+
+  spawnIceExplosion(x: number, y: number, _radius: number) {
+    for (let i = 0; i < 20; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 50 + Math.random() * 100;
+      this.particles.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 30,
+        life: 0.4 + Math.random() * 0.6, maxLife: 1,
+        size: 3 + Math.random() * 8,
+        color: `hsl(${180 + Math.random() * 30}, 90%, ${70 + Math.random() * 20}%)`,
+        type: ParticleType.ICE,
+      });
+    }
+  }
+
+  spawnPoisonExplosion(x: number, y: number, _radius: number) {
+    for (let i = 0; i < 20; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 40 + Math.random() * 80;
+      this.particles.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 20,
+        life: 0.5 + Math.random() * 0.8, maxLife: 1.3,
+        size: 4 + Math.random() * 12,
+        color: `hsl(${260 + Math.random() * 30}, 80%, ${50 + Math.random() * 20}%)`,
+        type: ParticleType.POISON_CLOUD,
+      });
+    }
+  }
+
+  // ========== WEAPON SWITCHING ==========
+  switchWeapon(weapon: string) {
+    const p = this.player;
+    if (weapon === 'flamethrower') {
+      p.currentWeapon = 'flamethrower';
+      p.isTempWeapon = false;
+      return true;
+    }
+    const unlocked = this.progress.weaponsUnlocked.includes(weapon);
+    if (!unlocked && !p.isTempWeapon) return false;
+
+    const ammo = p.weaponAmmo[weapon] || 0;
+    if (ammo <= 0 && !p.isTempWeapon && weapon !== 'flamethrower') return false;
+
+    p.currentWeapon = weapon as Player['currentWeapon'];
+    const def = WEAPON_DROP_DEFS[weapon as keyof typeof WEAPON_DROP_DEFS];
+    if (def) {
+      this.addFloatingText(p.x, p.y - 60, `切换到: ${def.name}`, '#facc15');
+    }
+    return true;
+  }
+
+  // ========== WEAPON DROPS ==========
+  updateWeaponDrops() {
+    const scene = this.getSceneConfig();
+    this.dropSpawnTimer -= this.deltaTime;
+    if (this.dropSpawnTimer <= 0) {
+      this.spawnWeaponDrop();
+      // Scene-specific drop intervals for scarcity balance
+      let sceneInterval = this.dropSpawnInterval;
+      if (this.gameMode === GameMode.STORY) {
+        switch (this.currentScene) {
+          case SceneType.KITCHEN: sceneInterval = 40; break; // Fewer drops, tutorial scene
+          case SceneType.SEWER:   sceneInterval = 35; break; // Reduced drops, scarcity
+          case SceneType.DUMP:    sceneInterval = 30; break; // Standard
+          case SceneType.BASEMENT: sceneInterval = 25; break;
+          case SceneType.ROOFTOP: sceneInterval = 20; break;
+        }
+      }
+      this.dropSpawnTimer = sceneInterval / (scene.enemyModifier || 1);
+    }
+
+    for (let i = this.weaponDrops.length - 1; i >= 0; i--) {
+      const drop = this.weaponDrops[i];
+      drop.life -= this.deltaTime;
+      drop.bobPhase += this.deltaTime * 4;
+      if (drop.life <= 0) {
+        this.weaponDrops.splice(i, 1);
+        continue;
+      }
+      // Check pickup by player - horizontal proximity only (drop is near defense line)
+      const dx = Math.abs(drop.x - this.player.x);
+      if (dx < 60) {
+        this.pickupWeaponDrop(drop);
+        this.weaponDrops.splice(i, 1);
+      }
+    }
+  }
+
+  spawnWeaponDrop() {
+    // Get available items for current scene
+    const availableItems = this.gameMode === GameMode.STORY
+      ? (SCENE_ITEM_UNLOCKS[this.currentScene] || ['sticky'])
+      : ['sticky', 'poison', 'fan', 'molotov', 'shotgun', 'radar', 'swatter'];
+    const type = availableItems[Math.floor(Math.random() * availableItems.length)] as 'sticky' | 'poison' | 'molotov' | 'shotgun' | 'radar' | 'fan' | 'swatter';
+    const x = 60 + Math.random() * (this.width - 120);
+    // Drop weapon near the defense line where player moves
+    const y = this.defenseLineY() - 135 + Math.random() * 30;
+    this.weaponDrops.push({
+      id: nextDropId++,
+      x, y, type,
+      life: 12, maxLife: 12,
+      bobPhase: Math.random() * Math.PI * 2,
+    });
+  }

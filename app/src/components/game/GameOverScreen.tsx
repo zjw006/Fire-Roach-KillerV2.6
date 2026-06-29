@@ -1,0 +1,211 @@
+import React, { useRef } from 'react';
+import { RotateCcw, Home, Skull, Trophy, Flame, Sparkles, Map, ChevronRight, Lightbulb } from 'lucide-react';
+import type { Economy, GameMode, SceneType } from '@/game/types';
+import type { AudioManager } from '@/game/audio';
+
+
+interface GameOverScreenProps {
+  economy: Economy;
+  wave: number;
+  gameMode?: GameMode;
+  currentScene?: SceneType;
+  isVictory: boolean;
+  hasNextScene?: boolean;
+  nextSceneName?: string;
+  onRestart: () => void;
+  onQuit: () => void;
+  onNextScene?: () => void;
+  talentPoints?: number;
+  bossDefeated?: boolean;
+  onOpenTalentTree?: () => void;
+  audio?: AudioManager;
+  menuMoney?: number; // Cross-level total money (menuShopMoney)
+}
+
+export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, gameMode, currentScene, isVictory, hasNextScene, nextSceneName, onRestart, onQuit, onNextScene, talentPoints, bossDefeated, onOpenTalentTree, audio, menuMoney}) => {
+  const isBasement = currentScene === 'basement';
+  const isBossMode = bossDefeated;
+  const isEndless = gameMode === 'endless';
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  const modeName = isBossMode ? 'BOSS战' : isEndless ? '无尽模式' : gameMode === 'daily' ? '每日挑战' : '剧情模式';
+
+  return (
+    <div className="absolute inset-0 flex flex-col items-center justify-center overflow-hidden">
+      {/* Video background - full screen loop */}
+      <video
+        ref={videoRef}
+        src="/assets/gameover_bg.mp4"
+        autoPlay
+        loop
+        muted
+        playsInline
+        className="absolute inset-0 w-full h-full object-cover"
+      />
+
+      {/* Dark overlay for readability */}
+      <div className="absolute inset-0 bg-black/60" />
+
+      <div className="relative z-10 w-full max-w-sm mx-4 flex flex-col items-center">
+        {/* Header */}
+        <div className="mb-4">
+          {isVictory ? (
+            <>
+              <div className="w-16 h-16 mx-auto rounded-full bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center mb-3 shadow-lg shadow-yellow-500/30 ring-2 ring-yellow-400/50">
+                <Trophy size={32} className="text-white" />
+              </div>
+              <h2 className="text-3xl font-black text-yellow-400 text-center drop-shadow-lg">{isBossMode ? '螂老大被消灭!' : '胜利!'}</h2>
+              <p className="text-stone-300 text-center text-sm mt-1 drop-shadow">{isBossMode ? '下水道重获安宁' : '成功守住所有波次'}</p>
+            </>
+          ) : (
+            <>
+              <div className="w-16 h-16 mx-auto rounded-full bg-gradient-to-br from-red-600 to-red-900 flex items-center justify-center mb-3 shadow-lg shadow-red-600/30 ring-2 ring-red-500/50">
+                <Skull size={32} className="text-white" />
+              </div>
+              <h2 className="text-3xl font-black text-red-400 text-center drop-shadow-lg">防线失守</h2>
+              <p className="text-stone-300 text-center text-sm mt-1 drop-shadow">
+                {isEndless ? `无尽模式坚持了 ${wave} 波` : '蟑螂突破了防线'}
+              </p>
+            </>
+          )}
+        </div>
+
+        {/* Mode badge */}
+        <div className="mb-3 bg-black/50 rounded-lg px-3 py-1 flex items-center gap-2">
+          <Map size={12} className="text-stone-400" />
+          <span className="text-xs text-stone-300">{modeName}</span>
+          {talentPoints !== undefined && talentPoints > 0 && (
+            <div className="flex items-center gap-1 ml-2">
+              <Sparkles size={12} className="text-yellow-400" />
+              <span className="text-xs text-yellow-400">{talentPoints} 天赋点</span>
+            </div>
+          )}
+        </div>
+
+        {/* Stats */}
+        <div className="bg-black/60 backdrop-blur-md rounded-xl p-3 mb-4 w-full border border-white/10 shadow-xl">
+          <div className="grid grid-cols-3 gap-2 text-sm">
+            <div className="text-center">
+              <div className="text-stone-400 text-[10px]">到达波次</div>
+              <div className="text-lg font-bold text-white">{wave}</div>
+            </div>
+            <div className="text-center">
+              <div className="text-stone-400 text-[10px]">总击杀</div>
+              <div className="text-lg font-bold text-red-400">{economy.totalKills}</div>
+            </div>
+            <div className="text-center">
+              <div className="text-stone-400 text-[10px]">最终资金</div>
+              <div className="text-lg font-bold text-amber-400">¥{economy.money}</div>
+            </div>
+            <div className="text-center">
+              <div className="text-stone-400 text-[10px]">小蟑螂</div>
+              <div className="text-base font-bold text-orange-300">{economy.smallKills}</div>
+            </div>
+            <div className="text-center">
+              <div className="text-stone-400 text-[10px]">大蟑螂</div>
+              <div className="text-base font-bold text-orange-300">{economy.largeKills}</div>
+            </div>
+            <div className="text-center">
+              <div className="text-stone-400 text-[10px]">防线突破</div>
+              <div className="text-base font-bold text-red-300">{economy.breaches}</div>
+            </div>
+          </div>
+
+          {/* New enemy kills */}
+          {(economy.flyingKills > 0 || economy.armoredKills > 0 || economy.queenKills > 0) && (
+            <div className="mt-2 pt-2 border-t border-white/10 grid grid-cols-4 gap-1">
+              {economy.flyingKills > 0 && (
+                <div className="text-center">
+                  <div className="text-stone-500 text-[9px]">飞行</div>
+                  <div className="text-sm font-bold text-amber-300">{economy.flyingKills}</div>
+                </div>
+              )}
+              {economy.armoredKills > 0 && (
+                <div className="text-center">
+                  <div className="text-stone-500 text-[9px]">装甲</div>
+                  <div className="text-sm font-bold text-stone-300">{economy.armoredKills}</div>
+                </div>
+              )}
+              {economy.splittingKills > 0 && (
+                <div className="text-center">
+                  <div className="text-stone-500 text-[9px]">分裂</div>
+                  <div className="text-sm font-bold text-amber-300">{economy.splittingKills}</div>
+                </div>
+              )}
+              {economy.queenKills > 0 && (
+                <div className="text-center">
+                  <div className="text-stone-500 text-[9px]">女王</div>
+                  <div className="text-sm font-bold text-rose-300">{economy.queenKills}</div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Ratings */}
+        <div className="mb-4 flex justify-center gap-2">
+          {[1, 2, 3].map((star) => (
+            <div
+              key={star}
+              className={`w-9 h-9 rounded-full flex items-center justify-center shadow-md ${
+                (isVictory && star <= 3) || (!isVictory && star <= 1)
+                  ? 'bg-yellow-500 text-white'
+                  : 'bg-stone-800/80 text-stone-600 border border-stone-700'
+              }`}
+            >
+              <Flame size={16} />
+            </div>
+          ))}
+        </div>
+
+        {/* Basement talent guide */}
+        {isBasement && talentPoints && talentPoints > 0 && onOpenTalentTree && (
+          <div className="bg-gradient-to-r from-yellow-900/60 to-orange-900/60 border border-yellow-500/40 rounded-xl p-3 mb-4 flex items-center gap-3 animate-pulse">
+            <Lightbulb size={24} className="text-yellow-400 shrink-0" />
+            <div class="flex-1">
+              <div className="text-yellow-300 text-sm font-bold">获得天赋点！</div>
+              <div className="text-yellow-400/70 text-xs">地下室通关奖励，可用于强化角色能力</div>
+            </div>
+            <button
+              onClick={() => { audio?.playClick(); onOpenTalentTree(); }}
+              className="shrink-0 bg-yellow-600 hover:bg-yellow-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1"
+            >
+              <Sparkles size={12} />
+              去加点
+            </button>
+          </div>
+        )}
+
+        {/* Buttons */}
+        <div className="w-full space-y-2">
+          {/* Next Scene button - only show on victory in story mode when next scene exists */}
+          {isVictory && hasNextScene && onNextScene && (
+            <button
+              onClick={() => { audio?.playClick(); onNextScene(); }}
+              className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-white font-bold py-3 px-6 rounded-xl transition-all hover:scale-105 active:scale-95 shadow-lg shadow-amber-900/40 animate-pulse"
+            >
+              <span>下一关：{nextSceneName}</span>
+              <ChevronRight size={18} />
+            </button>
+          )}
+
+          <button
+            onClick={() => { audio?.playClick(); onRestart(); }}
+            className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 text-white font-bold py-3 px-6 rounded-xl transition-all hover:scale-105 active:scale-95 shadow-lg shadow-red-900/40"
+          >
+            <RotateCcw size={18} />
+            再来一局
+          </button>
+
+          <button
+            onClick={() => { audio?.playClick(); onQuit(); }}
+            className="w-full flex items-center justify-center gap-2 bg-stone-800/80 hover:bg-stone-700/80 text-white font-bold py-3 px-6 rounded-xl transition-all hover:scale-105 active:scale-95 border border-stone-600/50 backdrop-blur-sm"
+          >
+            <Home size={18} />
+            返回主菜单
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};

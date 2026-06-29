@@ -1,0 +1,965 @@
+        const isArmorBroken = r.armorHp <= 0;
+        if (isArmorBroken && this.roachImg) {
+          ctx.drawImage(this.roachImg, -w / 2, -h / 2, w, h);
+        } else {
+          ctx.drawImage(this.roachArmoredImg, -w / 2, -h / 2, w, h);
+        }
+      } else if (r.type === RoachType.SPLITTING && this.roachSplittingImg) {
+        ctx.drawImage(this.roachSplittingImg, -w / 2, -h / 2, w, h);
+      } else if (r.type === RoachType.QUEEN && this.roachQueenImg) {
+        // ===== BOSS RENDERING: scale 3x + face downward =====
+        // Boss images are already rotated 180° (head downward)
+        // Just draw at 3x size, no additional flip needed
+        const bossScale = 3;
+        const bossW = w * bossScale;
+        const bossH = h * bossScale;
+
+        // Use frame animation system with fallback for missing frames
+        if (r.isBoss && this.bossBattle.active) {
+          const action = this.bossAnimState.action;
+          const frameIdx = this.bossAnimState.frameIndex;
+          let frames = this.bossAnimFrames.get(action);
+          // If action has no frames, fallback to idle
+          if (!frames || frames.length === 0) {
+            frames = this.bossAnimFrames.get('idle');
+          }
+          // Try current frame first, then fallback to any loaded frame
+          let animImg = frames?.[frameIdx];
+          if (!animImg && frames) {
+            animImg = frames.find(f => f !== undefined);
+          }
+          
+          if (animImg) {
+            // ===== CODE-DRIVEN ANIMATION EFFECTS per action =====
+            const t = this.time;
+            const action = this.bossAnimState.action;
+            ctx.save();
+
+            switch (action) {
+              case 'idle': {
+                // Ground idle: breathing scale pulse + micro sway
+                const breathe = 1 + Math.sin(t * 2.5) * 0.03;
+                const swayX = Math.sin(t * 1.2 + r.wobbleOffset) * 3;
+                const swayY = Math.sin(t * 2.0 + r.wobbleOffset) * 2;
+                ctx.translate(swayX, swayY);
+                ctx.scale(breathe, breathe);
+                break;
+              }
+              case 'hover': {
+                // Air hover: floating up/down + gentle rock
+                const floatY = Math.sin(t * 1.8 + r.wobbleOffset) * 8;
+                const rock = Math.sin(t * 0.7 + r.wobbleOffset) * 0.03;
+                const wingVibe = 1 + Math.sin(t * 20) * 0.01; // fast wing flutter
+                ctx.translate(0, floatY);
+                ctx.rotate(rock);
+                ctx.scale(wingVibe, wingVibe);
+                break;
+              }
+              case 'walk': {
+                // Ground walk: body bob + stride bounce + lean into movement
+                const bobY = Math.abs(Math.sin(t * 6 + r.wobbleOffset)) * (-6);
+                const lean = (r.vx ?? 0) * 0.002;
+                ctx.translate(0, bobY);
+                ctx.rotate(Math.max(-0.08, Math.min(0.08, lean)));
+                // Footstep dust effect
+                if (Math.sin(t * 6) > 0.85) {
+                  this.particles.push({
+                    x: r.x + (Math.random() - 0.5) * 30,
+                    y: r.y + bossH * 0.4,
+                    vx: (Math.random() - 0.5) * 20,
+                    vy: -10 - Math.random() * 15,
+                    life: 0.3, maxLife: 0.3,
+                    size: 3 + Math.random() * 4,
+                    color: 'rgba(180, 160, 140, 0.4)',
+                    type: ParticleType.ASH,
+                  });
+                }
+                break;
+              }
+              case 'charge': {
+                // Charging: aggressive forward lean + vibration + speed lines
+                const phase2Lean = 0;
+                const vibration = Math.sin(t * 50) * 2;
+                const chargePulse = 1 + Math.sin(t * 8) * 0.04;
+                ctx.translate(vibration, Math.abs(vibration) * 0.5);
+                ctx.rotate(phase2Lean);
+                ctx.scale(chargePulse, chargePulse);
+                // Speed trail particles
+                if (Math.random() < 0.4) {
+                  this.particles.push({
+                    x: r.x + (Math.random() - 0.5) * 40,
+                    y: r.y - bossH * 0.3 + (Math.random() - 0.5) * 20,
+                    vx: (Math.random() - 0.5) * 10,
+                    vy: -80 - Math.random() * 60,
+                    life: 0.25, maxLife: 0.25,
+                    size: 2 + Math.random() * 3,
+                    color: 'rgba(255, 100, 50, 0.6)',
+                    type: ParticleType.SPARK,
+                  });
+                }
+                break;
+              }
+              case 'summon': {
+                // Summoning: energy pulse + shake + purple glow rings
+                const pulse = 1 + Math.sin(t * 10) * 0.06;
+                const shakeX = Math.sin(t * 30) * 2;
+                const shakeY = Math.cos(t * 25) * 2;
+                ctx.translate(shakeX, shakeY);
+                ctx.scale(pulse, pulse);
+                // Periodic energy ring
+                if (Math.sin(t * 4) > 0.95) {
+                  this.spawnShockwaveRing(r.x, r.y, 8);
+                }
+                break;
+              }
+              case 'stun': {
+                // Stunned: dizzy wobble + stars circling
+                const wobble = Math.sin(t * 8) * 0.08;
+                const dizzyX = Math.sin(t * 5) * 5;
+                ctx.translate(dizzyX, 0);
+                ctx.rotate(wobble);
+                // Dizzy stars
+                for (let si = 0; si < 3; si++) {
+                  const starAngle = t * 3 + (si / 3) * Math.PI * 2;
+                  const starRadius = 50 + si * 15;
+                  this.particles.push({
+                    x: r.x + Math.cos(starAngle) * starRadius,
+                    y: r.y - 60 + Math.sin(starAngle) * starRadius * 0.3,
+                    vx: 0, vy: -20,
+                    life: 0.15, maxLife: 0.15,
+                    size: 6,
+                    color: si % 2 === 0 ? '#facc15' : '#ffffff',
+                    type: ParticleType.SPARK,
+                  });
+                }
+                break;
+              }
+              case 'hurt': {
+                // Hurt: red flash + pained shake
+                const hurtShake = Math.sin(t * 15) * 3;
+                const hurtPulse = 1 + Math.sin(t * 5) * 0.02;
+                ctx.translate(hurtShake, 0);
+                ctx.scale(hurtPulse, hurtPulse);
+                // Red tint overlay
+                ctx.filter = 'brightness(1.3) saturate(1.5)';
+                break;
+              }
+              case 'die': {
+                // Death: shrink + fade + tilt collapse
+                const dieProgress = 1 - (this.bossBattle.deathAnimTimer / 1.75); // 0→1 over death
+                const shrink = Math.max(0.3, 1 - dieProgress * 0.7);
+                const tilt = dieProgress * 0.3; // collapse to side
+                const sinkY = dieProgress * 30; // sink down
+                ctx.translate(0, sinkY);
+                ctx.rotate(tilt * (Math.random() < 0.5 ? 1 : -1));
+                ctx.scale(shrink, shrink);
+                ctx.globalAlpha = Math.max(0.2, 1 - dieProgress * 0.5);
+                break;
+              }
+              default: {
+                // Default: gentle breathing
+                const breathe = 1 + Math.sin(t * 2) * 0.02;
+                ctx.scale(breathe, breathe);
+              }
+            }
+
+            // Draw the frame
+            ctx.drawImage(animImg, -bossW / 2, -bossH / 2, bossW, bossH);
+
+            // Restore context after action-specific transforms
+            ctx.restore();
+
+            // Draw action-specific overlays (outside save/restore)
+            if (action === 'charge') {
+              // Red glow overlay for charging
+              const glowAlpha = 0.15 + Math.sin(t * 6) * 0.1;
+              ctx.fillStyle = `rgba(255, 60, 0, ${glowAlpha})`;
+              ctx.beginPath();
+              ctx.ellipse(0, bossH * 0.1, bossW * 0.55, bossH * 0.45, 0, 0, Math.PI * 2);
+              ctx.fill();
+            }
+            if (action === 'summon') {
+              // Purple summon glow
+              const glowAlpha = 0.1 + Math.sin(t * 5) * 0.08;
+              ctx.fillStyle = `rgba(168, 85, 247, ${glowAlpha})`;
+              ctx.beginPath();
+              ctx.ellipse(0, 0, bossW * 0.6, bossH * 0.5, 0, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          } else {
+            // Fallback: use static image
+            if (this.roachQueenImg) ctx.drawImage(this.roachQueenImg, -bossW / 2, -bossH / 2, bossW, bossH);
+          }
+        } else {
+          // Normal QUEEN (not boss)
+          ctx.drawImage(this.roachQueenImg, -w / 2, -h / 2, w, h);
+        }
+      } else {
+        ctx.drawImage(this.roachImg, -w / 2, -h / 2, w, h);
+      }
+    } else {
+      ctx.fillStyle = def.color;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, w / 2, h / 2, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Sticky drop wrap overlay (yellow gel blob enclosing the roach)
+    if (r.wrappedByDropId !== null && r.state === RoachState.ALIVE) {
+      const wrapPulse = 0.85 + Math.sin(this.time * 6 + r.id) * 0.15;
+      const wrapRadius = Math.max(w, h) * 0.55 * wrapPulse;
+
+      // Outer glow
+      const glowGrad = ctx.createRadialGradient(0, 0, wrapRadius * 0.5, 0, 0, wrapRadius * 1.3);
+      glowGrad.addColorStop(0, 'rgba(250, 220, 50, 0.15)');
+      glowGrad.addColorStop(0.6, 'rgba(250, 200, 50, 0.25)');
+      glowGrad.addColorStop(1, 'rgba(250, 180, 30, 0)');
+      ctx.fillStyle = glowGrad;
+      ctx.beginPath();
+      ctx.arc(0, 0, wrapRadius * 1.3, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Main gel body - semi-transparent yellow blob
+      ctx.fillStyle = `rgba(250, 220, 50, ${0.35 * wrapPulse})`;
+      ctx.beginPath();
+      // Create an organic blob shape using multiple arcs
+      const blobPoints = 8;
+      for (let b = 0; b <= blobPoints; b++) {
+        const angle = (Math.PI * 2 / blobPoints) * b;
+        const wobble = wrapRadius * (0.9 + Math.sin(this.time * 4 + b * 2 + r.id) * 0.1);
+        const bx = Math.cos(angle) * wobble;
+        const by = Math.sin(angle) * wobble;
+        if (b === 0) ctx.moveTo(bx, by);
+        else ctx.lineTo(bx, by);
+      }
+      ctx.closePath();
+      ctx.fill();
+
+      // Gel border highlight
+      ctx.strokeStyle = `rgba(255, 240, 150, ${0.5 * wrapPulse})`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      for (let b = 0; b <= blobPoints; b++) {
+        const angle = (Math.PI * 2 / blobPoints) * b;
+        const wobble = wrapRadius * (0.88 + Math.sin(this.time * 4 + b * 2 + r.id) * 0.08);
+        const bx = Math.cos(angle) * wobble;
+        const by = Math.sin(angle) * wobble;
+        if (b === 0) ctx.moveTo(bx, by);
+        else ctx.lineTo(bx, by);
+      }
+      ctx.closePath();
+      ctx.stroke();
+
+      // Specular highlight (shiny spot on top)
+      ctx.fillStyle = `rgba(255, 255, 220, ${0.4 * wrapPulse})`;
+      ctx.beginPath();
+      ctx.ellipse(-wrapRadius * 0.2, -wrapRadius * 0.25, wrapRadius * 0.25, wrapRadius * 0.15, -0.3, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Small bubbles inside the gel
+      for (let b = 0; b < 3; b++) {
+        const bubbleAngle = this.time * 2 + b * 2.1 + r.id;
+        const bubbleR = wrapRadius * (0.3 + 0.4 * Math.sin(b * 1.7));
+        const bubbleX = Math.cos(bubbleAngle) * bubbleR;
+        const bubbleY = Math.sin(bubbleAngle) * bubbleR;
+        ctx.fillStyle = `rgba(255, 250, 200, ${0.3 + Math.sin(this.time * 3 + b) * 0.15})`;
+        ctx.beginPath();
+        ctx.arc(bubbleX, bubbleY, 1.5 + Math.sin(this.time * 4 + b) * 0.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // Suicide roach: small flame on back
+    if (r.type === RoachType.SUICIDE && r.state === RoachState.ALIVE) {
+      const flameFlicker = 0.7 + Math.sin(this.time * 10 + r.id) * 0.3;
+      const flameH = 8 + Math.sin(this.time * 15 + r.id * 2) * 3;
+      const flameW = 6 + Math.cos(this.time * 12 + r.id) * 2;
+      // Outer flame (orange)
+      ctx.fillStyle = `rgba(255, 100, 20, ${flameFlicker})`;
+      ctx.beginPath();
+      ctx.moveTo(0, -h * 0.45);
+      ctx.lineTo(-flameW / 2, -h * 0.45 - flameH * 0.6);
+      ctx.lineTo(0, -h * 0.45 - flameH);
+      ctx.lineTo(flameW / 2, -h * 0.45 - flameH * 0.6);
+      ctx.closePath();
+      ctx.fill();
+      // Inner flame (yellow)
+      ctx.fillStyle = `rgba(255, 220, 50, ${flameFlicker * 0.9})`;
+      ctx.beginPath();
+      ctx.moveTo(0, -h * 0.45);
+      ctx.lineTo(-flameW * 0.3, -h * 0.45 - flameH * 0.4);
+      ctx.lineTo(0, -h * 0.45 - flameH * 0.75);
+      ctx.lineTo(flameW * 0.3, -h * 0.45 - flameH * 0.4);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // ===== ARMOR SHIELD EFFECT: all roaches with armor buff =====
+    // Drawn INSIDE the transform block so shield follows the roach
+    if (r.armorHp > 0) {
+      const shieldPulse = 0.3 + Math.sin(this.time * 4 + r.id) * 0.15;
+      const shieldAlpha = shieldPulse;
+      // Outer hexagonal shield
+      ctx.save();
+      ctx.strokeStyle = `rgba(100, 200, 255, ${shieldAlpha})`;
+      ctx.lineWidth = 2;
+      ctx.shadowColor = `rgba(100, 200, 255, ${shieldAlpha * 0.5})`;
+      ctx.shadowBlur = 10;
+      const shieldR = Math.max(w, h) * 0.65;
+      ctx.beginPath();
+      for (let si = 0; si < 6; si++) {
+        const sAngle = (si / 6) * Math.PI * 2 + this.time * 0.5;
+        const sx = Math.cos(sAngle) * shieldR;
+        const sy = Math.sin(sAngle) * shieldR;
+        if (si === 0) ctx.moveTo(sx, sy);
+        else ctx.lineTo(sx, sy);
+      }
+      ctx.closePath();
+      ctx.stroke();
+      // Inner glow
+      const glowGrad = ctx.createRadialGradient(0, 0, shieldR * 0.3, 0, 0, shieldR);
+      glowGrad.addColorStop(0, `rgba(100, 200, 255, ${shieldAlpha * 0.1})`);
+      glowGrad.addColorStop(1, `rgba(100, 200, 255, 0)`);
+      ctx.fillStyle = glowGrad;
+      ctx.fill();
+      ctx.restore();
+    }
+
+    ctx.filter = 'none';
+    ctx.restore();
+
+    // ===== HP bar + Armor bar: show for ALL roaches that have armor buff =====
+    const barW = r.isBoss ? 60 : Math.max(32, (r.size ?? 30) * 0.5);
+    const barH = r.isBoss ? 8 : 5;
+    // Always show HP bar for armored roaches and large/boss roaches
+    const showHpBar = r.armorHp > 0 || r.isBoss || r.type === RoachType.LARGE || r.type === RoachType.ARMORED || r.type === RoachType.SPLITTING;
+    if (showHpBar) {
+      const hpRatio = Math.max(0, r.hp / r.maxHp);
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(r.x - barW / 2, r.y - size - 15, barW, barH);
+      ctx.fillStyle = hpRatio > 0.5 ? '#22c55e' : hpRatio > 0.2 ? '#eab308' : '#ef4444';
+      ctx.fillRect(r.x - barW / 2, r.y - size - 15, barW * hpRatio, barH);
+    }
+
+    // ===== ARMOR BUFF BAR: show for ALL roach types with armor =====
+    if (r.armorHp > 0) {
+      const armorRatio = Math.max(0, r.armorHp / r.maxArmorHp);
+      // Armor bar background
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.fillRect(r.x - barW / 2, r.y - size - 23, barW, 4);
+      // Armor fill (blue gradient)
+      const armorGrad = ctx.createLinearGradient(r.x - barW / 2, 0, r.x + barW / 2, 0);
+      armorGrad.addColorStop(0, '#60a5fa');
+      armorGrad.addColorStop(1, '#3b82f6');
+      ctx.fillStyle = armorGrad;
+      ctx.fillRect(r.x - barW / 2, r.y - size - 23, barW * armorRatio, 4);
+      // Armor border
+      ctx.strokeStyle = 'rgba(147, 197, 253, 0.6)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(r.x - barW / 2, r.y - size - 23, barW, 4);
+    }
+
+    // Flying indicator (including flying suicide)
+    if (r.type === RoachType.FLYING || r.type === RoachType.FLYING_SUICIDE) {
+      ctx.save();
+      ctx.globalAlpha = 0.3 + Math.sin(r.wingPhase) * 0.2;
+      ctx.strokeStyle = '#88ccff';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.arc(r.x, r.y, size + 8, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
+    // Enrage indicator
+    if (r.isEnraged) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(239, 68, 68, 0.6)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(r.x, r.y, size + 6, 0, Math.PI * 2);
+      ctx.stroke();
+      const pulse = (Math.sin(this.time * 12) + 1) * 0.5;
+      ctx.strokeStyle = `rgba(239, 68, 68, ${pulse * 0.4})`;
+      ctx.beginPath();
+      ctx.arc(r.x, r.y, size + 6 + pulse * 6, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Stun effect
+    if (r.isStunned) {
+      const stunPulse = (Math.sin(this.time * 8) + 1) * 0.5;
+      ctx.save();
+      ctx.strokeStyle = `rgba(150, 220, 255, ${0.5 + stunPulse * 0.4})`;
+      ctx.lineWidth = 1.5;
+      ctx.shadowColor = 'rgba(250, 200, 50, 0.8)';
+      ctx.shadowBlur = 6;
+      for (let i = 0; i < 3; i++) {
+        const sx = r.x + (Math.random() - 0.5) * size * 2;
+        const sy = r.y - size * 0.5 + (Math.random() - 0.5) * size;
+        ctx.beginPath();
+        ctx.moveTo(r.x, r.y - size * 0.3);
+        for (let j = 0; j < 3; j++) {
+          ctx.lineTo(sx + (Math.random() - 0.5) * 8, sy + j * 4);
+        }
+        ctx.stroke();
+      }
+      ctx.shadowBlur = 0;
+      ctx.restore();
+      ctx.fillStyle = `rgba(250, 200, 50, ${0.15 + stunPulse * 0.1})`;
+      ctx.beginPath();
+      ctx.arc(r.x, r.y, size + 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Poison indicator
+    if (r.poisonTimer > 0) {
+      ctx.fillStyle = `rgba(150, 100, 255, ${0.3 + Math.sin(this.time * 4) * 0.2})`;
+      ctx.beginPath();
+      ctx.arc(r.x, r.y, size + 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Suicide fuse
+    if (r.isFused) {
+      const fusePulse = (Math.sin(this.time * 20) + 1) * 0.5;
+      ctx.fillStyle = `rgba(255, 60, 0, ${0.5 + fusePulse * 0.5})`;
+      ctx.beginPath();
+      ctx.arc(r.x, r.y - size - 5, 4 + fusePulse * 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Boss name
+    if (r.isBoss) {
+      ctx.fillStyle = '#ff44aa';
+      ctx.font = 'bold 14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('蟑螂女王', r.x, r.y - size - 25);
+    }
+  }
+
+  renderPlayer(ctx: CanvasRenderingContext2D) {
+    const p = this.player;
+    const py = p.y;
+    const s = 4;
+
+    // Determine gun positions
+    const gunXs: number[] = [p.x];
+    if (this.tripleFlame.active) {
+      gunXs.push(p.x - this.tripleFlame.sideOffset);
+      gunXs.push(p.x + this.tripleFlame.sideOffset);
+    }
+
+    // Render each gun
+    for (let i = 0; i < gunXs.length; i++) {
+      const gx = gunXs[i];
+      const isSideGun = i > 0;
+      const sideScale = isSideGun ? 0.6 : 1.0;
+
+      ctx.save();
+      ctx.translate(gx, py);
+      ctx.scale(sideScale, sideScale);
+
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.beginPath();
+      ctx.ellipse(3 * s, 8 * s, 22 * s, 10 * s, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      if (this.gunImg && this.imagesLoaded) {
+        const gw = 60 * s;
+        const gh = 80 * s;
+        ctx.save();
+        ctx.translate(0, -gh * 0.6);
+
+        if (p.currentWeapon === 'sticky') {
+          ctx.filter = 'hue-rotate(180deg)';
+        } else if (p.currentWeapon === 'poison') {
+          ctx.filter = 'hue-rotate(270deg)';
+        }
+
+        ctx.drawImage(this.gunImg, -gw / 2, -gh / 2, gw, gh);
+        ctx.filter = 'none';
+        ctx.restore();
+      } else {
+        ctx.fillStyle = isSideGun ? '#666' : '#555';
+        ctx.fillRect(-6 * s, -56 * s, 12 * s, 40 * s);
+        ctx.fillStyle = isSideGun ? '#888' : '#777';
+        ctx.fillRect(-5 * s, -64 * s, 10 * s, 10 * s);
+      }
+
+      if (p.heat > 50) {
+        const heatAlpha = Math.min(1, (p.heat - 50) / 250) * 0.4;
+        ctx.fillStyle = `rgba(255, 100, 30, ${heatAlpha})`;
+        ctx.fillRect(-8 * s, -58 * s, 16 * s, 44 * s);
+      }
+
+      ctx.restore();
+    }
+
+    // Reload indicator
+    if (p.isReloading) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+      ctx.fillRect(0, 0, this.width, this.height);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 28px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.shadowColor = 'rgba(0,0,0,0.8)';
+      ctx.shadowBlur = 8;
+      ctx.fillText('更换气罐中', this.width / 2, this.height / 2 - 20);
+      ctx.font = 'bold 48px sans-serif';
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillText(Math.ceil(p.reloadTimer).toString(), this.width / 2, this.height / 2 + 25);
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    }
+
+    // Overheat indicator (only for center gun)
+    if (p.isOverheated) {
+      ctx.save();
+      const pulse = (Math.sin(this.time * 10) + 1) * 0.5;
+      ctx.fillStyle = `rgba(239, 68, 68, ${0.25 + pulse * 0.15})`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 48 * s, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = `rgba(239, 68, 68, ${0.5 + pulse * 0.3})`;
+      ctx.lineWidth = 2 * s;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 48 * s, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  // ========== THROWABLE RENDERING ==========
+  renderItemPlacement(ctx: CanvasRenderingContext2D) {
+    // Only show range preview when actually placing (after screen click), not in pending_click
+    if (this.itemPlaceState !== 'placing' || this.selectedItemIndex < 0) return;
+    const item = this.inventory[this.selectedItemIndex];
+    if (!item) return;
+
+    const cx = this.itemPlaceCursorX;
+    const cy = this.itemPlaceCursorY;
+    const rx = this.itemEffectRadiusX;
+    const ry = this.itemEffectRadiusY;
+    const pulse = (Math.sin(this.time * 4) + 1) * 0.5;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+
+    const colors: Record<string, string> = { sticky: '250, 200, 50', poison: '180, 130, 255', molotov: '255, 100, 80', shotgun: '255, 200, 100' };
+    const c = colors[item.type];
+
+    // Large filled area (ellipse)
+    ctx.fillStyle = `rgba(${c}, 0.12)`;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Outer boundary ring (pulsing, ellipse)
+    ctx.strokeStyle = `rgba(${c}, ${0.5 + pulse * 0.3})`;
+    ctx.lineWidth = 3;
+    ctx.setLineDash([10 + pulse * 6, 8]);
+    ctx.lineDashOffset = -this.time * 40;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Inner ring (ellipse)
+    ctx.strokeStyle = `rgba(${c}, 0.6)`;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx * 0.5, ry * 0.5, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // 4 directional range lines
+    ctx.strokeStyle = `rgba(${c}, 0.35)`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cx - rx, cy); ctx.lineTo(cx + rx, cy);
+    ctx.moveTo(cx, cy - ry); ctx.lineTo(cx, cy + ry);
+    ctx.stroke();
+
+    // Crosshair with glow
+    ctx.shadowColor = `rgba(${c}, 0.8)`;
+    ctx.shadowBlur = 8;
+    ctx.strokeStyle = `rgba(${c}, 1)`;
+    ctx.lineWidth = 2.5;
+    const csx = Math.min(14, rx * 0.3);
+    const csy = Math.min(14, ry * 0.3);
+    ctx.beginPath();
+    ctx.moveTo(cx - csx, cy); ctx.lineTo(cx - 4, cy);
+    ctx.moveTo(cx + 4, cy); ctx.lineTo(cx + csx, cy);
+    ctx.moveTo(cx, cy - csy); ctx.lineTo(cx, cy - 4);
+    ctx.moveTo(cx, cy + 4); ctx.lineTo(cx, cy + csy);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Center dot with glow
+    ctx.shadowColor = `rgba(${c}, 1)`;
+    ctx.shadowBlur = 12;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Label background
+    const names: Record<string, string> = { sticky: '蟑螂贴板', poison: '杀虫剂', molotov: '燃烧瓶', shotgun: '散弹模式' };
+    const label1 = `点击放置 ${names[item.type] || '道具'}`;
+    const label2 = `范围: X${rx} x Y${ry}`;
+    ctx.font = 'bold 14px sans-serif';
+    ctx.textAlign = 'center';
+    const m1 = ctx.measureText(label1);
+    const m2 = ctx.measureText(label2);
+    const lw = Math.max(m1.width, m2.width) + 20;
+    const ly = cy - ry - 42;
+
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+    ctx.beginPath();
+    ctx.roundRect(cx - lw / 2, ly, lw, 44, 8);
+    ctx.fill();
+
+    ctx.fillStyle = '#fff';
+    ctx.fillText(label1, cx, ly + 20);
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillStyle = `rgba(${c}, 1)`;
+    ctx.fillText(label2, cx, ly + 37);
+
+    ctx.restore();
+  }
+
+  renderThrowableAim(ctx: CanvasRenderingContext2D) {
+    if (!this.isAiming || !this.aimWeapon) return;
+
+    const startX = this.player.x;
+    const startY = this.player.y - 322;
+    const targetX = this.aimTargetX;
+    const targetY = this.aimTargetY;
+
+    // Calculate arc control point
+    const midX = (startX + targetX) / 2;
+    const arcHeight = 100 + this.aimPower * 150;
+    const controlX = midX;
+    const controlY = Math.min(startY, targetY) - arcHeight;
+
+    // Draw parabolic trajectory line (dashed)
+    ctx.save();
+    ctx.setLineDash([6, 6]);
+    ctx.lineWidth = 2;
+
+    const colors: Record<string, string> = { sticky: 'rgba(250, 200, 50, 0.6)', poison: 'rgba(180, 130, 255, 0.6)', molotov: 'rgba(255, 100, 80, 0.6)', shotgun: 'rgba(255, 200, 100, 0.6)' };
+    ctx.strokeStyle = colors[this.aimWeapon];
+
+    ctx.beginPath();
+    ctx.moveTo(startX, startY);
+    // Draw quadratic bezier curve
+    const steps = 30;
+    for (let i = 1; i <= steps; i++) {
+      const t = i / steps;
+      // Quadratic bezier: B(t) = (1-t)^2 * P0 + 2(1-t)t * P1 + t^2 * P2
+      const x = (1 - t) * (1 - t) * startX + 2 * (1 - t) * t * controlX + t * t * targetX;
+      const y = (1 - t) * (1 - t) * startY + 2 * (1 - t) * t * controlY + t * t * targetY;
+      ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Draw target circle (pulsing)
+    const pulse = (Math.sin(this.time * 8) + 1) * 0.5;
+    const targetRadius = 30 + this.aimPower * 20;
+
+    const targetColors = { sticky: 'rgba(250, 200, 50, ', poison: 'rgba(180, 130, 255, ', molotov: 'rgba(255, 100, 80, ' };
+    const tc = targetColors[this.aimWeapon];
+
+    ctx.fillStyle = `${tc}${0.15 + pulse * 0.1})`;
+    ctx.beginPath();
+    ctx.arc(targetX, targetY, targetRadius, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = `${tc}${0.5 + pulse * 0.3})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(targetX, targetY, targetRadius * (0.7 + pulse * 0.3), 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Crosshair at target
+    ctx.strokeStyle = `${tc}0.8)`;
+    ctx.lineWidth = 1.5;
+    const crossSize = 8;
+    ctx.beginPath();
+    ctx.moveTo(targetX - crossSize, targetY);
+    ctx.lineTo(targetX + crossSize, targetY);
+    ctx.moveTo(targetX, targetY - crossSize);
+    ctx.lineTo(targetX, targetY + crossSize);
+    ctx.stroke();
+
+    // Power indicator text
+    const powerPercent = Math.round(this.aimPower * 100);
+    ctx.fillStyle = `${tc}0.9)`;
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`力度 ${powerPercent}%`, targetX, targetY - targetRadius - 10);
+
+    // Weapon name
+    const names = { sticky: '蟑螂贴板', poison: '杀虫剂', molotov: '燃烧瓶' };
+    ctx.fillStyle = '#fff';
+    ctx.fillText(names[this.aimWeapon], startX, startY - 40);
+
+    ctx.restore();
+  }
+
+  renderThrowables(ctx: CanvasRenderingContext2D) {
+    for (const t of this.throwables) {
+      ctx.save();
+
+      const colors: Record<string, string> = { sticky: '#facc15', poison: '#a78bfa', molotov: '#ff4400', shotgun: '#fbbf24' };
+      const color = colors[t.type];
+
+      // Glow
+      const glowGrad = ctx.createRadialGradient(t.x, t.y, 0, t.x, t.y, 15);
+      glowGrad.addColorStop(0, color.replace(')', ', 0.8)').replace('rgb', 'rgba'));
+      glowGrad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = glowGrad;
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, 15, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Bottle shape
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, 5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Trail
+      ctx.globalAlpha = 0.4;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(t.x - t.vx * 0.03, t.y - t.vy * 0.03, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 0.2;
+      ctx.beginPath();
+      ctx.arc(t.x - t.vx * 0.06, t.y - t.vy * 0.06, 2, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
+    }
+  }
+
+  renderSwatter(ctx: CanvasRenderingContext2D) {
+    if (!this.swatterActive) return;
+
+    const progress = 1 - this.swatterAnimTimer / 0.6;
+    const w = this.width;
+    const h = this.height;
+    const swatX = this.swatterSwingX;
+    const startY = -h * 0.3;
+    const endY = h * 0.8;
+    const currentY = startY + (endY - startY) * Math.min(1, progress * 1.5);
+
+    const headW = w * 0.7;
+    const headH = h * 0.15;
+    const headY = currentY;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+
+    const glowGrad = ctx.createRadialGradient(swatX, headY + headH / 2, 0, swatX, headY + headH / 2, headW * 0.6);
+    glowGrad.addColorStop(0, `rgba(250, 200, 50, ${0.4 * (1 - progress)})`);
+    glowGrad.addColorStop(1, 'rgba(50, 100, 200, 0)');
+    ctx.fillStyle = glowGrad;
+    ctx.fillRect(swatX - headW * 0.6, headY - headH, headW * 1.2, headH * 3);
+
+    ctx.strokeStyle = `rgba(180, 220, 255, ${0.8 * (1 - progress * 0.5)})`;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(swatX - headW / 2, headY, headW, headH);
+
+    ctx.strokeStyle = `rgba(120, 180, 255, ${0.5 * (1 - progress * 0.5)})`;
+    ctx.lineWidth = 1;
+    const gridCols = 8;
+    const gridRows = 3;
+    for (let c = 1; c < gridCols; c++) {
+      const gx = swatX - headW / 2 + (headW / gridCols) * c;
+      ctx.beginPath();
+      ctx.moveTo(gx, headY);
+      ctx.lineTo(gx, headY + headH);
+      ctx.stroke();
+    }
+    for (let r = 1; r < gridRows; r++) {
+      const gy = headY + (headH / gridRows) * r;
+      ctx.beginPath();
+      ctx.moveTo(swatX - headW / 2, gy);
+      ctx.lineTo(swatX + headW / 2, gy);
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = `rgba(150, 150, 150, ${0.9 * (1 - progress)})`;
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(swatX, headY + headH);
+    ctx.lineTo(swatX, headY + headH + h * 0.4);
+    ctx.stroke();
+
+    if (progress > 0.3 && progress < 0.8) {
+      const arcAlpha = Math.sin((progress - 0.3) / 0.5 * Math.PI) * 0.9;
+      ctx.strokeStyle = `rgba(200, 240, 255, ${arcAlpha})`;
+      ctx.lineWidth = 2;
+      ctx.shadowColor = 'rgba(250, 200, 50, 0.8)';
+      ctx.shadowBlur = 15;
+
+      for (let i = 0; i < 12; i++) {
+        const ax = swatX - headW / 2 + Math.random() * headW;
+        const ay = headY + Math.random() * headH;
+        ctx.beginPath();
+        ctx.moveTo(ax, ay);
+        for (let j = 0; j < 4; j++) {
+          ctx.lineTo(ax + (Math.random() - 0.5) * 30, ay + j * 8);
+        }
+        ctx.stroke();
+      }
+      ctx.shadowBlur = 0;
+
+      ctx.fillStyle = `rgba(200, 240, 255, ${arcAlpha * 0.15})`;
+      ctx.fillRect(swatX - headW / 2, headY, headW, headH);
+    }
+
+    for (const r of this.roaches) {
+      if (r.isStunned && Math.random() < 0.3) {
+        const sz = r.type === RoachType.LARGE ? 22 : 14;
+        ctx.fillStyle = `rgba(150, 220, 255, ${0.5 + Math.random() * 0.5})`;
+        ctx.beginPath();
+        ctx.arc(r.x, r.y - sz, 2 + Math.random() * 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    ctx.restore();
+  }
+
+  renderMuzzleFlash(ctx: CanvasRenderingContext2D) {
+    const p = this.player;
+    if (!p.isFiring || p.isOverheated || p.isReloading || p.gas <= 0) return;
+
+    const my = p.y - 322;
+
+    // Gun positions
+    const gunXs: number[] = [p.x];
+    if (this.tripleFlame.active) {
+      gunXs.push(p.x - this.tripleFlame.sideOffset);
+      gunXs.push(p.x + this.tripleFlame.sideOffset);
+    }
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+
+    for (let gi = 0; gi < gunXs.length; gi++) {
+      const mx = gunXs[gi];
+      const isSideGun = gi > 0;
+      const scale = isSideGun ? 0.6 : 1.0;
+
+      const flicker = 0.7 + Math.random() * 0.3;
+      const size = (20 + Math.random() * 15) * scale;
+
+      const grad = ctx.createRadialGradient(mx, my, 0, mx, my, size * 2);
+      let coreColor = '220, 240, 255';
+      if (p.currentWeapon === 'sticky') coreColor = '250, 200, 50';
+      else if (p.currentWeapon === 'poison') coreColor = '220, 180, 255';
+
+      grad.addColorStop(0, `rgba(${coreColor}, ${flicker * 0.9})`);
+      grad.addColorStop(0.3, `rgba(${coreColor}, ${flicker * 0.9})`);
+      grad.addColorStop(0.6, `rgba(${coreColor}, ${flicker * 0.5})`);
+      grad.addColorStop(1, 'rgba(255, 200, 100, 0)');
+
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(mx, my, size * 2, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = `rgba(${coreColor}, ${flicker * 0.9})`;
+      ctx.beginPath();
+      ctx.arc(mx, my, size * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  renderWeatherForeground(ctx: CanvasRenderingContext2D, w: number, _h: number) {
+    // Render weather particles on top
+    ctx.save();
+    for (const p of this.weatherParticles) {
+      const alpha = p.life / p.maxLife;
+      if (p.type === ParticleType.RAIN) {
+        ctx.globalAlpha = alpha * 0.4;
+        ctx.strokeStyle = p.color;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.x + p.vx * 0.02, p.y + p.vy * 0.02);
+        ctx.stroke();
+      } else if (p.type === ParticleType.SMOKE) {
+        ctx.globalAlpha = alpha * 0.3;
+        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size);
+        grad.addColorStop(0, p.color);
+        grad.addColorStop(1, 'rgba(180, 180, 160, 0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.restore();
+
+    // Render defense line last
+    this.renderDefenseLine(ctx, w);
+  }
+
+  renderFloatingTexts(ctx: CanvasRenderingContext2D) {
+    for (const t of this.floatingTexts) {
+      const alpha = t.life / t.maxLife;
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = t.color;
+      const fontSize = Math.round(16 * (t.scale || 1));
+      ctx.font = `bold ${fontSize}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+      ctx.lineWidth = 3 * (t.scale || 1);
+      ctx.strokeText(t.text, t.x, t.y);
+      ctx.fillText(t.text, t.x, t.y);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // ========== SHOP / UPGRADES ==========
+  buyUpgrade(id: string): boolean {
+    const costs: Record<string, number> = this.difficulty === 'hard' ? {
+      'range': 800, 'overheat': 1500, 'cooling': 1000,
+      'damage': 1200, 'gas': 600, 'speed': 1000,
+    } : {
+      'range': 300, 'overheat': 600, 'cooling': 400,
+      'damage': 500, 'gas': 250, 'speed': 400,
+    };
+
+    if (this.economy.money < costs[id]) return false;
+    this.economy.money -= costs[id];
+
+    if (id === 'range') this.player.fireRange *= 1.2;
+    else if (id === 'overheat') this.player.overheatThreshold = 2880;
+    else if (id === 'cooling') this.player.heatDecayRate = 1.5;
+    else if (id === 'damage') this.player.damageMultiplier *= 1.25;
+    else if (id === 'gas') this.player.maxGas *= 1.3;
+    else if (id === 'speed') this.player.heatDecayRate *= 1.3;
+
+    // Grant talent points on wave clear
+    this.addTalentPoints(1);
+
+    return true;
+  }
+}

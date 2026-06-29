@@ -1,0 +1,1535 @@
+import * as Vibration from './vibration';
+
+export class AudioManager {
+  private bgm: HTMLAudioElement | null = null;
+  private fireSfx: HTMLAudioElement | null = null;
+  private killSfx: HTMLAudioElement | null = null;
+  private swatterSfx: HTMLAudioElement | null = null;
+  private reloadSfx: HTMLAudioElement | null = null;
+  private clickSfx: HTMLAudioElement | null = null;
+  // When true, playClick() is silently ignored (used to suppress UI clicks during gameplay)
+  suppressClickSfx: boolean = false;
+  private gameOverBgm: HTMLAudioElement | null = null;
+  private victoryBgm: HTMLAudioElement | null = null;
+
+  private isMuted: boolean = false;
+  private isVibrationEnabled: boolean = true;
+  private audioContext: AudioContext | null = null;
+  private currentBgmPath: string = '/assets/bgm_kitchen.mp3';
+
+  constructor() {
+    this.initAudio();
+    // Sync vibration state from centralized vibration module
+    this.isVibrationEnabled = Vibration.isVibrationEnabled();
+  }
+
+  // ========== VIBRATION (all delegated to vibration.ts) ==========
+  getVibrationEnabled(): boolean {
+    this.isVibrationEnabled = Vibration.isVibrationEnabled();
+    return this.isVibrationEnabled;
+  }
+
+  setVibrationEnabled(enabled: boolean) {
+    this.isVibrationEnabled = enabled;
+    Vibration.setVibrationEnabled(enabled);
+  }
+
+  toggleVibration(): boolean {
+    const result = Vibration.toggleVibration();
+    this.isVibrationEnabled = result;
+    return result;
+  }
+
+  isVibrationSupported(): boolean { return Vibration.isVibrationSupported(); }
+  vibrate(pattern: number | number[]) { Vibration.vibrate(pattern); }
+  vibrateFire() { Vibration.vibrateFire(); }
+  vibrateKill() { Vibration.vibrateKill(); }
+  vibrateExplode() { Vibration.vibrateExplode(); }
+  vibrateSuicideExplode() { Vibration.vibrateSuicideExplode(); }
+  vibrateBreach() { Vibration.vibrateBreach(); }
+  vibrateItemUse() { Vibration.vibrateItemUse(); }
+  vibrateNewRecord() { Vibration.vibrateNewRecord(); }
+  vibrateGameOver() { Vibration.vibrateGameOver(); }
+  
+  private initAudio() {
+    // Initialize audio elements
+    this.bgm = new Audio('/assets/bgm_kitchen.mp3');
+    this.bgm.loop = true;
+    this.bgm.volume = 0.6;
+    
+    this.fireSfx = new Audio('/assets/sfx_fire_intense.mp3');
+    this.fireSfx.loop = true;
+    this.fireSfx.volume = 1.0;
+    
+    this.killSfx = new Audio('/assets/sfx_kill.mp3');
+    this.killSfx.volume = 0.9;
+    
+    this.swatterSfx = new Audio('/assets/sfx_swatter.mp3');
+    this.swatterSfx.volume = 1.0;
+    
+    this.reloadSfx = new Audio('/assets/sfx_reload.mp3');
+    this.reloadSfx.volume = 0.9;
+
+    this.clickSfx = new Audio('/assets/sfx_click.mp3');
+    this.clickSfx.volume = 0.5;
+    this.clickSfx.preload = 'auto';
+    // Warm up: silent preload to reduce first-play latency
+    const warmUp = () => {
+      this.clickSfx!.load();
+      document.removeEventListener('click', warmUp);
+      document.removeEventListener('touchstart', warmUp);
+      document.removeEventListener('keydown', warmUp);
+    };
+    document.addEventListener('click', warmUp, { once: true });
+    document.addEventListener('touchstart', warmUp, { once: true });
+    document.addEventListener('keydown', warmUp, { once: true });
+
+    this.gameOverBgm = new Audio('/assets/bgm_gameover.mp3');
+    this.gameOverBgm.loop = true;
+    this.gameOverBgm.volume = 0.7;
+
+    // Victory BGM is also used as the general BGM for all scenes
+    this.victoryBgm = new Audio('/assets/bgm_victory.mp3');
+    this.victoryBgm.loop = true;
+    this.victoryBgm.volume = 0.5;
+    
+    // Create breach sound using Web Audio API (short buzz)
+    this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+  }
+  
+  // ========== NURSE CASTING SOUND ==========
+  playNurseCast() {
+    if (this.isMuted) return;
+    const sfx = new Audio('/assets/nurse_cast.mp3');
+    sfx.volume = 0.7;
+    sfx.play().catch(() => {});
+  }
+
+  // ========== MUTANT TRANSFORMATION SOUND ==========
+  playMutantTransform() {
+    if (this.isMuted) return;
+    const sfx = new Audio('/assets/mutant_transform.mp3');
+    sfx.volume = 0.8;
+    sfx.play().catch(() => {});
+  }
+
+  private playBreachSound() {
+    if (!this.audioContext || this.isMuted) return;
+    const osc = this.audioContext.createOscillator();
+    const gain = this.audioContext.createGain();
+    osc.connect(gain);
+    gain.connect(this.audioContext.destination);
+    osc.frequency.setValueAtTime(200, this.audioContext.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(50, this.audioContext.currentTime + 0.3);
+    gain.gain.setValueAtTime(0.6, this.audioContext.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.3);
+    osc.start(this.audioContext.currentTime);
+    osc.stop(this.audioContext.currentTime + 0.3);
+  }
+  
+  startBGM() {
+    if (this.bgm && !this.isMuted) {
+      this.bgm.currentTime = 0;
+      this.bgm.play().catch(() => {});
+    }
+  }
+  
+  stopBGM() {
+    if (this.bgm) {
+      this.bgm.pause();
+      this.bgm.currentTime = 0;
+    }
+    this.currentBgmPath = ''; // Reset so switchBGM will play again on re-entry
+  }
+  
+  pauseBGM() {
+    if (this.bgm) this.bgm.pause();
+  }
+
+  resumeBGM() {
+    if (this.bgm && !this.isMuted) {
+      this.bgm.play().catch(() => {});
+    }
+  }
+
+  // Gradually fade BGM volume to target level over duration (ms)
+  // Used when settlement screen appears - BGM continues at low volume
+  fadeOutBGM(targetVolume: number = 0.08, duration: number = 2500) {
+    if (!this.bgm) return;
+    const startVolume = this.bgm.volume;
+    const startTime = performance.now();
+    const step = () => {
+      const elapsed = performance.now() - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      // Ease-out cubic for smooth fade
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const newVolume = startVolume + (targetVolume - startVolume) * eased;
+      if (this.bgm) {
+        this.bgm.volume = Math.max(0, newVolume);
+      }
+      if (progress < 1) {
+        requestAnimationFrame(step);
+      }
+    };
+    requestAnimationFrame(step);
+  }
+
+  // ========== GAME OVER BGM: play/stop ==========
+  playGameOverBGM() {
+    if (this.isMuted) return;
+    // Always recreate Audio element for reliable playback
+    this.stopGameOverBGM();
+    this.gameOverBgm = new Audio('/assets/bgm_gameover.mp3');
+    this.gameOverBgm.loop = true;
+    this.gameOverBgm.volume = 0.7;
+    this.gameOverBgm.play().catch(() => {});
+  }
+
+  stopGameOverBGM() {
+    if (this.gameOverBgm) {
+      this.gameOverBgm.pause();
+      this.gameOverBgm.currentTime = 0;
+      this.gameOverBgm = null;
+    }
+  }
+
+  // ========== VICTORY BGM: play/stop ==========
+  playVictoryBGM() {
+    if (this.isMuted || !this.victoryBgm) return;
+    this.victoryBgm.currentTime = 0;
+    this.victoryBgm.play().catch(() => {});
+  }
+
+  stopVictoryBGM() {
+    if (this.victoryBgm) {
+      this.victoryBgm.pause();
+      this.victoryBgm.currentTime = 0;
+    }
+  }
+
+  // Switch BGM to a different track. If path is different from current, reload and play.
+  switchBGM(path: string) {
+    if (this.currentBgmPath === path) return; // same track, no change
+    this.currentBgmPath = path;
+    // Stop current BGM
+    if (this.bgm) {
+      this.bgm.pause();
+      this.bgm.currentTime = 0;
+    }
+    // Create new BGM element
+    this.bgm = new Audio(path);
+    this.bgm.loop = true;
+    this.bgm.volume = 0.6;
+    // Play if not muted
+    if (!this.isMuted) {
+      this.bgm.play().catch(() => {});
+    }
+  }
+
+  // Get BGM path for a given scene type + difficulty
+  // Returns { easy: path, hard: path } or null if no custom BGM
+  getBgmForScene(sceneType: string): { easy: string; hard: string } | null {
+    switch (sceneType) {
+      case 'kitchen':
+        return {
+          easy: '/assets/bgm_kitchen_easy.mp3?v=7',
+          hard: '/assets/bgm_kitchen_hard.mp3?v=4',
+        };
+      case 'sewer':
+        return {
+          easy: '/assets/bgm_sewer_easy.mp3?v=2',
+          hard: '/assets/bgm_sewer_hard.mp3?v=1',
+        };
+      case 'dump':
+        return {
+          easy: '/assets/bgm_dump_easy.mp3?v=1',
+          hard: '/assets/bgm_dump_hard.mp3?v=1',
+        };
+      case 'basement':
+        return {
+          easy: '/assets/bgm_basement_easy.mp3?v=1',
+          hard: '/assets/bgm_basement_hard.mp3?v=1',
+        };
+      case 'rooftop':
+        return {
+          easy: '/assets/bgm_rooftop_easy.mp3?v=1',
+          hard: '/assets/bgm_rooftop_hard.mp3?v=1',
+        };
+      case 'street':
+        return {
+          easy: '/assets/bgm_street_easy.mp3?v=1',
+          hard: '/assets/bgm_street_hard.mp3?v=1',
+        };
+      case 'hospital':
+        return {
+          easy: '/assets/bgm_hospital.mp3?v=1',
+          hard: '/assets/bgm_hospital.mp3?v=1',
+        };
+      default:
+        return null; // No custom BGM for this scene
+    }
+  }
+
+  // Switch BGM based on scene + difficulty
+  switchBGMForScene(sceneType: string, difficulty: string) {
+    const bgmMap = this.getBgmForScene(sceneType);
+    if (!bgmMap) return; // No custom BGM, keep default
+    const path = difficulty === 'hard' ? bgmMap.hard : bgmMap.easy;
+    this.switchBGM(path);
+  }
+
+  playFire() {
+    if (this.fireSfx && !this.isMuted) {
+      this.fireSfx.play().catch(() => {});
+    }
+  }
+  
+  stopFire() {
+    if (this.fireSfx) {
+      this.fireSfx.pause();
+      this.fireSfx.currentTime = 0;
+    }
+  }
+  
+  playKill() {
+    if (this.killSfx && !this.isMuted) {
+      this.killSfx.currentTime = 0;
+      this.killSfx.play().catch(() => {});
+    }
+  }
+  
+  playSwatter() {
+    if (this.swatterSfx && !this.isMuted) {
+      this.swatterSfx.currentTime = 0;
+      this.swatterSfx.play().catch(() => {});
+    }
+  }
+  
+  playReload() {
+    if (this.reloadSfx && !this.isMuted) {
+      this.reloadSfx.currentTime = 0;
+      this.reloadSfx.play().catch(() => {});
+    }
+  }
+  
+  playBreach() {
+    if (this.isMuted) return;
+    this.playBreachSound();
+  }
+
+  // ========== UI CLICK SFX: play external MP3 ==========
+  // Suppressed during gameplay (PLAYING state), active in all external UI
+  playClick() {
+    if (this.isMuted || this.suppressClickSfx) return;
+    if (this.clickSfx) {
+      this.clickSfx.currentTime = 0;
+      this.clickSfx.play().catch(() => {});
+    }
+  }
+
+  // ========== COUNTDOWN TICK: short electronic beep for 3-2-1 countdown ==========
+  playCountdownTick() {
+    if (!this.audioContext || this.isMuted) return;
+    const ctx = this.audioContext;
+    const now = ctx.currentTime;
+    // Short square-wave tick, 880Hz, 80ms
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(880, now);
+    gain.gain.setValueAtTime(0.3, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+    osc.start(now);
+    osc.stop(now + 0.08);
+  }
+
+  // ========== ITEM DROP: enhanced bright fanfare for new item reveal ==========
+  playItemDropFanfare() {
+    if (!this.audioContext || this.isMuted) return;
+    const ctx = this.audioContext;
+    const now = ctx.currentTime;
+    // Grand ascending arpeggio (C5-E5-G5-C6) with sparkle feel
+    const notes = [523.25, 659.25, 783.99, 1046.50];
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + i * 0.1);
+      gain.gain.setValueAtTime(0, ctx.currentTime + i * 0.1);
+      gain.gain.linearRampToValueAtTime(0.5, ctx.currentTime + i * 0.1 + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + i * 0.1 + 0.4);
+      osc.start(ctx.currentTime + i * 0.1);
+      osc.stop(ctx.currentTime + i * 0.1 + 0.4);
+    });
+    // Layer 2: shimmer/harmony
+    const shimmerNotes = [783.99, 987.77, 1174.66, 1567.98];
+    shimmerNotes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + i * 0.08 + 0.05);
+      gain.gain.setValueAtTime(0, ctx.currentTime + i * 0.08 + 0.05);
+      gain.gain.linearRampToValueAtTime(0.2, ctx.currentTime + i * 0.08 + 0.05 + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + i * 0.08 + 0.05 + 0.5);
+      osc.start(ctx.currentTime + i * 0.08 + 0.05);
+      osc.stop(ctx.currentTime + i * 0.08 + 0.05 + 0.5);
+    });
+    // Final bright chime
+    const chimeOsc = ctx.createOscillator();
+    const chimeGain = ctx.createGain();
+    chimeOsc.connect(chimeGain);
+    chimeGain.connect(ctx.destination);
+    chimeOsc.type = 'sine';
+    chimeOsc.frequency.setValueAtTime(2093.00, now + 0.45); // C7
+    chimeGain.gain.setValueAtTime(0, now + 0.45);
+    chimeGain.gain.linearRampToValueAtTime(0.6, now + 0.45 + 0.02);
+    chimeGain.gain.exponentialRampToValueAtTime(0.01, now + 0.45 + 0.8);
+    chimeOsc.start(now + 0.45);
+    chimeOsc.stop(now + 0.45 + 0.8);
+  }
+
+  // ========== DANMAKU SFX: sharp swish (bullet passing by) ==========
+  playDanmaku() {
+    if (!this.audioContext || this.isMuted) return;
+    const ctx = this.audioContext;
+    const now = ctx.currentTime;
+    // Sharp swish
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(1200, now);
+    osc.frequency.exponentialRampToValueAtTime(400, now + 0.1);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.2, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.1);
+  }
+
+  // ========== BOSS CHARGE SFX: deep rumbling build-up ==========
+  playBossCharge() {
+    if (!this.audioContext || this.isMuted) return;
+    const ctx = this.audioContext;
+    const now = ctx.currentTime;
+    // Deep rumble
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(80, now);
+    osc.frequency.exponentialRampToValueAtTime(30, now + 0.5);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.3, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(800, now);
+    filter.frequency.exponentialRampToValueAtTime(100, now + 0.5);
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.5);
+  }
+
+  // ========== PARALYZE SFX: electric zap ==========
+  playItemDrop() {
+    if (!this.audioContext || this.isMuted) return;
+    const ctx = this.audioContext;
+    // Bright chime for new item drop (C-E-G ascending arpeggio)
+    const notes = [523.25, 659.25, 783.99]; // C5, E5, G5
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + i * 0.08);
+      gain.gain.setValueAtTime(0, ctx.currentTime + i * 0.08);
+      gain.gain.linearRampToValueAtTime(0.4, ctx.currentTime + i * 0.08 + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + i * 0.08 + 0.25);
+      osc.start(ctx.currentTime + i * 0.08);
+      osc.stop(ctx.currentTime + i * 0.08 + 0.25);
+    });
+  }
+
+  playParalyze() {
+    if (!this.audioContext || this.isMuted) return;
+    const ctx = this.audioContext;
+    const now = ctx.currentTime;
+    // Electric zap
+    const osc = ctx.createOscillator();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(2000, now);
+    osc.frequency.exponentialRampToValueAtTime(200, now + 0.15);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.3, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.15);
+  }
+
+  // ========== BOSS CHARGE HIT: heavy impact ==========
+  playBossChargeHit() {
+    if (!this.audioContext || this.isMuted) return;
+    const ctx = this.audioContext;
+    const now = ctx.currentTime;
+    // Heavy impact
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(150, now);
+    osc.frequency.exponentialRampToValueAtTime(30, now + 0.4);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.8, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.4);
+    // Noise burst
+    const noiseDur = 0.15;
+    const bufferSize = ctx.sampleRate * noiseDur;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+    }
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+    const noiseFilter = ctx.createBiquadFilter();
+    noiseFilter.type = 'lowpass';
+    noiseFilter.frequency.setValueAtTime(600, now);
+    noiseFilter.frequency.exponentialRampToValueAtTime(100, now + noiseDur);
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.6, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.001, now + noiseDur);
+    noise.connect(noiseFilter);
+    noiseFilter.connect(noiseGain);
+    noiseGain.connect(ctx.destination);
+    noise.start(now);
+    noise.stop(now + noiseDur);
+  }
+
+  // ========== DIALOG SFX: typing tick (subtle key press sound) ==========
+  playDialogTypingTick() {
+    if (!this.audioContext || this.isMuted) return;
+    const ctx = this.audioContext;
+    const now = ctx.currentTime;
+
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(800, now);
+    osc.frequency.exponentialRampToValueAtTime(600, now + 0.02);
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.2, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.02);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.02);
+  }
+
+  // ========== DIALOG SFX: line switch (page flip / transition chime) ==========
+  playDialogSwitch() {
+    if (!this.audioContext || this.isMuted) return;
+    const ctx = this.audioContext;
+    const now = ctx.currentTime;
+
+    // Gentle chime
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(523, now); // C5
+    osc.frequency.setValueAtTime(659, now + 0.06); // E5
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.4, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.15);
+
+    // Soft click
+    const click = ctx.createOscillator();
+    click.type = 'triangle';
+    click.frequency.setValueAtTime(1200, now);
+    click.frequency.exponentialRampToValueAtTime(400, now + 0.04);
+    const clickGain = ctx.createGain();
+    clickGain.gain.setValueAtTime(0.25, now);
+    clickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
+    click.connect(clickGain);
+    clickGain.connect(ctx.destination);
+    click.start(now);
+    click.stop(now + 0.04);
+  }
+
+  // ========== FLYING ROACH WING BUZZ: rapid wing vibration ==========
+  playFlyingBuzz() {
+    if (!this.audioContext || this.isMuted) return;
+    const ctx = this.audioContext;
+    const now = ctx.currentTime;
+    const duration = 0.45;
+
+    // ===== Mosquito buzzing: annoying, high-pitched, whining =====
+    // Core: ~600Hz sawtooth with rapid vibrato (±80Hz at 30Hz LFO rate)
+    const coreOsc = ctx.createOscillator();
+    coreOsc.type = 'sawtooth';
+    coreOsc.frequency.setValueAtTime(600, now);
+    const coreGain = ctx.createGain();
+    coreGain.gain.setValueAtTime(0.25, now);
+    coreGain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+    // Vibrato LFO: rapid pitch wobble ~30Hz
+    const vibratoOsc = ctx.createOscillator();
+    vibratoOsc.type = 'sine';
+    vibratoOsc.frequency.setValueAtTime(30, now);
+    const vibratoGain = ctx.createGain();
+    vibratoGain.gain.setValueAtTime(80, now);
+    vibratoOsc.connect(vibratoGain);
+    vibratoGain.connect(coreOsc.frequency);
+    vibratoOsc.start(now);
+    vibratoOsc.stop(now + duration);
+    // Highpass to cut mud, keep the annoying buzz
+    const coreFilter = ctx.createBiquadFilter();
+    coreFilter.type = 'highpass';
+    coreFilter.frequency.setValueAtTime(500, now);
+    coreOsc.connect(coreFilter);
+    coreFilter.connect(coreGain);
+    coreGain.connect(ctx.destination);
+    coreOsc.start(now);
+    coreOsc.stop(now + duration);
+
+    // Layer 2: 1200Hz overtone (mosquito's upper harmonic whine)
+    const whineOsc = ctx.createOscillator();
+    whineOsc.type = 'square';
+    whineOsc.frequency.setValueAtTime(1200, now);
+    const whineGain = ctx.createGain();
+    whineGain.gain.setValueAtTime(0.12, now);
+    whineGain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+    const whineFilter = ctx.createBiquadFilter();
+    whineFilter.type = 'bandpass';
+    whineFilter.frequency.setValueAtTime(1200, now);
+    whineFilter.Q.setValueAtTime(2, now);
+    whineOsc.connect(whineFilter);
+    whineFilter.connect(whineGain);
+    whineGain.connect(ctx.destination);
+    whineOsc.start(now);
+    whineOsc.stop(now + duration);
+
+    // Layer 3: tiny noise bursts every ~50ms for wing "flap" texture
+    for (let i = 0; i < 8; i++) {
+      const t = now + i * 0.05;
+      const flapNoise = ctx.createBufferSource();
+      const bufSize = ctx.sampleRate * 0.02;
+      const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let j = 0; j < bufSize; j++) d[j] = (Math.random() * 2 - 1);
+      flapNoise.buffer = buf;
+      const flapGain = ctx.createGain();
+      flapGain.gain.setValueAtTime(0.06, t);
+      flapGain.gain.exponentialRampToValueAtTime(0.001, t + 0.02);
+      const flapFilter = ctx.createBiquadFilter();
+      flapFilter.type = 'highpass';
+      flapFilter.frequency.setValueAtTime(3000, t);
+      flapNoise.connect(flapFilter);
+      flapFilter.connect(flapGain);
+      flapGain.connect(ctx.destination);
+      flapNoise.start(t);
+      flapNoise.stop(t + 0.02);
+    }
+  }
+
+  // ========== FLYING ROACH DODGE: rapid directional swoosh ==========
+  playFlyingDodge() {
+    if (this.isMuted) return;
+    const audio = new Audio('/assets/flying_dodge.mp3');
+    audio.volume = 0.7;
+    audio.play().catch(() => {});
+  }
+
+  // ========== SUICIDE BREACH GROUND: heavy ground-shaking impact ==========
+  playSuicideBreachGround() {
+    if (!this.audioContext || this.isMuted) return;
+    const ctx = this.audioContext;
+    const now = ctx.currentTime;
+    // Layer 1: Deep underground rumble - felt more than heard
+    const rumbleOsc = ctx.createOscillator();
+    rumbleOsc.type = 'sine';
+    rumbleOsc.frequency.setValueAtTime(60, now);
+    rumbleOsc.frequency.exponentialRampToValueAtTime(25, now + 0.8);
+    const rumbleGain = ctx.createGain();
+    rumbleGain.gain.setValueAtTime(1.2, now);
+    rumbleGain.gain.exponentialRampToValueAtTime(0.01, now + 1.0);
+    rumbleOsc.connect(rumbleGain);
+    rumbleGain.connect(ctx.destination);
+    rumbleOsc.start(now);
+    rumbleOsc.stop(now + 1.0);
+    // Layer 2: Heavy "dong" impact - the core hit
+    const dongOsc = ctx.createOscillator();
+    dongOsc.type = 'sine';
+    dongOsc.frequency.setValueAtTime(120, now);
+    dongOsc.frequency.exponentialRampToValueAtTime(35, now + 0.4);
+    const dongGain = ctx.createGain();
+    dongGain.gain.setValueAtTime(1.5, now);
+    dongGain.gain.exponentialRampToValueAtTime(0.3, now + 0.1);
+    dongGain.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
+    dongOsc.connect(dongGain);
+    dongGain.connect(ctx.destination);
+    dongOsc.start(now);
+    dongOsc.stop(now + 0.6);
+    // Layer 3: Noise burst - concrete shattering texture
+    const noiseDur = 0.25;
+    const bufferSize = ctx.sampleRate * noiseDur;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+    }
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+    const noiseFilter = ctx.createBiquadFilter();
+    noiseFilter.type = 'lowpass';
+    noiseFilter.frequency.setValueAtTime(800, now);
+    noiseFilter.frequency.exponentialRampToValueAtTime(150, now + noiseDur);
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.8, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.01, now + noiseDur);
+    noise.connect(noiseFilter);
+    noiseFilter.connect(noiseGain);
+    noiseGain.connect(ctx.destination);
+    noise.start(now);
+    noise.stop(now + noiseDur);
+    // Layer 4: Short crack for ground fracture
+    for (let i = 0; i < 4; i++) {
+      const t = now + 0.05 + i * 0.04;
+      const crack = ctx.createOscillator();
+      crack.type = 'square';
+      crack.frequency.setValueAtTime(2000 - i * 300, t);
+      const cGain = ctx.createGain();
+      cGain.gain.setValueAtTime(0.15, t);
+      cGain.gain.exponentialRampToValueAtTime(0.01, t + 0.03);
+      crack.connect(cGain);
+      cGain.connect(ctx.destination);
+      crack.start(t);
+      crack.stop(t + 0.03);
+    }
+  }
+
+  // ========== SUICIDE BREACH FLYING: sharp mid-air explosion with debris scatter ==========
+  playSuicideBreachFlying() {
+    if (!this.audioContext || this.isMuted) return;
+    const ctx = this.audioContext;
+    const now = ctx.currentTime;
+    // Layer 1: Sharp explosion crack - high attack, fast decay
+    const crackOsc = ctx.createOscillator();
+    crackOsc.type = 'sawtooth';
+    crackOsc.frequency.setValueAtTime(3000, now);
+    crackOsc.frequency.exponentialRampToValueAtTime(200, now + 0.12);
+    const crackGain = ctx.createGain();
+    crackGain.gain.setValueAtTime(0.8, now);
+    crackGain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+    const crackFilter = ctx.createBiquadFilter();
+    crackFilter.type = 'highpass';
+    crackFilter.frequency.setValueAtTime(800, now);
+    crackOsc.connect(crackFilter);
+    crackFilter.connect(crackGain);
+    crackGain.connect(ctx.destination);
+    crackOsc.start(now);
+    crackOsc.stop(now + 0.15);
+    // Layer 2: Noise burst - explosive debris scatter
+    const noiseDur = 0.4;
+    const bufferSize = ctx.sampleRate * noiseDur;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+    }
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+    const noiseFilter = ctx.createBiquadFilter();
+    noiseFilter.type = 'bandpass';
+    noiseFilter.frequency.setValueAtTime(2000, now);
+    noiseFilter.frequency.exponentialRampToValueAtTime(400, now + noiseDur);
+    noiseFilter.Q.setValueAtTime(0.8, now);
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.7, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.01, now + noiseDur);
+    noise.connect(noiseFilter);
+    noiseFilter.connect(noiseGain);
+    noiseGain.connect(ctx.destination);
+    noise.start(now);
+    noise.stop(now + noiseDur);
+    // Layer 3: Metallic debris scatter - rapid high-pitch drops
+    for (let i = 0; i < 8; i++) {
+      const t = now + 0.02 + i * 0.025;
+      const debris = ctx.createOscillator();
+      debris.type = 'triangle';
+      debris.frequency.setValueAtTime(4000 + Math.random() * 3000, t);
+      debris.frequency.exponentialRampToValueAtTime(500, t + 0.04);
+      const dGain = ctx.createGain();
+      dGain.gain.setValueAtTime(0.12, t);
+      dGain.gain.exponentialRampToValueAtTime(0.01, t + 0.05);
+      debris.connect(dGain);
+      dGain.connect(ctx.destination);
+      debris.start(t);
+      debris.stop(t + 0.05);
+    }
+    // Layer 4: Doppler-like falling tail - the "俯冲" feel
+    const dopplerOsc = ctx.createOscillator();
+    dopplerOsc.type = 'sine';
+    dopplerOsc.frequency.setValueAtTime(600, now + 0.05);
+    dopplerOsc.frequency.exponentialRampToValueAtTime(80, now + 0.4);
+    const dopplerGain = ctx.createGain();
+    dopplerGain.gain.setValueAtTime(0, now + 0.05);
+    dopplerGain.gain.linearRampToValueAtTime(0.4, now + 0.08);
+    dopplerGain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+    dopplerOsc.connect(dopplerGain);
+    dopplerGain.connect(ctx.destination);
+    dopplerOsc.start(now + 0.05);
+    dopplerOsc.stop(now + 0.5);
+  }
+
+  // ========== SUICIDE ROACH EXPLOSION (deep "dong" with long reverb) ==========
+  playSuicideExplode() {
+    if (!this.audioContext || this.isMuted) return;
+    const ctx = this.audioContext;
+    const now = ctx.currentTime;
+    const duration = 3.6; // long reverb tail
+
+    // Layer 1: Main "dong" impact - deep sine sweep (the core "咚")
+    const dongOsc = ctx.createOscillator();
+    dongOsc.type = 'sine';
+    dongOsc.frequency.setValueAtTime(180, now);
+    dongOsc.frequency.exponentialRampToValueAtTime(40, now + 0.15);
+    // After initial sweep, hold low frequency for long tail
+    dongOsc.frequency.setValueAtTime(40, now + 0.15);
+    dongOsc.frequency.exponentialRampToValueAtTime(25, now + duration);
+    const dongGain = ctx.createGain();
+    dongGain.gain.setValueAtTime(12.0, now); // strong initial hit
+    dongGain.gain.exponentialRampToValueAtTime(6.4, now + 0.1);
+    dongGain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+    dongOsc.connect(dongGain);
+    dongGain.connect(ctx.destination);
+    dongOsc.start(now);
+    dongOsc.stop(now + duration);
+
+    // Layer 2: Impact click (short transient for the "砰" attack)
+    const clickOsc = ctx.createOscillator();
+    clickOsc.type = 'triangle';
+    clickOsc.frequency.setValueAtTime(800, now);
+    clickOsc.frequency.exponentialRampToValueAtTime(200, now + 0.03);
+    const clickGain = ctx.createGain();
+    clickGain.gain.setValueAtTime(3.2, now);
+    clickGain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+    clickOsc.connect(clickGain);
+    clickGain.connect(ctx.destination);
+    clickOsc.start(now);
+    clickOsc.stop(now + 0.05);
+
+    // Layer 3: Short noise burst (explosion texture, very brief)
+    const noiseDur = 0.12;
+    const bufferSize = ctx.sampleRate * noiseDur;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+    }
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+    const noiseFilter = ctx.createBiquadFilter();
+    noiseFilter.type = 'lowpass';
+    noiseFilter.frequency.setValueAtTime(1200, now);
+    noiseFilter.frequency.exponentialRampToValueAtTime(200, now + noiseDur);
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(4.0, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.01, now + noiseDur);
+    noise.connect(noiseFilter);
+    noiseFilter.connect(noiseGain);
+    noiseGain.connect(ctx.destination);
+    noise.start(now);
+    noise.stop(now + noiseDur);
+
+    // Layer 4: Long resonant tail (simulating room reverb on the "dong")
+    // Multiple delayed low-frequency echoes for the lingering "嗡..."
+    for (let i = 0; i < 5; i++) {
+      const delay = 0.08 + i * 0.3;
+      const decay = 1.2 - i * 0.2;
+      const tailOsc = ctx.createOscillator();
+      tailOsc.type = 'sine';
+      const freq = 50 - i * 5;
+      tailOsc.frequency.setValueAtTime(freq, now + delay);
+      tailOsc.frequency.exponentialRampToValueAtTime(freq * 0.6, now + delay + 0.5);
+      const tailGain = ctx.createGain();
+      tailGain.gain.setValueAtTime(0, now + delay);
+      tailGain.gain.linearRampToValueAtTime(decay * 8, now + delay + 0.02);
+      tailGain.gain.exponentialRampToValueAtTime(0.01, now + delay + 1.6);
+      tailOsc.connect(tailGain);
+      tailGain.connect(ctx.destination);
+      tailOsc.start(now + delay);
+      tailOsc.stop(now + delay + 0.8);
+    }
+
+    // Layer 5: Sub-bass rumble (very low, felt more than heard)
+    const subOsc = ctx.createOscillator();
+    subOsc.type = 'sine';
+    subOsc.frequency.setValueAtTime(35, now);
+    subOsc.frequency.exponentialRampToValueAtTime(20, now + duration * 0.7);
+    const subGain = ctx.createGain();
+    subGain.gain.setValueAtTime(6.4, now);
+    subGain.gain.exponentialRampToValueAtTime(2.4, now + 0.2);
+    subGain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+    subOsc.connect(subGain);
+    subGain.connect(ctx.destination);
+    subOsc.start(now);
+    subOsc.stop(now + duration);
+  }
+
+  // ========== TIMED SUICIDE BOMB: Drop (mechanical "click-clack" timer start) ==========
+  playTimedBombDrop() {
+    if (!this.audioContext || this.isMuted) return;
+    const ctx = this.audioContext;
+    const now = ctx.currentTime;
+    // Mechanical click - timer activation
+    const clickOsc = ctx.createOscillator();
+    clickOsc.type = 'square';
+    clickOsc.frequency.setValueAtTime(1200, now);
+    clickOsc.frequency.exponentialRampToValueAtTime(400, now + 0.08);
+    const clickGain = ctx.createGain();
+    clickGain.gain.setValueAtTime(2.0, now);
+    clickGain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+    clickOsc.connect(clickGain);
+    clickGain.connect(ctx.destination);
+    clickOsc.start(now);
+    clickOsc.stop(now + 0.12);
+    // Second tick - timer running
+    const tickOsc = ctx.createOscillator();
+    tickOsc.type = 'sine';
+    tickOsc.frequency.setValueAtTime(800, now + 0.15);
+    tickOsc.frequency.exponentialRampToValueAtTime(200, now + 0.25);
+    const tickGain = ctx.createGain();
+    tickGain.gain.setValueAtTime(1.5, now + 0.15);
+    tickGain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+    tickOsc.connect(tickGain);
+    tickGain.connect(ctx.destination);
+    tickOsc.start(now + 0.15);
+    tickOsc.stop(now + 0.3);
+  }
+
+  // ========== TIMED SUICIDE BOMB: Explosion (enhanced BOOM with strong screen shake) ==========
+  playTimedBombExplode() {
+    if (!this.audioContext || this.isMuted) return;
+    const ctx = this.audioContext;
+    const now = ctx.currentTime;
+    const duration = 2.5;
+
+    // Layer 1: Massive impact "dong" - deeper and louder than suicide explode
+    const dongOsc = ctx.createOscillator();
+    dongOsc.type = 'sine';
+    dongOsc.frequency.setValueAtTime(220, now);
+    dongOsc.frequency.exponentialRampToValueAtTime(30, now + 0.2);
+    dongOsc.frequency.setValueAtTime(30, now + 0.2);
+    dongOsc.frequency.exponentialRampToValueAtTime(20, now + duration);
+    const dongGain = ctx.createGain();
+    dongGain.gain.setValueAtTime(16.0, now); // stronger than suicide
+    dongGain.gain.exponentialRampToValueAtTime(8.0, now + 0.1);
+    dongGain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+    dongOsc.connect(dongGain);
+    dongGain.connect(ctx.destination);
+    dongOsc.start(now);
+    dongOsc.stop(now + duration);
+
+    // Layer 2: Sharp impact click
+    const clickOsc = ctx.createOscillator();
+    clickOsc.type = 'triangle';
+    clickOsc.frequency.setValueAtTime(1000, now);
+    clickOsc.frequency.exponentialRampToValueAtTime(150, now + 0.04);
+    const clickGain = ctx.createGain();
+    clickGain.gain.setValueAtTime(5.0, now);
+    clickGain.gain.exponentialRampToValueAtTime(0.01, now + 0.06);
+    clickOsc.connect(clickGain);
+    clickGain.connect(ctx.destination);
+    clickOsc.start(now);
+
+    // Layer 3: Noise burst (explosion debris)
+    const bufferSize = ctx.sampleRate * 0.3;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * 0.8;
+    }
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+    const noiseFilter = ctx.createBiquadFilter();
+    noiseFilter.type = 'lowpass';
+    noiseFilter.frequency.setValueAtTime(3000, now);
+    noiseFilter.frequency.exponentialRampToValueAtTime(200, now + 0.3);
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(4.0, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+    noise.connect(noiseFilter);
+    noiseFilter.connect(noiseGain);
+    noiseGain.connect(ctx.destination);
+    noise.start(now);
+
+    // Layer 4: Sub-bass rumble
+    const subOsc = ctx.createOscillator();
+    subOsc.type = 'sine';
+    subOsc.frequency.setValueAtTime(60, now);
+    subOsc.frequency.exponentialRampToValueAtTime(25, now + 0.3);
+    const subGain = ctx.createGain();
+    subGain.gain.setValueAtTime(10.0, now);
+    subGain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+    subOsc.connect(subGain);
+    subGain.connect(ctx.destination);
+    subOsc.start(now);
+  }
+
+  // ========== ITEM SFX: Insecticide Spray (2-second hissing spray) ==========
+  playInsecticideSpray() {
+    if (!this.audioContext || this.isMuted) return;
+    const ctx = this.audioContext;
+    const duration = 2.0;
+    const now = ctx.currentTime;
+
+    // White noise buffer for hiss
+    const bufferSize = ctx.sampleRate * duration;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * 0.3;
+    }
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+
+    // Bandpass filter for aerosol hiss character
+    const bandpass = ctx.createBiquadFilter();
+    bandpass.type = 'bandpass';
+    bandpass.frequency.setValueAtTime(3000, now);
+    bandpass.frequency.linearRampToValueAtTime(5000, now + 0.5);
+    bandpass.frequency.linearRampToValueAtTime(3500, now + duration);
+    bandpass.Q.setValueAtTime(0.5, now);
+
+    // Lowpass for body
+    const lowpass = ctx.createBiquadFilter();
+    lowpass.type = 'lowpass';
+    lowpass.frequency.setValueAtTime(800, now);
+    lowpass.frequency.linearRampToValueAtTime(600, now + duration);
+
+    // Gain envelope (fade in/out)
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.5, now + 0.1);
+    gain.gain.setValueAtTime(0.5, now + duration - 0.3);
+    gain.gain.linearRampToValueAtTime(0.01, now + duration);
+
+    // Low-frequency rumble
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(80, now);
+    osc.frequency.linearRampToValueAtTime(60, now + duration);
+    const oscGain = ctx.createGain();
+    oscGain.gain.setValueAtTime(0.15, now);
+    oscGain.gain.linearRampToValueAtTime(0.01, now + duration);
+
+    // Connect
+    noise.connect(bandpass);
+    bandpass.connect(gain);
+    osc.connect(oscGain);
+    oscGain.connect(gain);
+    gain.connect(ctx.destination);
+
+    noise.start(now);
+    noise.stop(now + duration);
+    osc.start(now);
+    osc.stop(now + duration);
+  }
+
+  // ========== ITEM SFX: Sticky Drops (rapid pop-pop-pop sequence x10) ==========
+  playStickySpray() {
+    if (!this.audioContext || this.isMuted) return;
+    const ctx = this.audioContext;
+    const count = 10;
+    const interval = 0.08; // 80ms between drops
+
+    for (let i = 0; i < count; i++) {
+      const t = ctx.currentTime + i * interval;
+      this.playStickyDropPop(ctx, t);
+    }
+  }
+
+  private playStickyDropPop(ctx: AudioContext, time: number) {
+    // Short pop sound - quick pitch drop
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(800, time);
+    osc.frequency.exponentialRampToValueAtTime(200, time + 0.08);
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.3, time);
+    gain.gain.exponentialRampToValueAtTime(0.01, time + 0.08);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(time);
+    osc.stop(time + 0.08);
+
+    // Slight click noise
+    const clickOsc = ctx.createOscillator();
+    clickOsc.type = 'triangle';
+    clickOsc.frequency.setValueAtTime(2000, time);
+    clickOsc.frequency.exponentialRampToValueAtTime(500, time + 0.02);
+    const clickGain = ctx.createGain();
+    clickGain.gain.setValueAtTime(0.15, time);
+    clickGain.gain.exponentialRampToValueAtTime(0.01, time + 0.02);
+    clickOsc.connect(clickGain);
+    clickGain.connect(ctx.destination);
+    clickOsc.start(time);
+    clickOsc.stop(time + 0.02);
+  }
+
+  // ========== ITEM SFX: Molotov Explosion (boom + crackle) ==========
+  playMolotovExplosion() {
+    if (!this.audioContext || this.isMuted) return;
+    const ctx = this.audioContext;
+    const now = ctx.currentTime;
+
+    // Low boom (sine sweep down)
+    const boomOsc = ctx.createOscillator();
+    boomOsc.type = 'sine';
+    boomOsc.frequency.setValueAtTime(150, now);
+    boomOsc.frequency.exponentialRampToValueAtTime(30, now + 0.3);
+    const boomGain = ctx.createGain();
+    boomGain.gain.setValueAtTime(0.8, now);
+    boomGain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+    boomOsc.connect(boomGain);
+    boomGain.connect(ctx.destination);
+    boomOsc.start(now);
+    boomOsc.stop(now + 0.4);
+
+    // Noise burst (explosion texture)
+    const noiseDuration = 0.5;
+    const bufferSize = ctx.sampleRate * noiseDuration;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize); // decay
+    }
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+    const noiseFilter = ctx.createBiquadFilter();
+    noiseFilter.type = 'lowpass';
+    noiseFilter.frequency.setValueAtTime(2000, now);
+    noiseFilter.frequency.exponentialRampToValueAtTime(200, now + 0.5);
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.5, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+    noise.connect(noiseFilter);
+    noiseFilter.connect(noiseGain);
+    noiseGain.connect(ctx.destination);
+    noise.start(now);
+    noise.stop(now + noiseDuration);
+
+    // Crackle (short high-pitch spikes)
+    for (let i = 0; i < 6; i++) {
+      const t = now + 0.1 + i * 0.06;
+      const crackle = ctx.createOscillator();
+      crackle.type = 'square';
+      crackle.frequency.setValueAtTime(3000 + Math.random() * 2000, t);
+      const cGain = ctx.createGain();
+      cGain.gain.setValueAtTime(0.1, t);
+      cGain.gain.exponentialRampToValueAtTime(0.01, t + 0.03);
+      crackle.connect(cGain);
+      cGain.connect(ctx.destination);
+      crackle.start(t);
+      crackle.stop(t + 0.03);
+    }
+  }
+
+  // ========== ITEM SFX: Shotgun Mode (powerful burst) ==========
+  playShotgunActivate() {
+    if (!this.audioContext || this.isMuted) return;
+    const ctx = this.audioContext;
+    const now = ctx.currentTime;
+
+    // Heavy thump
+    const thump = ctx.createOscillator();
+    thump.type = 'sine';
+    thump.frequency.setValueAtTime(100, now);
+    thump.frequency.exponentialRampToValueAtTime(40, now + 0.15);
+    const thumpGain = ctx.createGain();
+    thumpGain.gain.setValueAtTime(0.6, now);
+    thumpGain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+    thump.connect(thumpGain);
+    thumpGain.connect(ctx.destination);
+    thump.start(now);
+    thump.stop(now + 0.2);
+
+    // Metallic click
+    const click = ctx.createOscillator();
+    click.type = 'triangle';
+    click.frequency.setValueAtTime(2000, now + 0.05);
+    click.frequency.exponentialRampToValueAtTime(800, now + 0.1);
+    const clickGain = ctx.createGain();
+    clickGain.gain.setValueAtTime(0.2, now + 0.05);
+    clickGain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+    click.connect(clickGain);
+    clickGain.connect(ctx.destination);
+    click.start(now + 0.05);
+    click.stop(now + 0.12);
+
+    // Echo rumble
+    const rumble = ctx.createOscillator();
+    rumble.type = 'sawtooth';
+    rumble.frequency.setValueAtTime(60, now + 0.08);
+    const rumbleGain = ctx.createGain();
+    rumbleGain.gain.setValueAtTime(0.1, now + 0.08);
+    rumbleGain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+    const rumbleFilter = ctx.createBiquadFilter();
+    rumbleFilter.type = 'lowpass';
+    rumbleFilter.frequency.setValueAtTime(300, now + 0.08);
+    rumble.connect(rumbleFilter);
+    rumbleFilter.connect(rumbleGain);
+    rumbleGain.connect(ctx.destination);
+    rumble.start(now + 0.08);
+    rumble.stop(now + 0.3);
+  }
+
+  // ========== RADAR LASER SINGLE SHOT (short zap) ==========
+  playRadarShot() {
+    if (!this.audioContext || this.isMuted) return;
+    const ctx = this.audioContext;
+    const now = ctx.currentTime;
+
+    // Short high-frequency zap
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(3000, now);
+    osc.frequency.exponentialRampToValueAtTime(800, now + 0.08);
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.15, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+
+    // Bandpass for laser character
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(4000, now);
+    filter.frequency.exponentialRampToValueAtTime(1000, now + 0.08);
+    filter.Q.setValueAtTime(2, now);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.08);
+
+    // Click transient
+    const click = ctx.createOscillator();
+    click.type = 'square';
+    click.frequency.setValueAtTime(6000, now);
+    click.frequency.exponentialRampToValueAtTime(2000, now + 0.02);
+    const clickGain = ctx.createGain();
+    clickGain.gain.setValueAtTime(0.08, now);
+    clickGain.gain.exponentialRampToValueAtTime(0.01, now + 0.02);
+    click.connect(clickGain);
+    clickGain.connect(ctx.destination);
+    click.start(now);
+    click.stop(now + 0.02);
+  }
+
+  // ========== ITEM SFX: Radar Laser (electronic scan + lock-on beep) ==========
+  playRadarActivate() {
+    if (!this.audioContext || this.isMuted) return;
+    const ctx = this.audioContext;
+    const now = ctx.currentTime;
+
+    // Electronic scan sweep
+    const scan = ctx.createOscillator();
+    scan.type = 'sawtooth';
+    scan.frequency.setValueAtTime(400, now);
+    scan.frequency.linearRampToValueAtTime(1200, now + 0.15);
+    scan.frequency.linearRampToValueAtTime(600, now + 0.3);
+    const scanGain = ctx.createGain();
+    scanGain.gain.setValueAtTime(0.12, now);
+    scanGain.gain.linearRampToValueAtTime(0.06, now + 0.3);
+
+    // Add ring modulator effect
+    const ringOsc = ctx.createOscillator();
+    ringOsc.type = 'sine';
+    ringOsc.frequency.setValueAtTime(30, now);
+    const ringGain = ctx.createGain();
+    ringGain.gain.setValueAtTime(200, now);
+
+    scan.connect(ringGain);
+    ringOsc.connect(ringGain.gain);
+    ringGain.connect(scanGain);
+    scanGain.connect(ctx.destination);
+    scan.start(now);
+    scan.stop(now + 0.3);
+    ringOsc.start(now);
+    ringOsc.stop(now + 0.3);
+
+    // Lock-on beep sequence
+    for (let i = 0; i < 3; i++) {
+      const t = now + 0.35 + i * 0.12;
+      const beep = ctx.createOscillator();
+      beep.type = 'sine';
+      beep.frequency.setValueAtTime(880 + i * 220, t);
+      const bGain = ctx.createGain();
+      bGain.gain.setValueAtTime(0.2, t);
+      bGain.gain.exponentialRampToValueAtTime(0.01, t + 0.08);
+      beep.connect(bGain);
+      bGain.connect(ctx.destination);
+      beep.start(t);
+      beep.stop(t + 0.08);
+    }
+  }
+
+  // ========== FLYING ROACH LOOP: continuous buzz while any flying roach is alive ==========
+  private flyingBuzzAudio: HTMLAudioElement | null = null;
+  private flyingBuzzPlaying: boolean = false;
+
+  startFlyingBuzzLoop() {
+    if (this.isMuted || this.flyingBuzzPlaying) return;
+    if (!this.flyingBuzzAudio) {
+      this.flyingBuzzAudio = new Audio('/assets/flying_roach_buzz.mp3');
+      this.flyingBuzzAudio.loop = true;
+      this.flyingBuzzAudio.volume = 0.4;
+    }
+    this.flyingBuzzAudio.currentTime = 0;
+    this.flyingBuzzAudio.play().catch(() => {});
+    this.flyingBuzzPlaying = true;
+  }
+
+  stopFlyingBuzzLoop() {
+    if (this.flyingBuzzAudio) {
+      this.flyingBuzzAudio.pause();
+      this.flyingBuzzAudio.currentTime = 0;
+    }
+    this.flyingBuzzPlaying = false;
+  }
+
+  // ========== FLYING ROACH DEATH: one-shot death sound ==========
+  playFlyingDeath() {
+    if (this.isMuted) return;
+    const audio = new Audio('/assets/flying_roach_death.mp3');
+    audio.volume = 0.5;
+    audio.play().catch(() => {});
+  }
+
+  toggleMute() {
+    this.isMuted = !this.isMuted;
+    if (this.isMuted) {
+      this.stopBGM();
+      this.stopFire();
+      this.stopFlyingBuzzLoop();
+    } else {
+      this.resumeBGM();
+    }
+    return this.isMuted;
+  }
+
+  setMuted(muted: boolean) {
+    this.isMuted = muted;
+    if (muted) {
+      this.stopBGM();
+      this.stopFire();
+      this.stopFlyingBuzzLoop();
+      this.stopGameOverBGM();
+      this.stopVictoryBGM();
+    }
+  }
+  
+  getMuted(): boolean {
+    return this.isMuted;
+  }
+  
+  // ========== FAN LOOP: continuous air-rushing noise ==========
+  private fanNodes: { osc: OscillatorNode; gain: GainNode; lfo: OscillatorNode; lfoGain: GainNode } | null = null;
+
+  startFanLoop() {
+    if (!this.audioContext || this.isMuted || this.fanNodes) return;
+    const ctx = this.audioContext;
+    const now = ctx.currentTime;
+
+    // White noise through bandpass = rushing air
+    const bufferSize = ctx.sampleRate * 2;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1);
+
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+    noise.loop = true;
+
+    // Bandpass: focus on low-mid range for "whoosh"
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.setValueAtTime(300, now);
+    bp.Q.setValueAtTime(0.5, now);
+
+    // Slow LFO sweeping the filter = rotating blade feel
+    const lfo = ctx.createOscillator();
+    lfo.type = 'sine';
+    lfo.frequency.setValueAtTime(3, now); // 3Hz = fan blade rotation
+    const lfoGain = ctx.createGain();
+    lfoGain.gain.setValueAtTime(150, now);
+    lfo.connect(lfoGain);
+    lfoGain.connect(bp.frequency);
+    lfo.start(now);
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.25, now + 0.3); // fade in
+
+    noise.connect(bp);
+    bp.connect(gain);
+    gain.connect(ctx.destination);
+    noise.start(now);
+
+    this.fanNodes = { osc: noise as unknown as OscillatorNode, gain, lfo, lfoGain };
+  }
+
+  stopFanLoop() {
+    if (!this.fanNodes || !this.audioContext) return;
+    const now = this.audioContext.currentTime;
+    const { gain, lfo } = this.fanNodes;
+    gain.gain.cancelScheduledValues(now);
+    gain.gain.setValueAtTime(gain.gain.value, now);
+    gain.gain.linearRampToValueAtTime(0, now + 0.3); // fade out
+    lfo.stop(now + 0.3);
+    setTimeout(() => { this.fanNodes = null; }, 350);
+  }
+
+  // ========== MOLOTOV THROW: glass bottle whoosh + break ==========
+  playMolotovThrow() {
+    if (!this.audioContext || this.isMuted) return;
+    const ctx = this.audioContext;
+    const now = ctx.currentTime;
+
+    // Layer 1: air-whoosh (bottle flying through air)
+    const whooshNoise = ctx.createBufferSource();
+    const bufSize = ctx.sampleRate * 0.3;
+    const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < bufSize; i++) d[i] = (Math.random() * 2 - 1);
+    whooshNoise.buffer = buf;
+    const whooshFilter = ctx.createBiquadFilter();
+    whooshFilter.type = 'bandpass';
+    whooshFilter.frequency.setValueAtTime(800, now);
+    whooshFilter.frequency.linearRampToValueAtTime(200, now + 0.3);
+    whooshFilter.Q.setValueAtTime(1, now);
+    const whooshGain = ctx.createGain();
+    whooshGain.gain.setValueAtTime(0.3, now);
+    whooshGain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+    whooshNoise.connect(whooshFilter);
+    whooshFilter.connect(whooshGain);
+    whooshGain.connect(ctx.destination);
+    whooshNoise.start(now);
+    whooshNoise.stop(now + 0.3);
+
+    // Layer 2: high-frequency glass shimmer
+    for (let i = 0; i < 6; i++) {
+      const t = now + i * 0.015;
+      const glass = ctx.createOscillator();
+      glass.type = 'sine';
+      glass.frequency.setValueAtTime(3000 + Math.random() * 2000, t);
+      const gGain = ctx.createGain();
+      gGain.gain.setValueAtTime(0.08, t);
+      gGain.gain.exponentialRampToValueAtTime(0.01, t + 0.05);
+      glass.connect(gGain);
+      gGain.connect(ctx.destination);
+      glass.start(t);
+      glass.stop(t + 0.05);
+    }
+  }
+
+  // ========== FIRE WALL BURN: continuous crackling fire ==========
+  private fireWallNodes: { noise: AudioBufferSourceNode; gain: GainNode } | null = null;
+
+  startFireWallBurn() {
+    if (!this.audioContext || this.isMuted || this.fireWallNodes) return;
+    const ctx = this.audioContext;
+    const now = ctx.currentTime;
+
+    // Crackling fire: noise with random amplitude modulation
+    const bufferSize = ctx.sampleRate * 2;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    let lastOut = 0;
+    for (let i = 0; i < bufferSize; i++) {
+      // Brown noise (deeper than white noise)
+      const white = Math.random() * 2 - 1;
+      lastOut = (lastOut + (0.02 * white)) / 1.02;
+      data[i] = lastOut * 3.5;
+    }
+
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+    noise.loop = true;
+
+    // Lowpass for deep rumble
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(600, now);
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.2, now + 0.5); // slow fade in
+
+    noise.connect(lp);
+    lp.connect(gain);
+    gain.connect(ctx.destination);
+    noise.start(now);
+
+    this.fireWallNodes = { noise, gain };
+
+    // Periodic crackle pops (interval ref stored on the object)
+    (this.fireWallNodes as any)._crackleInterval = setInterval(() => {
+      if (!this.audioContext || this.isMuted) return;
+      const cNow = this.audioContext.currentTime;
+      // Random crackle
+      const crackle = this.audioContext.createOscillator();
+      crackle.type = 'square';
+      crackle.frequency.setValueAtTime(200 + Math.random() * 600, cNow);
+      const cGain = this.audioContext.createGain();
+      cGain.gain.setValueAtTime(0.1 + Math.random() * 0.15, cNow);
+      cGain.gain.exponentialRampToValueAtTime(0.01, cNow + 0.03 + Math.random() * 0.05);
+      crackle.connect(cGain);
+      cGain.connect(this.audioContext.destination);
+      crackle.start(cNow);
+      crackle.stop(cNow + 0.08);
+    }, 150 + Math.random() * 200);
+  }
+
+  stopFireWallBurn() {
+    if (!this.fireWallNodes || !this.audioContext) return;
+    const now = this.audioContext.currentTime;
+    const { gain, noise } = this.fireWallNodes;
+    gain.gain.cancelScheduledValues(now);
+    gain.gain.setValueAtTime(gain.gain.value, now);
+    gain.gain.linearRampToValueAtTime(0, now + 0.5); // fade out
+    // Clear crackle interval
+    const interval = (this.fireWallNodes as any)._crackleInterval;
+    if (interval) clearInterval(interval);
+    setTimeout(() => {
+      try { noise.stop(); } catch (_) {}
+      this.fireWallNodes = null;
+    }, 550);
+  }
+
+  resumeAudioContext() {
+    if (this.audioContext && this.audioContext.state === 'suspended') {
+      this.audioContext.resume();
+    }
+  }
+}

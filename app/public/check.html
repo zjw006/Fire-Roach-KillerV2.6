@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Debug</title>
+<style>
+body { background: #000; color: #0f0; font-family: monospace; padding: 20px; font-size: 14px; }
+pre { white-space: pre-wrap; word-break: break-all; }
+button { margin: 5px; padding: 10px; font-family: monospace; cursor: pointer; background: #333; color: #0f0; border: 1px solid #0f0; }
+button:hover { background: #0f0; color: #000; }
+</style>
+</head>
+<body>
+<pre id="out">Click "Check Save" to view localStorage data</pre>
+<button onclick="check()">Check Save</button>
+<button onclick="setParticleLimit(150)">Set Limit 150 (Low)</button>
+<button onclick="setParticleLimit(200)">Set Limit 200 (Mid-Low)</button>
+<button onclick="setParticleLimit(250)">Set Limit 250 (Mid)</button>
+<button onclick="setParticleLimit(400)">Set Limit 400 (High)</button>
+<button onclick="unlockSewer()">Unlock Sewer</button>
+<button onclick="clearSave()">Clear All Save</button>
+<script>
+function check() {
+  try {
+    const p = localStorage.getItem('roach_blaster_progress');
+    const c = localStorage.getItem('roach_blaster_consumables');
+    const m = localStorage.getItem('roach_blaster_menu_money');
+    const pl = localStorage.getItem('roach_blaster_particle_limit');
+    document.getElementById('out').textContent = JSON.stringify({
+      progress: p ? JSON.parse(p) : null,
+      consumables: c ? JSON.parse(c) : null,
+      menuMoney: m ? parseInt(m) : null,
+      particleLimit: pl ? parseInt(pl) : 'not set (default 300)'
+    }, null, 2);
+  } catch(e) { document.getElementById('out').textContent = 'Error: ' + e; }
+}
+function setParticleLimit(limit) {
+  localStorage.setItem('roach_blaster_particle_limit', String(limit));
+  document.getElementById('out').textContent = 'Particle limit set to: ' + limit;
+}
+function unlockSewer() {
+  try {
+    const p = localStorage.getItem('roach_blaster_progress');
+    const parsed = p ? JSON.parse(p) : { saveVersion: 2, talentTree: { points: 0, talents: [] }, achievements: [], highestWave: 0, highestEndlessWave: 0, totalKills: 0, scenesUnlocked: ['kitchen'], scenesCompleted: [], weaponsUnlocked: ['flamethrower', 'sticky'], encyclopedia: { entries: [] }, shopUpgrades: [] };
+    if (!parsed.scenesUnlocked.includes('sewer')) parsed.scenesUnlocked.push('sewer');
+    if (!parsed.scenesCompleted.includes('kitchen')) parsed.scenesCompleted.push('kitchen');
+    parsed.highestWave = Math.max(parsed.highestWave, 6);
+    localStorage.setItem('roach_blaster_progress', JSON.stringify(parsed));
+    document.getElementById('out').textContent = 'Sewer unlocked!\n' + JSON.stringify(parsed, null, 2);
+  } catch(e) { document.getElementById('out').textContent = 'Error: ' + e; }
+}
+function clearSave() {
+  localStorage.removeItem('roach_blaster_progress');
+  localStorage.removeItem('roach_blaster_consumables');
+  localStorage.removeItem('roach_blaster_menu_money');
+  localStorage.removeItem('roach_blaster_particle_limit');
+  document.getElementById('out').textContent = 'All save data cleared!';
+}
+</script>
+</body>
+</html>
