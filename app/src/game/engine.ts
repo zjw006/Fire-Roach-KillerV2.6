@@ -1,4 +1,4 @@
-import { GameState, RoachType, RoachState, SceneType, WeatherType, ParticleType, FlameMode, GameMode, SAVE_VERSION, type Roach, type Player, type Particle, type FireZone, type FireWall, type Economy, type WeaponDrop, type GameProgress, type WaveConfig, type ThrowableProjectile, type InventoryItem, type TripleFlameState, type BossBattleState, type RadarLaser, type StickyBoard, type StickyDrop, type FanState, type EnemyDef } from './types';
+import { GameState, RoachType, RoachState, SceneType, WeatherType, ParticleType, FlameMode, GameMode, SAVE_VERSION, type Roach, type Player, type Particle, type FireZone, type FireWall, type Economy, type WeaponDrop, type GameProgress, type WaveConfig, type ThrowableProjectile, type InventoryItem, type TripleFlameState, type BossBattleState, type RadarLaser, type StickyBoard, type StickyDrop, type FanState } from './types';
 import * as Vibration from './vibration';
 import { AudioManager } from './audio';
 import { SCENE_CONFIGS, ENEMY_DEFS, TALENT_DEFS, WEAPON_DROP_DEFS, INVENTORY_SELL_PRICES, BOSS_CONFIG, SCENE_WAVE_CONFIGS, SCENE_ITEM_UNLOCKS, SCENE_ROACH_TYPES, SCENE_UNLOCK_CHAIN, SCENE_REWARD_ITEMS, SCENE_GROUND_BOUNDS, createDefaultProgress, ENCYCLOPEDIA_DEFS, CONSUMABLE_DEFS } from './data';
@@ -5580,7 +5580,7 @@ export class GameEngine {
           if (flyDist < flyHitWidth && vertDist > 0 && vertDist < maxRange * 1.3) {
             const falloff = 1 - (vertDist / (maxRange * 1.2)) * 0.7;
             // Store DAMAGE PER SECOND in burnDamage (no deltaTime here)
-            let damage = this.getWeaponDamage(p) * p.damageMultiplier * falloff * gun.damageMult;
+            const damage = this.getWeaponDamage(p) * p.damageMultiplier * falloff * gun.damageMult;
             this.applyWeaponEffect(r, p.currentWeapon);
             r.burnDamage += damage; // accumulate from multiple guns
             r.inFire = true;
@@ -7547,7 +7547,7 @@ export class GameEngine {
           const orbitR = 16 * (0.4 + riseProgress);
           const plusX = r.x + Math.cos(orbitAngle) * orbitR;
 
-          let plusAlpha = baseAlpha * Math.min(1, riseProgress * 3) * (1 - Math.pow(riseProgress, 2));
+          const plusAlpha = baseAlpha * Math.min(1, riseProgress * 3) * (1 - Math.pow(riseProgress, 2));
           if (plusAlpha <= 0.02) continue;
 
           const plusSize = 14 + riseProgress * 14;

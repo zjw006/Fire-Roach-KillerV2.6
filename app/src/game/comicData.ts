@@ -1,17 +1,31 @@
+/**
+ * @fileoverview 漫画过场数据模块
+ * @description 定义游戏各场景首次进入前的漫画章节、面板与对话内容，并提供 localStorage 阅读标记管理。
+ */
+
 import type { SceneType } from './types';
 
+/** 单张漫画面板数据 */
 export interface ComicPanel {
+  /** 漫画图片路径 */
   image: string;
+  /** 对话文本 */
   dialog: string;
+  /** 说话者名称 */
   speaker: string;
 }
 
+/** 漫画章节数据 */
 export interface ComicChapter {
+  /** 关联场景类型 */
   scene: SceneType;
+  /** 章节标题 */
   title: string;
+  /** 面板列表 */
   panels: ComicPanel[];
 }
 
+/** 全游戏漫画章节静态数据 */
 export const COMIC_DATA: ComicChapter[] = [
   // 序章 - 开场故事
   {
@@ -182,12 +196,20 @@ export const COMIC_DATA: ComicChapter[] = [
   },
 ];
 
-// Get comic chapter by scene type
+/**
+ * 根据场景类型获取对应漫画章节
+ * @param {SceneType} scene - 场景类型
+ * @returns {ComicChapter | undefined} 对应章节数据，未找到则返回 undefined
+ */
 export function getComicChapter(scene: SceneType): ComicChapter | undefined {
   return COMIC_DATA.find(c => c.scene === scene);
 }
 
-// Check if comic has been seen
+/**
+ * 检查指定场景的漫画是否已观看过
+ * @param {SceneType} scene - 场景类型
+ * @returns {boolean} 已观看返回 true
+ */
 export function hasSeenComic(scene: SceneType): boolean {
   try {
     const seen = localStorage.getItem('roach_blaster_seen_comics');
@@ -199,7 +221,10 @@ export function hasSeenComic(scene: SceneType): boolean {
   }
 }
 
-// Mark comic as seen
+/**
+ * 将指定场景的漫画标记为已观看
+ * @param {SceneType} scene - 场景类型
+ */
 export function markComicSeen(scene: SceneType): void {
   try {
     const seen = localStorage.getItem('roach_blaster_seen_comics');
@@ -209,11 +234,13 @@ export function markComicSeen(scene: SceneType): void {
       localStorage.setItem('roach_blaster_seen_comics', JSON.stringify(scenes));
     }
   } catch {
-    // ignore storage errors
+    // 忽略存储错误
   }
 }
 
-// Reset seen comics (for testing)
+/**
+ * 重置漫画观看记录（调试用）
+ */
 export function resetSeenComics(): void {
   try {
     localStorage.removeItem('roach_blaster_seen_comics');
@@ -222,7 +249,10 @@ export function resetSeenComics(): void {
   }
 }
 
-// Get total comic count
+/**
+ * 获取全游戏漫画面板总数
+ * @returns {number} 面板总数量
+ */
 export function getTotalComicCount(): number {
   return COMIC_DATA.reduce((sum, chapter) => sum + chapter.panels.length, 0);
 }

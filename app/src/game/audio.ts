@@ -1,5 +1,11 @@
+/**
+ * @fileoverview 游戏音频管理器
+ * @description 统一管理 BGM、SFX、Web Audio API 合成音效，并代理震动功能。
+ */
+
 import * as Vibration from './vibration';
 
+/** 音频管理器：负责背景音乐、音效播放与震动代理 */
 export class AudioManager {
   private bgm: HTMLAudioElement | null = null;
   private fireSfx: HTMLAudioElement | null = null;
@@ -7,7 +13,7 @@ export class AudioManager {
   private swatterSfx: HTMLAudioElement | null = null;
   private reloadSfx: HTMLAudioElement | null = null;
   private clickSfx: HTMLAudioElement | null = null;
-  // When true, playClick() is silently ignored (used to suppress UI clicks during gameplay)
+  /** 为 true 时静默忽略点击音效（用于游戏过程中屏蔽 UI 点击音） */
   suppressClickSfx: boolean = false;
   private gameOverBgm: HTMLAudioElement | null = null;
   private victoryBgm: HTMLAudioElement | null = null;
@@ -19,21 +25,24 @@ export class AudioManager {
 
   constructor() {
     this.initAudio();
-    // Sync vibration state from centralized vibration module
+    // 从集中式震动模块同步开关状态
     this.isVibrationEnabled = Vibration.isVibrationEnabled();
   }
 
-  // ========== VIBRATION (all delegated to vibration.ts) ==========
+  // ========== 震动代理（全部委托给 vibration.ts） ==========
+  /** 获取震动开关状态 */
   getVibrationEnabled(): boolean {
     this.isVibrationEnabled = Vibration.isVibrationEnabled();
     return this.isVibrationEnabled;
   }
 
+  /** 设置震动开关状态 */
   setVibrationEnabled(enabled: boolean) {
     this.isVibrationEnabled = enabled;
     Vibration.setVibrationEnabled(enabled);
   }
 
+  /** 切换震动开关状态 */
   toggleVibration(): boolean {
     const result = Vibration.toggleVibration();
     this.isVibrationEnabled = result;
@@ -97,7 +106,7 @@ export class AudioManager {
     this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
   }
   
-  // ========== NURSE CASTING SOUND ==========
+  /** 播放护士蟑螂治疗施法音效 */
   playNurseCast() {
     if (this.isMuted) return;
     const sfx = new Audio('/assets/nurse_cast.mp3');
@@ -105,7 +114,7 @@ export class AudioManager {
     sfx.play().catch(() => {});
   }
 
-  // ========== MUTANT TRANSFORMATION SOUND ==========
+  /** 播放变异蟑螂变身音效 */
   playMutantTransform() {
     if (this.isMuted) return;
     const sfx = new Audio('/assets/mutant_transform.mp3');
@@ -113,6 +122,7 @@ export class AudioManager {
     sfx.play().catch(() => {});
   }
 
+  /** 播放防线被突破的蜂鸣警告音效（Web Audio API 合成） */
   private playBreachSound() {
     if (!this.audioContext || this.isMuted) return;
     const osc = this.audioContext.createOscillator();
@@ -126,34 +136,41 @@ export class AudioManager {
     osc.start(this.audioContext.currentTime);
     osc.stop(this.audioContext.currentTime + 0.3);
   }
-  
+
+  /** 开始播放当前 BGM */
   startBGM() {
     if (this.bgm && !this.isMuted) {
       this.bgm.currentTime = 0;
       this.bgm.play().catch(() => {});
     }
   }
-  
+
+  /** 停止当前 BGM */
   stopBGM() {
     if (this.bgm) {
       this.bgm.pause();
       this.bgm.currentTime = 0;
     }
-    this.currentBgmPath = ''; // Reset so switchBGM will play again on re-entry
+    this.currentBgmPath = ''; // 重置路径，确保重新进入时可再次播放
   }
-  
+
+  /** 暂停当前 BGM */
   pauseBGM() {
     if (this.bgm) this.bgm.pause();
   }
 
+  /** 恢复播放当前 BGM */
   resumeBGM() {
     if (this.bgm && !this.isMuted) {
       this.bgm.play().catch(() => {});
     }
   }
 
-  // Gradually fade BGM volume to target level over duration (ms)
-  // Used when settlement screen appears - BGM continues at low volume
+  /**
+   * 渐变淡出 BGM 音量到目标级别
+   * @param {number} targetVolume - 目标音量（默认 0.08）
+   * @param {number} duration - 淡出持续时间，单位毫秒（默认 2500ms）
+   */
   fadeOutBGM(targetVolume: number = 0.08, duration: number = 2500) {
     if (!this.bgm) return;
     const startVolume = this.bgm.volume;
@@ -161,7 +178,7 @@ export class AudioManager {
     const step = () => {
       const elapsed = performance.now() - startTime;
       const progress = Math.min(elapsed / duration, 1);
-      // Ease-out cubic for smooth fade
+      // 使用 ease-out cubic 实现平滑淡出
       const eased = 1 - Math.pow(1 - progress, 3);
       const newVolume = startVolume + (targetVolume - startVolume) * eased;
       if (this.bgm) {
@@ -174,10 +191,10 @@ export class AudioManager {
     requestAnimationFrame(step);
   }
 
-  // ========== GAME OVER BGM: play/stop ==========
+  /** 播放游戏结束 BGM */
   playGameOverBGM() {
     if (this.isMuted) return;
-    // Always recreate Audio element for reliable playback
+    // 每次重新创建 Audio 元素以确保可靠播放
     this.stopGameOverBGM();
     this.gameOverBgm = new Audio('/assets/bgm_gameover.mp3');
     this.gameOverBgm.loop = true;
@@ -185,6 +202,7 @@ export class AudioManager {
     this.gameOverBgm.play().catch(() => {});
   }
 
+  /** 停止游戏结束 BGM */
   stopGameOverBGM() {
     if (this.gameOverBgm) {
       this.gameOverBgm.pause();
@@ -193,13 +211,14 @@ export class AudioManager {
     }
   }
 
-  // ========== VICTORY BGM: play/stop ==========
+  /** 播放胜利 BGM */
   playVictoryBGM() {
     if (this.isMuted || !this.victoryBgm) return;
     this.victoryBgm.currentTime = 0;
     this.victoryBgm.play().catch(() => {});
   }
 
+  /** 停止胜利 BGM */
   stopVictoryBGM() {
     if (this.victoryBgm) {
       this.victoryBgm.pause();
@@ -207,27 +226,33 @@ export class AudioManager {
     }
   }
 
-  // Switch BGM to a different track. If path is different from current, reload and play.
+  /**
+   * 切换 BGM 到指定音轨
+   * @param {string} path - 音频文件路径
+   */
   switchBGM(path: string) {
-    if (this.currentBgmPath === path) return; // same track, no change
+    if (this.currentBgmPath === path) return; // 同一首曲目，无需切换
     this.currentBgmPath = path;
-    // Stop current BGM
+    // 停止当前 BGM
     if (this.bgm) {
       this.bgm.pause();
       this.bgm.currentTime = 0;
     }
-    // Create new BGM element
+    // 创建新的 BGM 元素
     this.bgm = new Audio(path);
     this.bgm.loop = true;
     this.bgm.volume = 0.6;
-    // Play if not muted
+    // 未静音时直接播放
     if (!this.isMuted) {
       this.bgm.play().catch(() => {});
     }
   }
 
-  // Get BGM path for a given scene type + difficulty
-  // Returns { easy: path, hard: path } or null if no custom BGM
+  /**
+   * 获取指定场景在简单/困难难度下的 BGM 路径
+   * @param {string} sceneType - 场景类型
+   * @returns {Object | null} 包含 easy 和 hard 路径的对象，若无自定义 BGM 则返回 null
+   */
   getBgmForScene(sceneType: string): { easy: string; hard: string } | null {
     switch (sceneType) {
       case 'kitchen':
@@ -266,24 +291,30 @@ export class AudioManager {
           hard: '/assets/bgm_hospital.mp3?v=1',
         };
       default:
-        return null; // No custom BGM for this scene
+        return null; // 该场景无自定义 BGM
     }
   }
 
-  // Switch BGM based on scene + difficulty
+  /**
+   * 根据场景与难度自动切换对应 BGM
+   * @param {string} sceneType - 场景类型
+   * @param {string} difficulty - 难度等级（'easy' | 'hard'）
+   */
   switchBGMForScene(sceneType: string, difficulty: string) {
     const bgmMap = this.getBgmForScene(sceneType);
-    if (!bgmMap) return; // No custom BGM, keep default
+    if (!bgmMap) return; // 无自定义 BGM，保持默认
     const path = difficulty === 'hard' ? bgmMap.hard : bgmMap.easy;
     this.switchBGM(path);
   }
 
+  /** 播放火焰喷射音效 */
   playFire() {
     if (this.fireSfx && !this.isMuted) {
       this.fireSfx.play().catch(() => {});
     }
   }
-  
+
+  /** 停止火焰喷射音效 */
   stopFire() {
     if (this.fireSfx) {
       this.fireSfx.pause();
@@ -291,34 +322,37 @@ export class AudioManager {
     }
   }
   
+  /** 播放击杀蟑螂音效 */
   playKill() {
     if (this.killSfx && !this.isMuted) {
       this.killSfx.currentTime = 0;
       this.killSfx.play().catch(() => {});
     }
   }
-  
+
+  /** 播放电蚊拍音效 */
   playSwatter() {
     if (this.swatterSfx && !this.isMuted) {
       this.swatterSfx.currentTime = 0;
       this.swatterSfx.play().catch(() => {});
     }
   }
-  
+
+  /** 播放换弹/换罐音效 */
   playReload() {
     if (this.reloadSfx && !this.isMuted) {
       this.reloadSfx.currentTime = 0;
       this.reloadSfx.play().catch(() => {});
     }
   }
-  
+
+  /** 播放防线突破警告音效 */
   playBreach() {
     if (this.isMuted) return;
     this.playBreachSound();
   }
 
-  // ========== UI CLICK SFX: play external MP3 ==========
-  // Suppressed during gameplay (PLAYING state), active in all external UI
+  /** 播放 UI 点击音效（游戏过程中会被 suppressClickSfx 屏蔽） */
   playClick() {
     if (this.isMuted || this.suppressClickSfx) return;
     if (this.clickSfx) {
@@ -327,12 +361,12 @@ export class AudioManager {
     }
   }
 
-  // ========== COUNTDOWN TICK: short electronic beep for 3-2-1 countdown ==========
+  /** 播放波次倒计时滴答音效（880Hz 方波，80ms） */
   playCountdownTick() {
     if (!this.audioContext || this.isMuted) return;
     const ctx = this.audioContext;
     const now = ctx.currentTime;
-    // Short square-wave tick, 880Hz, 80ms
+    // 短促方波滴答音
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.connect(gain);
@@ -345,7 +379,7 @@ export class AudioManager {
     osc.stop(now + 0.08);
   }
 
-  // ========== ITEM DROP: enhanced bright fanfare for new item reveal ==========
+  /** 播放新道具掉落时的华丽登场音效（C5-E5-G5-C6 上行琶音 + 闪烁和声） */
   playItemDropFanfare() {
     if (!this.audioContext || this.isMuted) return;
     const ctx = this.audioContext;
@@ -394,7 +428,7 @@ export class AudioManager {
     chimeOsc.stop(now + 0.45 + 0.8);
   }
 
-  // ========== DANMAKU SFX: sharp swish (bullet passing by) ==========
+  /** 播放弹幕/子弹飞过的锐利嗖嗖音效 */
   playDanmaku() {
     if (!this.audioContext || this.isMuted) return;
     const ctx = this.audioContext;
@@ -413,7 +447,7 @@ export class AudioManager {
     osc.stop(now + 0.1);
   }
 
-  // ========== BOSS CHARGE SFX: deep rumbling build-up ==========
+  /** 播放 Boss 冲锋蓄力时的低沉隆隆音效 */
   playBossCharge() {
     if (!this.audioContext || this.isMuted) return;
     const ctx = this.audioContext;
@@ -437,7 +471,7 @@ export class AudioManager {
     osc.stop(now + 0.5);
   }
 
-  // ========== PARALYZE SFX: electric zap ==========
+  /** 播放道具掉落的清脆提示音（C-E-G 上行琶音） */
   playItemDrop() {
     if (!this.audioContext || this.isMuted) return;
     const ctx = this.audioContext;
@@ -458,11 +492,12 @@ export class AudioManager {
     });
   }
 
+  /** 播放麻痹/电击 zap 音效 */
   playParalyze() {
     if (!this.audioContext || this.isMuted) return;
     const ctx = this.audioContext;
     const now = ctx.currentTime;
-    // Electric zap
+    // 电击 zap
     const osc = ctx.createOscillator();
     osc.type = 'square';
     osc.frequency.setValueAtTime(2000, now);
@@ -476,7 +511,7 @@ export class AudioManager {
     osc.stop(now + 0.15);
   }
 
-  // ========== BOSS CHARGE HIT: heavy impact ==========
+  /** 播放 Boss 冲锋撞击的重击音效 */
   playBossChargeHit() {
     if (!this.audioContext || this.isMuted) return;
     const ctx = this.audioContext;
@@ -517,7 +552,7 @@ export class AudioManager {
     noise.stop(now + noiseDur);
   }
 
-  // ========== DIALOG SFX: typing tick (subtle key press sound) ==========
+  /** 播放对话打字时的微妙按键滴答音效 */
   playDialogTypingTick() {
     if (!this.audioContext || this.isMuted) return;
     const ctx = this.audioContext;
@@ -538,7 +573,7 @@ export class AudioManager {
     osc.stop(now + 0.02);
   }
 
-  // ========== DIALOG SFX: line switch (page flip / transition chime) ==========
+  /** 播放对话切换/翻页时的过渡提示音效 */
   playDialogSwitch() {
     if (!this.audioContext || this.isMuted) return;
     const ctx = this.audioContext;
@@ -573,7 +608,7 @@ export class AudioManager {
     click.stop(now + 0.04);
   }
 
-  // ========== FLYING ROACH WING BUZZ: rapid wing vibration ==========
+  /** 播放飞行蟑螂翅膀高速振动的嗡嗡音效（多层合成：核心锯齿波 + 泛音 + 翅拍噪声） */
   playFlyingBuzz() {
     if (!this.audioContext || this.isMuted) return;
     const ctx = this.audioContext;
@@ -648,7 +683,7 @@ export class AudioManager {
     }
   }
 
-  // ========== FLYING ROACH DODGE: rapid directional swoosh ==========
+  /** 播放飞行蟑螂闪避时的快速方向嗖嗖音效 */
   playFlyingDodge() {
     if (this.isMuted) return;
     const audio = new Audio('/assets/flying_dodge.mp3');
@@ -656,7 +691,7 @@ export class AudioManager {
     audio.play().catch(() => {});
   }
 
-  // ========== SUICIDE BREACH GROUND: heavy ground-shaking impact ==========
+  /** 播放地面自爆蟑螂突破防线时的重型地面震动撞击音效 */
   playSuicideBreachGround() {
     if (!this.audioContext || this.isMuted) return;
     const ctx = this.audioContext;
@@ -724,7 +759,7 @@ export class AudioManager {
     }
   }
 
-  // ========== SUICIDE BREACH FLYING: sharp mid-air explosion with debris scatter ==========
+  /** 播放飞行自爆蟑螂空中爆炸时的尖锐爆裂 + 碎片散射音效 */
   playSuicideBreachFlying() {
     if (!this.audioContext || this.isMuted) return;
     const ctx = this.audioContext;
@@ -798,7 +833,7 @@ export class AudioManager {
     dopplerOsc.stop(now + 0.5);
   }
 
-  // ========== SUICIDE ROACH EXPLOSION (deep "dong" with long reverb) ==========
+  /** 播放自爆蟑螂爆炸音效（深沉"咚"声 + 长混响尾音） */
   playSuicideExplode() {
     if (!this.audioContext || this.isMuted) return;
     const ctx = this.audioContext;
@@ -893,7 +928,7 @@ export class AudioManager {
     subOsc.stop(now + duration);
   }
 
-  // ========== TIMED SUICIDE BOMB: Drop (mechanical "click-clack" timer start) ==========
+  /** 播放定时炸弹蟑螂放置炸弹时的机械咔哒计时启动音效 */
   playTimedBombDrop() {
     if (!this.audioContext || this.isMuted) return;
     const ctx = this.audioContext;
@@ -924,7 +959,7 @@ export class AudioManager {
     tickOsc.stop(now + 0.3);
   }
 
-  // ========== TIMED SUICIDE BOMB: Explosion (enhanced BOOM with strong screen shake) ==========
+  /** 播放定时炸弹爆炸音效（比自爆蟑螂更强力的 BOOM + 屏幕震动配合） */
   playTimedBombExplode() {
     if (!this.audioContext || this.isMuted) return;
     const ctx = this.audioContext;
@@ -993,7 +1028,7 @@ export class AudioManager {
     subOsc.start(now);
   }
 
-  // ========== ITEM SFX: Insecticide Spray (2-second hissing spray) ==========
+  /** 播放杀虫喷雾 2 秒持续嘶嘶喷射音效 */
   playInsecticideSpray() {
     if (!this.audioContext || this.isMuted) return;
     const ctx = this.audioContext;
@@ -1053,7 +1088,7 @@ export class AudioManager {
     osc.stop(now + duration);
   }
 
-  // ========== ITEM SFX: Sticky Drops (rapid pop-pop-pop sequence x10) ==========
+  /** 播放粘板喷雾连续弹出 10 次 pop-pop-pop 序列音效 */
   playStickySpray() {
     if (!this.audioContext || this.isMuted) return;
     const ctx = this.audioContext;
@@ -1066,8 +1101,9 @@ export class AudioManager {
     }
   }
 
+  /** 播放单次粘板弹丸 pop 音效（内部辅助方法） */
   private playStickyDropPop(ctx: AudioContext, time: number) {
-    // Short pop sound - quick pitch drop
+    // 短促 pop 音，快速音高下降
     const osc = ctx.createOscillator();
     osc.type = 'sine';
     osc.frequency.setValueAtTime(800, time);
@@ -1096,7 +1132,7 @@ export class AudioManager {
     clickOsc.stop(time + 0.02);
   }
 
-  // ========== ITEM SFX: Molotov Explosion (boom + crackle) ==========
+  /** 播放燃烧瓶爆炸音效（低沉 boom + 爆裂 crackle） */
   playMolotovExplosion() {
     if (!this.audioContext || this.isMuted) return;
     const ctx = this.audioContext;
@@ -1154,7 +1190,7 @@ export class AudioManager {
     }
   }
 
-  // ========== ITEM SFX: Shotgun Mode (powerful burst) ==========
+  /** 播放散弹模式激活时的强力爆发音效 */
   playShotgunActivate() {
     if (!this.audioContext || this.isMuted) return;
     const ctx = this.audioContext;
@@ -1203,7 +1239,7 @@ export class AudioManager {
     rumble.stop(now + 0.3);
   }
 
-  // ========== RADAR LASER SINGLE SHOT (short zap) ==========
+  /** 播放雷达激光单发射击的短促 zap 音效 */
   playRadarShot() {
     if (!this.audioContext || this.isMuted) return;
     const ctx = this.audioContext;
@@ -1246,7 +1282,7 @@ export class AudioManager {
     click.stop(now + 0.02);
   }
 
-  // ========== ITEM SFX: Radar Laser (electronic scan + lock-on beep) ==========
+  /** 播放雷达激光激活时的电子扫描 + 锁定提示音 */
   playRadarActivate() {
     if (!this.audioContext || this.isMuted) return;
     const ctx = this.audioContext;
@@ -1294,10 +1330,12 @@ export class AudioManager {
     }
   }
 
-  // ========== FLYING ROACH LOOP: continuous buzz while any flying roach is alive ==========
+  /** 飞行蟑螂循环嗡嗡音频实例 */
   private flyingBuzzAudio: HTMLAudioElement | null = null;
+  /** 飞行蟑螂嗡嗡是否正在播放 */
   private flyingBuzzPlaying: boolean = false;
 
+  /** 启动飞行蟑螂持续嗡嗡循环（场上存在飞行蟑螂时调用） */
   startFlyingBuzzLoop() {
     if (this.isMuted || this.flyingBuzzPlaying) return;
     if (!this.flyingBuzzAudio) {
@@ -1310,6 +1348,7 @@ export class AudioManager {
     this.flyingBuzzPlaying = true;
   }
 
+  /** 停止飞行蟑螂持续嗡嗡循环 */
   stopFlyingBuzzLoop() {
     if (this.flyingBuzzAudio) {
       this.flyingBuzzAudio.pause();
@@ -1318,7 +1357,7 @@ export class AudioManager {
     this.flyingBuzzPlaying = false;
   }
 
-  // ========== FLYING ROACH DEATH: one-shot death sound ==========
+  /** 播放飞行蟑螂死亡时的一次性死亡音效 */
   playFlyingDeath() {
     if (this.isMuted) return;
     const audio = new Audio('/assets/flying_roach_death.mp3');
@@ -1326,6 +1365,7 @@ export class AudioManager {
     audio.play().catch(() => {});
   }
 
+  /** 切换静音状态 */
   toggleMute() {
     this.isMuted = !this.isMuted;
     if (this.isMuted) {
@@ -1338,6 +1378,7 @@ export class AudioManager {
     return this.isMuted;
   }
 
+  /** 设置静音状态 */
   setMuted(muted: boolean) {
     this.isMuted = muted;
     if (muted) {
@@ -1348,14 +1389,16 @@ export class AudioManager {
       this.stopVictoryBGM();
     }
   }
-  
+
+  /** 获取当前静音状态 */
   getMuted(): boolean {
     return this.isMuted;
   }
   
-  // ========== FAN LOOP: continuous air-rushing noise ==========
+  /** 风扇持续气流噪音的音频节点 */
   private fanNodes: { osc: OscillatorNode; gain: GainNode; lfo: OscillatorNode; lfoGain: GainNode } | null = null;
 
+  /** 启动风扇持续气流循环音效 */
   startFanLoop() {
     if (!this.audioContext || this.isMuted || this.fanNodes) return;
     const ctx = this.audioContext;
@@ -1399,6 +1442,7 @@ export class AudioManager {
     this.fanNodes = { osc: noise as unknown as OscillatorNode, gain, lfo, lfoGain };
   }
 
+  /** 停止风扇持续气流循环音效（带淡出） */
   stopFanLoop() {
     if (!this.fanNodes || !this.audioContext) return;
     const now = this.audioContext.currentTime;
@@ -1410,7 +1454,7 @@ export class AudioManager {
     setTimeout(() => { this.fanNodes = null; }, 350);
   }
 
-  // ========== MOLOTOV THROW: glass bottle whoosh + break ==========
+  /** 播放燃烧瓶投掷时的玻璃瓶破空嗖嗖 + 碎裂音效 */
   playMolotovThrow() {
     if (!this.audioContext || this.isMuted) return;
     const ctx = this.audioContext;
@@ -1453,9 +1497,10 @@ export class AudioManager {
     }
   }
 
-  // ========== FIRE WALL BURN: continuous crackling fire ==========
+  /** 火墙持续燃烧音频节点 */
   private fireWallNodes: { noise: AudioBufferSourceNode; gain: GainNode } | null = null;
 
+  /** 启动火墙持续燃烧噼啪音效（低频噪音 + 随机爆裂） */
   startFireWallBurn() {
     if (!this.audioContext || this.isMuted || this.fireWallNodes) return;
     const ctx = this.audioContext;
@@ -1511,6 +1556,7 @@ export class AudioManager {
     }, 150 + Math.random() * 200);
   }
 
+  /** 停止火墙持续燃烧音效（带淡出） */
   stopFireWallBurn() {
     if (!this.fireWallNodes || !this.audioContext) return;
     const now = this.audioContext.currentTime;
@@ -1527,6 +1573,7 @@ export class AudioManager {
     }, 550);
   }
 
+  /** 恢复被浏览器挂起的 AudioContext（用于处理自动播放策略） */
   resumeAudioContext() {
     if (this.audioContext && this.audioContext.state === 'suspended') {
       this.audioContext.resume();

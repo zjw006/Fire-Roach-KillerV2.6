@@ -1,23 +1,31 @@
+/**
+ * @fileoverview 游戏核心类型定义模块
+ * @description 定义《烈焰除蟑》所有核心数据结构、枚举类型与接口，供引擎与 UI 层共享使用。
+ */
+
+/** 二维向量 */
 export interface Vec2 {
   x: number;
   y: number;
 }
 
+/** 游戏全局状态枚举 */
 export const GameState = {
   MENU: 'menu',
   PLAYING: 'playing',
   PAUSED: 'paused',
   GAME_OVER: 'game_over',
   WAVE_CLEAR: 'wave_clear',
-  ITEM_DROP: 'item_drop',       // post-battle item dropped on field, waiting for player to click
-  ITEM_REVEAL: 'item_reveal',   // post-battle item showcase (Zhang Shu dialog)
+  ITEM_DROP: 'item_drop',       // 战后道具掉落在场上，等待玩家点击拾取
+  ITEM_REVEAL: 'item_reveal',   // 战后道具展示（蟑叔对话介绍）
   SHOP: 'shop',
   TALENT_TREE: 'talent_tree',
   ACHIEVEMENTS: 'achievements',
-  COUNTDOWN: 'countdown',       // pre-wave 3-2-1 countdown
+  COUNTDOWN: 'countdown',       // 每波开始前 3-2-1 倒计时
 } as const;
 export type GameState = typeof GameState[keyof typeof GameState];
 
+/** 游戏模式枚举 */
 export const GameMode = {
   STORY: 'story',
   ENDLESS: 'endless',
@@ -26,6 +34,7 @@ export const GameMode = {
 } as const;
 export type GameMode = typeof GameMode[keyof typeof GameMode];
 
+/** 火焰喷射模式枚举 */
 export const FlameMode = {
   CONE: 'cone',
   FAN: 'fan',
@@ -36,6 +45,7 @@ export const FlameMode = {
 } as const;
 export type FlameMode = typeof FlameMode[keyof typeof FlameMode];
 
+/** 蟑螂敌人类型枚举 */
 export const RoachType = {
   SMALL: 'small',
   LARGE: 'large',
@@ -45,13 +55,14 @@ export const RoachType = {
   SUICIDE: 'suicide',
   FLYING_SUICIDE: 'flying_suicide',
   QUEEN: 'queen',
-  // Hospital exclusive roaches
+  // 医院场景专属蟑螂
   NURSE: 'nurse',
   MUTANT: 'mutant',
   TIMED_SUICIDE: 'timed_suicide',
 } as const;
 export type RoachType = typeof RoachType[keyof typeof RoachType];
 
+/** 蟑螂生命状态枚举 */
 export const RoachState = {
   ALIVE: 'alive',
   BURNING: 'burning',
@@ -61,6 +72,7 @@ export const RoachState = {
 } as const;
 export type RoachState = typeof RoachState[keyof typeof RoachState];
 
+/** 敌人基础属性定义 */
 export interface EnemyDef {
   name: string;
   description: string;
@@ -72,6 +84,7 @@ export interface EnemyDef {
   special: string[];
 }
 
+/** 游戏场景类型枚举 */
 export const SceneType = {
   KITCHEN: 'kitchen',
   SEWER: 'sewer',
@@ -87,6 +100,7 @@ export const SceneType = {
 } as const;
 export type SceneType = typeof SceneType[keyof typeof SceneType];
 
+/** 天气效果枚举 */
 export const WeatherType = {
   NONE: 'none',
   RAIN: 'rain',
@@ -95,6 +109,7 @@ export const WeatherType = {
 } as const;
 export type WeatherType = typeof WeatherType[keyof typeof WeatherType];
 
+/** 粒子特效类型枚举 */
 export const ParticleType = {
   FIRE: 'fire',
   SMOKE: 'smoke',
@@ -111,6 +126,7 @@ export const ParticleType = {
 } as const;
 export type ParticleType = typeof ParticleType[keyof typeof ParticleType];
 
+/** 粒子实例数据 */
 export interface Particle {
   x: number;
   y: number;
@@ -121,13 +137,14 @@ export interface Particle {
   size: number;
   color: string;
   type: ParticleType;
-  // Optional text to render instead of shape (for floating + icons, etc.)
+  /** 可选：渲染文字而非图形（用于浮动数值、图标等） */
   text?: string;
   textColor?: string;
-  // Green slime burst from mutant roach spawn
+  /** 变异蟑螂出生时是否带有绿色粘液特效 */
   isSlime?: boolean;
 }
 
+/** 火焰/毒/冰区域数据 */
 export interface FireZone {
   x: number;
   y: number;
@@ -138,8 +155,7 @@ export interface FireZone {
   type?: 'fire' | 'poison' | 'ice';
 }
 
-
-
+/** 火墙数据（燃烧瓶制造的水平火焰墙） */
 export interface FireWall {
   y: number;
   x1: number;
@@ -150,15 +166,18 @@ export interface FireWall {
   maxLife: number;
 }
 
+/** 风扇状态数据 */
 export interface FanState {
   active: boolean;
   timer: number;
   duration: number;
-  slowFactor: number; // how much to slow (0.0-1.0)
+  /** 减速系数（0.0~1.0） */
+  slowFactor: number;
   bladeAngle: number;
   bladeSpeed: number;
 }
 
+/** 蟑螂贴板数据 */
 export interface StickyBoard {
   id: number;
   x: number;
@@ -173,6 +192,7 @@ export interface StickyBoard {
   maxStuck: number;
 }
 
+/** 可投掷抛射物数据 */
 export interface ThrowableProjectile {
   id: number;
   x: number;
@@ -188,22 +208,26 @@ export interface ThrowableProjectile {
   targetY: number;
 }
 
+/** 道具栏物品 */
 export interface InventoryItem {
   type: 'sticky' | 'poison' | 'molotov' | 'shotgun' | 'radar' | 'fan' | 'swatter';
   count: number;
 }
 
+/** 三重火焰状态 */
 export interface TripleFlameState {
   active: boolean;
   timer: number;
   duration: number;
-  sideOffset: number; // distance between center and side guns
+  /** 侧枪与中心枪的距离 */
+  sideOffset: number;
   sideDamageMult: number;
 }
 
 // [REMOVED] EggPod system completely removed
 // export interface EggPod { ... }
 
+/** Boss 战完整状态数据 */
 export interface BossBattleState {
   active: boolean;
   bossHp: number;
@@ -212,15 +236,13 @@ export interface BossBattleState {
   phaseName: string;
   timeLimit: number;
   timeRemaining: number;
-  // [REMOVED] egg pod system removed
   currentWave: number;
-  // eggPods: EggPod[]; // REMOVED
   waveCleared: boolean;
   waveSpawnTimer: number;
   bossDialogue: string;
   dialogueTimer: number;
   dialogueIndex: number;
-  // ===== VICTORY / DEFEAT =====
+  // ===== 胜利/失败 =====
   bossKilled: boolean;
   bossFleeing: boolean;
   bossFleeTimer: number;
@@ -230,7 +252,7 @@ export interface BossBattleState {
   phaseChangeTimer: number;
   phaseChangeText: string;
   phaseChangeSub: string;
-  // Legacy fields
+  // 遗留字段
   summonTimer: number;
   chargeTimer: number;
   chargeWarning: boolean;
@@ -244,7 +266,8 @@ export interface BossBattleState {
   controlImmunity: number;
   chargeHitFlash: number;
   summonAnimTimer: number;
-  summonCastTimer: number; // Boss casting animation before egg drop
+  /** Boss 施法动画计时器（下蛋前） */
+  summonCastTimer: number;
   shedCount: number;
   maxShed: number;
   isShedding: boolean;
@@ -264,15 +287,17 @@ export interface BossBattleState {
   interruptHintTimer: number;
 }
 
-// 蜕皮空壳
+/** 蜕皮空壳（可作为障碍物） */
 export interface ShedShell {
   x: number;
   y: number;
   size: number;
   alpha: number;
-  life: number; // 存在时间(可作为障碍物)
+  /** 存在时间（秒） */
+  life: number;
 }
 
+/** 单个蟑螂敌人实例数据 */
 export interface Roach {
   id: number;
   x: number;
@@ -404,13 +429,15 @@ export interface Roach {
   residueTimer?: number;
 }
 
+/** 自动追踪粘板弹丸 */
 export interface StickyDrop {
   id: number;
   x: number;
   y: number;
   vx: number;
   vy: number;
-  targetId: number | null; // roach id being tracked
+  /** 追踪目标蟑螂 ID */
+  targetId: number | null;
   speed: number;
   life: number;
   maxLife: number;
@@ -418,6 +445,7 @@ export interface StickyDrop {
   hit: boolean;
 }
 
+/** 场上可拾取的武器掉落物 */
 export interface WeaponDrop {
   id: number;
   x: number;
@@ -428,6 +456,7 @@ export interface WeaponDrop {
   bobPhase: number;
 }
 
+/** 雷达激光状态 */
 export interface RadarLaser {
   active: boolean;
   timer: number;
@@ -437,9 +466,11 @@ export interface RadarLaser {
   fireInterval: number;
   damage: number;
   laserAlpha: number;
-  shotsRemaining: number; // total shots before deactivation
+  /** 剩余可发射次数 */
+  shotsRemaining: number;
 }
 
+/** 玩家状态数据 */
 export interface Player {
   x: number;
   y: number;
@@ -476,36 +507,43 @@ export interface Player {
   paralyzeTimer: number; // >0 = paralyzed, cannot move
   // Heat warning: 3-second countdown before overheat
   heatWarningTimer: number; // >0 = showing heat warning
-  // Consumable temporary effects
-  powerBoostTimer: number;     // >0 = 2x damage active (fire_boost consumable)
-  shieldTimer: number;          // >0 = defense line invincible (shield consumable)
-  baitTimer: number;            // >0 = roaches pulled to center (bait consumable)
-  // Shop upgrade multipliers (DEPRECATED - kept for backwards compat)
+  // 消耗品临时效果
+  /** 火力 boost 剩余时间（秒），>0 时伤害翻倍 */
+  powerBoostTimer: number;
+  /** 防线护盾剩余时间（秒），>0 时防线无敌 */
+  shieldTimer: number;
+  /** 诱饵剩余时间（秒），>0 时蟑螂被拉向中心 */
+  baitTimer: number;
+  // 商店升级乘数（已弃用，保留用于向后兼容）
   flameSpreadMultiplier: number;
   reloadTimeMultiplier: number;
 }
 
-// Consumable types for the in-level shop (one-time use items)
+/** 关卡内商店消耗品类型（一次性使用道具） */
 export type ConsumableType =
-  | 'gas_refill'    // ¥250 - Refill gas to full
-  | 'defense_repair' // ¥300 - Repair defense line +25 HP
-  | 'emergency_cool' // ¥200 - Instantly clear overheat
-  | 'power_boost'    // ¥700 - 2x damage for 10 seconds
-  | 'shield'         // ¥800 - Defense line invincible for 5 seconds
-  | 'bait';          // ¥450 - Pull all roaches toward center for 3 seconds
+  | 'gas_refill'    // 燃气回满
+  | 'defense_repair' // 防线修复 +25 HP
+  | 'emergency_cool' // 立即清除过热
+  | 'power_boost'    // 10 秒内双倍伤害
+  | 'shield'         // 防线 5 秒无敌
+  | 'bait';          // 3 秒内全场蟑螂聚拢
 
+/** 消耗品定义 */
 export interface ConsumableDef {
   id: ConsumableType;
   name: string;
   description: string;
   cost: number;
-  icon: string; // image path for the consumable icon
+  /** 图标图片路径 */
+  icon: string;
   effectDesc: string;
   color: string;
   hardOnly?: boolean;
-  cooldown?: number; // individual cooldown in seconds (0 or undefined = no cooldown)
+  /** 个体冷却时间（秒），0 或 undefined 表示无冷却 */
+  cooldown?: number;
 }
 
+/** 单波次敌人配置 */
 export interface WaveConfig {
   wave: number;
   smallCount: number;
@@ -519,14 +557,15 @@ export interface WaveConfig {
   speed: number;
   interval: number;
   clusterChance: number;
-  // Hospital exclusive enemy counts
+  // 医院场景专属敌人数目
   nurseCount?: number;
   mutantCount?: number;
   timedSuicideCount?: number;
-  // Hospital: number of active egg pools this wave (1-2)
+  /** 本波激活的虫卵池数量（1~2） */
   eggPoolActiveCount?: number;
 }
 
+/** 经济统计与成就追踪数据 */
 export interface Economy {
   money: number;
   totalKills: number;
@@ -547,6 +586,7 @@ export interface Economy {
   totalMoneyEarned: number;
 }
 
+/** 商店升级解锁状态 */
 export interface Upgrades {
   rangeBoost: boolean;
   overheatBoost: boolean;
@@ -560,6 +600,7 @@ export interface Upgrades {
   molotovUnlocked: boolean;
 }
 
+/** 天赋定义 */
 export interface Talent {
   id: string;
   name: string;
@@ -570,6 +611,7 @@ export interface Talent {
   effect: (level: number) => Record<string, number>;
 }
 
+/** 成就定义 */
 export interface Achievement {
   id: string;
   name: string;
@@ -579,6 +621,7 @@ export interface Achievement {
   reward: number;
 }
 
+/** 场景配置数据 */
 export interface SceneConfig {
   type: SceneType;
   name: string;
@@ -589,15 +632,18 @@ export interface SceneConfig {
   weather: WeatherType;
   enemyModifier: number;
   rewardMultiplier: number;
-  bgImage?: string; // scene background image path (loaded dynamically)
+  /** 场景背景图片路径（动态加载） */
+  bgImage?: string;
 }
 
+/** 单句对话数据 */
 export interface DialogLine {
-  speaker: '蟑叔' | '你' | '螂老大';
+  speaker: '蟑叔' | '你' | '螂老大' | '螂老大（管道回声）' | '螂老大（闪电中现身）' | '螂老大（街对面）' | '螂老大（翅膀展开）';
   text: string;
   emotion?: 'normal' | 'happy' | 'scared' | 'serious' | 'excited';
 }
 
+/** 场景对话配置 */
 export interface DialogConfig {
   sceneType: SceneType;
   title: string;
@@ -605,17 +651,23 @@ export interface DialogConfig {
   lines: DialogLine[];
 }
 
+/** 天赋树数据 */
 export interface TalentTree {
   points: number;
-  talents: Record<string, number>; // talentId -> level
+  /** talentId -> 当前等级 */
+  talents: Record<string, number>;
 }
 
-// Increment this when breaking changes are made to GameProgress structure
-// Changelog:
-// v1: Initial save format
-// v2: Added scenesCompleted field + persistent consumable inventory
+/**
+ * 存档版本号，数据结构发生破坏性变更时递增
+ * 变更日志：
+ * v1: 初始存档格式
+ * v2: 新增 scenesCompleted 字段 + 持久化消耗品库存
+ * v3: 消耗品库存移至 GameProgress
+ */
 export const SAVE_VERSION = 3;
 
+/** 游戏进度存档数据 */
 export interface GameProgress {
   saveVersion: number;
   talentTree: TalentTree;
@@ -624,17 +676,18 @@ export interface GameProgress {
   highestEndlessWave: number;
   totalKills: number;
   scenesUnlocked: SceneType[];
-  // Optional fields for backwards compatibility with older save versions
+  /** 兼容旧版本的可选字段 */
   scenesCompleted?: SceneType[];
   weaponsUnlocked?: string[];
   encyclopedia?: EncyclopediaData;
-  // Shop upgrades persist across scenes in a single session
+  /** 同局内跨关卡保留的商店升级列表 */
   shopUpgrades?: string[];
-  // Consumable inventory (v3: moved from separate localStorage to GameProgress)
+  /** 消耗品库存（v3 起从独立 localStorage 移至 GameProgress） */
   consumableInventory?: Record<string, number>;
   autoUseEnabled?: Record<string, boolean>;
 }
 
+/** 图鉴单条条目 */
 export interface EncyclopediaEntry {
   id: string;
   name: string;
@@ -649,6 +702,7 @@ export interface EncyclopediaEntry {
   unlocked: boolean;
 }
 
+/** 图鉴数据 */
 export interface EncyclopediaData {
   entries: EncyclopediaEntry[];
 }

@@ -1,6 +1,11 @@
+/**
+ * @fileoverview 游戏静态数据配置模块
+ * @description 定义场景配置、敌人属性、对话内容、天赋树、成就、消耗品、波次配置等游戏核心数据。
+ */
+
 import { RoachType, SceneType, WeatherType, SAVE_VERSION, type SceneConfig, type Talent, type Achievement, type GameProgress, type DialogConfig, type EncyclopediaEntry, type WaveConfig, type ConsumableDef } from './types';
 
-// ========== SCENE CONFIGURATIONS ==========
+// ========== 场景配置 ==========
 export const SCENE_CONFIGS: Record<SceneType, SceneConfig> = {
   [SceneType.KITCHEN]: {
     type: SceneType.KITCHEN,
@@ -130,7 +135,7 @@ export const SCENE_CONFIGS: Record<SceneType, SceneConfig> = {
   },
 };
 
-// ========== ENEMY DEFINITIONS ==========
+// ========== 敌人属性定义 ==========
 export const ENEMY_DEFS: Record<RoachType, {
   name: string;
   description: string;
@@ -221,7 +226,7 @@ export const ENEMY_DEFS: Record<RoachType, {
     size: 160,
     special: ['boss', 'spawn_minions', 'resist_fire'],
   },
-  // ========== HOSPITAL EXCLUSIVE ROACHES ==========
+  // ========== 医院场景专属蟑螂 ==========
   [RoachType.NURSE]: {
     name: '护士蟑螂',
     description: '携带医疗包的蟑螂，定期为周围受伤蟑螂恢复15%HP。对杀虫剂极度敏感，接触后窒息8秒。自带红色护盾',
@@ -254,7 +259,7 @@ export const ENEMY_DEFS: Record<RoachType, {
   },
 };
 
-// ========== TALENT DEFINITIONS ==========
+// ========== 天赋定义 ==========
 export const TALENT_DEFS: Talent[] = [
   {
     id: 'fire_damage',
@@ -394,7 +399,7 @@ export const TALENT_DEFS: Talent[] = [
   },
 ];
 
-// ========== ACHIEVEMENT DEFINITIONS ==========
+// ========== 成就定义 ==========
 export const ACHIEVEMENT_DEFS: Omit<Achievement, 'unlocked'>[] = [
   {
     id: 'first_blood',
@@ -503,7 +508,7 @@ export const ACHIEVEMENT_DEFS: Omit<Achievement, 'unlocked'>[] = [
   },
 ];
 
-// ========== DEFAULT PROGRESS ==========
+// ========== 默认游戏进度 ==========
 export function createDefaultProgress(): GameProgress {
   return {
     saveVersion: SAVE_VERSION,
@@ -527,8 +532,8 @@ export function createDefaultProgress(): GameProgress {
   };
 }
 
-// ========== DIALOG CONFIGS ==========
-// Each scene introduces a new roach type and a new item
+// ========== 对话配置 ==========
+// 每个场景引入新蟑螂类型和新道具
 export const DIALOG_CONFIGS: DialogConfig[] = [
   // Scene 1: Kitchen
   {
@@ -629,10 +634,10 @@ export const DIALOG_CONFIGS: DialogConfig[] = [
   },
 ];
 
-// ========== SCENE-SPECIFIC WAVE CONFIGS (Story Mode - progressive difficulty) ==========
-// Each scene introduces new roach types + new items, difficulty increases per scene
+// ========== 场景专属波次配置（故事模式 - 渐进难度） ==========
+// 每个场景引入新蟑螂类型 + 新道具，难度逐关递增
 
-// Scene 1: Kitchen - Small + Large roaches only, slow, few numbers
+// 场景 1：厨房 —— 仅小蟑螂 + 大蟑螂，速度慢，数量少
 export const WAVE_CONFIGS_KITCHEN: WaveConfig[] = [
   { wave: 1, smallCount: 8,  largeCount: 0, flyingCount: 0, armoredCount: 0, splittingCount: 0, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 0.35, interval: 14, clusterChance: 0 },
   { wave: 2, smallCount: 14, largeCount: 1, flyingCount: 0, armoredCount: 0, splittingCount: 0, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 0.38, interval: 12, clusterChance: 0 },
@@ -642,7 +647,7 @@ export const WAVE_CONFIGS_KITCHEN: WaveConfig[] = [
   { wave: 6, smallCount: 45, largeCount: 8, flyingCount: 3, armoredCount: 0, splittingCount: 0, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 0.58, interval: 7,  clusterChance: 0.2 },
 ];
 
-// Scene 2: Sewer - Adds Flying roaches, 5 waves, increasing difficulty
+// 场景 2：下水道 —— 新增飞行蟑螂，共 6 波，难度递增
 export const WAVE_CONFIGS_SEWER: WaveConfig[] = [
   { wave: 1, smallCount: 12, largeCount: 2, flyingCount: 5,  armoredCount: 0, splittingCount: 0, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 0.55, interval: 12, clusterChance: 0 },
   { wave: 2, smallCount: 20, largeCount: 3, flyingCount: 7,  armoredCount: 0, splittingCount: 0, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 0.65, interval: 10, clusterChance: 0.05 },
@@ -652,7 +657,7 @@ export const WAVE_CONFIGS_SEWER: WaveConfig[] = [
   { wave: 6, smallCount: 55, largeCount: 9, flyingCount: 15, armoredCount: 2, splittingCount: 0, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 1.0,  interval: 6,  clusterChance: 0.35 },
 ];
 
-// Scene 3: Dump - Adds Armored roaches, 6 waves (compressed, harder)
+// 场景 3：垃圾场 —— 新增装甲蟑螂，共 6 波（更紧凑、更难）
 export const WAVE_CONFIGS_DUMP: WaveConfig[] = [
   { wave: 1, smallCount: 12, largeCount: 2, flyingCount: 2, armoredCount: 2, splittingCount: 0, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 0.5,  interval: 12, clusterChance: 0.05 },
   { wave: 2, smallCount: 18, largeCount: 3, flyingCount: 3, armoredCount: 3, splittingCount: 0, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 0.58, interval: 10, clusterChance: 0.1 },
@@ -662,7 +667,7 @@ export const WAVE_CONFIGS_DUMP: WaveConfig[] = [
   { wave: 6, smallCount: 50, largeCount: 7, flyingCount: 7, armoredCount: 5, splittingCount: 0, suicideCount: 3, flyingSuicideCount: 0, queenCount: 0, speed: 0.92, interval: 6,  clusterChance: 0.38 },
 ];
 
-// Scene 4: Basement - Adds Splitting + Suicide roaches, fast, many
+// 场景 4：地下室 —— 新增分裂 + 自爆蟑螂，速度快、数量多
 export const WAVE_CONFIGS_BASEMENT: WaveConfig[] = [
   { wave: 1, smallCount: 15, largeCount: 3, flyingCount: 3, armoredCount: 2, splittingCount: 2, suicideCount: 1, flyingSuicideCount: 0, queenCount: 0, speed: 0.60, interval: 9,  clusterChance: 0.15 },
   { wave: 2, smallCount: 22, largeCount: 4, flyingCount: 4, armoredCount: 3, splittingCount: 3, suicideCount: 2, flyingSuicideCount: 0, queenCount: 0, speed: 0.644, interval: 8,  clusterChance: 0.2 },
@@ -672,7 +677,7 @@ export const WAVE_CONFIGS_BASEMENT: WaveConfig[] = [
   { wave: 6, smallCount: 55, largeCount: 8, flyingCount: 8, armoredCount: 5, splittingCount: 5, suicideCount: 4, flyingSuicideCount: 0, queenCount: 0, speed: 0.82, interval: 6,  clusterChance: 0.4 },
 ];
 
-// Scene 5: Rooftop - All roach types + Queen BOSS, highest difficulty
+// 场景 5：天台决战 —— 全种类蟑螂 + 蟑螂女王 Boss，最高难度
 export const WAVE_CONFIGS_ROOFTOP: WaveConfig[] = [
   { wave: 1, smallCount: 14, largeCount: 3, flyingCount: 3, armoredCount: 2, splittingCount: 2, suicideCount: 1, flyingSuicideCount: 1, queenCount: 0, speed: 0.65, interval: 8,  clusterChance: 0.2 },
   { wave: 2, smallCount: 20, largeCount: 4, flyingCount: 4, armoredCount: 3, splittingCount: 3, suicideCount: 2, flyingSuicideCount: 2, queenCount: 0, speed: 0.69, interval: 7,  clusterChance: 0.25 },
@@ -682,8 +687,8 @@ export const WAVE_CONFIGS_ROOFTOP: WaveConfig[] = [
   { wave: 6, smallCount: 50, largeCount: 7, flyingCount: 7, armoredCount: 4, splittingCount: 4, suicideCount: 3, flyingSuicideCount: 3, queenCount: 0, speed: 0.85, interval: 5,  clusterChance: 0.45 },
 ];
 
-// Scene wave config map
-// Street scene: final chapter with Queen BOSS
+// 场景波次配置映射
+// 街道场景：最终章，包含蟑螂女王 Boss
 export const WAVE_CONFIGS_STREET: WaveConfig[] = [
   { wave: 1, smallCount: 15, largeCount: 3, flyingCount: 3, armoredCount: 3, splittingCount: 3, suicideCount: 2, flyingSuicideCount: 2, queenCount: 0, speed: 0.70, interval: 7, clusterChance: 0.25 },
   { wave: 2, smallCount: 22, largeCount: 4, flyingCount: 4, armoredCount: 3, splittingCount: 3, suicideCount: 3, flyingSuicideCount: 3, queenCount: 0, speed: 0.74, interval: 6, clusterChance: 0.3 },
@@ -693,9 +698,9 @@ export const WAVE_CONFIGS_STREET: WaveConfig[] = [
   { wave: 6, smallCount: 40, largeCount: 5, flyingCount: 5, armoredCount: 3, splittingCount: 3, suicideCount: 3, flyingSuicideCount: 3, queenCount: 0, speed: 0.90, interval: 4, clusterChance: 0.5 },
 ];
 
-// ========== NEW SCENE WAVE CONFIGS (v2.4) ==========
-// ========== HOSPITAL 8-WAVE CONFIG ==========
-// All suicide roaches replaced with timed suicide roaches
+// ========== 新场景波次配置（v2.4） ==========
+// ========== 医院 8 波配置 ==========
+// 所有自爆蟑螂替换为定时自爆蟑螂
 export const WAVE_CONFIGS_HOSPITAL: WaveConfig[] = [
   // Wave 1: Intro - 1 mutant + 1 timed suicide (gentle intro)
   { wave: 1, smallCount: 6, largeCount: 2, flyingCount: 0, armoredCount: 0, splittingCount: 0, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 0.65, interval: 9, clusterChance: 0.15, nurseCount: 0, mutantCount: 1, timedSuicideCount: 1, eggPoolActiveCount: 0 },
@@ -765,10 +770,10 @@ export const SCENE_WAVE_CONFIGS: Record<SceneType, WaveConfig[]> = {
   [SceneType.NEST]: WAVE_CONFIGS_NEST,
 };
 
-// Scene display order (used by UI)
+// 场景展示顺序（UI 使用）
 export const SCENE_ORDER: SceneType[] = ['kitchen', 'sewer', 'dump', 'basement', 'street', 'rooftop', 'hospital', 'subway', 'supermarket', 'school', 'nest'];
 
-// Item unlock order by scene (weak to strong): sticky -> poison -> molotov -> shotgun -> radar
+// 每关解锁道具顺序（由弱到强）：粘板 → 风扇 → 燃烧瓶 → 散弹 → 雷达
 export const SCENE_ITEM_UNLOCKS: Record<SceneType, string[]> = {
   // Kitchen: sticky board only (tutorial scene, fewer drops)
   [SceneType.KITCHEN]: ['sticky'],
@@ -794,7 +799,7 @@ export const SCENE_ITEM_UNLOCKS: Record<SceneType, string[]> = {
   [SceneType.NEST]: ['sticky', 'poison', 'fan', 'molotov', 'shotgun', 'radar', 'swatter'],
 };
 
-// Roach types available by scene
+// 每关可用蟑螂类型
 export const SCENE_ROACH_TYPES: Record<SceneType, RoachType[]> = {
   [SceneType.KITCHEN]: [RoachType.SMALL, RoachType.LARGE, RoachType.FLYING],
   [SceneType.SEWER]: [RoachType.SMALL, RoachType.LARGE, RoachType.FLYING, RoachType.ARMORED],
@@ -809,7 +814,7 @@ export const SCENE_ROACH_TYPES: Record<SceneType, RoachType[]> = {
   [SceneType.NEST]: [RoachType.SMALL, RoachType.LARGE, RoachType.FLYING, RoachType.ARMORED, RoachType.SPLITTING, RoachType.SUICIDE, RoachType.FLYING_SUICIDE, RoachType.QUEEN],
 };
 
-// Scene unlock chain: completing a scene unlocks the next one
+// 场景解锁链：通关当前场景后解锁下一关
 export const SCENE_UNLOCK_CHAIN: SceneType[] = [
   SceneType.KITCHEN,
   SceneType.SEWER,
@@ -824,7 +829,7 @@ export const SCENE_UNLOCK_CHAIN: SceneType[] = [
   SceneType.NEST,
 ];
 
-// ===== GROUND BOUNDS: 6-point perspective walkable area for ground roaches =====
+// ===== 地面边界：地面蟑螂的 6 点透视可行走区域 =====
 // Each scene's ground boundary is defined by 6 points (3 per side),
 // forming a 2-segment polyline on each side to match irregular obstacles.
 // Format: [farL,farLY, farR,farRY, midL,midLY, midR,midRY, nearL,nearR,nearY]
@@ -858,8 +863,8 @@ export const SCENE_GROUND_BOUNDS: Record<SceneType, [number, number, number, num
   [SceneType.NEST]:     [170,410, 370,410,  70,590, 470,590,  0,530,800],
 };
 
-// ========== POST-BATTLE ITEM REVEAL ==========
-// Each scene rewards a new item for the NEXT scene, with Zhang Shu's hilarious descriptions
+// ========== 战后道具奖励揭示 ==========
+// 每关通关后奖励下一关的新道具，附带蟑叔的搞笑说明
 export const SCENE_REWARD_ITEMS: Record<SceneType, { type: string; name: string; icon: string; desc: string }[]> = {
   [SceneType.KITCHEN]: [
     { type: 'fan', name: '强力风扇', icon: '/assets/drop_fan.png', desc: '嘿嘿嘿，听说过"风神降临"吗？按下开关，全场蟑螂秒变慢动作回放！扇叶一转，小强的腿都跑软了，你就站那儿看着它们爬，跟看纪录片似的。关键是——这风扇不用你扛着，自动全场覆盖！蟑叔我亲自改装的，风速三档可调，第三档能把蟑螂吹成背头造型！' },
@@ -901,7 +906,7 @@ export const SCENE_REWARD_ITEMS: Record<SceneType, { type: string; name: string;
   ],
 };
 
-// ========== CONSUMABLE DEFS (in-level shop, one-time use) ==========
+// ========== 消耗品定义（关卡内商店，一次性使用） ==========
 export const CONSUMABLE_DEFS: ConsumableDef[] = [
   {
     id: 'gas_refill', name: '气罐补给', description: '立即回满燃气',
@@ -935,7 +940,7 @@ export const CONSUMABLE_DEFS: ConsumableDef[] = [
   },
 ];
 
-// ========== WEAPON DROP CONFIGS ==========
+// ========== 武器掉落配置 ==========
 export const WEAPON_DROP_DEFS = {
   sticky:  { name: '蟑螂贴板', color: '#facc15', duration: 10, ammo: 3,  cooldown: 5 },
   poison:  { name: '杀虫剂',  color: '#4ade80', duration: 15, ammo: 40, cooldown: 6 },
@@ -957,7 +962,7 @@ export const INVENTORY_SELL_PRICES: Record<string, number> = {
   swatter: 15,
 };
 
-// ========== BOSS CONFIG ==========
+// ========== Boss 配置 ==========
 export const BOSS_CONFIG = {
   queen: {
     spawnInterval: 8,
@@ -967,7 +972,7 @@ export const BOSS_CONFIG = {
   },
 };
 
-// ========== ENCYCLOPEDIA DATA ==========
+// ========== 图鉴数据 ==========
 export const ENCYCLOPEDIA_DEFS: EncyclopediaEntry[] = [
   {
     id: 'roach_small',
@@ -1060,7 +1065,7 @@ export const ENCYCLOPEDIA_DEFS: EncyclopediaEntry[] = [
     killCount: 0,
     unlocked: true,
   },
-  // ===== HOSPITAL EXCLUSIVE ROACHES =====
+  // ===== 医院场景专属蟑螂 =====
   {
     id: 'roach_nurse',
     name: '护士蟑螂',
