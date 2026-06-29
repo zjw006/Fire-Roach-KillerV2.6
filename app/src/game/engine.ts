@@ -1,9 +1,15 @@
+/**
+ * @fileoverview 游戏核心引擎
+ * @description 《烈焰除蟑》主游戏引擎，负责游戏状态管理、敌人 AI、碰撞检测、粒子系统、渲染、输入处理、存档读写等全部核心逻辑。
+ */
+
 import { GameState, RoachType, RoachState, SceneType, WeatherType, ParticleType, FlameMode, GameMode, SAVE_VERSION, type Roach, type Player, type Particle, type FireZone, type FireWall, type Economy, type WeaponDrop, type GameProgress, type WaveConfig, type ThrowableProjectile, type InventoryItem, type TripleFlameState, type BossBattleState, type RadarLaser, type StickyBoard, type StickyDrop, type FanState } from './types';
 import * as Vibration from './vibration';
 import { AudioManager } from './audio';
 import { SCENE_CONFIGS, ENEMY_DEFS, TALENT_DEFS, WEAPON_DROP_DEFS, INVENTORY_SELL_PRICES, BOSS_CONFIG, SCENE_WAVE_CONFIGS, SCENE_ITEM_UNLOCKS, SCENE_ROACH_TYPES, SCENE_UNLOCK_CHAIN, SCENE_REWARD_ITEMS, SCENE_GROUND_BOUNDS, createDefaultProgress, ENCYCLOPEDIA_DEFS, CONSUMABLE_DEFS } from './data';
 import { BOSS_ANIMATIONS } from './bossAnimation';
 
+/** 浮动文字特效数据 */
 interface FloatingText {
   x: number;
   y: number;
@@ -12,13 +18,21 @@ interface FloatingText {
   life: number;
   maxLife: number;
   vy: number;
-  scale?: number; // optional font scale (1.0 = default 16px)
+  /** 可选字体缩放（1.0 = 默认 16px） */
+  scale?: number;
 }
 
+/** 全局蟑螂 ID 计数器 */
 let nextId = 1;
+/** 全局掉落物 ID 计数器 */
 let nextDropId = 1;
+/** 全局 Boss ID 计数器 */
 let nextBossId = 10000;
 
+/**
+ * 游戏核心引擎类
+ * @description 管理游戏全部状态、实体、渲染与交互的主引擎
+ */
 export class GameEngine {
   canvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
@@ -191,6 +205,7 @@ export class GameEngine {
   onStateChange?: (state: GameState) => void;
   onTutorialPauseChange?: (paused: boolean) => void;
   onEconomyUpdate?: (economy: Economy) => void;
+  onInventoryUpdate?: (inventory: InventoryItem[]) => void;
   onPlayerUpdate?: (player: Player) => void;
   onWaveUpdate?: (wave: number, totalWaves: number) => void;
   onDefenseUpdate?: (hp: number, maxHp: number) => void;
@@ -208,7 +223,6 @@ export class GameEngine {
     timeLimit: 180,
     timeRemaining: 180,
     currentWave: 0,
-    eggPods: [],
     waveCleared: false,
     waveSpawnTimer: 0,
     bossDialogue: '',
@@ -381,7 +395,8 @@ export class GameEngine {
   timedSuicideSpawnRemaining: number = 0; // how many timed suicides still to spawn this wave
 
   // ===== HOSPITAL EXCLUSIVE: EGG POOL SYSTEM =====
-  // [REMOVED] hospitalEggPods: any[] = []; // Egg pod system removed
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  hospitalEggPods: any[] = [];
   hospitalEggPodDestroyedCount: number = 0; // Consecutive destroyed count (3 → disinfection reward)
   hospitalDisinfectionRewardTimer: number = 0; // Timer for showing disinfection reward text
   // ===== HOSPITAL EXCLUSIVE: 3-STAR RATING SYSTEM =====
@@ -395,6 +410,10 @@ export class GameEngine {
   globalConsumableCooldown: number = 0; // shared 1s cooldown after using any consumable (except emergency_cool)
   combatStartTimer: number = 0; // initial 1s lock after combat starts (except emergency_cool)
 
+  /**
+   * 创建游戏引擎实例
+   * @param {HTMLCanvasElement} canvas - 游戏画布元素
+   */
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d')!;
@@ -423,6 +442,7 @@ export class GameEngine {
     window.addEventListener('resize', () => this.resize());
   }
 
+  /** 根据父容器调整画布大小与 DPR */
   resize() {
     const parent = this.canvas.parentElement;
     if (!parent) return;
@@ -445,6 +465,7 @@ export class GameEngine {
     this.ctx.setTransform(this.scale, 0, 0, this.scale, 0, 0);
   }
 
+  /** 异步加载所有游戏图片资源 */
   loadImages() {
     const load = (src: string, setter: (img: HTMLImageElement) => void) => {
       const img = new Image();
@@ -527,14 +548,18 @@ export class GameEngine {
     this.imagesLoaded = true;
   }
 
+  /** 玩家基准 X 坐标（屏幕中央） */
   playerBaseX() { return this.width / 2; }
+  /** 玩家基准 Y 坐标（屏幕下方） */
   playerBaseY() { return this.height + 100; }
+  /** 防线 Y 坐标 */
   defenseLineY() { return this.height - 130; }
 
   getSceneConfig() {
     return SCENE_CONFIGS[this.currentScene];
   }
 
+  /** 创建并初始化玩家对象 */
   createPlayer(): Player {
     const isHard = this.difficulty === 'hard';
     const gasMult = this.talentMultipliers.gasMultiplier || 1;
@@ -548,7 +573,6 @@ export class GameEngine {
     const heatDecayRate = (isHard ? 1 : 1.5) * coolMult;
     const overheatThreshold = 1800 * ohMult;
     const maxGas = 100 * gasMult;
-    const flameSpreadMultiplier = 1;
     const reloadTimeMultiplier = 1;
     return {
       x: this.playerBaseX(),
@@ -592,6 +616,10 @@ export class GameEngine {
     };
   }
 
+  /**
+   * 创建经济统计对象
+   * @param {number} initialMoney - 初始金钱
+   */
   createEconomy(initialMoney?: number): Economy {
     const startMoney = initialMoney !== undefined
       ? initialMoney
@@ -617,7 +645,8 @@ export class GameEngine {
     };
   }
 
-  // ========== PROGRESS PERSISTENCE ==========
+  // ========== 进度持久化 ==========
+  /** 从 localStorage 加载游戏进度 */
   loadProgress(): GameProgress {
     try {
       const saved = localStorage.getItem('roach_blaster_progress');
@@ -724,14 +753,16 @@ export class GameEngine {
     return 0;
   }
 
+  /** 保存无尽模式最佳时长到 localStorage */
   saveEndlessBestTime(time: number) {
     try {
       localStorage.setItem('roach_blaster_endless_best_time', time.toString());
     } catch { /* ignore */ }
   }
 
+  /** 将当前进度保存到 localStorage */
   saveProgress() {
-    // Sync consumable inventory into progress before saving
+    // 同步消耗品库存到进度后再保存
     this.progress.consumableInventory = { ...this.consumableInventory };
     this.progress.autoUseEnabled = { ...this.autoUseEnabled };
     try {
@@ -739,6 +770,7 @@ export class GameEngine {
     } catch { /* ignore */ }
   }
 
+  /** 根据已解锁天赋重新计算所有属性乘数 */
   recalcTalentMultipliers() {
     const mults: Record<string, number> = {};
     for (const tid of Object.keys(this.progress.talentTree.talents)) {
@@ -753,6 +785,7 @@ export class GameEngine {
     this.talentMultipliers = mults;
   }
 
+  /** 检查并解锁符合条件的成就 */
   checkAchievements() {
     const e = this.economy;
     const p = this.progress;
@@ -791,6 +824,14 @@ export class GameEngine {
   }
 
   // ========== GAME FLOW ==========
+  /**
+   * 启动游戏
+   * @param {GameMode} mode - 游戏模式
+   * @param {SceneType} scene - 场景类型
+   * @param {boolean} keepShopUpgrades - 是否保留商店升级
+   * @param {string[]} selectedItems - 玩家选择的道具
+   * @param {number} initialMoney - 初始金钱
+   */
   start(mode?: GameMode, scene?: SceneType, keepShopUpgrades = false, selectedItems?: string[], initialMoney?: number) {
     if (mode !== undefined) this.gameMode = mode;
     if (scene !== undefined) this.currentScene = scene;
@@ -807,7 +848,6 @@ export class GameEngine {
       timeLimit: 180,
       timeRemaining: 180,
       currentWave: 0,
-      eggPods: [],
       waveCleared: false,
       waveSpawnTimer: 0,
       bossDialogue: '',
@@ -878,6 +918,10 @@ export class GameEngine {
     this.onStateChange?.(this.state);
   }
 
+  /**
+   * 重置游戏状态（用于重新开始或首次启动）
+   * @param {number} initialMoney - 初始金钱
+   */
   resetGame(initialMoney?: number) {
     this.player = this.createPlayer();
     this.economy = this.createEconomy(initialMoney);
@@ -964,6 +1008,7 @@ export class GameEngine {
     return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
   }
 
+  /** 暂停游戏 */
   pause() {
     if (this.state === GameState.PLAYING) {
       this.state = GameState.PAUSED;
@@ -977,6 +1022,7 @@ export class GameEngine {
     }
   }
 
+  /** 恢复游戏 */
   resume() {
     if (this.state === GameState.PAUSED) {
       this.state = GameState.PLAYING;
@@ -987,6 +1033,7 @@ export class GameEngine {
     }
   }
 
+  /** 停止游戏循环 */
   stop() {
     this.state = GameState.MENU;
     this.audio.stopBGM();
@@ -999,6 +1046,7 @@ export class GameEngine {
     this.onStateChange?.(this.state);
   }
 
+  /** 重新开始当前关卡 */
   restart() {
     this.stop();
     setTimeout(() => this.start(this.gameMode, this.currentScene, false), 50);
@@ -1016,8 +1064,12 @@ export class GameEngine {
     this.onStateChange?.(this.state);
   }
 
+  /**
+   * 游戏主循环（requestAnimationFrame 回调）
+   * @param {number} now - 当前时间戳
+   */
   gameLoop = (now: number) => {
-    // Allow loop to run during PLAYING, COUNTDOWN, ITEM_DROP, ITEM_REVEAL, and WAVE_CLEAR states
+    // 允许在 PLAYING、COUNTDOWN、ITEM_DROP、ITEM_REVEAL、WAVE_CLEAR 状态下运行循环
     // COUNTDOWN: 3-2-1 pre-wave countdown (update() handles the timer)
     // WAVE_CLEAR shows the shop screen (no game logic updates, just render)
     if (this.state !== GameState.PLAYING && this.state !== GameState.COUNTDOWN && this.state !== GameState.ITEM_DROP && this.state !== GameState.ITEM_REVEAL && this.state !== GameState.WAVE_CLEAR) return;
@@ -1072,7 +1124,8 @@ export class GameEngine {
   };
 
 
-  // ========== BOSS BATTLE SYSTEM ==========
+  // ========== Boss 战斗系统 ==========
+  /** 初始化 Boss 战斗状态与波次配置 */
   initBossBattle() {
     this.bossBattle = {
       active: true,
@@ -1083,7 +1136,6 @@ export class GameEngine {
       timeLimit: 180,
       timeRemaining: 180,
       currentWave: 0,
-      eggPods: [],
       waveCleared: false,
       waveSpawnTimer: 2,
       bossDialogue: '',
@@ -1545,31 +1597,9 @@ export class GameEngine {
     // - Ground usable area: Y ≈ 0.41 ~ 0.90
     // - Must be within 300px of defense line (0.90)
     // - Final range: max(0.41, 0.90-300/h) ~ 0.90
-    const groundY1 = this.height * Math.max(0.41, 0.90 - 300 / this.height);
-    const groundY2 = this.height * 0.90;
-    const margin = 60;
+    // [REMOVED] Egg pod spawn logic removed
     for (let i = 0; i < config.count; i++) {
-      // Random X across the screen
-      const px = margin + Math.random() * (this.width - margin * 2);
-      // Y: randomly on the rooftop ground (within 300px of defense line)
-      // Shifted UP by 200px (was 300, then moved down 100)
-      const py = Math.max(60, groundY1 + Math.random() * (groundY2 - groundY1) - 200);
-
-      // Pick a random type from the wave's type pool
-      const hatchType = config.types[Math.floor(Math.random() * config.types.length)];
-
-      const pod: any = { // [REMOVED] EggPod type removed
-        id: nextId++,
-        x: px,
-        y: py,
-        hp: 9999, // invincible - cannot be damaged
-        maxHp: 9999,
-        state: 'intact',
-        hatchTimer: 5, // fixed 5 second hatch time
-        hatchType,
-        wobbleOffset: Math.random() * Math.PI * 2,
-      };
-      bb.eggPods.push(pod);
+      // Egg pod system removed
     }
 
     this.addFloatingText(this.width / 2, this.height / 3, `第${wave}波虫卵释放!`, '#ef4444');
@@ -1578,31 +1608,7 @@ export class GameEngine {
   }
 
   updateEggPods() {
-    const bb = this.bossBattle;
-
-    for (let i = bb.eggPods.length - 1; i >= 0; i--) {
-      const pod = bb.eggPods[i];
-
-      if (pod.state === 'intact') {
-        // Countdown to hatch (5 seconds fixed)
-        pod.hatchTimer -= this.deltaTime;
-
-        // Egg pods are stationary - no position wobble
-        // Only visual crack effect near hatch time (last 1.5s)
-        if (pod.hatchTimer <= 1.5 && pod.hatchTimer > 0) {
-          if (Math.random() < 0.3) {
-            this.spawnSparkParticles(pod.x, pod.y, 2);
-          }
-        }
-
-        // Hatch after 5 seconds (egg pods are invincible - they always hatch)
-        if (pod.hatchTimer <= 0) {
-          pod.state = 'hatched';
-          this.hatchEggPod(pod);
-          bb.eggPods.splice(i, 1);
-        }
-      }
-    }
+    // [REMOVED] Egg pod system removed
   }
 
   // [REMOVED] hatchEggPod(pod: any) { // Egg pod system removed
@@ -1710,6 +1716,7 @@ export class GameEngine {
     this.onInventoryUpdate?.([]);
   }
 
+  /** 触发游戏胜利流程 */
   gameVictory() {
     // Sell unused inventory items before victory screen
     const sellTotal = this.sellUnusedInventory();
@@ -1825,6 +1832,7 @@ export class GameEngine {
     this.doWaveSpawn();
   }
 
+  /** 触发游戏失败流程 */
   gameDefeat() {
     // Guard: prevent multiple calls
     if (this.defeatTriggered) return;
@@ -1856,7 +1864,8 @@ export class GameEngine {
     return true;
   }
 
-  // ========== MAIN UPDATE ==========
+  // ========== 主更新循环 ==========
+  /** 主游戏更新循环（每帧调用） */
   update() {
     // ===== PRE-WAVE COUNTDOWN =====
     // Handle 3-2-1 countdown before first wave; freeze all game logic
@@ -2011,7 +2020,8 @@ export class GameEngine {
     }
   }
 
-  // ========== PLAYER UPDATE WITH WEAPONS ==========
+  // ========== 玩家与武器更新 ==========
+  /** 更新玩家状态、武器与输入 */
   updatePlayer() {
     const p = this.player;
 
@@ -2219,6 +2229,7 @@ export class GameEngine {
     }
   }
 
+  /** 投掷燃烧瓶（制造火墙） */
   throwMolotov() {
     const p = this.player;
     if (p.molotovCount <= 0 && !p.isTempWeapon) return;
@@ -2316,7 +2327,7 @@ export class GameEngine {
     this.aimTargetY = Math.max(60, Math.min(this.defenseLineY() - 20, this.player.y - 322 - dist));
   }
 
-  adjustAim(dx: number, _dy: number) {
+  adjustAim(dx: number) {
     if (!this.isAiming) return;
     // dx from input is screen pixels, convert to game coords
     this.aimTargetX += dx * 1.5;
@@ -2501,7 +2512,9 @@ export class GameEngine {
     this.spawnSparkParticles(t.x, t.y, 10);
   }
 
-  spawnIceExplosion(x: number, y: number, _radius: number) {
+  spawnIceExplosion(x: number, y: number,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _radius: number) {
     for (let i = 0; i < 20; i++) {
       const angle = Math.random() * Math.PI * 2;
       const speed = 50 + Math.random() * 100;
@@ -2517,7 +2530,9 @@ export class GameEngine {
     }
   }
 
-  spawnPoisonExplosion(x: number, y: number, _radius: number) {
+  spawnPoisonExplosion(x: number, y: number,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _radius: number) {
     for (let i = 0; i < 20; i++) {
       const angle = Math.random() * Math.PI * 2;
       const speed = 40 + Math.random() * 80;
@@ -2533,7 +2548,11 @@ export class GameEngine {
     }
   }
 
-  // ========== WEAPON SWITCHING ==========
+  // ========== 武器切换 ==========
+  /**
+   * 切换当前武器
+   * @param {string} weapon - 武器类型
+   */
   switchWeapon(weapon: string) {
     const p = this.player;
     if (weapon === 'flamethrower') {
@@ -3502,7 +3521,8 @@ export class GameEngine {
     this.screenShake = 3;
   }
 
-  // ========== FAN ACTIVATION =========
+  // ========== 风扇激活 =========
+  /** 激活风扇（减速并击退蟑螂） */
   activateFan() {
     this.fanState.active = true;
     // Apply mechanical mastery talent: fan duration boost
@@ -3914,13 +3934,19 @@ export class GameEngine {
   // Get the center point of the perspective ground bounds quad for the current scene
   // Used for bait landing target (center of roach walkable area)
   getGroundCenter(): [number, number] {
-    const [farL, farLY, farR, farRY, _midL, _midLY, _midR, _midRY, nearL, nearR, nearY] = SCENE_GROUND_BOUNDS[this.currentScene];
+    const [farL, farLY, farR, farRY, , , , , nearL, nearR, nearY] = SCENE_GROUND_BOUNDS[this.currentScene];
     const centerX = (farL + farR + nearL + nearR) / 4;
     const centerY = (farLY + farRY + nearY + nearY) / 4;
     return [centerX, centerY];
   }
 
-  // ========== ENEMY SPAWNING ==========
+  // ========== 敌人生成 ==========
+  /**
+   * 生成单个蟑螂敌人
+   * @param {RoachType} type - 蟑螂类型
+   * @param {number} clusterId - 集群 ID（可选）
+   * @returns {Roach | undefined} 生成的蟑螂实例
+   */
   spawnRoach(type: RoachType, clusterId?: number): Roach | undefined {
     // Performance guard: hard cap on roach count
     if (this.roaches.length >= 40) return;
@@ -3942,13 +3968,13 @@ export class GameEngine {
       baseY = this.height * 0.45;
     } else if (type === RoachType.NURSE && this.currentScene === SceneType.HOSPITAL) {
       // ===== HOSPITAL EXCLUSIVE: Nurse spawns at the FAR end of ground bounds =====
-      const [_farL, farLY, _farR, _farRY] = SCENE_GROUND_BOUNDS[this.currentScene];
+      const [, farLY, , ] = SCENE_GROUND_BOUNDS[this.currentScene];
       baseY = farLY + 10; // Slightly below far line to be visible
       const [gLeft, gRight] = this.getGroundBoundsAtY(baseY);
       baseX = gLeft + Math.random() * (gRight - gLeft);
     } else {
       // Ground roaches: spawn within 6-point perspective ground bounds
-      const [_farL, farLY, _farR, farRY, _midL, midLY, _midR, midRY, _nearL2, _nearR2, nearY] = SCENE_GROUND_BOUNDS[this.currentScene];
+      const [, farLY, , farRY, , midLY, , midRY, , , nearY] = SCENE_GROUND_BOUNDS[this.currentScene];
       const farY = Math.min(farLY, farRY, midLY, midRY); // use highest point as spawn top
       // Random Y within the bounds (biased toward far end for spawning)
       baseY = farY + Math.random() * (nearY - farY) * 0.6;
@@ -4079,7 +4105,8 @@ export class GameEngine {
     return r;
   }
 
-  // ========== ENEMY AI ==========
+  // ========== 敌人 AI ==========
+  /** 更新所有蟑螂敌人的 AI、移动与状态 */
   updateRoaches() {
     // ===== MUTANT TRANSFORMATION FRAME UPDATE =====
     // 7-frame animation: 200ms per frame, total 1.4s
@@ -4876,8 +4903,6 @@ export class GameEngine {
 
     for (let i = 0; i < this._embryoSpawnTypes.length; i++) {
       const spawnType = this._embryoSpawnTypes[i];
-      const offsetX = (i === 0 ? -1 : 1) * (30 + Math.random() * 20);
-      const offsetY = (i === 0 ? -1 : 1) * (20 + Math.random() * 15);
 
       const newRoach = this.spawnRoach(spawnType);
       if (!newRoach) break;
@@ -5052,7 +5077,9 @@ export class GameEngine {
   // but does NOT remove the roach from array (killRoach handles that)
   suicideDeathExplode(r: Roach) {
     // Don't double-explode: use a one-time flag stored on the roach object
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if ((r as any)._deathExploded) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (r as any)._deathExploded = true;
 
     this.audio.playSuicideExplode();
@@ -5260,7 +5287,9 @@ export class GameEngine {
     }
   }
 
-  killRoach(r: Roach, _index: number) {
+  killRoach(r: Roach,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _index: number) {
     // Reset death chain depth at top-level kill entry (not from chain reactions)
     if (this._deathChainDepth === 0) {
       this._deathChainDepth = 1;
@@ -5541,7 +5570,8 @@ export class GameEngine {
     }
   }
 
-  // ========== COLLISION DETECTION ==========
+  // ========== 碰撞检测 ==========
+  /** 检测火焰、道具与蟑螂之间的碰撞 */
   checkCollisions() {
     const p = this.player;
     if (!p.isFiring || p.isOverheated || p.isReloading || p.gas <= 0) return;
@@ -5900,7 +5930,7 @@ export class GameEngine {
               other.hp = 0;
               other.state = 'dead';
               other.deathTimer = 1.5;
-              this.killRoach(other, 'bomb');
+              this.killRoach(other, this.roaches.indexOf(other));
             }
           }
         }
@@ -5999,6 +6029,7 @@ export class GameEngine {
     }
   }
 
+  /** 启动新波次（显示倒计时或直接生成） */
   startWave() {
     this.wave++;
 
@@ -6186,6 +6217,7 @@ export class GameEngine {
 
     for (const pos of selected) {
       this.hospitalTotalEggPods++;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const pod: any = { // [REMOVED] EggPod type removed
         id: nextId++,
         x: pos.x, // Exact user-specified position
@@ -6253,7 +6285,8 @@ export class GameEngine {
     }
   }
 
-  hatchHospitalEggPod(pod: EggPod) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  hatchHospitalEggPod(pod: any) {
     // Spawn 3 mutant roaches from the egg pod
     // CRITICAL FIX: Respect the 40-roach performance cap
     const MAX_ROACHES = 40;
@@ -6271,7 +6304,7 @@ export class GameEngine {
     const def = ENEMY_DEFS[RoachType.MUTANT];
     const hpMult = isHard ? 1.3 : 1.0;
     // Ensure spawned roaches are within ground bounds
-    const [_farL, farLY] = SCENE_GROUND_BOUNDS[this.currentScene];
+    const [, farLY] = SCENE_GROUND_BOUNDS[this.currentScene];
 
     for (let m = 0; m < spawnCount; m++) {
       const angle = (m / 3) * Math.PI * 2;
@@ -6671,6 +6704,12 @@ export class GameEngine {
     }
   }
 
+  /**
+   * 在指定位置生成火花粒子
+   * @param {number} x - X 坐标
+   * @param {number} y - Y 坐标
+   * @param {number} count - 粒子数量
+   */
   spawnSparkParticles(x: number, y: number, count: number) {
     for (let i = 0; i < count; i++) {
       const angle = Math.random() * Math.PI * 2;
@@ -6703,6 +6742,15 @@ export class GameEngine {
     }
   }
 
+  /**
+   * 添加浮动文字特效
+   * @param {number} x - X 坐标
+   * @param {number} y - Y 坐标
+   * @param {string} text - 显示文字
+   * @param {string} color - 文字颜色
+   * @param {number} durationMs - 持续时间（毫秒）
+   * @param {number} fontSize - 字体大小
+   */
   addFloatingText(x: number, y: number, text: string, color: string, durationMs?: number, fontSize?: number) {
     // Cap floating texts - truncate from end (much faster than splice from start)
     if (this.floatingTexts.length > 20) {
@@ -6713,6 +6761,7 @@ export class GameEngine {
     this.floatingTexts.push({ x, y, text, color, life: maxLife, maxLife, vy: -35, scale });
   }
 
+  /** 更新所有粒子特效（位置、生命周期） */
   updateParticles() {
     // Dynamic hard cap based on device performance
     const limit = this._particleLimit;
@@ -7185,10 +7234,11 @@ export class GameEngine {
     this.player.isFiring = firing;
   }
 
-  setFlameMode(_mode: string) {
+  setFlameMode() {
     this.player.flameMode = FlameMode.CONE;
   }
 
+  /** 循环切换火焰模式 */
   cycleFlameMode() {
     // Cycle through unlocked weapons
     const weapons = ['flamethrower', ...this.progress.weaponsUnlocked.filter(w => w !== 'flamethrower')];
@@ -7200,7 +7250,7 @@ export class GameEngine {
   // ========== RENDERING ==========
   // ===== MOVEMENT RANGE VISUALIZATION =====
   // Draws a semi-transparent overlay showing the player's walkable ground area
-  renderMovementRange(ctx: CanvasRenderingContext2D, _w: number, _h: number) {
+  renderMovementRange(ctx: CanvasRenderingContext2D) {
     // ===== 6-POINT BOUNDARY: Roach ground boundary (green zone) =====
     const [farL, farLY, farR, farRY, midL, midLY, midR, midRY, nearL, nearR, nearY] = SCENE_GROUND_BOUNDS[this.currentScene];
 
@@ -7305,6 +7355,7 @@ export class GameEngine {
     ctx.restore();
   }
 
+  /** 主渲染循环（每帧调用） */
   render() {
     const ctx = this.ctx;
     const w = this.width;
@@ -7316,7 +7367,7 @@ export class GameEngine {
     this.renderBackground(ctx, w, h);
     // Show movement range overlay (semi-transparent visualization of player walkable area)
     if (this.showMovementRange) {
-      this.renderMovementRange(ctx, w, h);
+      this.renderMovementRange(ctx);
     }
     this.renderWeatherBackground(ctx, w, h);
     this.renderFireZones(ctx);
@@ -7669,7 +7720,7 @@ export class GameEngine {
   }
 
   // Render the clickable item drop on the battlefield
-  renderItemDropOnField(ctx: CanvasRenderingContext2D, _w: number, _h: number) {
+  renderItemDropOnField(ctx: CanvasRenderingContext2D) {
     const drop = this.itemDropOnField;
     if (!drop) return;
     const bobY = Math.sin(drop.bobPhase) * 12;
@@ -7792,14 +7843,7 @@ export class GameEngine {
     ctx.fillText(waveDisplay, w / 2, barY + barH / 2 + 3);
     ctx.shadowBlur = 0;
 
-    // Egg pod count
-    const intactPods = bb.eggPods.filter(p => p.state === 'intact').length;
-    if (intactPods > 0) {
-      ctx.fillStyle = '#fbbf24';
-      ctx.font = '11px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(`剩余虫卵: ${intactPods}`, w / 2, barY - 22);
-    }
+    // [REMOVED] Egg pod count display removed
 
     // Time remaining
     const timeText = `剩余时间: ${Math.ceil(bb.timeRemaining)}秒`;
@@ -7827,72 +7871,10 @@ export class GameEngine {
   }
 
   // ========== EGG POD RENDERING =========
-  renderEggPods(ctx: CanvasRenderingContext2D) {
-    const bb = this.bossBattle;
-    if (!bb.eggPods.length) return;
-
-    const img = this.eggPodImg;
-    const basePodW = 32;
-    const basePodH = 44;
-
-    // Perspective scale range (based on bg_rooftop.jpg analysis)
-    // Actual egg pod spawn range after -200px shift:
-    const actualYMin = Math.max(60, this.height * Math.max(0.41, 0.90 - 300 / this.height) - 200);
-    const actualYMax = this.height * 0.90 - 200;
-    const farScale = 0.35;  // scale at far end (near fence)
-    const nearScale = 1.0;  // scale at near end (near defense line)
-
-    for (const pod of bb.eggPods) {
-      if (pod.state !== 'intact') continue;
-
-      // Perspective scale: larger near defense line, smaller near fence
-      // Use actual spawn range for correct yRatio calculation
-      const yRatio = Math.max(0, Math.min(1, (pod.y - actualYMin) / (actualYMax - actualYMin)));
-      const perspectiveScale = farScale + yRatio * (nearScale - farScale);
-      const podW = basePodW * perspectiveScale;
-      const podH = basePodH * perspectiveScale;
-
-      ctx.save();
-      // Rotation pivot: bottom center of the egg pod image
-      const pivotY = podH / 2;
-      ctx.translate(pod.x, pod.y + pivotY);
-
-      // 15% angle rotation wobble (0.15 radians ≈ 8.6 degrees)
-      const rot = Math.sin(this.time * 3 + pod.wobbleOffset) * 0.15;
-      ctx.rotate(rot);
-
-      if (img) {
-        // Draw egg pod image with perspective scale, offset so pivot is at bottom center
-        ctx.drawImage(img, -podW / 2, -podH, podW, podH);
-      } else {
-        // Fallback: draw oval shape (pivot at bottom center)
-        ctx.fillStyle = '#8B7355';
-        ctx.beginPath();
-        ctx.ellipse(0, -podH / 2, podW / 2, podH / 2, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = '#4A3728';
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.moveTo(-5, -podH / 2 - 5); ctx.lineTo(0, -podH / 2); ctx.lineTo(5, -podH / 2 + 2);
-        ctx.moveTo(0, -podH / 2); ctx.lineTo(-3, -podH / 2 + 10);
-        ctx.stroke();
-      }
-
-      // Crack glow when near hatch (last 1.5s) - pivot at bottom center
-      if (pod.hatchTimer <= 1.5) {
-        const crackGlow = (1.5 - pod.hatchTimer) / 1.5;
-        ctx.strokeStyle = `rgba(255, 200, 50, ${crackGlow * 0.8})`;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(-5, -podH / 2 - 5); ctx.lineTo(0, -podH / 2); ctx.lineTo(5, -podH / 2 + 2);
-        ctx.stroke();
-        const pulse = Math.sin(this.time * 10) * 0.3 + 0.7;
-        ctx.shadowColor = `rgba(255, 150, 0, ${crackGlow * pulse})`;
-        ctx.shadowBlur = 15;
-      }
-
-      ctx.restore();
-    }
+  renderEggPods(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _ctx: CanvasRenderingContext2D) {
+    // [REMOVED] Egg pod system removed
   }
 
   // ===== HOSPITAL EXCLUSIVE: RENDER HOSPITAL EGG PODS =====
@@ -8141,6 +8123,12 @@ export class GameEngine {
     ctx.restore();
   }
 
+  /**
+   * 渲染场景背景
+   * @param {CanvasRenderingContext2D} ctx - 画布上下文
+   * @param {number} w - 画布宽度
+   * @param {number} h - 画布高度
+   */
   renderBackground(ctx: CanvasRenderingContext2D, w: number, h: number) {
     const scene = this.getSceneConfig();
     const diff = this.difficulty;
@@ -8462,7 +8450,7 @@ export class GameEngine {
     }
   }
 
-  renderStickyBoards(_ctx: CanvasRenderingContext2D) {
+  renderStickyBoards() {
     // Legacy sticky board rendering removed - replaced by auto-targeting sticky drops
     // Sticky boards array is kept for backwards compatibility but no longer rendered
   }
@@ -8907,6 +8895,7 @@ export class GameEngine {
     ctx.restore();
   }
 
+  /** 渲染所有蟑螂敌人 */
   renderRoaches(ctx: CanvasRenderingContext2D) {
     // ===== RENDER ORDER: normal roaches first, then charging BOSS on top =====
     // First pass: render all non-boss or non-charging roaches
@@ -9890,7 +9879,6 @@ export class GameEngine {
 
       if (phase === 'crouching') {
         // Phase 2: Crouching + countdown
-        const crouchProgress = Math.min(1, (3.0 - phaseTimer) / 3.0);
 
         // Body squashed 30% (simulate crouching)
         ctx.scale(1.3, 0.7);
@@ -10129,6 +10117,7 @@ export class GameEngine {
     }
   }
 
+  /** 渲染玩家与武器 */
   renderPlayer(ctx: CanvasRenderingContext2D) {
     const p = this.player;
     const py = p.y;
@@ -10582,7 +10571,7 @@ export class GameEngine {
     ctx.restore();
   }
 
-  renderWeatherForeground(ctx: CanvasRenderingContext2D, w: number, _h: number) {
+  renderWeatherForeground(ctx: CanvasRenderingContext2D, w: number) {
     // Render weather particles on top
     ctx.save();
     for (const p of this.weatherParticles) {
@@ -10632,7 +10621,11 @@ export class GameEngine {
 
   // ========== CONSUMABLE SHOP (one-time use items) ==========
   // DIFFERENT from talent tree (permanent). These are immediate/temporary effects.
-  // Buy a consumable → adds to inventory (does NOT use immediately)
+  /**
+   * 购买消耗品（加入库存，不立即使用）
+   * @param {string} id - 消耗品类型 ID
+   * @returns {boolean} 是否购买成功
+   */
   buyConsumable(id: string): boolean {
     const def = CONSUMABLE_DEFS.find(c => c.id === id);
     if (!def) return false;
@@ -10653,7 +10646,11 @@ export class GameEngine {
     return true;
   }
 
-  // Actually use a consumable from inventory
+  /**
+   * 使用库存中的消耗品
+   * @param {string} id - 消耗品类型 ID
+   * @returns {boolean} 是否使用成功
+   */
   useConsumable(id: string): boolean {
     if (!this.player) return false;
     if ((this.consumableInventory[id] || 0) <= 0) return false;
@@ -10766,11 +10763,11 @@ export class GameEngine {
   checkAutoUseConsumables() {
     if (!this.player || this.state !== GameState.PLAYING) return;
 
-    for (const [id, count] of Object.entries(this.inventory)) {
-      if (count <= 0) continue;
+    for (const item of this.inventory) {
+      if (item.count <= 0) continue;
 
       let shouldUse = false;
-      switch (id) {
+      switch (item.type) {
         // gas_refill is now manual-only (moved to HUD)
         case 'emergency_cool':
           shouldUse = this.player.isOverheated;
@@ -10782,7 +10779,7 @@ export class GameEngine {
       }
 
       if (shouldUse) {
-        this.useConsumable(id);
+        this.useConsumable(item.type);
       }
     }
   }
