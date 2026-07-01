@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Lock, Check, Sparkles, Flame, Target, Gauge, Wind, Shield, Zap, DollarSign, Snowflake, Skull, Bomb, Wrench, Package, X, ChevronUp, ChevronRight } from 'lucide-react';
-import type { GameProgress, TalentDef } from '@/game/types';
+import type { GameProgress } from '@/game/types';
 import { TALENT_DEFS } from '@/game/data';
 import type { AudioManager } from '@/game/audio';
 

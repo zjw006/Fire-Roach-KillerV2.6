@@ -427,6 +427,10 @@ export interface Roach {
   isFlameKilled?: boolean;
   // Residue fade timer (3s)
   residueTimer?: number;
+  // Mutant transformation timer
+  transformTimer?: number;
+  // Has transformed flag
+  hasTransformed?: boolean;
 }
 
 /** 自动追踪粘板弹丸 */
@@ -517,6 +521,18 @@ export interface Player {
   // 商店升级乘数（已弃用，保留用于向后兼容）
   flameSpreadMultiplier: number;
   reloadTimeMultiplier: number;
+  // 新增属性
+  weaponsUnlocked: string[];
+  money: number;
+  weaponUpgrades?: WeaponUpgrade[];
+  flameDamage?: number;
+  flameRange?: number;
+  flameSpeed?: number;
+  flameAmmo?: number;
+  shotgunSpread?: number;
+  stickyDuration?: number;
+  poisonCloudSize?: number;
+  molotovDuration?: number;
 }
 
 /** 关卡内商店消耗品类型（一次性使用道具） */
@@ -563,6 +579,10 @@ export interface WaveConfig {
   timedSuicideCount?: number;
   /** 本波激活的虫卵池数量（1~2） */
   eggPoolActiveCount?: number;
+  /** 敌人生成间隔（秒） */
+  spawnInterval?: number;
+  /** 波次名称 */
+  name?: string;
 }
 
 /** 经济统计与成就追踪数据 */
@@ -575,7 +595,11 @@ export interface Economy {
   armoredKills: number;
   splittingKills: number;
   suicideKills: number;
+  flyingSuicideKills: number;
   queenKills: number;
+  nurseKills: number;
+  mutantKills: number;
+  timedSuicideKills: number;
   perfectWaves: number;
   gasSavedBonus: number;
   breaches: number;
@@ -584,6 +608,12 @@ export interface Economy {
   highestEndlessWave: number;
   totalGamesPlayed: number;
   totalMoneyEarned: number;
+  totalDamage: number;
+  totalMoneySpent: number;
+  totalConsumablesUsed: number;
+  totalWeaponsUnlocked: number;
+  totalUpgradesPurchased: number;
+  totalAchievements: number;
 }
 
 /** 商店升级解锁状态 */
@@ -619,6 +649,8 @@ export interface Achievement {
   condition: string;
   unlocked: boolean;
   reward: number;
+  /** 是否已完成 */
+  completed?: boolean;
 }
 
 /** 场景配置数据 */
@@ -679,6 +711,7 @@ export interface GameProgress {
   /** 兼容旧版本的可选字段 */
   scenesCompleted?: SceneType[];
   weaponsUnlocked?: string[];
+  unlockedItems?: string[];
   encyclopedia?: EncyclopediaData;
   /** 同局内跨关卡保留的商店升级列表 */
   shopUpgrades?: string[];
@@ -705,4 +738,25 @@ export interface EncyclopediaEntry {
 /** 图鉴数据 */
 export interface EncyclopediaData {
   entries: EncyclopediaEntry[];
+}
+
+/** 浮动文字效果 */
+export interface FloatingText {
+  x: number;
+  y: number;
+  text: string;
+  color: string;
+  life: number;
+  maxLife: number;
+  vy: number;
+  /** 可选字体缩放（1.0 = 默认 16px） */
+  scale?: number;
+}
+
+/** 武器升级配置 */
+export interface WeaponUpgrade {
+  id: string;
+  level: number;
+  value: number;
+  type: 'damage' | 'range' | 'speed' | 'ammo' | 'special';
 }

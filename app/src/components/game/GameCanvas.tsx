@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { GameEngine } from '@/game/engine';
-import { GameState, GameMode, SceneType, type Player, type Economy, type GameProgress, type DialogConfig, type BossBattleState } from '@/game/types';
+import { createGameEngine } from '@/game/engine/index';
+import { GameState, GameMode, SceneType, type Player, type Economy, type GameProgress, type DialogConfig, type BossBattleState, type InventoryItem } from '@/game/types';
 import { DIALOG_CONFIGS, SCENE_CONFIGS, SCENE_UNLOCK_CHAIN } from '@/game/data';
 import * as Vibration from '@/game/vibration';
 import { trpc } from '@/providers/trpc';
@@ -18,8 +18,8 @@ import { ComicViewer } from './ComicViewer';
 import { TitleScreen } from './TitleScreen';
 import { ItemRevealScreen } from './ItemRevealScreen';
 import { PreparationScreen } from './PreparationScreen';
-import { GameplayTutorialOverlay, hasSeenGameplayTutorial } from './GameplayTutorialOverlay';
-import { ShopTutorialOverlay, hasSeenShopTutorial } from './ShopTutorialOverlay';
+import { GameplayTutorialOverlay } from './GameplayTutorialOverlay';
+// import { ShopTutorialOverlay, hasSeenShopTutorial } from './ShopTutorialOverlay';
 import { CountdownOverlay } from './CountdownOverlay';
 import { ItemRecycleAnimation } from './ItemRecycleAnimation';
 import { getComicChapter, hasSeenComic, type ComicChapter } from '@/game/comicData';
@@ -37,11 +37,11 @@ function getOrCreatePlayerId(): string {
 
 export const GameCanvas: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const engineRef = useRef<GameEngine | null>(null);
+  const engineRef = useRef<any | null>(null);
   const nextSceneUpgradesRef = useRef<string[]>([]);
-  const nextSceneConsumablesRef = useRef<Record<string, number>>({});
-  const nextSceneEmergencyCoolRef = useRef<number>(0);
-  const menuShopInventoryRef = useRef<Record<string, number>>({});
+  // const nextSceneConsumablesRef = useRef<Record<string, number>>({});
+  // const nextSceneEmergencyCoolRef = useRef<number>(0);
+  // const menuShopInventoryRef = useRef<Record<string, number>>({});
   const playerIdRef = useRef<string>(getOrCreatePlayerId());
 
   // tRPC mutations for cloud save
@@ -64,7 +64,7 @@ export const GameCanvas: React.FC = () => {
   const [tripleFlameActive, setTripleFlameActive] = useState(false);
   const [tripleFlameTimer, setTripleFlameTimer] = useState(0);
   const [powerBoostTimer, setPowerBoostTimer] = useState(0);
-  const [powerBoostFlash, setPowerBoostFlash] = useState(false);
+  // const [powerBoostFlash, setPowerBoostFlash] = useState(false);
   const [bossState, setBossState] = useState<BossBattleState | null>(null);
   const [difficulty, setDifficulty] = useState<'easy' | 'hard'>('easy');
   const [gameMode, setGameMode] = useState<GameMode>(GameMode.STORY);
@@ -123,7 +123,17 @@ export const GameCanvas: React.FC = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const engine = new GameEngine(canvas);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    const engine = createGameEngine({
+      canvas,
+      ctx,
+      gameMode: GameMode.STORY,
+      difficulty: 'easy',
+      currentScene: SceneType.KITCHEN,
+      audio: undefined
+    });
     engineRef.current = engine;
 
     engine.onStateChange = (state) => {
@@ -146,7 +156,14 @@ export const GameCanvas: React.FC = () => {
       setTutorialPauseSpawn(paused);
     };
 
-    engine.onConsumableUpdate = (inv, buffTimers, cooldowns, globalCd, combatTimer, itemCds) => {
+    engine.onConsumableUpdate = (
+      inv: Record<string, number>, 
+      buffTimers: Record<string, number>, 
+      cooldowns?: Record<string, number>, 
+      globalCd?: number, 
+      combatTimer?: number, 
+      itemCds?: Record<string, number>
+    ) => {
       setCarriedConsumables({ ...inv });
       setBuffFlashTimers({ ...buffTimers });
       if (cooldowns) setConsumableCooldowns({ ...cooldowns });
@@ -163,7 +180,7 @@ export const GameCanvas: React.FC = () => {
         }));
       } catch { /* ignore */ }
     };
-    engine.onEmergencyCoolUpdate = (count) => {
+    engine.onEmergencyCoolUpdate = (count: number) => {
       setEmergencyCoolCount(count);
       // Persist to GameProgress (v3)
       engine.saveProgress();
@@ -192,7 +209,7 @@ export const GameCanvas: React.FC = () => {
       engine.saveProgress();
       // Sync level-end economy.money to menuShopMoney (remaining gold carries over)
       const victoryReward = engine.economy.money;
-      setMenuShopMoney(prev => {
+      setMenuShopMoney(() => {
         const newVal = victoryReward;
         try { localStorage.setItem('roach_blaster_menu_money', String(newVal)); } catch { /* ignore */ }
         return newVal;
@@ -223,18 +240,18 @@ export const GameCanvas: React.FC = () => {
         });
       } catch { /* ignore network errors */ }
     };
-    engine.onPlayerUpdate = (p) => {
+    engine.onPlayerUpdate = (p: Player) => {
       setPlayer({ ...p });
       setCurrentWeapon(p.currentWeapon);
       setPowerBoostTimer(p.powerBoostTimer);
     };
-    engine.onEconomyUpdate = (e) => setEconomy({ ...e });
-    engine.onWaveUpdate = (w) => setWave(w);
-    engine.onDefenseUpdate = (hp, maxHp) => {
+    engine.onEconomyUpdate = (e: Economy) => setEconomy({ ...e });
+    engine.onWaveUpdate = (w: number) => setWave(w);
+    engine.onDefenseUpdate = (hp: number, maxHp: number) => {
       setDefenseHp(hp);
       setMaxDefenseHp(maxHp);
     };
-    engine.onGameOver = (e, w) => {
+    engine.onGameOver = (e: Economy, w: number) => {
       // Trigger item recycle animation if inventory has unused items
       const recycled = engine.recycledInventory;
       if (recycled.length > 0) {
@@ -249,7 +266,7 @@ export const GameCanvas: React.FC = () => {
       engine.saveProgress();
       // Sync level-end economy.money to menuShopMoney (remaining gold carries over)
       const defeatReward = e.money;
-      setMenuShopMoney(prev => {
+      setMenuShopMoney(() => {
         const newVal = defeatReward;
         try { localStorage.setItem('roach_blaster_menu_money', String(newVal)); } catch { /* ignore */ }
         return newVal;
@@ -281,8 +298,8 @@ export const GameCanvas: React.FC = () => {
         });
       } catch { /* ignore network errors */ }
     };
-    engine.onBossUpdate = (bb) => setBossState({ ...bb });
-    engine.onInventoryUpdate = (inv) => setInventory([...inv]);
+    engine.onBossUpdate = (bb: BossBattleState) => setBossState({ ...bb });
+    engine.onInventoryUpdate = (inv: InventoryItem[]) => setInventory([...inv]);
 
     setProgress(engine.progress);
     setTalentPoints(engine.progress.talentTree.points);
@@ -359,12 +376,12 @@ export const GameCanvas: React.FC = () => {
         engineRef.current.progress.shopUpgrades = nextSceneUpgradesRef.current;
         nextSceneUpgradesRef.current = [];
       }
-      // Start BGM after dialog/comic completes (not during)
+      // 根据用户需求：不要默认的背景音乐，只在战斗开始后播放关卡音乐
+      // 所以这里不调用任何音频播放方法，关卡音乐会在战斗开始时由引擎自动播放
       if (mode === GameMode.STORY) {
         engineRef.current.audio.switchBGMForScene(scene, diff);
-      } else {
-        engineRef.current.audio.startBGM();
       }
+      // 非故事模式也不播放音乐，等待战斗开始
     }
   }, [audioMuted, menuShopMoney]);
 
@@ -373,7 +390,7 @@ export const GameCanvas: React.FC = () => {
     // Show preparation in story mode when player has 4+ unlocked items
     if (mode === GameMode.STORY && engineRef.current) {
       const unlocked = engineRef.current.progress.weaponsUnlocked;
-      if (unlocked.length >= 4) {
+      if (unlocked && unlocked.length >= 4) {
         setPreparationItems(unlocked);
         setPendingPreparationParams({ diff, mode, scene });
         setShowPreparation(true);
@@ -486,14 +503,13 @@ export const GameCanvas: React.FC = () => {
   }, []);
 
   // Power Boost: trigger white flash on activation
-  const prevPowerBoostRef = useRef(0);
-  useEffect(() => {
-    if (powerBoostTimer > 0 && prevPowerBoostRef.current <= 0) {
-      setPowerBoostFlash(true);
-      setTimeout(() => setPowerBoostFlash(false), 400);
-    }
-    prevPowerBoostRef.current = powerBoostTimer;
-  }, [powerBoostTimer]);
+  // useEffect(() => {
+  //   if (powerBoostTimer > 0 && prevPowerBoostRef.current <= 0) {
+  //     setPowerBoostFlash(true);
+  //     setTimeout(() => setPowerBoostFlash(false), 400);
+  //   }
+  //   prevPowerBoostRef.current = powerBoostTimer;
+  // }, [powerBoostTimer]);
 
   const handleRestart = useCallback(() => {
     setBossDefeated(false);
@@ -508,24 +524,22 @@ export const GameCanvas: React.FC = () => {
       setCarriedConsumables({ ...engine.consumableInventory });
       setEmergencyCoolCount(engine.emergencyCoolInventory);
     }, 100);
-    // Restart BGM for the current scene after restart
+    // 根据用户需求：不要默认的背景音乐，只在战斗开始后播放关卡音乐
+    // 所以游戏重启后也不播放音乐，等待战斗开始
     const engine = engineRef.current;
     if (engine && engine.gameMode === GameMode.STORY) {
       setTimeout(() => {
         engine.audio.switchBGMForScene(engine.currentScene, engine.difficulty);
-        engine.audio.startBGM();
-      }, 100);
-    } else if (engine) {
-      setTimeout(() => {
-        engine.audio.startBGM();
+        // 不调用startBGM()，等待战斗开始
       }, 100);
     }
+    // 非故事模式也不播放音乐，等待战斗开始
   }, []);
 
   // Continue to next wave after shopping
-  const handleContinueFromShop = useCallback(() => {
-    engineRef.current?.continueFromShop();
-  }, []);
+  // const handleContinueFromShop = useCallback(() => {
+  //   engineRef.current?.continueFromShop();
+  // }, []);
 
   const handleNextScene = useCallback(() => {
     const engine = engineRef.current;
@@ -533,7 +547,7 @@ export const GameCanvas: React.FC = () => {
     engine.audio.stopBGM();
     engine.audio.stopVictoryBGM();
     // Save shop upgrades before transitioning to next scene
-    nextSceneUpgradesRef.current = [...engine.progress.shopUpgrades];
+    nextSceneUpgradesRef.current = [...(engine.progress.shopUpgrades || [])];
     // Consumables are now auto-saved to localStorage in onWaveClear/onGameOver/onConsumableUpdate
     // Find next scene in chain
     const currentIdx = SCENE_UNLOCK_CHAIN.indexOf(engine.currentScene);
@@ -598,43 +612,7 @@ export const GameCanvas: React.FC = () => {
     engineRef.current?.emergencyCool();
   }, []);
 
-  const handleBuyConsumable = useCallback((id: string) => {
-    // Use setTimeout to bypass React batching
-    setTimeout(() => {
-      const engine = engineRef.current;
-      if (!engine) return;
-      const costs: Record<string, number> = {
-        gas_refill: 250, defense_repair: 400, emergency_cool: 200,
-        power_boost: 700, shield: 800, bait: 450,
-      };
-      const cost = costs[id];
-      if (!cost || engine.economy.money < cost) return;
-      engine.economy.money -= cost;
-      // Update engine directly + persist to localStorage
-      if (id === 'emergency_cool') {
-        engine.emergencyCoolInventory++;
-        setEmergencyCoolCount(engine.emergencyCoolInventory);
-      } else {
-        engine.consumableInventory[id] = (engine.consumableInventory[id] || 0) + 1;
-      }
-      engine.onConsumableUpdate?.({ ...engine.consumableInventory }, { ...engine.buffFlashTimers || {} });
-      // Persist to localStorage (cross-level save)
-      try {
-        localStorage.setItem('roach_blaster_consumables', JSON.stringify({
-          consumables: engine.consumableInventory,
-          emergencyCool: engine.emergencyCoolInventory,
-        }));
-      } catch { /* ignore */ }
-      if (engine.autoUseEnabled[id] === undefined) engine.autoUseEnabled[id] = true;
-      const newEcon = { ...engine.economy };
-      const newInv = { ...engine.consumableInventory };
-      setEconomy(newEcon);
-      setCarriedConsumables(newInv);
-      const moneyEl = document.querySelector('.shop-money');
-      if (moneyEl) moneyEl.textContent = `¥${newEcon.money}`;
-    }, 0);
-    return true;
-  }, []);
+
 
   // Menu shop: buy consumable with menuShopMoney (persistent across levels)
   const handleMenuShopBuy = useCallback((id: string) => {
@@ -679,9 +657,9 @@ export const GameCanvas: React.FC = () => {
     engineRef.current?.useConsumable(id);
   }, []);
 
-  const handleToggleAutoUse = useCallback((id: string) => {
-    engineRef.current?.toggleAutoUse(id);
-  }, []);
+  // const handleToggleAutoUse = useCallback((id: string) => {
+  //   engineRef.current?.toggleAutoUse(id);
+  // }, []);
 
   const handleSwitchWeapon = useCallback((weapon: string) => {
     return engineRef.current?.switchWeapon(weapon) ?? false;
@@ -975,12 +953,12 @@ export const GameCanvas: React.FC = () => {
         <TitleScreen
           onStart={() => {
             setShowTitleScreen(false);
-            // Auto-start BGM when entering main menu
+            // 根据用户需求：不要默认的背景音乐，只在战斗开始后播放关卡音乐
+            // 所以标题屏幕进入主菜单时不播放任何音乐
             const engine = engineRef.current;
             if (engine) {
               engine.audio.setMuted(audioMuted);
-              engine.audio.switchBGMForScene(SceneType.KITCHEN, 'easy');
-              engine.audio.startBGM();
+              // 不调用switchBGMForScene和startBGM，等待战斗开始
             }
           }}
           audioMuted={audioMuted}
@@ -1008,7 +986,35 @@ export const GameCanvas: React.FC = () => {
       {/* Menu Shop —道具商店入口（从主菜单打开） */}
       {showMenuShop && (
         <ShopScreen
-          economy={{ money: menuShopMoney, totalKills: 0 }}
+          economy={{
+            money: menuShopMoney,
+            totalKills: 0,
+            smallKills: 0,
+            largeKills: 0,
+            flyingKills: 0,
+            armoredKills: 0,
+            splittingKills: 0,
+            suicideKills: 0,
+            flyingSuicideKills: 0,
+            queenKills: 0,
+            nurseKills: 0,
+            mutantKills: 0,
+            timedSuicideKills: 0,
+            perfectWaves: 0,
+            gasSavedBonus: 0,
+            breaches: 0,
+            gasCanistersUsed: 0,
+            highestWave: 0,
+            highestEndlessWave: 0,
+            totalGamesPlayed: 0,
+            totalMoneyEarned: 0,
+            totalDamage: 0,
+            totalMoneySpent: 0,
+            totalConsumablesUsed: 0,
+            totalWeaponsUnlocked: 0,
+            totalUpgradesPurchased: 0,
+            totalAchievements: 0
+          }}
           onBuy={handleMenuShopBuy}
           onContinue={() => setShowMenuShop(false)}
           onQuit={() => setShowMenuShop(false)}

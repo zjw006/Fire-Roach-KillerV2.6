@@ -21,6 +21,9 @@ const ROACH_ICONS: Record<RoachType, React.ReactNode> = {
   [RoachType.SUICIDE]: <Bomb size={20} />,
   [RoachType.FLYING_SUICIDE]: <Bomb size={20} />,
   [RoachType.QUEEN]: <Crown size={22} />,
+  [RoachType.NURSE]: <Bug size={20} />,
+  [RoachType.MUTANT]: <Bug size={22} />,
+  [RoachType.TIMED_SUICIDE]: <Bomb size={20} />,
 };
 
 const ROACH_COLORS: Record<RoachType, string> = {
@@ -32,6 +35,9 @@ const ROACH_COLORS: Record<RoachType, string> = {
   [RoachType.SUICIDE]: 'from-red-700 to-red-600',
   [RoachType.FLYING_SUICIDE]: 'from-pink-700 to-pink-600',
   [RoachType.QUEEN]: 'from-red-800 to-red-700',
+  [RoachType.NURSE]: 'from-blue-700 to-blue-600',
+  [RoachType.MUTANT]: 'from-green-700 to-green-600',
+  [RoachType.TIMED_SUICIDE]: 'from-yellow-700 to-yellow-600',
 };
 
 const ROACH_BG_COLORS: Record<RoachType, string> = {
@@ -43,6 +49,9 @@ const ROACH_BG_COLORS: Record<RoachType, string> = {
   [RoachType.SUICIDE]: 'bg-red-950/40 border-red-800/40',
   [RoachType.FLYING_SUICIDE]: 'bg-pink-950/40 border-pink-800/40',
   [RoachType.QUEEN]: 'bg-red-950/40 border-red-800/40',
+  [RoachType.NURSE]: 'bg-blue-950/40 border-blue-800/40',
+  [RoachType.MUTANT]: 'bg-green-950/40 border-green-800/40',
+  [RoachType.TIMED_SUICIDE]: 'bg-yellow-950/40 border-yellow-800/40',
 };
 
 const ROACH_TEXT_COLORS: Record<RoachType, string> = {
@@ -54,6 +63,9 @@ const ROACH_TEXT_COLORS: Record<RoachType, string> = {
   [RoachType.SUICIDE]: 'text-red-400',
   [RoachType.FLYING_SUICIDE]: 'text-pink-400',
   [RoachType.QUEEN]: 'text-rose-400',
+  [RoachType.NURSE]: 'text-blue-400',
+  [RoachType.MUTANT]: 'text-green-400',
+  [RoachType.TIMED_SUICIDE]: 'text-yellow-400',
 };
 
 const ROACH_GLOW_COLORS: Record<RoachType, string> = {
@@ -65,6 +77,9 @@ const ROACH_GLOW_COLORS: Record<RoachType, string> = {
   [RoachType.SUICIDE]: 'shadow-red-900/30',
   [RoachType.FLYING_SUICIDE]: 'shadow-pink-900/30',
   [RoachType.QUEEN]: 'shadow-red-900/30',
+  [RoachType.NURSE]: 'shadow-blue-900/30',
+  [RoachType.MUTANT]: 'shadow-green-900/30',
+  [RoachType.TIMED_SUICIDE]: 'shadow-yellow-900/30',
 };
 
 function getSpeedStars(speed: number): number {

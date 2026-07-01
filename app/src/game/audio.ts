@@ -22,6 +22,7 @@ export class AudioManager {
   private isVibrationEnabled: boolean = true;
   private audioContext: AudioContext | null = null;
   private currentBgmPath: string = '/assets/bgm_kitchen.mp3';
+  private isStartupMusic: boolean = true; // 标记是否为启动音乐
 
   constructor() {
     this.initAudio();
@@ -60,65 +61,189 @@ export class AudioManager {
   vibrateNewRecord() { Vibration.vibrateNewRecord(); }
   vibrateGameOver() { Vibration.vibrateGameOver(); }
   
+  /**
+   * @description 创建音频元素辅助函数
+   * @param src - 音频文件路径
+   * @param volume - 音量（0-1）
+   * @returns 配置好的音频元素
+   */
+  private createAudioElement(src: string, volume: number = 1.0): HTMLAudioElement {
+    // 添加时间戳参数避免缓存问题
+    const timestamp = Date.now();
+    const urlWithCacheBust = src.includes('?') ? `${src}&t=${timestamp}` : `${src}?t=${timestamp}`;
+    
+    const audio = new Audio(urlWithCacheBust);
+    audio.volume = volume;
+    audio.muted = true; // Start muted to avoid auto-play restrictions
+    audio.preload = 'auto'; // 预加载音频
+    
+    // 添加错误处理
+    audio.addEventListener('error', (e) => {
+      console.warn(`Audio load error for ${src}:`, e);
+    });
+    
+    return audio;
+  }
+  
   private initAudio() {
-    // Initialize audio elements
-    this.bgm = new Audio('/assets/bgm_kitchen.mp3');
-    this.bgm.loop = true;
-    this.bgm.volume = 0.6;
+    console.log('Initializing audio manager...');
     
-    this.fireSfx = new Audio('/assets/sfx_fire_intense.mp3');
-    this.fireSfx.loop = true;
-    this.fireSfx.volume = 1.0;
-    
-    this.killSfx = new Audio('/assets/sfx_kill.mp3');
-    this.killSfx.volume = 0.9;
-    
-    this.swatterSfx = new Audio('/assets/sfx_swatter.mp3');
-    this.swatterSfx.volume = 1.0;
-    
-    this.reloadSfx = new Audio('/assets/sfx_reload.mp3');
-    this.reloadSfx.volume = 0.9;
+    try {
+      // Initialize audio elements with muted attribute to avoid auto-play restrictions
+      this.bgm = this.createAudioElement('/assets/bgm_kitchen.mp3', 0.6);
+      this.bgm.loop = true;
+      
+      this.fireSfx = this.createAudioElement('/assets/sfx_fire_intense.mp3', 1.0);
+      this.fireSfx.loop = true;
+      
+      this.killSfx = this.createAudioElement('/assets/sfx_kill.mp3', 0.9);
+      
+      this.swatterSfx = this.createAudioElement('/assets/sfx_swatter.mp3', 1.0);
+      
+      this.reloadSfx = this.createAudioElement('/assets/sfx_reload.mp3', 0.9);
 
-    this.clickSfx = new Audio('/assets/sfx_click.mp3');
-    this.clickSfx.volume = 0.5;
-    this.clickSfx.preload = 'auto';
-    // Warm up: silent preload to reduce first-play latency
-    const warmUp = () => {
-      this.clickSfx!.load();
-      document.removeEventListener('click', warmUp);
-      document.removeEventListener('touchstart', warmUp);
-      document.removeEventListener('keydown', warmUp);
+      this.clickSfx = this.createAudioElement('/assets/sfx_click.mp3', 0.5);
+      
+      this.gameOverBgm = this.createAudioElement('/assets/bgm_gameover.mp3', 0.7);
+      this.gameOverBgm.loop = true;
+
+      // Victory BGM is also used as the general BGM for all scenes
+      this.victoryBgm = this.createAudioElement('/assets/bgm_victory.mp3', 0.5);
+      this.victoryBgm.loop = true;
+      
+      // Create breach sound using Web Audio API (short buzz)
+      this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      
+      console.log('Audio manager initialized successfully');
+      
+      // Add user interaction listener to unmute audio
+      this.setupAudioUnmute();
+      
+      // 预加载所有音频
+      this.preloadAllAudio();
+      
+    } catch (error) {
+      console.error('Failed to initialize audio manager:', error);
+    }
+  }
+  
+  /**
+   * @description 预加载所有音频文件
+   */
+  private preloadAllAudio(): void {
+    console.log('Preloading all audio files...');
+    
+    const audioElements = [
+      this.bgm,
+      this.fireSfx,
+      this.killSfx,
+      this.swatterSfx,
+      this.reloadSfx,
+      this.clickSfx,
+      this.gameOverBgm,
+      this.victoryBgm
+    ];
+    
+    audioElements.forEach((audio, index) => {
+      if (audio) {
+        try {
+          // 触发音频预加载
+          audio.load();
+          console.log(`Audio ${index} preloaded`);
+        } catch (error) {
+          console.warn(`Failed to preload audio ${index}:`, error);
+        }
+      }
+    });
+  }
+  
+  /**
+   * @description 设置音频取消静音监听器
+   * @remarks 在用户首次交互后取消所有音频的静音状态
+   */
+  private setupAudioUnmute(): void {
+    const unmuteAudio = () => {
+      console.log('User interaction detected, unmuting audio elements');
+      
+      // Unmute all audio elements
+      if (this.bgm) {
+        console.log('Unmuting BGM, previous muted state:', this.bgm.muted);
+        this.bgm.muted = false;
+        console.log('BGM muted state after unmute:', this.bgm.muted);
+      }
+      if (this.fireSfx) {
+        this.fireSfx.muted = false;
+        console.log('Fire SFX unmuted');
+      }
+      if (this.killSfx) {
+        this.killSfx.muted = false;
+        console.log('Kill SFX unmuted');
+      }
+      if (this.swatterSfx) {
+        this.swatterSfx.muted = false;
+        console.log('Swatter SFX unmuted');
+      }
+      if (this.reloadSfx) {
+        this.reloadSfx.muted = false;
+        console.log('Reload SFX unmuted');
+      }
+      if (this.clickSfx) {
+        this.clickSfx.muted = false;
+        console.log('Click SFX unmuted');
+      }
+      if (this.gameOverBgm) {
+        this.gameOverBgm.muted = false;
+        console.log('Game Over BGM unmuted');
+      }
+      if (this.victoryBgm) {
+        this.victoryBgm.muted = false;
+        console.log('Victory BGM unmuted');
+      }
+      
+      console.log('Audio elements unmuted');
+      
+      // Remove event listeners after first interaction
+      document.removeEventListener('click', unmuteAudio);
+      document.removeEventListener('touchstart', unmuteAudio);
+      document.removeEventListener('keydown', unmuteAudio);
+      
+      // 尝试立即播放 BGM
+      setTimeout(() => {
+        console.log('Attempting to play BGM after user interaction...');
+        this.startBGM();
+      }, 100);
     };
-    document.addEventListener('click', warmUp, { once: true });
-    document.addEventListener('touchstart', warmUp, { once: true });
-    document.addEventListener('keydown', warmUp, { once: true });
-
-    this.gameOverBgm = new Audio('/assets/bgm_gameover.mp3');
-    this.gameOverBgm.loop = true;
-    this.gameOverBgm.volume = 0.7;
-
-    // Victory BGM is also used as the general BGM for all scenes
-    this.victoryBgm = new Audio('/assets/bgm_victory.mp3');
-    this.victoryBgm.loop = true;
-    this.victoryBgm.volume = 0.5;
     
-    // Create breach sound using Web Audio API (short buzz)
-    this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    console.log('Setting up audio unmute listeners');
+    
+    // Listen for user interaction
+    document.addEventListener('click', unmuteAudio, { once: true });
+    document.addEventListener('touchstart', unmuteAudio, { once: true });
+    document.addEventListener('keydown', unmuteAudio, { once: true });
+    
+    // 添加一个定时器，检查音频状态
+    setTimeout(() => {
+      console.log('Audio status check:', {
+        bgmExists: !!this.bgm,
+        bgmMuted: this.bgm?.muted,
+        bgmPaused: this.bgm?.paused,
+        bgmReadyState: this.bgm?.readyState,
+        isMuted: this.isMuted
+      });
+    }, 1000);
   }
   
   /** 播放护士蟑螂治疗施法音效 */
   playNurseCast() {
     if (this.isMuted) return;
-    const sfx = new Audio('/assets/nurse_cast.mp3');
-    sfx.volume = 0.7;
+    const sfx = this.createAudioElement('/assets/nurse_cast.mp3', 0.7);
     sfx.play().catch(() => {});
   }
 
   /** 播放变异蟑螂变身音效 */
   playMutantTransform() {
     if (this.isMuted) return;
-    const sfx = new Audio('/assets/mutant_transform.mp3');
-    sfx.volume = 0.8;
+    const sfx = this.createAudioElement('/assets/mutant_transform.mp3', 0.8);
     sfx.play().catch(() => {});
   }
 
@@ -139,9 +264,53 @@ export class AudioManager {
 
   /** 开始播放当前 BGM */
   startBGM() {
-    if (this.bgm && !this.isMuted) {
+    console.log('AudioManager.startBGM() called', {
+      bgmExists: !!this.bgm,
+      isMuted: this.isMuted,
+      bgmMuted: this.bgm?.muted,
+      bgmPaused: this.bgm?.paused,
+      bgmSrc: this.bgm?.src,
+      currentBgmPath: this.currentBgmPath
+    });
+    
+    // 根据用户需求：不要默认的背景音乐，只在战斗开始后播放关卡音乐
+    // 所以startBGM方法应该直接播放当前设置的BGM（关卡音乐）
+    this.playCurrentBGM();
+  }
+  
+  /** 内部方法：在条件满足时播放 BGM */
+  private _playBGMIfPossible(): void {
+    if (this.bgm && !this.isMuted && !this.bgm.muted) {
+      console.log('Playing BGM, currentTime:', this.bgm.currentTime);
       this.bgm.currentTime = 0;
-      this.bgm.play().catch(() => {});
+      this.bgm.play().then(() => {
+        console.log('BGM playback started successfully');
+      }).catch((error) => {
+        console.error('Failed to play BGM:', error);
+        // 尝试强制取消静音并重试
+        console.log('Attempting to unmute and retry...');
+        this.bgm!.muted = false;
+        this.bgm!.play().then(() => {
+          console.log('BGM playback started after unmute');
+        }).catch((retryError) => {
+          console.error('Failed to play BGM even after unmute:', retryError);
+        });
+      });
+    } else {
+      console.warn('Cannot play BGM:', {
+        bgmExists: !!this.bgm,
+        isMuted: this.isMuted,
+        bgmMuted: this.bgm?.muted
+      });
+      // 如果因为静音而无法播放，尝试取消静音
+      if (this.bgm && this.bgm.muted) {
+        console.log('BGM is muted, attempting to unmute...');
+        this.bgm.muted = false;
+        // 重试播放
+        setTimeout(() => {
+          this._playBGMIfPossible();
+        }, 100);
+      }
     }
   }
 
@@ -153,6 +322,24 @@ export class AudioManager {
     }
     this.currentBgmPath = ''; // 重置路径，确保重新进入时可再次播放
   }
+  
+  /** 停止启动音乐（厨房背景音乐） */
+  stopStartupMusic(): void {
+    console.log('Stopping startup music (kitchen BGM)');
+    if (this.isStartupMusic && this.bgm) {
+      this.bgm.pause();
+      this.bgm.currentTime = 0;
+      this.isStartupMusic = false;
+      console.log('Startup music stopped');
+    } else {
+      console.log('Not startup music or no BGM to stop');
+    }
+  }
+  
+  /** 获取是否为启动音乐 */
+  getIsStartupMusic(): boolean {
+    return this.isStartupMusic;
+  }
 
   /** 暂停当前 BGM */
   pauseBGM() {
@@ -161,8 +348,22 @@ export class AudioManager {
 
   /** 恢复播放当前 BGM */
   resumeBGM() {
-    if (this.bgm && !this.isMuted) {
-      this.bgm.play().catch(() => {});
+    console.log('AudioManager.resumeBGM() called', {
+      bgmExists: !!this.bgm,
+      isMuted: this.isMuted,
+      bgmMuted: this.bgm?.muted
+    });
+    
+    if (this.bgm && !this.isMuted && !this.bgm.muted) {
+      this.bgm.play().catch((error) => {
+        console.error('Failed to resume BGM:', error);
+      });
+    } else {
+      console.warn('Cannot resume BGM:', {
+        bgmExists: !!this.bgm,
+        isMuted: this.isMuted,
+        bgmMuted: this.bgm?.muted
+      });
     }
   }
 
@@ -196,9 +397,8 @@ export class AudioManager {
     if (this.isMuted) return;
     // 每次重新创建 Audio 元素以确保可靠播放
     this.stopGameOverBGM();
-    this.gameOverBgm = new Audio('/assets/bgm_gameover.mp3');
+    this.gameOverBgm = this.createAudioElement('/assets/bgm_gameover.mp3', 0.7);
     this.gameOverBgm.loop = true;
-    this.gameOverBgm.volume = 0.7;
     this.gameOverBgm.play().catch(() => {});
   }
 
@@ -227,10 +427,16 @@ export class AudioManager {
   }
 
   /**
-   * 切换 BGM 到指定音轨
+   * 切换 BGM 到指定音轨（不立即播放）
    * @param {string} path - 音频文件路径
    */
   switchBGM(path: string) {
+    console.log('AudioManager.switchBGM() called', {
+      path,
+      currentPath: this.currentBgmPath,
+      isMuted: this.isMuted
+    });
+    
     if (this.currentBgmPath === path) return; // 同一首曲目，无需切换
     this.currentBgmPath = path;
     // 停止当前 BGM
@@ -239,12 +445,38 @@ export class AudioManager {
       this.bgm.currentTime = 0;
     }
     // 创建新的 BGM 元素
-    this.bgm = new Audio(path);
+    this.bgm = this.createAudioElement(path, 0.6);
     this.bgm.loop = true;
-    this.bgm.volume = 0.6;
-    // 未静音时直接播放
-    if (!this.isMuted) {
-      this.bgm.play().catch(() => {});
+    console.log('BGM switched to:', path, 'but not played yet');
+  }
+  
+  /**
+   * 播放当前设置的 BGM
+   */
+  playCurrentBGM(): void {
+    console.log('AudioManager.playCurrentBGM() called', {
+      currentPath: this.currentBgmPath,
+      bgmExists: !!this.bgm,
+      isMuted: this.isMuted,
+      bgmMuted: this.bgm?.muted
+    });
+    
+    if (!this.bgm) {
+      console.warn('Cannot play BGM: bgm is null');
+      return;
+    }
+    
+    if (!this.isMuted && !this.bgm.muted) {
+      console.log('Playing current BGM');
+      this.bgm.currentTime = 0;
+      this.bgm.play().catch((error) => {
+        console.error('Failed to play current BGM:', error);
+      });
+    } else {
+      console.log('Current BGM not played:', {
+        isMuted: this.isMuted,
+        bgmMuted: this.bgm.muted
+      });
     }
   }
 
@@ -296,15 +528,34 @@ export class AudioManager {
   }
 
   /**
-   * 根据场景与难度自动切换对应 BGM
+   * 根据场景与难度自动切换对应 BGM（不立即播放）
    * @param {string} sceneType - 场景类型
    * @param {string} difficulty - 难度等级（'easy' | 'hard'）
    */
   switchBGMForScene(sceneType: string, difficulty: string) {
+    console.log(`Switching BGM for scene: ${sceneType}, difficulty: ${difficulty}`);
+    
     const bgmMap = this.getBgmForScene(sceneType);
-    if (!bgmMap) return; // 无自定义 BGM，保持默认
+    if (!bgmMap) {
+      console.log(`No custom BGM for scene: ${sceneType}, keeping current BGM`);
+      return; // 无自定义 BGM，保持默认
+    }
+    
     const path = difficulty === 'hard' ? bgmMap.hard : bgmMap.easy;
+    console.log(`Switching to BGM: ${path} (not playing yet)`);
     this.switchBGM(path);
+  }
+  
+  /**
+   * 开始播放关卡背景音乐（在战斗开始时调用）
+   */
+  startLevelBGM(): void {
+    console.log('AudioManager.startLevelBGM() called', {
+      currentPath: this.currentBgmPath
+    });
+    
+    // 播放当前设置的关卡音乐
+    this.playCurrentBGM();
   }
 
   /** 播放火焰喷射音效 */
@@ -686,8 +937,7 @@ export class AudioManager {
   /** 播放飞行蟑螂闪避时的快速方向嗖嗖音效 */
   playFlyingDodge() {
     if (this.isMuted) return;
-    const audio = new Audio('/assets/flying_dodge.mp3');
-    audio.volume = 0.7;
+    const audio = this.createAudioElement('/assets/flying_dodge.mp3', 0.7);
     audio.play().catch(() => {});
   }
 
@@ -1339,9 +1589,8 @@ export class AudioManager {
   startFlyingBuzzLoop() {
     if (this.isMuted || this.flyingBuzzPlaying) return;
     if (!this.flyingBuzzAudio) {
-      this.flyingBuzzAudio = new Audio('/assets/flying_roach_buzz.mp3');
+      this.flyingBuzzAudio = this.createAudioElement('/assets/flying_roach_buzz.mp3', 0.4);
       this.flyingBuzzAudio.loop = true;
-      this.flyingBuzzAudio.volume = 0.4;
     }
     this.flyingBuzzAudio.currentTime = 0;
     this.flyingBuzzAudio.play().catch(() => {});
@@ -1360,8 +1609,7 @@ export class AudioManager {
   /** 播放飞行蟑螂死亡时的一次性死亡音效 */
   playFlyingDeath() {
     if (this.isMuted) return;
-    const audio = new Audio('/assets/flying_roach_death.mp3');
-    audio.volume = 0.5;
+    const audio = this.createAudioElement('/assets/flying_roach_death.mp3', 0.5);
     audio.play().catch(() => {});
   }
 

@@ -17,7 +17,7 @@ export const appRouter = createRouter({
           progress: z.object({
             talentTree: z.object({
               points: z.number(),
-              talents: z.record(z.number()),
+              talents: z.record(z.string(), z.number()),
             }),
             achievements: z.array(z.any()),
             highestWave: z.number(),

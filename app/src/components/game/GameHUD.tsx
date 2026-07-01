@@ -26,9 +26,7 @@ interface GameHUDProps {
   onThrow: () => void;
   onCancelAim: () => void;
   // Item system
-  inventory: { type: 'sticky' | 'poison' | 'molotov' | 'shotgun' | 'radar' | 'fan' | 'swatter'; count: number
-  audio?: AudioManager;
-}[];
+  inventory: { type: 'sticky' | 'poison' | 'molotov' | 'shotgun' | 'radar' | 'fan' | 'swatter'; count: number }[];
   selectedItemIndex: number;
   isPlacingItem: boolean;
   onSelectItem: (index: number) => void;
@@ -53,8 +51,8 @@ interface GameHUDProps {
   emergencyCoolInventory?: number;
   // Consumable cooldown system
   consumableCooldowns?: Record<string, number>;
-  globalConsumableCooldown?: number;
   combatStartTimer?: number;
+  audio?: AudioManager;
 }
 
 const WEAPON_ICONS: Record<string, { icon: React.ReactNode; name: string; color: string; key: string }> = {
@@ -82,26 +80,6 @@ const ITEM_NAMES: Record<string, string> = {
   swatter: '电蚊拍',
 };
 
-const ITEM_BG_COLORS: Record<string, string> = {
-  sticky: 'border-amber-500/50 bg-amber-900/30',
-  poison: 'border-amber-500/50 bg-amber-900/30',
-  molotov: 'border-red-500/50 bg-red-900/30',
-  shotgun: 'border-orange-500/50 bg-orange-900/30',
-  radar: 'border-orange-500/50 bg-orange-900/30',
-  fan: 'border-stone-500/50 bg-stone-900/30',
-  swatter: 'border-amber-500/50 bg-amber-900/30',
-};
-
-const ITEM_ACTIVE_COLORS: Record<string, string> = {
-  sticky: 'border-amber-400 ring-2 ring-amber-400/60',
-  poison: 'border-amber-400 ring-2 ring-amber-400/60',
-  molotov: 'border-red-400 ring-2 ring-red-400/60',
-  shotgun: 'border-orange-400 ring-2 ring-orange-400/60',
-  radar: 'border-orange-400 ring-2 ring-orange-400/60',
-  fan: 'border-stone-400 ring-2 ring-stone-400/60',
-  swatter: 'border-amber-400 ring-2 ring-amber-400/60',
-};
-
 // Buff icon component - 1/4 size (~12x12) with flash animation
 const BuffIcon: React.FC<{ src: string; alt: string; color: string; timer: number }> = ({ src, alt, color, timer }) => (
   <div
@@ -121,8 +99,7 @@ const ManualItemIcon: React.FC<{
   cooldown?: number;
   globalCooldown?: number;
   combatStartTimer?: number;
-  audio?: AudioManager;
-}> = ({ def, count, onClick, cooldown, globalCooldown, combatStartTimer, audio }) => {
+}> = ({ def, count, onClick, cooldown, globalCooldown, combatStartTimer }) => {
   const isOnCooldown = (cooldown ?? 0) > 0;
   const isGlobalLocked = (globalCooldown ?? 0) > 0;
   const isCombatLocked = (combatStartTimer ?? 0) > 0;
@@ -131,7 +108,7 @@ const ManualItemIcon: React.FC<{
   const displayCd = Math.max(cooldown ?? 0, globalCooldown ?? 0, combatStartTimer ?? 0);
   return (
     <button
-      onClick={() => { audio?.playClick(); onClick(); }}
+      onClick={() => { onClick(); }}
       disabled={isLocked}
       className={`pointer-events-auto relative w-12 h-12 rounded-lg border-2 overflow-hidden transition-all ${
         isLocked
@@ -178,22 +155,18 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   tripleFlameActive,
   tripleFlameTimer,
   tripleFlameDuration,
-  bossState,
   carriedConsumables = {},
   buffFlashTimers = {},
   onUseConsumable,
-  shieldTimer = 0,
   emergencyCoolInventory = 0,
   consumableCooldowns = {},
   globalConsumableCooldown = 0,
   combatStartTimer = 0,
-  itemCooldowns = {},
-  audio}) => {
+  itemCooldowns = {}}) => {
   const gasPercent = (player.gas / player.maxGas) * 100;
   const heatPercent = (player.heat / player.overheatThreshold) * 100;
   const defensePercent = (defenseHp / maxDefenseHp) * 100;
   const reloadCost = difficulty === 'hard' ? '¥5' : '免费';
-  const coolCost = difficulty === 'hard' ? '¥15' : '¥5';
 
   const totalWaves = gameMode === GameMode.ENDLESS ? '∞' : (SCENE_WAVE_CONFIGS[currentScene as keyof typeof SCENE_WAVE_CONFIGS]?.length || 10);
 
@@ -229,7 +202,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             </div>
           )}
           {player.gas < 20 && !player.isReloading && (
-            <button onClick={() => { audio?.playClick(); onReload(); }} className="pointer-events-auto text-[9px] bg-amber-600 hover:bg-amber-500 text-white rounded px-1 py-0.5 transition-colors">
+            <button onClick={() => { onReload(); }} className="pointer-events-auto text-[9px] bg-amber-600 hover:bg-amber-500 text-white rounded px-1 py-0.5 transition-colors">
               换罐 ({reloadCost})
             </button>
           )}
@@ -252,7 +225,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             <div className="text-[9px] text-stone-400">击杀</div>
             <div className="text-lg font-black text-red-500 leading-tight">{economy.totalKills}</div>
           </div>
-          <button onClick={() => { audio?.playClick(); onPause(); }} className="pointer-events-auto bg-black/50 hover:bg-black/70 backdrop-blur-sm rounded-lg p-1.5 text-white transition-colors ml-0.5">
+          <button onClick={() => { onPause(); }} className="pointer-events-auto bg-black/50 hover:bg-black/70 backdrop-blur-sm rounded-lg p-1.5 text-white transition-colors ml-0.5">
             <Pause size={16} />
           </button>
         </div>{/* /inner max-w */}
@@ -293,7 +266,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             return (
               <button
                 key={w}
-                onClick={() => { audio?.playClick(); isUnlocked && onSwitchWeapon(w); }}
+                onClick={() => { isUnlocked && onSwitchWeapon(w); }}
                 disabled={!isUnlocked}
                 className={`relative flex flex-col items-center px-2 py-1 rounded-lg transition-all ${
                   isActive ? 'bg-white/20 ring-1 ring-white/40' : isUnlocked ? 'hover:bg-white/10' : 'opacity-30'
@@ -314,7 +287,6 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               cooldown={consumableCooldowns['gas_refill']}
               globalCooldown={globalConsumableCooldown}
               combatStartTimer={combatStartTimer}
-              audio={audio}
             />
           )}
           {/* Manual consumables: defense repair */}
@@ -326,7 +298,6 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               cooldown={consumableCooldowns['defense_repair']}
               globalCooldown={globalConsumableCooldown}
               combatStartTimer={combatStartTimer}
-              audio={audio}
             />
           )}
           {/* Manual consumables: shield */}
@@ -338,7 +309,6 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               cooldown={consumableCooldowns['shield']}
               globalCooldown={globalConsumableCooldown}
               combatStartTimer={combatStartTimer}
-              audio={audio}
             />
           )}
           {/* Manual consumables: power boost */}
@@ -350,7 +320,6 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               cooldown={consumableCooldowns['power_boost']}
               globalCooldown={globalConsumableCooldown}
               combatStartTimer={combatStartTimer}
-              audio={audio}
             />
           )}
           {/* Manual consumables: bait */}
@@ -362,10 +331,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               cooldown={consumableCooldowns['bait']}
               globalCooldown={globalConsumableCooldown}
               combatStartTimer={combatStartTimer}
-              audio={audio}
             />
           )}
-          <button onClick={() => { audio?.playClick(); onCycleWeapon(); }} className="ml-1 text-stone-400 hover:text-white transition-colors">
+          <button onClick={() => { onCycleWeapon(); }} className="ml-1 text-stone-400 hover:text-white transition-colors">
             <ChevronRight size={14} />
           </button>
         </div>
@@ -432,7 +400,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               return (
                 <button
                   key={`${item.type}-${idx}`}
-                  onClick={() => { audio?.playClick(); onSelectItem(idx); }}
+                  onClick={() => { onSelectItem(idx); }}
                   disabled={isInCooldown}
                   className={`pointer-events-auto relative w-12 h-12 rounded-lg border-2 overflow-hidden transition-all ${
                     selectedItemIndex === idx && isPlacingItem

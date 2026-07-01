@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Check, ArrowRight, X, Bug, Wind, Flame, Droplets, Target, Zap, ScanLine } from 'lucide-react';
+import { Check, ArrowRight, Bug, Wind, Flame, Droplets, Target, Zap, ScanLine } from 'lucide-react';
 import type { AudioManager } from '@/game/audio';
 
 

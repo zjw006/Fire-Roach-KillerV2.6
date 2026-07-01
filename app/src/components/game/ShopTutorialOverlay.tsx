@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { ArrowRight, SkipForward, ShoppingCart } from 'lucide-react';
 import type { AudioManager } from '@/game/audio';
 
@@ -110,7 +110,7 @@ export const ShopTutorialOverlay: React.FC<ShopTutorialOverlayProps> = ({
     if (targetEl) {
       const timer = setTimeout(() => {
         // Step 1: Scroll first (instant, synchronous)
-        const container = scrollContainerRef.current;
+        const container = scrollContainerRef?.current;
         if (container) {
           const containerRect = container.getBoundingClientRect();
           const elTopInContainer = targetEl!.getBoundingClientRect().top - containerRect.top + container.scrollTop;

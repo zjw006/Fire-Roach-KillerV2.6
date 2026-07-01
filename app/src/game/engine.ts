@@ -613,6 +613,9 @@ export class GameEngine {
       // Legacy fields (no longer applied from shopUpgrades)
       flameSpreadMultiplier: 1,
       reloadTimeMultiplier: 1,
+      // Required fields for Player interface
+      weaponsUnlocked: ['flamethrower'],
+      money: 0,
     };
   }
 
@@ -633,7 +636,11 @@ export class GameEngine {
       armoredKills: 0,
       splittingKills: 0,
       suicideKills: 0,
+      flyingSuicideKills: 0,
       queenKills: 0,
+      nurseKills: 0,
+      mutantKills: 0,
+      timedSuicideKills: 0,
       perfectWaves: 0,
       gasSavedBonus: 0,
       breaches: 0,
@@ -642,6 +649,12 @@ export class GameEngine {
       highestEndlessWave: 0,
       totalGamesPlayed: 0,
       totalMoneyEarned: 0,
+      totalDamage: 0,
+      totalMoneySpent: 0,
+      totalConsumablesUsed: 0,
+      totalWeaponsUnlocked: 0,
+      totalUpgradesPurchased: 0,
+      totalAchievements: 0,
     };
   }
 
@@ -807,7 +820,7 @@ export class GameEngine {
         case 'kill_queen': cond = e.queenKills >= 1; break;
         case 'kill_flying': cond = e.flyingKills >= 50; break;
         case 'kill_armored': cond = e.armoredKills >= 30; break;
-        case 'weapon_master': cond = p.weaponsUnlocked.length >= 5; break;
+        case 'weapon_master': cond = (p.weaponsUnlocked?.length || 0) >= 5; break;
         case 'talent_first': cond = Object.values(p.talentTree.talents).some(v => (v || 0) > 0); break;
       }
       if (cond) {
@@ -1779,7 +1792,8 @@ export class GameEngine {
     // Only reveal newly unlocked items (skip already unlocked ones)
     const newlyUnlocked: typeof rewards = [];
     for (const reward of rewards) {
-      if (!this.progress.weaponsUnlocked.includes(reward.type)) {
+      if (!this.progress.weaponsUnlocked?.includes(reward.type)) {
+        if (!this.progress.weaponsUnlocked) this.progress.weaponsUnlocked = [];
         this.progress.weaponsUnlocked.push(reward.type);
         newlyUnlocked.push(reward); // only add to reveal if it's newly unlocked
       }
@@ -2560,7 +2574,7 @@ export class GameEngine {
       p.isTempWeapon = false;
       return true;
     }
-    const unlocked = this.progress.weaponsUnlocked.includes(weapon);
+    const unlocked = this.progress.weaponsUnlocked?.includes(weapon) || false;
     if (!unlocked && !p.isTempWeapon) return false;
 
     const ammo = p.weaponAmmo[weapon] || 0;
@@ -2626,7 +2640,7 @@ export class GameEngine {
           : allItems);
     // Filter to only items the player has unlocked in progress (safety check)
     const availableItems = unlockedItems.filter(item =>
-      this.progress.weaponsUnlocked.includes(item) || item === 'flamethrower'
+      this.progress.weaponsUnlocked?.includes(item) || item === 'flamethrower'
     );
     // Fallback: if no items pass the filter, use basic sticky
     const finalItems = availableItems.length > 0 ? availableItems : ['sticky'];
@@ -4241,7 +4255,7 @@ export class GameEngine {
       }
 
       // BAIT CONSUMABLE: pull all roaches toward bait target while active
-      if (this.player.baitTimer > 0 && !isImmobilized && !r.isDead && this.baitTarget.active) {
+      if (this.player.baitTimer > 0 && !isImmobilized && this.baitTarget.active) {
         const baitDx = this.baitTarget.x - r.x;
         const baitDy = this.baitTarget.y - r.y;
         const baitDist = Math.sqrt(baitDx * baitDx + baitDy * baitDy);
@@ -4651,20 +4665,20 @@ export class GameEngine {
               r.damageFlash = 0;
 
               // Countdown
-              r.breachPhaseTimer -= this.deltaTime;
-              r.placeTimer -= this.deltaTime;
+              r.breachPhaseTimer! -= this.deltaTime;
+              r.placeTimer! -= this.deltaTime;
 
               // Crack radius grows (0→60px over crouching duration)
-              r.crackRadius = Math.min(60, (3.0 - r.breachPhaseTimer) / 3.0 * 60);
+              r.crackRadius = Math.min(60, (3.0 - r.breachPhaseTimer!) / 3.0 * 60);
 
               // Countdown floating text
-              const secs = Math.ceil(r.placeTimer);
-              if (r.placeTimer > 0 && Math.abs(r.placeTimer - secs) < 0.05 && secs <= 3) {
+              const secs = Math.ceil(r.placeTimer!);
+              if (r.placeTimer! > 0 && Math.abs(r.placeTimer! - secs) < 0.05 && secs <= 3) {
                 this.addFloatingText(r.x, r.y - 35, `${secs}`, secs <= 1 ? '#8b2020' : '#a05030');
               }
 
               // Explode when countdown reaches 0
-              if (r.placeTimer <= 0) {
+              if (r.placeTimer! <= 0) {
                 r.breachPhase = 'exploding';
                 r.breachPhaseTimer = 0.4; // 0.4s explosion
                 this.triggerBreachExplosion(r);
@@ -4674,8 +4688,8 @@ export class GameEngine {
 
             case 'exploding': {
               // Phase 3: Explosion (0.4s screen shake)
-              r.breachPhaseTimer -= this.deltaTime;
-              if (r.breachPhaseTimer <= 0) {
+              r.breachPhaseTimer! -= this.deltaTime;
+              if (r.breachPhaseTimer! <= 0) {
                 r.breachPhase = 'residue';
                 r.residueTimer = 3.0; // 3s residue
                 r.state = RoachState.DEAD;
@@ -4686,8 +4700,8 @@ export class GameEngine {
 
             case 'residue': {
               // Phase 4: Residue fading
-              r.residueTimer -= this.deltaTime;
-              if (r.residueTimer <= 0) {
+              r.residueTimer! -= this.deltaTime;
+              if (r.residueTimer! <= 0) {
                 r.deathTimer = 0; // Remove
               }
               break;
@@ -4714,8 +4728,8 @@ export class GameEngine {
             r.poisonDamage = 0;
             r.inFire = false;
             r.damageFlash = 0;
-            r.placeTimer -= this.deltaTime;
-            if (r.placeTimer <= 0) {
+            r.placeTimer! -= this.deltaTime;
+            if (r.placeTimer! <= 0) {
               r.hasPlacedBomb = true;
               this.placedBombs.push({
                 id: r.id, x: r.x, y: placeY, timer: 3,
@@ -7160,16 +7174,22 @@ export class GameEngine {
 
     // Check weapon unlocks
     if (talentId === 'sticky_weapon') {
+      if (!this.progress.weaponsUnlocked) this.progress.weaponsUnlocked = [];
       if (!this.progress.weaponsUnlocked.includes('sticky')) this.progress.weaponsUnlocked.push('sticky');
     }
     if (talentId === 'poison_weapon') {
+      if (!this.progress.weaponsUnlocked) this.progress.weaponsUnlocked = [];
       if (!this.progress.weaponsUnlocked.includes('poison')) this.progress.weaponsUnlocked.push('poison');
     }
     if (talentId === 'shotgun_weapon') {
+      if (!this.progress.weaponsUnlocked) this.progress.weaponsUnlocked = [];
       if (!this.progress.weaponsUnlocked.includes('shotgun')) this.progress.weaponsUnlocked.push('shotgun');
     }
     if (talentId === 'molotov_weapon') {
-      if (!this.progress.weaponsUnlocked.includes('molotov')) this.progress.weaponsUnlocked.push('molotov');
+      if (!this.progress.weaponsUnlocked?.includes('molotov')) {
+        if (!this.progress.weaponsUnlocked) this.progress.weaponsUnlocked = [];
+        this.progress.weaponsUnlocked.push('molotov');
+      }
     }
 
     this.recalcTalentMultipliers();
@@ -7241,7 +7261,7 @@ export class GameEngine {
   /** 循环切换火焰模式 */
   cycleFlameMode() {
     // Cycle through unlocked weapons
-    const weapons = ['flamethrower', ...this.progress.weaponsUnlocked.filter(w => w !== 'flamethrower')];
+    const weapons = ['flamethrower', ...(this.progress.weaponsUnlocked || []).filter(w => w !== 'flamethrower')];
     const currentIdx = weapons.indexOf(this.player.currentWeapon);
     const nextIdx = (currentIdx + 1) % weapons.length;
     this.switchWeapon(weapons[nextIdx]);
@@ -7372,7 +7392,7 @@ export class GameEngine {
     this.renderWeatherBackground(ctx, w, h);
     this.renderFireZones(ctx);
     this.renderFireWalls(ctx);
-    this.renderStickyBoards(ctx);
+    this.renderStickyBoards();
     this.renderStickyDrops(ctx);
     this.renderWeaponDrops(ctx);
     this.renderParticles(ctx);
@@ -7654,7 +7674,7 @@ export class GameEngine {
     this.renderInsecticideSpray(ctx);
     this.renderFan(ctx);
     this.renderRadarLaser(ctx);
-    this.renderWeatherForeground(ctx, w, h);
+    this.renderWeatherForeground(ctx, w);
 
     // Boss battle UI overlay
     if (this.bossBattle.active) {
@@ -7663,7 +7683,7 @@ export class GameEngine {
 
     // Post-battle item drop on field (rendered on top of everything)
     if (this.state === GameState.ITEM_DROP && this.itemDropOnField && !this.itemDropOnField.collected) {
-      this.renderItemDropOnField(ctx, w, h);
+      this.renderItemDropOnField(ctx);
     }
 
     ctx.restore();
@@ -9248,8 +9268,8 @@ export class GameEngine {
       const smokeIntensity = 1 - (r.hp / (r.maxHp * 0.5)); // 0→1 as HP drops from 50% to 0%
       if (Math.random() < smokeIntensity * 0.6) {
         this.particles.push({
-          x: r.x + (Math.random() - 0.5) * r.size * 0.8,
-          y: r.y + (Math.random() - 0.5) * r.size * 0.5,
+          x: r.x + (Math.random() - 0.5) * (r.size || 30) * 0.8,
+          y: r.y + (Math.random() - 0.5) * (r.size || 30) * 0.5,
           vx: (Math.random() - 0.5) * 15,
           vy: -20 - Math.random() * 25,
           life: 0.4 + Math.random() * 0.3,
@@ -9809,8 +9829,7 @@ export class GameEngine {
       const armorPulse = 0.35 + Math.sin(this.time * 4 + r.id) * 0.15;
       const armorAlpha = armorPulse;
       ctx.save();
-      const isNurse = r.type === RoachType.NURSE;
-      const armorColor = isNurse ? '255, 60, 60' : '255, 165, 0'; // Red for nurse, orange for timed suicide
+      const armorColor = '255, 165, 0'; // Orange for timed suicide
       ctx.strokeStyle = `rgba(${armorColor}, ${armorAlpha})`;
       ctx.lineWidth = 2.5;
       ctx.shadowColor = `rgba(${armorColor}, ${armorAlpha * 0.6})`;
@@ -10001,18 +10020,12 @@ export class GameEngine {
       const armorRatio = Math.max(0, r.armorHp / r.maxArmorHp!);
       ctx.fillStyle = 'rgba(0,0,0,0.7)';
       ctx.fillRect(r.x - barW / 2, r.y - size - 31, barW, 4);
-      const isNurse = r.type === RoachType.NURSE;
       const armorGrad = ctx.createLinearGradient(r.x - barW / 2, 0, r.x + barW / 2, 0);
-      if (isNurse) {
-        armorGrad.addColorStop(0, '#f87171');
-        armorGrad.addColorStop(1, '#ef4444');
-      } else {
-        armorGrad.addColorStop(0, '#fbbf24');
-        armorGrad.addColorStop(1, '#f59e0b');
-      }
+      armorGrad.addColorStop(0, '#fbbf24');
+      armorGrad.addColorStop(1, '#f59e0b');
       ctx.fillStyle = armorGrad;
       ctx.fillRect(r.x - barW / 2, r.y - size - 31, barW * armorRatio, 4);
-      ctx.strokeStyle = isNurse ? 'rgba(254, 202, 202, 0.6)' : 'rgba(253, 230, 138, 0.6)';
+      ctx.strokeStyle = 'rgba(253, 230, 138, 0.6)';
       ctx.lineWidth = 1;
       ctx.strokeRect(r.x - barW / 2, r.y - size - 31, barW, 4);
     }
@@ -10763,11 +10776,11 @@ export class GameEngine {
   checkAutoUseConsumables() {
     if (!this.player || this.state !== GameState.PLAYING) return;
 
-    for (const item of this.inventory) {
-      if (item.count <= 0) continue;
+    for (const [id, count] of Object.entries(this.consumableInventory)) {
+      if (count <= 0) continue;
 
       let shouldUse = false;
-      switch (item.type) {
+      switch (id) {
         // gas_refill is now manual-only (moved to HUD)
         case 'emergency_cool':
           shouldUse = this.player.isOverheated;
@@ -10779,7 +10792,7 @@ export class GameEngine {
       }
 
       if (shouldUse) {
-        this.useConsumable(item.type);
+        this.useConsumable(id);
       }
     }
   }

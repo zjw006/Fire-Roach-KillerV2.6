@@ -1,6 +1,7 @@
 import { Routes, Route } from 'react-router';
 import { GameCanvas } from '@/components/game/GameCanvas';
 import AdminPage from '@/pages/AdminPage';
+import TestEngine from '@/pages/TestEngine';
 
 function App() {
   return (
@@ -11,6 +12,7 @@ function App() {
         </div>
       } />
       <Route path="/admin" element={<AdminPage />} />
+      <Route path="/test-engine" element={<TestEngine />} />
     </Routes>
   );
 }

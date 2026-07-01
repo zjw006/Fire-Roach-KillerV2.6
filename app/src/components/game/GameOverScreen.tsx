@@ -22,7 +22,7 @@ interface GameOverScreenProps {
   menuMoney?: number; // Cross-level total money (menuShopMoney)
 }
 
-export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, gameMode, currentScene, isVictory, hasNextScene, nextSceneName, onRestart, onQuit, onNextScene, talentPoints, bossDefeated, onOpenTalentTree, audio, menuMoney}) => {
+export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, gameMode, currentScene, isVictory, hasNextScene, nextSceneName, onRestart, onQuit, onNextScene, talentPoints, bossDefeated, onOpenTalentTree, audio}) => {
   const isBasement = currentScene === 'basement';
   const isBossMode = bossDefeated;
   const isEndless = gameMode === 'endless';
@@ -162,7 +162,7 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, g
         {isBasement && talentPoints && talentPoints > 0 && onOpenTalentTree && (
           <div className="bg-gradient-to-r from-yellow-900/60 to-orange-900/60 border border-yellow-500/40 rounded-xl p-3 mb-4 flex items-center gap-3 animate-pulse">
             <Lightbulb size={24} className="text-yellow-400 shrink-0" />
-            <div class="flex-1">
+            <div className="flex-1">
               <div className="text-yellow-300 text-sm font-bold">获得天赋点！</div>
               <div className="text-yellow-400/70 text-xs">地下室通关奖励，可用于强化角色能力</div>
             </div>

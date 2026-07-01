@@ -35,6 +35,7 @@ export default function AdminPage() {
 
   if (selectedPlayerId && detailQuery.data) {
     const { player, sessions } = detailQuery.data;
+    const playerData = player as any;
     return (
       <div className="min-h-screen bg-stone-950 text-white">
         <div className="max-w-6xl mx-auto px-4 py-6">
@@ -52,24 +53,24 @@ export default function AdminPage() {
 
           {/* Player info cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-            <StatCard icon={<Users size={18} />} label="玩家ID" value={player.playerId.slice(0, 16) + "..."} />
-            <StatCard icon={<Trophy size={18} />} label="最高波次" value={String(player.highestWave)} />
-            <StatCard icon={<Skull size={18} />} label="总击杀" value={String(player.totalKills)} />
-            <StatCard icon={<Zap size={18} />} label="天赋点" value={String(player.talentPoints)} />
+            <StatCard icon={<Users size={18} />} label="玩家ID" value={<span>{String((playerData.playerId as string)?.slice(0, 16) || '') + "..."}</span>} />
+            <StatCard icon={<Trophy size={18} />} label="最高波次" value={<span>{String((playerData.highestWave as number) || 0)}</span>} />
+            <StatCard icon={<Skull size={18} />} label="总击杀" value={<span>{String((playerData.totalKills as number) || 0)}</span>} />
+            <StatCard icon={<Zap size={18} />} label="天赋点" value={<span>{String((playerData.talentPoints as number) || 0)}</span>} />
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
-            <StatCard icon={<Map size={18} />} label="通关场景" value={String(player.scenesCompleted)} />
-            <StatCard icon={<Swords size={18} />} label="解锁武器" value={String(player.weaponsUnlocked)} />
-            <StatCard icon={<BarChart3 size={18} />} label="无尽最高波" value={String(player.highestEndlessWave)} />
+            <StatCard icon={<Map size={18} />} label="通关场景" value={<span>{String((playerData.scenesCompleted as number) || 0)}</span>} />
+            <StatCard icon={<Swords size={18} />} label="解锁武器" value={<span>{String(Array.isArray(playerData.weaponsUnlocked) ? (playerData.weaponsUnlocked as string[]).length : 0)}</span>} />
+            <StatCard icon={<BarChart3 size={18} />} label="无尽最高波" value={<span>{String((playerData.highestEndlessWave as number) || 0)}</span>} />
           </div>
 
           {/* Full progress */}
-          {player.fullProgress && (
+          {playerData.fullProgress && (
             <div className="bg-stone-900 rounded-xl border border-stone-700 p-4 mb-6">
               <h3 className="text-sm font-bold text-stone-300 mb-3">完整进度数据</h3>
               <pre className="text-xs text-stone-400 overflow-x-auto max-h-96 overflow-y-auto">
-                {JSON.stringify(player.fullProgress, null, 2)}
+                {JSON.stringify(playerData.fullProgress, null, 2)}
               </pre>
             </div>
           )}
@@ -136,10 +137,10 @@ export default function AdminPage() {
         {/* Stats cards */}
         {stats && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-            <StatCard icon={<Users size={20} />} label="总玩家数" value={String(stats.totalPlayers)} accent />
-            <StatCard icon={<Calendar size={20} />} label="今日活跃" value={String(stats.todayPlayers)} accent />
-            <StatCard icon={<Clock size={20} />} label="总场次" value={String(stats.totalSessions)} accent />
-            <StatCard icon={<Skull size={20} />} label="总击杀数" value={String(stats.totalKills)} accent />
+            <StatCard icon={<Users size={20} />} label="总玩家数" value={<span>{String(stats.totalPlayers)}</span>} accent />
+            <StatCard icon={<Calendar size={20} />} label="今日活跃" value={<span>{String(stats.todayPlayers)}</span>} accent />
+            <StatCard icon={<Clock size={20} />} label="总场次" value={<span>{String(stats.totalSessions)}</span>} accent />
+            <StatCard icon={<Skull size={20} />} label="总击杀数" value={<span>{String(stats.totalKills)}</span>} accent />
           </div>
         )}
 
@@ -279,7 +280,7 @@ function StatCard({
 }: {
   icon: React.ReactNode;
   label: string;
-  value: string;
+  value: React.ReactNode;
   accent?: boolean;
 }) {
   return (

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef } from 'react';
 import {
-  ArrowRight, ArrowLeft, Home, Sparkles, Zap, Timer, Flame, Shield, Package, Bug,
+  ArrowRight, ArrowLeft, Home, Sparkles, Flame, Shield,
 } from 'lucide-react';
 import { CONSUMABLE_DEFS } from '@/game/data';
 import type { Economy, SceneType } from '@/game/types';

@@ -2,7 +2,6 @@ import {
   mysqlTable,
   serial,
   varchar,
-  text,
   timestamp,
   int,
   json,
