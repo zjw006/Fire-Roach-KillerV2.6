@@ -50,6 +50,17 @@ export interface PlayerControlSystemConfig {
   onStopSound?: (soundId: string) => void;
   /** 屏幕震动回调 */
   onVibrate?: () => void;
+  /** 生成锥形火焰粒子回调 */
+  onSpawnConeFire?: (params: {
+    x: number;
+    y: number;
+    angle: number;
+    range: number;
+    spreadAngle: number;
+    innerCount: number;
+    outerCount: number;
+    deltaTime: number;
+  }) => void;
   /** 玩家更新回调 */
   onPlayerUpdate?: (player: Player) => void;
 }
@@ -386,8 +397,17 @@ export class PlayerControlSystem {
     const gasCost = this.config.deltaTime * (this.player.powerBoostTimer > 0 ? 2 : 1);
     const heatGain = this.config.deltaTime * 1.0;
     
-    // 生成锥形火焰（这里只是逻辑，实际生成由其他系统处理）
-    // this.spawnConeFire(...);
+    // 生成锥形火焰粒子
+    this.config.onSpawnConeFire?.({
+      x: this.player.x,
+      y: this.player.y - 40,
+      angle: this.player.angle,
+      range: this.player.fireRange,
+      spreadAngle: Math.PI / 6,
+      innerCount: 8,
+      outerCount: 15,
+      deltaTime: this.config.deltaTime,
+    });
     
     // 强力提升期间在火焰尖端生成黑烟粒子
     if (this.player.powerBoostTimer > 0 && 

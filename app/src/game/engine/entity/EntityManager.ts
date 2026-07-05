@@ -3,8 +3,10 @@
  * @description 负责管理游戏中的所有实体，包括蟑螂、子弹、特效等
  */
 
-import type { Roach, Particle, FireZone, FireWall, StickyBoard, StickyDrop, FanState, RadarLaser, ThrowableProjectile } from '../../types';
+import type { Roach, Particle, FireZone, FireWall, StickyBoard, StickyDrop, FanState, RadarLaser, ThrowableProjectile, SceneType } from '../../types';
+import { RoachType, RoachState } from '../../types';
 import { RoachManager } from './RoachManager';
+import { BOSS_CONFIG, ENEMY_DEFS } from '../../data';
 
 /**
  * 实体管理器类
@@ -27,9 +29,10 @@ export class EntityManager {
    * @param {number} width - 游戏区域宽度
    * @param {number} height - 游戏区域高度
    * @param {() => number} defenseLineY - 获取防御线Y坐标的函数
+   * @param {SceneType} [currentScene] - 当前场景类型（可选）
    */
-  constructor(width: number, height: number, defenseLineY: () => number) {
-    this.roachManager = new RoachManager(width, height, defenseLineY);
+  constructor(width: number, height: number, defenseLineY: () => number, currentScene?: SceneType) {
+    this.roachManager = new RoachManager(width, height, defenseLineY, currentScene);
   }
 
   /**
@@ -364,5 +367,73 @@ export class EntityManager {
     const currentRoaches = this.getRoaches();
     const updatedRoaches = currentRoaches.filter(roach => !roachIds.includes(roach.id));
     this.setRoaches(updatedRoaches);
+  }
+
+  /**
+   * 皇后产卵 - 生成小蟑螂
+   * @description 从旧引擎移植：女王蟑螂定期召唤小蟑螂
+   * 每 BOSS_CONFIG.queen.spawnInterval (8秒) 触发一次
+   * 生成 BOSS_CONFIG.queen.minionCount (3) 只小蟑螂
+   * @param queenRoach 皇后蟑螂实例
+   */
+  spawnQueenEggs(queenRoach: Roach): void {
+    const count = BOSS_CONFIG.queen.minionCount;
+    for (let m = 0; m < count; m++) {
+      const newRoach = this.roachManager.spawnRoach(RoachType.SMALL);
+      if (newRoach) {
+        // 在皇后附近生成
+        newRoach.x = queenRoach.x + (Math.random() - 0.5) * 60;
+        newRoach.y = queenRoach.y + (Math.random() - 0.5) * 40;
+      }
+    }
+  }
+
+  /**
+   * 变异体胚胎爆发 - 生成胚胎蟑螂
+   * @description 从旧引擎移植：变异体蟑螂死亡后触发7帧转换动画
+   * 动画完成后随机生成以下组合之一：
+   * - 50%: 2只小蟑螂
+   * - 30%: 1只小蟑螂 + 1只飞行蟑螂
+   * - 20%: 1只小蟑螂 + 1只自爆蟑螂
+   * @param parentRoach 变异体蟑螂实例（已死亡）
+   */
+  spawnEmbryoRoaches(parentRoach: Roach): void {
+    const sx = parentRoach.x;
+    const sy = parentRoach.y;
+
+    // 随机决定生成类型
+    const roll = Math.random();
+    let spawnTypes: RoachType[];
+    if (roll < 0.5) {
+      spawnTypes = [RoachType.SMALL, RoachType.SMALL]; // 50%
+    } else if (roll < 0.8) {
+      spawnTypes = [RoachType.SMALL, RoachType.FLYING]; // 30%
+    } else {
+      spawnTypes = [RoachType.SMALL, RoachType.SUICIDE]; // 20%
+    }
+
+    let spawnedCount = 0;
+    for (const spawnType of spawnTypes) {
+      const newRoach = this.roachManager.spawnRoach(spawnType);
+      if (!newRoach) break;
+      spawnedCount++;
+
+      // 在变异体死亡位置生成
+      newRoach.x = sx;
+      newRoach.y = sy;
+      newRoach.hp = ENEMY_DEFS[spawnType].hp;
+      newRoach.maxHp = ENEMY_DEFS[spawnType].hp;
+      newRoach.slimeTimer = 2.0;
+      newRoach.wasMutantSpawn = true;
+      // 1秒生成免疫：冻结在原地 + 无敌
+      newRoach.spawnImmuneTimer = 1.0;
+
+      if (spawnType === RoachType.SUICIDE) {
+        newRoach.size = Math.floor(ENEMY_DEFS[spawnType].size * 0.6);
+        newRoach.hp = ENEMY_DEFS[spawnType].hp;
+        newRoach.maxHp = ENEMY_DEFS[spawnType].hp;
+        newRoach.fuseTimer = 3;
+      }
+    }
   }
 }

@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 补给站 / 商店界面组件。
+ * 支持两种模式：
+ * - 菜单商店（isMenuShop）：从主菜单入口进入，使用持久化的 menuShopMoney 购买道具
+ * - 局内商店：在关卡之间（波次通关后）展示，使用 economy.money 购买道具，并可进入下一关
+ * 展示火枪相关消耗品和辅助道具两大类，支持已拥有道具的底部展示和商店新手引导。
+ */
 import React, { useState, useMemo, useRef } from 'react';
 import {
   ArrowRight, ArrowLeft, Home, Sparkles, Flame, Shield,
@@ -22,9 +29,9 @@ interface ShopScreenProps {
   audio?: AudioManager;
 }
 
-// Flame gun related consumables
+/** 火枪相关消耗品 ID 列表 */
 const FLAME_CONSUMABLE_IDS = ['gas_refill', 'emergency_cool', 'power_boost'];
-// Other consumables
+/** 辅助道具 ID 列表 */
 const OTHER_CONSUMABLE_IDS = ['defense_repair', 'shield', 'bait'];
 
 export const ShopScreen: React.FC<ShopScreenProps> = ({
@@ -34,8 +41,9 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
   isMenuShop = false, audio}) => {
   const isBasement = currentScene === 'basement';
 
+  // ── 状态管理 ──
   const [localMoney, setLocalMoney] = useState(economy.money);
-  // Load owned consumables from localStorage
+  /** 从 localStorage 加载已拥有的消耗品数量 */
   const [ownedConsumables, setOwnedConsumables] = useState<Record<string, number>>(() => {
     try {
       const saved = localStorage.getItem('roach_blaster_consumables');
@@ -57,11 +65,12 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
     return 0;
   });
 
-  // Refs for shop tutorial highlighting
+  /** 商店教程高亮元素引用 */
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const ownedRef = useRef<HTMLDivElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
+  // ── 消耗品过滤（根据难度）──
   const visibleConsumables = useMemo(() => {
     return CONSUMABLE_DEFS.filter(c => !c.hardOnly || difficulty === 'hard');
   }, [difficulty]);
@@ -74,6 +83,7 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
     return visibleConsumables.filter(c => OTHER_CONSUMABLE_IDS.includes(c.id));
   }, [visibleConsumables]);
 
+  /** 购买消耗品：检查资金 → 调用父组件 onBuy → 更新本地状态 */
   const handleBuy = (id: string) => {
     const item = CONSUMABLE_DEFS.find(c => c.id === id);
     if (!item || localMoney < item.cost) return;
@@ -92,6 +102,7 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
     }
   };
 
+  /** 渲染单个消耗品行：图标 + 描述 + 价格 + 购买按钮 */
   const renderItemRow = (item: typeof CONSUMABLE_DEFS[0]) => {
     const canAfford = localMoney >= item.cost;
     return (
@@ -139,7 +150,7 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
   return (
     <div className="absolute inset-0 flex items-center justify-center bg-black/80 backdrop-blur-sm">
       <div className="bg-stone-900/90 rounded-2xl p-4 max-w-full w-full mx-2 border border-stone-700 max-h-[85vh] flex flex-col">
-        {/* Header */}
+        {/* ═══ 顶部标题栏 ═══ */}
         <div className="flex items-center justify-between mb-3 shrink-0">
           {isMenuShop ? (
             <button
@@ -160,7 +171,7 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
           {difficulty === 'hard' && <span className="text-red-400 ml-2">[困难模式]</span>}
         </p>
 
-        {/* Stats */}
+        {/* ═══ 统计信息栏（资金 / 天赋点 / 击杀）═══ */}
         {isMenuShop ? (
           <div className="text-center mb-3 shrink-0">
             <div className="text-stone-400 text-xs">当前资金</div>
@@ -187,9 +198,9 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
           </div>
         )}
 
-        {/* Scrollable item list */}
+        {/* ═══ 可滚动道具列表 ═══ */}
         <div ref={scrollContainerRef} className="flex-1 overflow-y-auto min-h-0 pr-1 mb-3">
-          {/* Flame Gun Consumables */}
+          {/* 火枪相关消耗品 */}
           <div className="mb-3">
             <div className="flex items-center gap-2 mb-2">
               <Flame size={16} className="text-orange-400" />
@@ -201,7 +212,7 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
             </div>
           </div>
 
-          {/* Other Consumables */}
+          {/* 辅助道具 */}
           <div className="mb-3">
             <div className="flex items-center gap-2 mb-2">
               <Shield size={16} className="text-cyan-400" />
@@ -213,7 +224,7 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
             </div>
           </div>
 
-          {/* Basement talent guide hint — hidden in menu shop */}
+          {/* 地下室通关天赋点引导提示（仅局内商店） */}
           {!isMenuShop && isBasement && talentPoints && talentPoints > 0 && onOpenTalentTree && (
             <div className="bg-gradient-to-r from-yellow-900/60 to-orange-900/60 border border-yellow-500/40 rounded-xl p-3 mb-3 flex items-center gap-3 animate-pulse">
               <Sparkles size={24} className="text-yellow-400 shrink-0" />
@@ -232,7 +243,7 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
           )}
         </div>
 
-        {/* Sticky bottom: Owned consumables */}
+        {/* ═══ 底部固定：已拥有道具展示 ═══ */}
         <div ref={ownedRef} className="shrink-0 bg-stone-900/95 border border-stone-600 rounded-xl p-3 -mx-1">
           <div className="text-stone-400 text-xs mb-2 text-center font-bold">已拥有道具</div>
           <div className="flex items-center justify-center gap-2 flex-wrap">
@@ -250,7 +261,7 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
                 </div>
               );
             })}
-            {/* Show empty state if no consumables owned */}
+            {/* 空状态提示 */}
             {visibleConsumables.every(item => {
               const count = item.id === 'emergency_cool' ? ownedEmergencyCool : (ownedConsumables[item.id] || 0);
               return count <= 0;
@@ -260,7 +271,7 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
           </div>
         </div>
 
-        {/* Buttons */}
+        {/* ═══ 底部按钮区（下一关 / 再来一局 / 返回主菜单）═══ */}
         <div className="space-y-2">
           {!isMenuShop && (
             onNextScene ? (
@@ -292,7 +303,7 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
           )}
         </div>
 
-        {/* Shop tutorial overlay - highlights each consumable */}
+        {/* ═══ 商店新手引导遮罩 ═══ */}
         <ShopTutorialOverlay
           audio={audio}
           cardRefs={cardRefs}

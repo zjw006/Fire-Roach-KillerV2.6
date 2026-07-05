@@ -1,3 +1,9 @@
+/**
+ * @fileoverview 游戏结束结算界面组件
+ * 根据胜利/失败状态展示不同的结算画面，包含到达波次、总击杀、最终资金等战斗统计数据，
+ * 胜利时支持进入下一场景或前往天赋树加点，失败时可重新开始或返回主菜单。
+ */
+
 import React, { useRef } from 'react';
 import { RotateCcw, Home, Skull, Trophy, Flame, Sparkles, Map, ChevronRight, Lightbulb } from 'lucide-react';
 import type { Economy, GameMode, SceneType } from '@/game/types';
@@ -23,6 +29,7 @@ interface GameOverScreenProps {
 }
 
 export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, gameMode, currentScene, isVictory, hasNextScene, nextSceneName, onRestart, onQuit, onNextScene, talentPoints, bossDefeated, onOpenTalentTree, audio}) => {
+  /** 判断当前场景和模式类型 */
   const isBasement = currentScene === 'basement';
   const isBossMode = bossDefeated;
   const isEndless = gameMode === 'endless';
@@ -84,6 +91,7 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, g
 
         {/* Stats */}
         <div className="bg-black/60 backdrop-blur-md rounded-xl p-3 mb-4 w-full border border-white/10 shadow-xl">
+          {/** 战斗统计数据：波次、击杀、资金、各类蟑螂击杀数 */}
           <div className="grid grid-cols-3 gap-2 text-sm">
             <div className="text-center">
               <div className="text-stone-400 text-[10px]">到达波次</div>
@@ -114,6 +122,7 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, g
           {/* New enemy kills */}
           {(economy.flyingKills > 0 || economy.armoredKills > 0 || economy.queenKills > 0) && (
             <div className="mt-2 pt-2 border-t border-white/10 grid grid-cols-4 gap-1">
+              {/** 特殊敌人击杀统计：飞行、装甲、分裂、女王 */}
               {economy.flyingKills > 0 && (
                 <div className="text-center">
                   <div className="text-stone-500 text-[9px]">飞行</div>
@@ -159,6 +168,7 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, g
         </div>
 
         {/* Basement talent guide */}
+        {/** 地下室通关后引导玩家前往天赋树加点 */}
         {isBasement && talentPoints && talentPoints > 0 && onOpenTalentTree && (
           <div className="bg-gradient-to-r from-yellow-900/60 to-orange-900/60 border border-yellow-500/40 rounded-xl p-3 mb-4 flex items-center gap-3 animate-pulse">
             <Lightbulb size={24} className="text-yellow-400 shrink-0" />

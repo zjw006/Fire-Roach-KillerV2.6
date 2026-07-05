@@ -3,7 +3,8 @@
  * @description 负责检查蟑螂是否突破防线、计算防线伤害和触发游戏失败条件
  */
 
-import { GameState, RoachState, type Roach } from '../../types';
+import { GameState, RoachState, type Roach, RoachType } from '../../types';
+import { ENEMY_DEFS } from '../../data';
 
 /**
  * 防御检查系统配置接口
@@ -19,12 +20,32 @@ export interface DefenseCheckSystemConfig {
   maxDefenseHp: number;
   /** 时间增量 */
   deltaTime: number;
+  /** 游戏难度 */
+  difficulty: 'normal' | 'hard';
+  /** 玩家伤害减免百分比 */
+  playerDamageReduction: number;
+  /** 玩家护盾计时器 */
+  playerShieldTimer: number;
+  /** 当前场景 */
+  currentScene: string;
   /** 游戏失败回调 */
   onGameDefeat?: () => void;
   /** 防线更新回调 */
   onDefenseUpdate?: (hp: number, maxHp: number) => void;
   /** 添加浮动文字回调 */
   onAddFloatingText?: (x: number, y: number, text: string, color: string) => void;
+  /** 播放音效回调 */
+  onPlayAudio?: (audioType: string) => void;
+  /** 触发振动回调 */
+  onTriggerVibration?: (vibrationType: string) => void;
+  /** 屏幕震动回调 */
+  onScreenShake?: (intensity: number) => void;
+  /** 经济系统更新回调 */
+  onEconomyUpdate?: (breaches: number) => void;
+  /** 游戏结束回调 */
+  onGameOver?: (economy: any, wave: number) => void;
+  /** 状态变化回调 */
+  onStateChange?: (state: GameState) => void;
 }
 
 /**
@@ -86,19 +107,91 @@ export class DefenseCheckSystem {
       const r = roaches[i];
       if (!r || r.state !== RoachState.ALIVE) continue;
 
+      // 计算蟑螂底部位置（考虑蟑螂大小）
+      const roachSize = this.getRoachSize(r.type);
+      const roachBottom = r.y + roachSize * 0.4;
+      
       // 检查是否突破防线
-      if (r.y >= dl) {
-        // 计算伤害
+      if (roachBottom >= dl) {
+        // 特殊蟑螂类型处理
+        if (r.type === RoachType.SUICIDE || r.type === RoachType.FLYING_SUICIDE) {
+          // 自杀蟑螂：触发爆炸
+          this.handleSuicideExplosion(r, i, roaches);
+          continue;
+        }
+        
+        if (r.type === RoachType.TIMED_SUICIDE) {
+          // 定时自杀蟑螂：已放置炸弹时造成伤害，否则推回
+          if (r.hasPlacedBomb) {
+            const damage = this.calculateBreachDamage(r);
+            totalDamage += damage;
+            breachingIds.unshift(r.id); // 使用unshift保持原始顺序
+            // 标记蟑螂为死亡并从数组中移除
+            r.state = RoachState.DEAD;
+            r.deathTimer = 0.5;
+            roaches.splice(i, 1);
+            continue; // 跳过通用处理
+          } else {
+            // 推回蟑螂
+            r.y = dl - 64;
+            continue;
+          }
+        }
+        
+        // Boss在Boss战中的特殊处理
+        if (r.isBoss && r.type === RoachType.QUEEN) {
+          // 钳制到防线位置，不突破
+          r.y = Math.min(r.y, dl - 15);
+          continue;
+        }
+        
+        // 通用蟑螂处理（非特殊类型）
         const damage = this.calculateBreachDamage(r);
         totalDamage += damage;
-        breachingIds.push(r.id);
+        breachingIds.unshift(r.id); // 使用unshift保持原始顺序
 
+        // 处理护盾效果
+        if (this.config.playerShieldTimer > 0) {
+          // 护盾抵消伤害
+          if (this.config.onAddFloatingText) {
+            this.config.onAddFloatingText(
+              r.x,
+              dl - 20,
+              '护盾抵消!',
+              '#22d3ee'
+            );
+          }
+        } else {
+          // 实际造成伤害
+          this.config.defenseHp -= damage;
+          
+          // 更新经济系统
+          if (this.config.onEconomyUpdate) {
+            this.config.onEconomyUpdate(1); // 增加突破次数
+          }
+          
+          // 播放音效
+          if (this.config.onPlayAudio) {
+            this.config.onPlayAudio('breach');
+          }
+          
+          // 触发振动
+          if (this.config.onTriggerVibration) {
+            this.config.onTriggerVibration('breach');
+          }
+          
+          // 屏幕震动
+          if (this.config.onScreenShake) {
+            this.config.onScreenShake(10);
+          }
+        }
+        
         // 添加突破浮动文字
         if (this.config.onAddFloatingText) {
           this.config.onAddFloatingText(
             r.x,
             dl - 40,
-            '防线被突破!',
+            '防线突破!',
             '#ef4444'
           );
         }
@@ -106,6 +199,14 @@ export class DefenseCheckSystem {
         // 标记蟑螂为死亡（突破防线后死亡）
         r.state = RoachState.DEAD;
         r.deathTimer = 0.5;
+        
+        // 从数组中移除蟑螂
+        roaches.splice(i, 1);
+        
+        // 如果是Boss，减少活跃Boss计数
+        if (r.isBoss) {
+          this.onBossRemoved?.(r);
+        }
       }
     }
 
@@ -114,24 +215,18 @@ export class DefenseCheckSystem {
       result.breachOccurred = true;
       result.damageDealt = totalDamage;
       result.breachingRoachIds = breachingIds;
-      
-      // 更新防线生命值
-      const newHp = Math.max(0, this.config.defenseHp - totalDamage);
-      result.newDefenseHp = newHp;
-      
-      // 更新配置中的防线生命值
-      this.config.defenseHp = newHp;
+      result.newDefenseHp = this.config.defenseHp;
       
       // 触发防线更新回调
       if (this.config.onDefenseUpdate) {
-        this.config.onDefenseUpdate(newHp, this.config.maxDefenseHp);
+        this.config.onDefenseUpdate(this.config.defenseHp, this.config.maxDefenseHp);
       }
 
       // 更新突破计数器
       this.breachCount++;
 
       // 检查游戏是否失败
-      if (newHp <= 0) {
+      if (this.config.defenseHp <= 0) {
         this.triggerGameDefeat();
       }
     }
@@ -144,50 +239,50 @@ export class DefenseCheckSystem {
    * @param roach - 蟑螂对象
    * @returns 伤害值
    */
-  private calculateBreachDamage(roach: any): number {
-    // 基础伤害
-    let damage = 50;
+  private calculateBreachDamage(roach: Roach): number {
+    let damage = 0;
     
-    // 根据蟑螂类型调整伤害
+    // 根据蟑螂类型和难度计算基础伤害
     switch (roach.type) {
-      case 'normal':
-        damage = 40;
+      case RoachType.SMALL:
+        damage = this.config.difficulty === 'hard' ? 5 : 2;
         break;
-      case 'armored':
-        damage = 80;
+      case RoachType.LARGE:
+        damage = this.config.difficulty === 'hard' ? 15 : 5;
         break;
-      case 'flying':
-        damage = 60;
+      case RoachType.FLYING:
+        damage = this.config.difficulty === 'hard' ? 8 : 3;
         break;
-      case 'queen':
-        damage = 200;
+      case RoachType.ARMORED:
+        damage = this.config.difficulty === 'hard' ? 12 : 4;
         break;
-      case 'mutant':
-        damage = 100;
+      case RoachType.SPLITTING:
+        damage = this.config.difficulty === 'hard' ? 10 : 4;
+        break;
+      case RoachType.TIMED_SUICIDE:
+        // 定时自杀蟑螂：已放置炸弹时造成伤害，否则推回
+        if (roach.hasPlacedBomb) {
+          damage = this.config.difficulty === 'hard' ? 15 : 5;
+        }
+        break;
+      case RoachType.QUEEN:
+        damage = this.config.difficulty === 'hard' ? 35 : 12;
+        break;
+      case RoachType.NURSE:
+        damage = this.config.difficulty === 'hard' ? 18 : 6;
+        break;
+      case RoachType.MUTANT:
+        damage = this.config.difficulty === 'hard' ? 25 : 8;
+        break;
+      default:
+        damage = this.config.difficulty === 'hard' ? 6 : 2;
         break;
     }
     
-    // 考虑蟑螂大小
-    if (roach.size && roach.size > 1) {
-      damage *= roach.size;
-    }
+    // 应用伤害减免（护盾、天赋等）
+    damage = Math.floor(damage * (1 - this.config.playerDamageReduction));
     
-    // 考虑蟑螂生命值（生命值越高，突破伤害越大）
-    if (roach.hp && roach.maxHp) {
-      const healthRatio = roach.hp / roach.maxHp;
-      damage *= (0.5 + healthRatio * 0.5);
-    }
-    
-    return Math.round(damage);
-  }
-
-  /**
-   * 触发游戏失败
-   */
-  private triggerGameDefeat(): void {
-    if (this.config.onGameDefeat) {
-      this.config.onGameDefeat();
-    }
+    return damage;
   }
 
   /**
@@ -260,4 +355,71 @@ export class DefenseCheckSystem {
   reset(): void {
     this.breachCount = 0;
   }
+  
+  /**
+   * 获取蟑螂大小
+   * @param roachType 蟑螂类型
+   * @returns 蟑螂大小
+   */
+  private getRoachSize(roachType: RoachType): number {
+    return ENEMY_DEFS[roachType]?.size || 40;
+  }
+  
+  /**
+   * 处理自杀蟑螂爆炸
+   * @param roach 蟑螂对象
+   * @param index 蟑螂索引
+   * @param roaches 蟑螂数组
+   */
+  private handleSuicideExplosion(roach: Roach, index: number, roaches: Roach[]): void {
+    // 触发爆炸效果
+    this.onSuicideExplosion?.(roach, index);
+    
+    // 播放爆炸音效
+    if (this.config.onPlayAudio) {
+      this.config.onPlayAudio('explosion');
+    }
+    
+    // 屏幕震动
+    if (this.config.onScreenShake) {
+      this.config.onScreenShake(15);
+    }
+    
+    // 从数组中移除蟑螂（与原始引擎保持一致）
+    roaches.splice(index, 1);
+  }
+  
+  /**
+   * 触发游戏失败
+   */
+  private triggerGameDefeat(): void {
+    // 设置防线生命值为0
+    this.config.defenseHp = 0;
+    
+    // 触发游戏失败回调
+    if (this.config.onGameDefeat) {
+      this.config.onGameDefeat();
+    }
+    
+    // 触发游戏结束回调
+    if (this.config.onGameOver) {
+      this.config.onGameOver({ breaches: this.breachCount }, 0);
+    }
+    
+    // 触发状态变化回调
+    if (this.config.onStateChange) {
+      this.config.onStateChange(GameState.GAME_OVER);
+    }
+    
+    // 触发振动
+    if (this.config.onTriggerVibration) {
+      this.config.onTriggerVibration('game_over');
+    }
+  }
+  
+  /** 自杀蟑螂爆炸事件回调 */
+  onSuicideExplosion?: (roach: Roach, index: number) => void;
+  
+  /** Boss被移除事件回调 */
+  onBossRemoved?: (roach: Roach) => void;
 }

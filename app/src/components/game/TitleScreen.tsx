@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 标题屏幕组件 — 游戏启动时的主菜单界面，包含废土风格的加载进度条和模拟加载提示。
+ * 加载完成后显示"点击开始"闪烁提示，点击或按键后淡出并进入游戏。
+ * 包含 CRT 扫描线效果、暗角叠加、废土工业风进度条及中英文标题。
+ * 支持音频静音切换。
+ */
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
 import type { AudioManager } from '@/game/audio';
@@ -39,6 +46,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   const progressRef = useRef(0);
   const rafRef = useRef<number>(0);
 
+  /** 模拟加载进度条：使用 requestAnimationFrame 驱动非线性进度动画（快→慢→快），持续约 3.5s */
   // Simulate loading progress
   useEffect(() => {
     const startTime = Date.now();
@@ -87,6 +95,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
     };
   }, []);
 
+  /** 加载完成后使"点击开始"文字闪烁（800ms 间隔切换可见性） */
   // Show "press to start" after loading is done
   useEffect(() => {
     if (!loadComplete) return;
@@ -96,6 +105,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
     return () => clearInterval(interval);
   }, [loadComplete]);
 
+  /** 预加载标题背景图片，加载完成后渐显 */
   // Background image loading
   useEffect(() => {
     const img = new Image();

@@ -1,3 +1,9 @@
+/**
+ * @fileoverview 战斗后道具解锁展示界面
+ * 在战斗胜利后以全屏动画形式揭晓新解锁的道具，包含粒子特效、旋转光环、弹跳横幅等视觉效果，
+ * 并通过蟑叔对话气泡展示道具描述，点击任意位置关闭后继续游戏流程。
+ */
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, Sparkles, Star, Zap } from 'lucide-react';
 import { AudioManager } from '@/game/audio';
@@ -9,14 +15,19 @@ interface ItemRevealScreenProps {
 }
 
 export const ItemRevealScreen: React.FC<ItemRevealScreenProps> = ({ item, onComplete, audio }) => {
+  /** 控制整体显示/隐藏 */
   const [show, setShow] = useState(false);
+  /** 控制入场动画 */
   const [animate, setAnimate] = useState(false);
+  /** 控制文字逐段揭示 */
   const [textRevealed, setTextRevealed] = useState(false);
+  /** 背景粒子特效数据 */
   const [particles, setParticles] = useState<Array<{
     id: number; x: number; y: number; size: number;
     speed: number; delay: number; type: 'sparkle' | 'star' | 'zap';
   }>>([]);
 
+  /** 道具出现时触发阶段性动画：播放音效 → 显示背景 → 弹入卡片 → 揭示文字 → 生成粒子 */
   useEffect(() => {
     if (item) {
       audio?.playItemDropFanfare();
@@ -36,6 +47,7 @@ export const ItemRevealScreen: React.FC<ItemRevealScreenProps> = ({ item, onComp
     }
   }, [item, audio]);
 
+  /** 点击关闭：在先文字揭示完成后才允许关闭，带淡出动画延迟 */
   const handleClick = useCallback(() => {
     if (!show || !textRevealed) return;
     audio?.playDialogSwitch();

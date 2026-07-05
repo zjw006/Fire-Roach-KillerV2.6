@@ -54,7 +54,7 @@ import { UIManager } from './ui/UIManager';
 
 // 导入工具模块
 import { PerformanceMonitor } from './utils/PerformanceUtils';
-import { clamp, lerp, distance, randomInt } from './utils/MathUtils';
+import { PerformanceMonitorSystem } from './performance';
 
 // 导入音频管理器
 import { AudioManager } from '../audio';
@@ -140,9 +140,9 @@ export class NewGameEngine {
   // @ts-ignore - 变量在startCountdown和doWaveSpawn方法中使用
   private countdownWavePending: boolean = false; // 当倒计时应该在波次前触发时为true
   
-  // 测试实体
-  private testEntities: Array<{x: number, y: number, vx: number, vy: number, radius: number, color: string}> = [];
-
+  // 生成状态
+  private spawnTimer: number = 0;
+  
   // 模块管理器
   private economyManager: EconomyManager;
   private waveManager: WaveManager;
@@ -185,6 +185,7 @@ export class NewGameEngine {
   
   // 性能监控
   private performanceMonitor: PerformanceMonitor;
+  private performanceMonitorSystem: PerformanceMonitorSystem;
 
   // 游戏循环控制
   private lastTime: number = 0;
@@ -211,7 +212,7 @@ export class NewGameEngine {
     // 初始化模块管理器
     this.economyManager = new EconomyManager(this.economy);
     this.waveManager = new WaveManager(this.currentScene, this.gameMode, this.difficulty);
-    this.entityManager = new EntityManager(this.canvas.width, this.canvas.height, () => this.getDefenseLineY());
+    this.entityManager = new EntityManager(this.canvas.width, this.canvas.height, () => this.getDefenseLineY(), this.currentScene);
     this.renderManager = new RenderManager({
       ctx: this.ctx,
       width: this.canvas.width,
@@ -253,6 +254,55 @@ export class NewGameEngine {
       playerX: this.player.x,
       playerY: this.player.y,
     });
+    
+    // 设置RoachAISystem回调
+    this.roachAISystem.onPlaySound = (soundId: string) => {
+      this.playSoundById(soundId);
+    };
+    this.roachAISystem.onVibrate = (pattern: number | number[]) => {
+      this.audio.vibrate(pattern);
+    };
+    this.roachAISystem.onAddParticle = (particle: any) => {
+      this.particleSystem.addParticle(particle);
+    };
+    this.roachAISystem.addFloatingText = (x: number, y: number, text: string, color: string, duration?: number) => {
+      this.addFloatingText(x, y, text, color, duration);
+    };
+    this.roachAISystem.spawnEmbryoRoaches = (roach: Roach) => {
+      try { this.entityManager.spawnEmbryoRoaches?.(roach); } catch (e) { /* ignore */ }
+    };
+    this.roachAISystem.onGetAllRoaches = () => {
+      return this.entityManager.getRoaches();
+    };
+    this.roachAISystem.onGetFireWalls = () => {
+      try {
+        const ps = this.particleSystem.update([]);
+        return ps.fireWalls;
+      } catch (e) { return []; }
+    };
+    this.roachAISystem.onGetBaitTarget = () => {
+      return this.player.baitTimer > 0 ? { active: true, x: this.player.x, y: this.player.y - 100 } : null;
+    };
+    this.roachAISystem.onGetStickyBoards = () => {
+      try { return this.stickySystem.getStickyBoards(); } catch (e) { return []; }
+    };
+    this.roachAISystem.onQueenSpawn = (roach: Roach) => {
+      try { this.entityManager.spawnQueenEggs?.(roach); } catch (e) { /* ignore */ }
+    };
+    this.roachAISystem.generateWingDebrisParticles = (roach: Roach) => {
+      this.particleSystem.spawnExplosionParticles(roach.x, roach.y, 5);
+    };
+    this.roachAISystem.onTriggerBreachExplosion = (roach: Roach) => {
+      this.defenseHp -= 30;
+      this.screenShake = Math.max(this.screenShake, 8);
+      this.vibrateSuicideExplode();
+    };
+    this.roachAISystem.onArmorBroken = (roach: Roach) => {
+      this.particleSystem.spawnExplosionParticles(roach.x, roach.y, 15);
+    };
+    this.roachAISystem.spawnSparkParticles = (x: number, y: number, count: number) => {
+      this.particleSystem.spawnExplosionParticles(x, y, Math.max(1, Math.round(count / 3)));
+    };
     
     // 初始化最新创建的模块
     this.bossBattleSystem = new BossBattleSystem({
@@ -505,6 +555,24 @@ export class NewGameEngine {
       onPlayerUpdate: (player) => {
         this.player = player;
       },
+      onSpawnConeFire: (params: {
+        x: number; y: number; angle: number; range: number;
+        spreadAngle: number; innerCount: number; outerCount: number; deltaTime: number;
+      }) => {
+        // 从旧引擎移植的锥形火焰粒子生成算法
+        const player = this.playerControlSystem.getPlayer();
+        const powerBoostMult = player.powerBoostTimer > 0 ? 2 : 1;
+        const baseDamage = (this.difficulty === 'hard' ? 200 : 300) * params.deltaTime * player.damageMultiplier * powerBoostMult;
+        this.particleSystem.spawnConeFire({
+          x: params.x,
+          y: params.y,
+          angle: params.angle,
+          range: params.range * 0.5, // 老引擎中实际射程是 fireRange * 0.5
+          spreadAngle: (Math.PI / 15) * player.flameSpreadMultiplier,
+          baseDamage,
+          type: 'fire',
+        });
+      },
     });
     
     this.defenseCheckSystem = new DefenseCheckSystem({
@@ -544,6 +612,20 @@ export class NewGameEngine {
           this.audio.playItemDropFanfare();
         }
       },
+      onStateChange: (state) => {
+        if (state === 'item_reveal_complete') {
+          // 所有道具揭示完成，进入波次清除状态
+          this.state = GameState.WAVE_CLEAR;
+          this.onStateChange?.(this.state);
+          // 启动下一波
+          this.waveManager.startWave();
+          this.currentWave = this.waveManager.wave;
+          // 重新开始倒计时
+          this.startCountdown(() => {
+            this.doWaveSpawn();
+          });
+        }
+      },
     });
     
     // 初始化UI管理器
@@ -559,8 +641,12 @@ export class NewGameEngine {
     // 初始化性能监控器
     this.performanceMonitor = new PerformanceMonitor();
     
-    // 初始化测试实体
-    this.initTestEntities();
+    // 初始化性能监控系统
+    this.performanceMonitorSystem = new PerformanceMonitorSystem({
+      currentScene: this.currentScene,
+      gameMode: this.gameMode,
+      enableDetailedLogs: false,
+    });
   }
   
   /**
@@ -603,23 +689,6 @@ export class NewGameEngine {
       }
     };
   }
-  
-  /**
-   * 初始化测试实体
-   */
-  private initTestEntities(): void {
-    // 创建一些随机位置的测试实体
-    for (let i = 0; i < 10; i++) {
-      this.testEntities.push({
-        x: randomInt(100, this.canvas.width - 100),
-        y: randomInt(100, this.canvas.height - 100),
-        vx: randomInt(-50, 50) / 100,
-        vy: randomInt(-50, 50) / 100,
-        radius: randomInt(10, 30),
-        color: `rgb(${randomInt(100, 255)}, ${randomInt(100, 255)}, ${randomInt(100, 255)})`
-      });
-    }
-  }
 
   private addFloatingText(
     x: number,
@@ -657,6 +726,54 @@ export class NewGameEngine {
         break;
       case 'item_drop_fanfare':
         this.playItemDropFanfare();
+        break;
+      case 'nurse_cast':
+        this.audio.playNurseCast?.();
+        break;
+      case 'mutant_transform':
+        this.audio.playMutantTransform?.();
+        break;
+      case 'suicide_explode':
+        this.vibrateSuicideExplode();
+        break;
+      case 'flying_death':
+        this.audio.playFlyingDeath?.();
+        break;
+      case 'fan_loop':
+        this.startFanLoop();
+        break;
+      case 'fire_wall_burn':
+        this.startFireWallBurn();
+        break;
+      case 'flying_buzz':
+        this.playFlyingBuzz();
+        break;
+      case 'flying_dodge':
+        this.playFlyingDodge();
+        break;
+      case 'breach_ground':
+        this.playSuicideBreachGround();
+        break;
+      case 'breach_flying':
+        this.playSuicideBreachFlying();
+        break;
+      case 'pickup':
+        this.playKill();
+        break;
+      case 'countdown_tick':
+        this.audio.playCountdownTick();
+        break;
+      case 'victory':
+        this.playVictoryBGM();
+        break;
+      case 'game_over':
+        this.playGameOverBGM();
+        break;
+      case 'click':
+        this.playClick();
+        break;
+      case 'swatter':
+        this.playSwatter();
         break;
     }
   }
@@ -822,6 +939,7 @@ export class NewGameEngine {
 
     // 开始性能监控帧
     this.performanceMonitor.beginFrame(currentTime);
+    this.performanceMonitorSystem.beginFrame(currentTime);
 
     // 更新游戏状态
     this.update(deltaTime);
@@ -831,6 +949,7 @@ export class NewGameEngine {
 
     // 结束性能监控帧
     this.performanceMonitor.endFrame();
+    this.performanceMonitorSystem.endFrame(deltaTime);
 
     // 继续下一帧
     this.animationFrameId = requestAnimationFrame(() => this.gameLoop());
@@ -936,14 +1055,14 @@ export class NewGameEngine {
     // 更新波次管理
     this.waveManager.update(deltaTime);
     
+    // 处理波次生成
+    this.handleWaveSpawning(deltaTime);
+    
     // 更新碰撞检测
     this.checkCollisions();
     
     // 更新最新创建的模块（包含玩家控制和防御检查）
     this.updateNewModules(deltaTime);
-    
-    // 更新测试实体
-    this.updateTestEntities(deltaTime);
     
     // 检查波次状态
     this.checkWaveStatus();
@@ -1312,6 +1431,12 @@ export class NewGameEngine {
     
     // 获取当前蟑螂并更新
     const currentRoaches = this.entityManager.getRoaches();
+    
+    // 传递蟑螂数组给AI系统用于护士治疗等逻辑
+    try {
+      this.roachAISystem.setAllRoaches(currentRoaches);
+    } catch (e) { /* ignore */ }
+    
     const updatedRoaches = this.roachAISystem.updateRoaches(currentRoaches);
     
     // 更新实体管理器中的蟑螂
@@ -1354,7 +1479,9 @@ export class NewGameEngine {
     // 检查火焰碰撞并更新蟑螂状态
     const updatedRoaches = this.collisionSystem.checkFlameCollisions(
       this.player,
-      roaches
+      roaches,
+      this.tripleFlame,
+      this.isStuckByBoard.bind(this)
     );
     
     // 更新实体管理器中的蟑螂状态
@@ -1401,13 +1528,50 @@ export class NewGameEngine {
   }
   
   /**
+   * 处理波次生成
+   * @param deltaTime 时间增量
+   */
+  private handleWaveSpawning(deltaTime: number): void {
+    // 获取下一个要生成的蟑螂
+    const nextSpawn = this.waveManager.getNextSpawn();
+    
+    if (nextSpawn) {
+      // 检查生成计时器
+      if (this.spawnTimer <= 0) {
+        // 生成蟑螂
+        const roach = this.entityManager.getRoachManager().spawnRoach(
+           nextSpawn.type,
+           nextSpawn.clusterId,
+           {
+             difficulty: this.difficulty,
+             waveConfig: this.waveManager.getWaveConfig(this.waveManager.wave),
+             bossBattle: this.bossBattleSystem?.getBossState(),
+           }
+         );
+        
+        if (roach) {
+          // 移除已生成的蟑螂
+          this.waveManager.removeSpawned();
+          
+          // 重置生成计时器
+          const config = this.waveManager.getWaveConfig(this.waveManager.wave);
+          this.spawnTimer = config.spawnInterval ?? 1.0;
+        }
+      } else {
+        // 更新生成计时器
+        this.spawnTimer -= deltaTime;
+      }
+    }
+  }
+
+  /**
    * 检查波次状态
    */
   private checkWaveStatus(): void {
     // 检查波次是否完成
     if (this.waveManager.isWaveComplete()) {
       // 计算天赋点奖励
-       const talentReward = this.waveManager.calculateTalentReward(this.currentScene);
+      const talentReward = this.waveManager.calculateTalentReward(this.currentScene);
       
       // 添加天赋点到游戏进度
       this.waveManager.addTalentPoints(this.progress, talentReward);
@@ -1426,43 +1590,74 @@ export class NewGameEngine {
       // 保存游戏进度
       this.saveProgress();
       
-      // 启动下一波
-      this.waveManager.startWave();
+      // 同步当前波次计数
+      this.currentWave = this.waveManager.wave;
+      
+      // 检查是否所有波次已完成
+      if (this.waveManager.shouldShowShop() || this.waveManager.wave > this.waveManager.getTotalWaves()) {
+        this.triggerVictory();
+      } else {
+        // 过渡到波次清除状态
+        this.state = GameState.WAVE_CLEAR;
+        this.onStateChange?.(this.state);
+        
+        // 从道具管理系统获取新解锁的道具
+        try {
+          const newlyUnlocked = this.itemManagementSystem.checkSceneUnlocks(this.currentScene);
+          if (newlyUnlocked.length > 0) {
+            // 有新的道具解锁，进入道具揭示流程
+            this.state = GameState.ITEM_REVEAL;
+            this.onStateChange?.(this.state);
+            this.itemManagementSystem.startItemReveal(newlyUnlocked);
+          } else {
+            // 没有新道具，直接启动下一波
+            this.waveManager.startWave();
+            this.currentWave = this.waveManager.wave;
+            this.startCountdown(() => {
+              this.doWaveSpawn();
+            });
+          }
+        } catch (e) {
+          // 出错时回退到直接启动下一波
+          this.waveManager.startWave();
+          this.currentWave = this.waveManager.wave;
+          this.startCountdown(() => {
+            this.doWaveSpawn();
+          });
+        }
+      }
     }
   }
   
   /**
-   * 更新测试实体
-   * @param deltaTime 时间增量
+   * 触发胜利流程
    */
-  private updateTestEntities(deltaTime: number): void {
-    // 更新每个测试实体的位置
-    for (const entity of this.testEntities) {
-      // 使用lerp函数平滑移动
-      entity.x = lerp(entity.x, entity.x + entity.vx * deltaTime * 60, 0.1);
-      entity.y = lerp(entity.y, entity.y + entity.vy * deltaTime * 60, 0.1);
-      
-      // 使用clamp函数限制实体在画布范围内
-      entity.x = clamp(entity.x, entity.radius, this.canvas.width - entity.radius);
-      entity.y = clamp(entity.y, entity.radius, this.canvas.height - entity.radius);
-      
-      // 边界反弹
-      if (entity.x <= entity.radius || entity.x >= this.canvas.width - entity.radius) {
-        entity.vx = -entity.vx;
-      }
-      if (entity.y <= entity.radius || entity.y >= this.canvas.height - entity.radius) {
-        entity.vy = -entity.vy;
-      }
-      
-      // 检查与玩家的距离
-      const distToPlayer = distance(entity.x, entity.y, this.player.x, this.player.y);
-      if (distToPlayer < entity.radius + 20) {
-        // 如果太靠近玩家，改变颜色
-        entity.color = `rgb(255, ${randomInt(50, 150)}, ${randomInt(50, 150)})`;
-      }
+  private triggerVictory(): void {
+    this.state = GameState.WAVE_CLEAR;
+    this.onStateChange?.(this.state);
+    
+    // 停止BGM
+    this.stopBGM();
+    
+    // 播放胜利音乐
+    this.playVictoryBGM();
+    
+    // 保存进度
+    this.saveProgress();
+    
+    // 更新场景完成
+    if (!this.progress.scenesCompleted.includes(this.currentScene)) {
+      this.progress.scenesCompleted.push(this.currentScene);
     }
+    
+    // 解锁下一场景
+    try {
+      this.itemManagementSystem.checkSceneUnlocks();
+    } catch (e) { /* ignore */ }
+    
+    console.log('Victory! All waves completed.');
   }
-
+  
   /**
    * 更新武器系统
    * @param deltaTime 时间增量
@@ -1544,17 +1739,21 @@ export class NewGameEngine {
    * 执行波次生成
    */
   private doWaveSpawn(): void {
-    // TODO: 从原始引擎迁移波次生成逻辑
-    // 这里应该调用waveManager来生成新的波次
-    console.log('执行波次生成');
-    this.state = GameState.PLAYING;
-    this.countdownWavePending = false; // 重置倒计时等待标志
+    // 调用waveManager来生成新的波次
+    const waveStarted = this.waveManager.startWave();
     
-    // 战斗开始，播放关卡背景音乐
-    console.log('战斗开始，播放关卡背景音乐');
-    this.audio.startLevelBGM();
-    
-    this.onStateChange?.(this.state);
+    if (waveStarted) {
+      this.state = GameState.PLAYING;
+      this.countdownWavePending = false; // 重置倒计时等待标志
+      
+      // 战斗开始，播放关卡背景音乐
+      this.audio.startLevelBGM();
+      
+      this.onStateChange?.(this.state);
+    } else {
+      // 如果波次没有启动（例如教程暂停），保持倒计时状态
+      console.log('波次生成暂停（教程模式）');
+    }
   }
 
   /**
@@ -1598,61 +1797,161 @@ export class NewGameEngine {
    * 渲染倒计时画面
    */
   private renderCountdown(): void {
-    // TODO: 从原始引擎迁移倒计时渲染逻辑
-    // 暂时渲染默认画面
-    this.renderDefault();
+    // 清空画布
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    
+    // 绘制背景
+    this.ctx.fillStyle = '#1a1a2e';
+    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    
+    // 绘制倒计时数字（居中，大字体）
+    this.ctx.font = 'bold 120px Arial';
+    this.ctx.fillStyle = '#ff6600';
+    this.ctx.textAlign = 'center';
+    this.ctx.textBaseline = 'middle';
+    this.ctx.fillText(
+      this.countdownPhase.toString(),
+      this.canvas.width / 2,
+      this.canvas.height / 2
+    );
+    
+    // 绘制提示文字
+    this.ctx.font = '24px Arial';
+    this.ctx.fillStyle = '#cccccc';
+    this.ctx.fillText('准备战斗！', this.canvas.width / 2, this.canvas.height / 2 + 100);
   }
 
   /**
    * 渲染视觉特效
    */
   private renderVisualEffects(): void {
-    // TODO: 从原始引擎迁移视觉特效渲染逻辑
-    // 暂时渲染默认画面
-    this.renderDefault();
+    // 清空画布
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    
+    // 绘制背景
+    this.ctx.fillStyle = '#1a1a2e';
+    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    
+    // 绘制游戏场景（包含物品掉落区域）
+    let itemDrop = null;
+    try { itemDrop = this.itemSystem.getFieldItemDrop(); } catch (e) { /* ignore */ }
+    
+    if (itemDrop && !itemDrop.collected) {
+      // 绘制物品掉落
+      const bobY = (() => {
+        try { return this.itemSystem.getItemBobY(); } catch (e) { return 0; }
+      })();
+      const displayY = itemDrop.y + bobY;
+      
+      this.ctx.beginPath();
+      this.ctx.fillStyle = '#ffaa00';
+      this.ctx.arc(itemDrop.x, displayY, 25, 0, Math.PI * 2);
+      this.ctx.fill();
+      this.ctx.strokeStyle = '#ffffff';
+      this.ctx.lineWidth = 2;
+      this.ctx.stroke();
+      
+      this.ctx.font = '16px Arial';
+      this.ctx.fillStyle = '#ffffff';
+      this.ctx.textAlign = 'center';
+      this.ctx.fillText(itemDrop.name || '物品', itemDrop.x, displayY - 35);
+    }
+    
+    // 绘制HUD
+    this.uiManager.render({
+      gameState: this.state,
+      gameMode: this.gameMode,
+      difficulty: this.difficulty,
+      currentScene: this.currentScene,
+      player: this.player,
+      economy: this.economy,
+      wave: this.currentWave,
+      defenseHp: this.defenseHp,
+      maxDefenseHp: this.maxDefenseHp,
+      weather: 'none' as const,
+      weatherIntensity: 0,
+      selectedItemIndex: 0,
+      isPlacingItem: false,
+      time: this.lastTime
+    });
   }
 
   /**
    * 渲染游戏玩法画面
    */
   private renderGameplay(): void {
-    // 创建简化的渲染数据，只包含必要的属性
+    // 安全获取各模块数据，使用try-catch防止崩溃
+    let roaches: any[] = [];
+    let particles: any[] = [];
+    let fireZones: any[] = [];
+    let fireWalls: any[] = [];
+    let floatingTexts: any[] = [];
+    let weaponDrops: any[] = [];
+    let stickyBoards: any[] = [];
+    let stickyDrops: any[] = [];
+    let throwableProjectiles: any[] = [];
+    let fanStates: any[] = [];
+    let radarLasers: any[] = [];
+    let itemDropsOnField: any = null;
+    let bossBattle = { active: false, timer: 0, maxTimer: 0, eggPools: [] as any[] };
+    let weather = 'none';
+    
+    try { roaches = this.entityManager.getRoaches(); } catch (e) { /* ignore */ }
+    try {
+      const ps = this.particleSystem.getState();
+      particles = ps.particles;
+      fireZones = ps.fireZones;
+      fireWalls = ps.fireWalls;
+      floatingTexts = ps.floatingTexts;
+    } catch (e) { /* ignore */ }
+    try { weaponDrops = this.itemManagementSystem.getWeaponDrops(); } catch (e) {
+      try { weaponDrops = this.weaponSystem.getWeaponDrops(); } catch (e2) { /* ignore */ }
+    }
+    try { stickyBoards = this.stickySystem.getStickyBoards(); } catch (e) { /* ignore */ }
+    try { stickyDrops = this.stickySystem.getStickyDrops(); } catch (e) { /* ignore */ }
+    try { throwableProjectiles = this.throwableSystem.getThrowables(); } catch (e) { /* ignore */ }
+    try { fanStates = [this.fanSystem.getState()]; } catch (e) { /* ignore */ }
+    try { radarLasers = this.radarLaserSystem.getRadarLasers(); } catch (e) { /* ignore */ }
+    try {
+      const fieldDrop = this.itemSystem.getFieldItemDrop();
+      if (fieldDrop) itemDropsOnField = fieldDrop;
+    } catch (e) { /* ignore */ }
+    try {
+      bossBattle = this.bossBattleSystem.getBossState() || { active: false, timer: 0, maxTimer: 0, eggPools: [] };
+    } catch (e) { /* ignore */ }
+    try { weather = this.weatherSystem.getWeatherType(); } catch (e) { /* ignore */ }
+    
     const renderData = {
       gameState: this.state,
       gameMode: this.gameMode,
       difficulty: this.difficulty,
       currentScene: this.currentScene,
       time: this.lastTime,
-      screenShakeX: 0,
-      screenShakeY: 0,
+      screenShakeX: Math.random() * this.screenShake * 2 - this.screenShake,
+      screenShakeY: Math.random() * this.screenShake * 2 - this.screenShake,
       showMovementRange: false,
-      weather: 'none' as const,
+      weather,
       weatherIntensity: 0,
       weatherTimer: 0,
       slimeBurstTimer: 0,
       slimeBurstX: 0,
       slimeBurstY: 0,
-      bossBattle: {
-        active: false,
-        timer: 0,
-        maxTimer: 0,
-        eggPools: []
-      },
+      bossBattle,
       placedBombs: [],
       deadTimedBombs: [],
-      roaches: [],
-      particles: [],
-      fireZones: [],
-      fireWalls: [],
-      stickyBoards: [],
-      stickyDrops: [],
-      weaponDrops: [],
+      roaches,
+      particles,
+      fireZones,
+      fireWalls,
+      stickyBoards,
+      stickyDrops,
+      weaponDrops,
       player: this.player,
-      floatingTexts: [],
-      throwableProjectiles: [],
-      fanStates: [],
-      radarLasers: [],
-      itemDropsOnField: [],
+      floatingTexts,
+      throwableProjectiles,
+      fanStates,
+      radarLasers,
+      itemDropsOnField,
       images: {
         bgImg: undefined,
         bgKitchenHardImg: undefined,
@@ -1698,62 +1997,50 @@ export class NewGameEngine {
     this.ctx.fillStyle = '#1a1a2e';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     
-    // 使用UI管理器渲染界面
-    this.uiManager.render({
-      gameState: this.state,
-      gameMode: this.gameMode,
-      difficulty: this.difficulty,
-      currentScene: this.currentScene,
-      player: this.player,
-      economy: this.economy,
-      wave: this.currentWave,
-      defenseHp: this.defenseHp,
-      maxDefenseHp: this.maxDefenseHp,
-      weather: 'none' as const,
-      weatherIntensity: 0,
-      selectedItemIndex: 0,
-      isPlacingItem: false,
-      time: this.lastTime
-    });
-    
-    // 绘制性能监控信息
-    this.renderPerformanceInfo();
-    
-    // 绘制测试实体
-    this.renderTestEntities();
-  }
-  
-  /**
-   * 渲染性能监控信息
-   */
-  private renderPerformanceInfo(): void {
-    const fps = this.performanceMonitor.getFPS();
-    const frameTime = this.performanceMonitor.getFrameTime();
-    const memory = this.performanceMonitor.getMemoryUsage();
-    
-    // 设置文本样式
-    this.ctx.font = '16px monospace';
-    this.ctx.textAlign = 'left';
-    this.ctx.textBaseline = 'top';
-    this.ctx.fillStyle = '#00ff00';
-    
-    // 绘制性能信息
-    const infoY = 20;
-    this.ctx.fillText(`FPS: ${fps.toFixed(1)}`, 20, infoY);
-    this.ctx.fillText(`帧时间: ${frameTime.toFixed(2)}ms`, 20, infoY + 25);
-    
-    if (memory) {
-      this.ctx.fillText(`内存: ${(memory.usedJSHeapSize / 1024 / 1024).toFixed(2)}MB`, 20, infoY + 50);
+    // 根据游戏状态渲染相应的界面
+    if (this.state === GameState.MENU || this.state === GameState.PAUSED || this.state === GameState.GAME_OVER) {
+      // 渲染菜单界面
+      this.uiManager.renderMenu(
+        this.ctx,
+        this.canvas.width,
+        this.canvas.height,
+        {
+          gameState: this.state,
+          gameMode: this.gameMode,
+          difficulty: this.difficulty,
+          currentScene: this.currentScene,
+          player: this.player,
+          economy: this.economy,
+          wave: this.currentWave,
+          defenseHp: this.defenseHp,
+          maxDefenseHp: this.maxDefenseHp,
+          weather: 'none' as const,
+          weatherIntensity: 0,
+          selectedItemIndex: 0,
+          isPlacingItem: false,
+          time: this.lastTime,
+          progress: this.progress
+        }
+      );
+    } else {
+      // 使用UI管理器渲染游戏HUD
+      this.uiManager.render({
+        gameState: this.state,
+        gameMode: this.gameMode,
+        difficulty: this.difficulty,
+        currentScene: this.currentScene,
+        player: this.player,
+        economy: this.economy,
+        wave: this.currentWave,
+        defenseHp: this.defenseHp,
+        maxDefenseHp: this.maxDefenseHp,
+        weather: 'none' as const,
+        weatherIntensity: 0,
+        selectedItemIndex: 0,
+        isPlacingItem: false,
+        time: this.lastTime
+      });
     }
-    
-    // 绘制玩家信息
-    this.ctx.fillStyle = '#ffff00';
-    this.ctx.fillText(`玩家位置: (${this.player.x.toFixed(1)}, ${this.player.y.toFixed(1)})`, 20, infoY + 85);
-    this.ctx.fillText(`燃料: ${this.player.gas.toFixed(1)}/${this.player.maxGas}`, 20, infoY + 110);
-    this.ctx.fillText(`热量: ${this.player.heat.toFixed(1)}/${this.player.maxHeat}`, 20, infoY + 135);
-    
-    // 绘制测试实体
-    this.renderTestEntities();
   }
 
   /**
@@ -1802,62 +2089,6 @@ export class NewGameEngine {
    */
   getMaxDefenseHp(): number {
     return this.maxDefenseHp;
-  }
-
-  /**
-   * 渲染测试实体
-   */
-  private renderTestEntities(): void {
-    for (const entity of this.testEntities) {
-      // 绘制实体
-      this.ctx.beginPath();
-      this.ctx.fillStyle = entity.color;
-      this.ctx.arc(entity.x, entity.y, entity.radius, 0, Math.PI * 2);
-      this.ctx.fill();
-      
-      // 绘制实体边框
-      this.ctx.beginPath();
-      this.ctx.strokeStyle = '#ffffff';
-      this.ctx.lineWidth = 2;
-      this.ctx.arc(entity.x, entity.y, entity.radius, 0, Math.PI * 2);
-      this.ctx.stroke();
-      
-      // 绘制实体到玩家的连线（如果距离小于一定值）
-      const distToPlayer = distance(entity.x, entity.y, this.player.x, this.player.y);
-      if (distToPlayer < 200) {
-        this.ctx.beginPath();
-        this.ctx.strokeStyle = `rgba(255, 255, 255, ${1 - distToPlayer / 200})`;
-        this.ctx.lineWidth = 1;
-        this.ctx.moveTo(entity.x, entity.y);
-        this.ctx.lineTo(this.player.x, this.player.y);
-        this.ctx.stroke();
-        
-        // 显示距离
-        this.ctx.fillStyle = '#ffffff';
-        this.ctx.font = '12px monospace';
-        this.ctx.textAlign = 'center';
-        this.ctx.fillText(`${distToPlayer.toFixed(1)}`, 
-          (entity.x + this.player.x) / 2, 
-          (entity.y + this.player.y) / 2 - 10);
-      }
-    }
-    
-    // 绘制玩家
-    this.ctx.beginPath();
-    this.ctx.fillStyle = '#ff0000';
-    this.ctx.arc(this.player.x, this.player.y, 20, 0, Math.PI * 2);
-    this.ctx.fill();
-    
-    // 绘制玩家方向
-    this.ctx.beginPath();
-    this.ctx.strokeStyle = '#ffff00';
-    this.ctx.lineWidth = 3;
-    this.ctx.moveTo(this.player.x, this.player.y);
-    this.ctx.lineTo(
-      this.player.x + Math.cos(this.player.angle) * 40,
-      this.player.y + Math.sin(this.player.angle) * 40
-    );
-    this.ctx.stroke();
   }
 
   /**
@@ -2002,13 +2233,12 @@ export class NewGameEngine {
     // 重置防御生命值
     this.defenseHp = this.maxDefenseHp;
     
-    // 重置测试实体
-    this.testEntities = [];
-    this.initTestEntities();
-    
     // 重置模块管理器
     this.waveManager = new WaveManager(this.currentScene, this.gameMode, this.difficulty);
-    this.entityManager = new EntityManager(this.canvas.width, this.canvas.height, () => this.getDefenseLineY());
+    this.entityManager = new EntityManager(this.canvas.width, this.canvas.height, () => this.getDefenseLineY(), this.currentScene);
+    
+    // 重置性能监控系统
+    this.performanceMonitorSystem.reset();
     
     console.log('游戏状态已重置');
   }
@@ -2135,6 +2365,114 @@ export class NewGameEngine {
    */
   getAudio(): AudioManager {
     return this.audio;
+  }
+
+  /**
+   * 获取粒子系统
+   * @returns 粒子系统
+   */
+  getParticleSystem(): ParticleSystem {
+    return this.particleSystem;
+  }
+
+  /**
+   * 获取道具系统
+   * @returns 道具系统
+   */
+  getItemSystem(): ItemSystem {
+    return this.itemSystem;
+  }
+
+  /**
+   * 获取道具管理系统
+   * @returns 道具管理系统
+   */
+  getItemManagementSystem(): ItemManagementSystem {
+    return this.itemManagementSystem;
+  }
+
+  /**
+   * 获取武器系统
+   * @returns 武器系统
+   */
+  getWeaponSystem(): WeaponSystem {
+    return this.weaponSystem;
+  }
+
+  /**
+   * 获取粘性板系统
+   * @returns 粘性板系统
+   */
+  getStickySystem(): StickySystem {
+    return this.stickySystem;
+  }
+
+  /**
+   * 获取投掷物系统
+   * @returns 投掷物系统
+   */
+  getThrowableSystem(): ThrowableSystem {
+    return this.throwableSystem;
+  }
+
+  /**
+   * 获取风扇系统
+   * @returns 风扇系统
+   */
+  getFanSystem(): FanSystem {
+    return this.fanSystem;
+  }
+
+  /**
+   * 获取雷达激光系统
+   * @returns 雷达激光系统
+   */
+  getRadarLaserSystem(): RadarLaserSystem {
+    return this.radarLaserSystem;
+  }
+
+  /**
+   * 获取Boss战斗系统
+   * @returns Boss战斗系统
+   */
+  getBossBattleSystem(): BossBattleSystem {
+    return this.bossBattleSystem;
+  }
+
+  /**
+   * 获取蟑螂AI系统
+   * @returns 蟑螂AI系统
+   */
+  getRoachAISystem(): RoachAISystem {
+    return this.roachAISystem;
+  }
+
+  /**
+   * 获取波次管理器
+   * @returns 波次管理器
+   */
+  getWaveManager(): WaveManager {
+    return this.waveManager;
+  }
+
+  /**
+   * 获取实体管理器
+   * @returns 实体管理器
+   */
+  getEntityManager(): EntityManager {
+    return this.entityManager;
+  }
+
+  /**
+   * 获取三重火焰状态
+   * @returns 三重火焰状态
+   */
+  private get tripleFlame(): any {
+    try {
+      return this.tripleFlameSystem.getTripleFlameState();
+    } catch (e) {
+      return { active: false, timer: 0, duration: 0, radius: 0, angle: 0 };
+    }
   }
 
   /**

@@ -4,7 +4,7 @@
  */
 
 import type { GameProgress } from '../../types';
-import { createDefaultProgress } from '../../data';
+import { createDefaultProgress, ENCYCLOPEDIA_DEFS } from '../../data';
 
 /**
  * 存档系统类
@@ -183,86 +183,57 @@ export class SaveSystem {
   }
   
   /**
-   * 迁移旧版本进度数据
+   * 迁移旧版本进度数据（完整迁移逻辑，与老引擎保持一致）
    * @param oldProgress 旧版本进度数据
    * @returns 迁移后的进度数据
    */
   private static migrateProgress(oldProgress: any): GameProgress {
-    const defaultProgress = createDefaultProgress();
-    
-    // 迁移天赋树
-    if (oldProgress.talentTree) {
-      defaultProgress.talentTree = oldProgress.talentTree;
-    }
-    
-    // 迁移成就
-    if (oldProgress.achievements) {
-      defaultProgress.achievements = oldProgress.achievements;
-    }
-    
-    // 迁移最高波次
-    if (oldProgress.highestWave) {
-      defaultProgress.highestWave = oldProgress.highestWave;
-    }
-    
-    // 迁移无尽模式最高波次
-    if (oldProgress.highestEndlessWave) {
-      defaultProgress.highestEndlessWave = oldProgress.highestEndlessWave;
-    }
-    
-    // 迁移总击杀数
-    if (oldProgress.totalKills) {
-      defaultProgress.totalKills = oldProgress.totalKills;
-    }
-    
-    // 迁移已解锁场景
-    if (oldProgress.scenesUnlocked) {
-      defaultProgress.scenesUnlocked = oldProgress.scenesUnlocked;
-    }
-    
-    // 迁移已解锁武器
-    if (oldProgress.weaponsUnlocked) {
-      defaultProgress.weaponsUnlocked = oldProgress.weaponsUnlocked;
-    }
-    
-    // 迁移图鉴
-    if (oldProgress.encyclopedia) {
-      defaultProgress.encyclopedia = oldProgress.encyclopedia;
-    }
-    
-    // 迁移商店升级
-    if (oldProgress.shopUpgrades) {
-      defaultProgress.shopUpgrades = oldProgress.shopUpgrades;
-    }
-    
-    // 迁移消耗品库存（v3新增）
-    if (oldProgress.consumableInventory) {
-      defaultProgress.consumableInventory = oldProgress.consumableInventory;
-    }
-    
-    // 迁移自动使用设置（v3新增）
-    if (oldProgress.autoUseEnabled) {
-      defaultProgress.autoUseEnabled = oldProgress.autoUseEnabled;
-    } else {
-      // 尝试从独立的localStorage键迁移消耗品
-      try {
-        const consumableSaved = localStorage.getItem(this.CONSUMABLES_KEY);
-        if (consumableSaved) {
-          const parsedConsumables = JSON.parse(consumableSaved);
-          defaultProgress.consumableInventory = parsedConsumables;
-          defaultProgress.autoUseEnabled = {};
-          
-          // 清理旧的独立存储
-          localStorage.removeItem(this.CONSUMABLES_KEY);
-        }
-      } catch (error) {
-        // 忽略迁移错误
+    const oldVersion = oldProgress.saveVersion || 0;
+    console.log(`[SaveSystem] Migrating from v${oldVersion} to v${this.SAVE_VERSION}`);
+
+    // v1 → v2: 添加缺失字段
+    if (oldVersion <= 1) {
+      if (!oldProgress.scenesCompleted) oldProgress.scenesCompleted = [];
+      if (!oldProgress.shopUpgrades) oldProgress.shopUpgrades = [];
+      if (!oldProgress.encyclopedia || !oldProgress.encyclopedia.entries) {
+        oldProgress.encyclopedia = { entries: ENCYCLOPEDIA_DEFS.map(e => ({ ...e })) };
       }
+      oldProgress.saveVersion = 2;
     }
-    
-    // 保存迁移后的进度
-    this.saveProgress(defaultProgress);
-    return defaultProgress;
+
+    // v2 → v3: 消耗品库存迁移到 GameProgress
+    if (oldVersion <= 2 && this.SAVE_VERSION >= 3) {
+      if (!oldProgress.consumableInventory || !oldProgress.autoUseEnabled) {
+        try {
+          const consumableSaved = localStorage.getItem(this.CONSUMABLES_KEY);
+          if (consumableSaved) {
+            const parsed = JSON.parse(consumableSaved);
+            oldProgress.consumableInventory = parsed.consumables || {};
+            oldProgress.autoUseEnabled = {};
+          } else {
+            oldProgress.consumableInventory = {};
+            oldProgress.autoUseEnabled = {};
+          }
+        } catch {
+          oldProgress.consumableInventory = {};
+          oldProgress.autoUseEnabled = {};
+        }
+      }
+      oldProgress.saveVersion = 3;
+    }
+
+    // 防御性字段检查（确保所有字段存在）
+    if (!oldProgress.encyclopedia || !oldProgress.encyclopedia.entries) {
+      oldProgress.encyclopedia = { entries: ENCYCLOPEDIA_DEFS.map(e => ({ ...e })) };
+    }
+    if (!oldProgress.scenesCompleted) oldProgress.scenesCompleted = [];
+    if (!oldProgress.shopUpgrades) oldProgress.shopUpgrades = [];
+    if (!oldProgress.weaponsUnlocked) oldProgress.weaponsUnlocked = ['flamethrower', 'sticky'];
+
+    // 保存迁移后的数据
+    this.saveProgress(oldProgress as GameProgress);
+    console.log(`[SaveSystem] Migration v${oldVersion}→v${this.SAVE_VERSION} completed`);
+    return oldProgress as GameProgress;
   }
   
   /**

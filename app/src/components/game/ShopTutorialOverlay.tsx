@@ -1,7 +1,15 @@
+/**
+ * @fileoverview 商店教学引导遮罩组件 — 以"樟叔"角色引导玩家逐步了解商店中每种道具的用途。
+ * 使用聚光灯高亮当前步骤对应的道具卡片，并显示对话气泡说明。
+ * 新玩家首次进入商店时自动触发，完成后通过 localStorage 记录状态避免重复展示。
+ * 提供跳过和重置功能，支持多步骤自动滚动到目标道具位置。
+ */
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { ArrowRight, SkipForward, ShoppingCart } from 'lucide-react';
 import type { AudioManager } from '@/game/audio';
 
+/** localStorage 键名，用于记录玩家是否已完成商店教学 */
 const TUTORIAL_KEY = 'shop_tutorial_seen';
 
 interface ShopTutorialStep {
@@ -96,6 +104,7 @@ export const ShopTutorialOverlay: React.FC<ShopTutorialOverlayProps> = ({
 
   const currentStep = SHOP_TUTORIAL_STEPS[step];
 
+  /** 自动滚动容器使当前高亮的道具卡片可见，同时更新聚光灯位置 */
   // Auto-scroll to highlighted item
   useEffect(() => {
     if (!showTutorial || !currentStep) return;
@@ -138,6 +147,7 @@ export const ShopTutorialOverlay: React.FC<ShopTutorialOverlayProps> = ({
     }
   }, [showTutorial, step, currentStep, cardRefs, ownedRef]);
 
+  /** 前进到下一步或完成教学（最后一步时标记已完成并关闭） */
   const handleNext = useCallback(() => {
     audio?.playClick();
     if (step < SHOP_TUTORIAL_STEPS.length - 1) {
@@ -149,6 +159,7 @@ export const ShopTutorialOverlay: React.FC<ShopTutorialOverlayProps> = ({
     }
   }, [step, audio, onComplete]);
 
+  /** 跳过教学：标记已完成并关闭遮罩 */
   const handleSkip = useCallback(() => {
     audio?.playClick();
     localStorage.setItem(TUTORIAL_KEY, 'true');
@@ -164,6 +175,7 @@ export const ShopTutorialOverlay: React.FC<ShopTutorialOverlayProps> = ({
 
   return (
     <div className="fixed inset-0 z-[200] pointer-events-none">
+      {/* 四点遮罩聚光灯：用四块半透明黑色遮罩围出一个高亮区域 */}
       {/* 4-piece mask spotlight */}
       {highlightRect && (
         <>

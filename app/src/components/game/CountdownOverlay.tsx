@@ -1,3 +1,9 @@
+/**
+ * @fileoverview 倒计时遮罩组件 — 每波战斗开始前显示 3-2-1-GO! 倒计时动画。
+ * 通过 phase 和 timer 驱动显示内容，带有缩放动画和发光文字效果。
+ * 倒计时结束时显示绿色的 "GO!" 和"战斗开始！"提示。
+ */
+
 import React, { useState, useEffect } from 'react';
 
 interface CountdownOverlayProps {
@@ -9,6 +15,7 @@ export const CountdownOverlay: React.FC<CountdownOverlayProps> = ({ phase, timer
   const [displayNum, setDisplayNum] = useState(phase);
   const [animating, setAnimating] = useState(false);
 
+  /** 当 phase 变化时触发缩放动画，500ms 后恢复 */
   // Trigger animation when phase changes
   useEffect(() => {
     if (phase !== displayNum) {
@@ -19,6 +26,7 @@ export const CountdownOverlay: React.FC<CountdownOverlayProps> = ({ phase, timer
     }
   }, [phase, displayNum]);
 
+  /** 倒计时即将结束时（timer ≤ 0.2s）显示绿色的 "GO!" */
   // Show "GO!" when timer is nearly finished
   const showGo = timer <= 0.2 && timer > 0;
   const number = showGo ? 'GO!' : String(displayNum);
@@ -40,6 +48,7 @@ export const CountdownOverlay: React.FC<CountdownOverlayProps> = ({ phase, timer
       >
         {number}
       </div>
+      {/* 底部提示文字：GO! 时显示"战斗开始！"，否则显示"准备战斗" */}
       {/* Subtle instruction text below the number */}
       <div
         className="absolute bottom-1/3 left-0 right-0 text-center text-stone-300 text-sm tracking-widest"

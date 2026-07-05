@@ -1,3 +1,13 @@
+/**
+ * @fileoverview 游戏内 HUD 覆盖层组件。
+ * 显示战斗中的各类实时信息：
+ * - 顶部栏：燃气条、波次/资金/击杀统计、暂停按钮
+ * - 防线血量条及 Buff 图标
+ * - 底部武器选择器 + 携带消耗品快捷使用
+ * - 左侧热量条 + 紧急冷却按钮
+ * - 右侧三喷火枪状态 + 掉落道具库存
+ * 所有元素均为 pointer-events-none 容器，仅交互按钮启用 pointer-events-auto。
+ */
 import React from 'react';
 import type { Player, Economy, GameProgress, BossBattleState, SceneType } from '@/game/types';
 import { GameMode } from '@/game/types';
@@ -55,11 +65,13 @@ interface GameHUDProps {
   audio?: AudioManager;
 }
 
+/** 武器图标 / 名称 / 快捷键映射 */
 const WEAPON_ICONS: Record<string, { icon: React.ReactNode; name: string; color: string; key: string }> = {
   flamethrower: { icon: <Flame size={14} />, name: '火焰', color: 'text-orange-400', key: '1' },
   shotgun: { icon: <Target size={14} />, name: '散弹', color: 'text-yellow-400', key: '2' },
 };
 
+/** 掉落道具图片映射 */
 const ITEM_IMAGES: Record<string, string> = {
   sticky: '/assets/item_sticky.png',
   poison: '/assets/item_poison.png',
@@ -70,6 +82,7 @@ const ITEM_IMAGES: Record<string, string> = {
   swatter: '/assets/item_swatter.png',
 };
 
+/** 掉落道具中文名称映射 */
 const ITEM_NAMES: Record<string, string> = {
   sticky: '蟑螂贴板',
   poison: '杀虫剂',
@@ -80,7 +93,7 @@ const ITEM_NAMES: Record<string, string> = {
   swatter: '电蚊拍',
 };
 
-// Buff icon component - 1/4 size (~12x12) with flash animation
+/** Buff 图标子组件：缩略版（约 12×12），带闪烁动画 */
 const BuffIcon: React.FC<{ src: string; alt: string; color: string; timer: number }> = ({ src, alt, color, timer }) => (
   <div
     className={`w-3 h-3 rounded-sm overflow-hidden animate-pulse border ${color}`}
@@ -91,7 +104,7 @@ const BuffIcon: React.FC<{ src: string; alt: string; color: string; timer: numbe
   </div>
 );
 
-// Manual consumable icon - full size clickable
+/** 手动消耗品图标子组件：完整尺寸可点击，支持冷却遮罩和数量角标 */
 const ManualItemIcon: React.FC<{
   def: { id: string; name: string; icon: string; color: string; cooldown?: number };
   count: number;
@@ -183,7 +196,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
   return (
     <div className="absolute inset-0 pointer-events-none">
-      {/* Top bar - content centered, max-w matches narrow screen width */}
+      {/* ═══ 顶部栏：燃气条 + 波次/资金/击杀 + 暂停按钮 ═══ */}
       <div className="absolute top-0 left-0 right-0 p-2 flex justify-center">
         <div className="w-full max-w-[380px] flex items-center gap-1">
           {/* Gas bar */}
@@ -232,7 +245,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       </div>{/* /top bar */}
       </div>{/* /top bar outer */}
 
-      {/* Defense HP - with buff icons on the right */}
+      {/* ═══ 防线血量条（含 Buff 图标）═══ */}
       <div className="absolute top-[58px] left-1/2 -translate-x-1/2 w-48">
         <div className="flex items-center gap-1">
           <div className="bg-black/50 backdrop-blur-sm rounded-lg px-2 py-1 flex-1">
@@ -256,7 +269,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         </div>
       </div>
 
-      {/* Weapon selector - bottom center with manual consumables */}
+      {/* ═══ 底部武器选择器 + 携带消耗品 ═══ */}
       <div className="absolute bottom-[58px] left-1/2 -translate-x-1/2 pointer-events-auto">
         <div className="bg-black/60 backdrop-blur-sm rounded-xl px-2 py-1.5 flex items-center gap-1">
           {allWeapons.map((w) => {
@@ -339,7 +352,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         </div>
       </div>
 
-      {/* Left side - Heat bar (moved above defense line to avoid overlap with consumable bar) */}
+      {/* ═══ 左侧热量条 + 紧急冷却按钮 ═══ */}
       <div className="absolute bottom-[320px] left-2 pointer-events-auto">
         <div className="bg-black/50 backdrop-blur-sm rounded-lg px-1.5 py-2 flex flex-col items-center gap-1 relative">
           {/* Emergency cool buff icon - above heat bar */}
@@ -369,7 +382,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         </div>
       </div>
 
-      {/* Right side - Triple flame status + Inventory items + Swatter */}
+      {/* ═══ 右侧：三喷火枪状态 + 掉落道具库存 ═══ */}
       <div className="absolute bottom-[120px] right-2 flex flex-col items-center gap-1.5">
         {/* Triple flame status */}
         {tripleFlameActive && (
@@ -434,7 +447,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         )}
       </div>
 
-      {/* Pending click: waiting for screen click to show range */}
+      {/* ═══ 放置道具提示（等待点击屏幕）═══ */}
       {isPlacingItem && selectedItemIndex >= 0 && (
         <div className="absolute bottom-[120px] left-1/2 -translate-x-1/2 pointer-events-none">
           <div className="bg-yellow-900/80 border border-yellow-500/50 rounded-lg px-3 py-1.5 text-center">
@@ -446,7 +459,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         </div>
       )}
 
-      {/* Overheat warning */}
+      {/* ═══ 过热警告（屏幕中央）═══ */}
       {player.isOverheated && (
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
           <div className="bg-red-900/80 backdrop-blur-sm rounded-lg px-4 py-2 text-center animate-pulse">

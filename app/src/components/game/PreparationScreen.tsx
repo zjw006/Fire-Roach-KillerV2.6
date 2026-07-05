@@ -1,3 +1,9 @@
+/**
+ * @fileoverview 战前道具选择界面 — 玩家在每波战斗前从可用道具中选择最多 3 种携带上阵。
+ * 道具按类别（控制/范围/爆发）分组展示，带图标和描述，选中后高亮并显示勾选标记。
+ * 底部显示已选道具列表和确认/返回按钮，未选择道具时"开始战斗"按钮禁用。
+ */
+
 import React, { useState } from 'react';
 import { Check, ArrowRight, Bug, Wind, Flame, Droplets, Target, Zap, ScanLine } from 'lucide-react';
 import type { AudioManager } from '@/game/audio';
@@ -38,8 +44,10 @@ export const PreparationScreen: React.FC<PreparationScreenProps> = ({ availableI
   const [selected, setSelected] = useState<string[]>([]);
   const maxSelect = 3;
 
+  /** 筛选当前场景的可用道具（按 availableItems 过滤） */
   const sceneItems = ALL_ITEMS.filter(item => availableItems.includes(item.id));
 
+  /** 切换道具选中状态：已选中则取消，未选中且未满则添加 */
   const toggleItem = (id: string) => {
     if (selected.includes(id)) {
       setSelected(selected.filter(s => s !== id));

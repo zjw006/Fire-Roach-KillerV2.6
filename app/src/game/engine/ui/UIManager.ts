@@ -686,10 +686,319 @@ export class UIManager {
     h: number,
     data: UIRenderData
   ): void {
-    // 菜单渲染实现
-    // TODO: 从原始引擎迁移菜单渲染逻辑
-    // 暂时添加参数使用以避免TypeScript警告
-    console.log(ctx, w, h, data);
+    const { gameState, gameMode, difficulty, currentScene, player, economy, progress } = data;
+    
+    // 根据游戏状态渲染不同的菜单
+    switch (gameState) {
+      case GameState.MENU:
+        this.renderMainMenu(ctx, w, h, gameMode, difficulty, currentScene, progress);
+        break;
+      case GameState.PAUSED:
+        this.renderPauseMenu(ctx, w, h, player, economy, gameMode);
+        break;
+      case GameState.GAME_OVER:
+        this.renderGameOverMenu(ctx, w, h, player, economy, gameMode);
+        break;
+      default:
+        // 其他状态不渲染菜单
+        break;
+    }
+  }
+
+  /**
+   * 渲染主菜单
+   * @param ctx - 画布上下文
+   * @param w - 画布宽度
+   * @param h - 画布高度
+   * @param gameMode - 游戏模式
+   * @param difficulty - 难度
+   * @param currentScene - 当前场景
+   * @param progress - 游戏进度
+   */
+  private renderMainMenu(
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    gameMode: GameMode,
+    difficulty: 'easy' | 'hard',
+    currentScene: SceneType,
+    progress?: GameProgress
+  ): void {
+    ctx.save();
+    
+    // 背景渐变
+    const gradient = ctx.createLinearGradient(0, 0, w, h);
+    gradient.addColorStop(0, '#1a1a2e');
+    gradient.addColorStop(1, '#16213e');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, w, h);
+    
+    // 游戏标题
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 48px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = 'rgba(0,0,0,0.8)';
+    ctx.shadowBlur = 10;
+    ctx.fillText('烈焰除蟑：火线守卫', w / 2, h / 4);
+    ctx.shadowBlur = 0;
+    
+    // 副标题
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = 'bold 24px Arial';
+    ctx.fillText('Fire Roach Killer', w / 2, h / 4 + 50);
+    
+    // 菜单选项
+    const menuOptions = [
+      { text: '开始游戏', action: 'start' },
+      { text: '继续游戏', action: 'continue', enabled: progress && progress.currentScene !== 'none' },
+      { text: '无尽模式', action: 'endless' },
+      { text: '设置', action: 'settings' },
+      { text: '退出', action: 'exit' }
+    ];
+    
+    // 渲染菜单选项
+    const optionHeight = 50;
+    const startY = h / 2;
+    
+    menuOptions.forEach((option, index) => {
+      const y = startY + index * (optionHeight + 15);
+      const isEnabled = option.enabled !== false;
+      
+      // 背景
+      ctx.fillStyle = isEnabled ? 'rgba(255, 255, 255, 0.1)' : 'rgba(100, 100, 100, 0.1)';
+      ctx.beginPath();
+      ctx.roundRect(w / 2 - 150, y - 25, 300, optionHeight, 10);
+      ctx.fill();
+      
+      // 边框
+      ctx.strokeStyle = isEnabled ? '#fbbf24' : '#666666';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(w / 2 - 150, y - 25, 300, optionHeight);
+      
+      // 文字
+      ctx.fillStyle = isEnabled ? '#ffffff' : '#888888';
+      ctx.font = 'bold 20px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(option.text, w / 2, y);
+      
+      // 快捷键提示
+      if (isEnabled && index < 5) {
+        ctx.fillStyle = '#fbbf24';
+        ctx.font = 'bold 14px Arial';
+        ctx.fillText(`[${index + 1}]`, w / 2 + 120, y);
+      }
+    });
+    
+    // 版本信息
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+    ctx.font = '12px Arial';
+    ctx.textAlign = 'right';
+    ctx.fillText('版本 2.6', w - 20, h - 20);
+    
+    ctx.restore();
+  }
+
+  /**
+   * 渲染暂停菜单
+   * @param ctx - 画布上下文
+   * @param w - 画布宽度
+   * @param h - 画布高度
+   * @param player - 玩家信息
+   * @param economy - 经济统计
+   * @param gameMode - 游戏模式
+   */
+  private renderPauseMenu(
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    player: Player,
+    economy: Economy,
+    gameMode: GameMode
+  ): void {
+    ctx.save();
+    
+    // 半透明背景
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(0, 0, w, h);
+    
+    // 暂停标题
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 36px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = 'rgba(0,0,0,0.8)';
+    ctx.shadowBlur = 10;
+    ctx.fillText('游戏暂停', w / 2, h / 4);
+    ctx.shadowBlur = 0;
+    
+    // 游戏状态信息
+    const infoY = h / 3;
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = 'bold 18px Arial';
+    ctx.textAlign = 'center';
+    
+    // 显示当前波次和金钱
+    const waveText = gameMode === GameMode.ENDLESS ? '无尽模式' : `波次: ${player.wave || 0}`;
+    ctx.fillText(waveText, w / 2, infoY);
+    ctx.fillText(`金钱: ${economy.money}`, w / 2, infoY + 30);
+    
+    // 暂停菜单选项
+    const pauseOptions = [
+      { text: '继续游戏', action: 'resume' },
+      { text: '重新开始', action: 'restart' },
+      { text: '返回主菜单', action: 'main_menu' },
+      { text: '设置', action: 'settings' }
+    ];
+    
+    // 渲染暂停菜单选项
+    const optionHeight = 45;
+    const startY = h / 2;
+    
+    pauseOptions.forEach((option, index) => {
+      const y = startY + index * (optionHeight + 10);
+      
+      // 背景
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+      ctx.beginPath();
+      ctx.roundRect(w / 2 - 120, y - 22, 240, optionHeight, 8);
+      ctx.fill();
+      
+      // 边框
+      ctx.strokeStyle = '#fbbf24';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(w / 2 - 120, y - 22, 240, optionHeight);
+      
+      // 文字
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 18px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(option.text, w / 2, y);
+      
+      // 快捷键提示
+      ctx.fillStyle = '#fbbf24';
+      ctx.font = 'bold 12px Arial';
+      ctx.fillText(`[${index + 1}]`, w / 2 + 90, y);
+    });
+    
+    // 操作提示
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+    ctx.font = '14px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('按 ESC 键继续游戏', w / 2, h - 50);
+    
+    ctx.restore();
+  }
+
+  /**
+   * 渲染游戏结束菜单
+   * @param ctx - 画布上下文
+   * @param w - 画布宽度
+   * @param h - 画布高度
+   * @param player - 玩家信息
+   * @param economy - 经济统计
+   * @param gameMode - 游戏模式
+   */
+  private renderGameOverMenu(
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    player: Player,
+    economy: Economy,
+    gameMode: GameMode
+  ): void {
+    ctx.save();
+    
+    // 红色半透明背景
+    ctx.fillStyle = 'rgba(120, 0, 0, 0.8)';
+    ctx.fillRect(0, 0, w, h);
+    
+    // 游戏结束标题
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 42px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = 'rgba(0,0,0,0.9)';
+    ctx.shadowBlur = 12;
+    ctx.fillText('游戏结束', w / 2, h / 4);
+    ctx.shadowBlur = 0;
+    
+    // 结果信息
+    const resultY = h / 3;
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = 'bold 20px Arial';
+    ctx.textAlign = 'center';
+    
+    // 显示最终波次和金钱
+    const finalWave = player.wave || 0;
+    const finalMoney = economy.money;
+    
+    ctx.fillText(`最终波次: ${finalWave}`, w / 2, resultY);
+    ctx.fillText(`获得金钱: ${finalMoney}`, w / 2, resultY + 30);
+    
+    // 无尽模式特殊显示
+    if (gameMode === GameMode.ENDLESS) {
+      const bestTime = economy.endlessBestTime || 0;
+      const currentTime = economy.endlessElapsedTime || 0;
+      
+      ctx.fillText(`坚持时间: ${currentTime.toFixed(1)}秒`, w / 2, resultY + 60);
+      ctx.fillText(`最佳记录: ${bestTime.toFixed(1)}秒`, w / 2, resultY + 90);
+      
+      // 新记录提示
+      if (economy.endlessNewRecordShown) {
+        ctx.fillStyle = '#ef4444';
+        ctx.font = 'bold 24px Arial';
+        ctx.fillText('🎉 新记录!', w / 2, resultY + 120);
+      }
+    }
+    
+    // 游戏结束菜单选项
+    const gameOverOptions = [
+      { text: '重新开始', action: 'restart' },
+      { text: '返回主菜单', action: 'main_menu' },
+      { text: '查看统计', action: 'stats' }
+    ];
+    
+    // 渲染游戏结束菜单选项
+    const optionHeight = 45;
+    const startY = h / 2 + 60;
+    
+    gameOverOptions.forEach((option, index) => {
+      const y = startY + index * (optionHeight + 10);
+      
+      // 背景
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+      ctx.beginPath();
+      ctx.roundRect(w / 2 - 120, y - 22, 240, optionHeight, 8);
+      ctx.fill();
+      
+      // 边框
+      ctx.strokeStyle = '#fbbf24';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(w / 2 - 120, y - 22, 240, optionHeight);
+      
+      // 文字
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 18px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(option.text, w / 2, y);
+      
+      // 快捷键提示
+      ctx.fillStyle = '#fbbf24';
+      ctx.font = 'bold 12px Arial';
+      ctx.fillText(`[${index + 1}]`, w / 2 + 90, y);
+    });
+    
+    // 操作提示
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+    ctx.font = '14px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('按 ESC 键返回主菜单', w / 2, h - 50);
+    
+    ctx.restore();
   }
 
   /**
@@ -705,7 +1014,7 @@ export class UIManager {
     h: number,
     data: UIRenderData
   ): void {
-    const { player, economy, wave, gameMode } = data;
+    const { player, economy, wave, gameMode, weather, weatherIntensity } = data;
     
     // 渲染金钱显示
     this.renderMoney(ctx, economy.money);
@@ -727,6 +1036,12 @@ export class UIManager {
     
     // 渲染消耗品栏
     this.renderConsumableBar(ctx, w, h, data);
+    
+    // 渲染天气效果UI
+    this.renderWeatherUI(ctx, w, h, weather, weatherIntensity);
+    
+    // 渲染紧急冷却库存
+    this.renderEmergencyCoolInventory(ctx, w, h, data.emergencyCoolInventory || 0);
   }
 
   /**
@@ -742,9 +1057,353 @@ export class UIManager {
     h: number,
     data: UIRenderData
   ): void {
-    // 商店HUD渲染实现
-    // TODO: 从原始引擎迁移商店HUD渲染逻辑
-    console.log('渲染商店HUD', ctx, w, h, data);
+    const { economy, player, currentScene } = data;
+    
+    ctx.save();
+    
+    // 商店背景
+    const gradient = ctx.createLinearGradient(0, 0, w, h);
+    gradient.addColorStop(0, '#0f172a');
+    gradient.addColorStop(1, '#1e293b');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, w, h);
+    
+    // 商店标题
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 36px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = 'rgba(0,0,0,0.8)';
+    ctx.shadowBlur = 10;
+    ctx.fillText('商店', w / 2, 80);
+    ctx.shadowBlur = 0;
+    
+    // 金钱显示（商店版本）
+    this.renderShopMoney(ctx, w, economy.money);
+    
+    // 商店物品列表
+    const shopItems = this.getShopItems(currentScene, player);
+    
+    // 渲染商店物品
+    this.renderShopItems(ctx, w, h, shopItems, economy.money);
+    
+    // 操作提示
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+    ctx.font = '14px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('点击物品购买，按 ESC 键继续游戏', w / 2, h - 40);
+    
+    ctx.restore();
+  }
+
+  /**
+   * 渲染商店金钱显示
+   * @param ctx - 画布上下文
+   * @param w - 画布宽度
+   * @param money - 金钱数量
+   */
+  private renderShopMoney(
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    money: number
+  ): void {
+    ctx.save();
+    
+    // 背景
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.beginPath();
+    ctx.roundRect(w / 2 - 100, 120, 200, 40, 8);
+    ctx.fill();
+    
+    // 金钱图标
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = 'bold 20px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('💰', w / 2 - 60, 140);
+    
+    // 金钱数量
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 24px Arial';
+    ctx.fillText(money.toString(), w / 2 + 20, 140);
+    
+    ctx.restore();
+  }
+
+  /**
+   * 获取商店物品列表
+   * @param scene - 当前场景
+   * @param player - 玩家信息
+   * @returns 商店物品列表
+   */
+  private getShopItems(
+    scene: SceneType,
+    player: Player
+  ): Array<{
+    id: string;
+    name: string;
+    description: string;
+    price: number;
+    icon: string;
+    color: string;
+    maxCount?: number;
+    currentCount?: number;
+  }> {
+    // 基础商店物品
+    const baseItems = [
+      {
+        id: 'gas_refill',
+        name: '气罐补给',
+        description: '立即补充50%燃料',
+        price: 100,
+        icon: '⛽',
+        color: '#fbbf24',
+        maxCount: 3
+      },
+      {
+        id: 'defense_repair',
+        name: '防线修复',
+        description: '修复50%防御生命值',
+        price: 150,
+        icon: '🔧',
+        color: '#10b981',
+        maxCount: 2
+      },
+      {
+        id: 'emergency_cool',
+        name: '紧急冷却',
+        description: '立即降低50%热量',
+        price: 120,
+        icon: '❄️',
+        color: '#60a5fa',
+        maxCount: 3
+      },
+      {
+        id: 'shield',
+        name: '护盾',
+        description: '10秒内免疫伤害',
+        price: 200,
+        icon: '🛡️',
+        color: '#8b5cf6',
+        maxCount: 1
+      },
+      {
+        id: 'power_boost',
+        name: '功率提升',
+        description: '30秒内伤害+50%',
+        price: 180,
+        icon: '⚡',
+        color: '#f59e0b',
+        maxCount: 2
+      },
+      {
+        id: 'bait',
+        name: '诱饵',
+        description: '吸引附近蟑螂',
+        price: 80,
+        icon: '🍖',
+        color: '#ef4444',
+        maxCount: 4
+      }
+    ];
+    
+    // 根据场景解锁额外物品
+    const sceneItems: Record<SceneType, Array<{ id: string; name: string; description: string; price: number; icon: string; color: string }>> = {
+      kitchen: [
+        {
+          id: 'flame_enhancer',
+          name: '火焰增强剂',
+          description: '火焰伤害+30%',
+          price: 250,
+          icon: '🔥',
+          color: '#dc2626'
+        }
+      ],
+      sewer: [
+        {
+          id: 'water_resistance',
+          name: '防水涂层',
+          description: '减少水环境影响',
+          price: 180,
+          icon: '💧',
+          color: '#3b82f6'
+        }
+      ],
+      dump: [
+        {
+          id: 'toxic_resistance',
+          name: '抗毒涂层',
+          description: '减少毒气影响',
+          price: 200,
+          icon: '☣️',
+          color: '#10b981'
+        }
+      ],
+      basement: [
+        {
+          id: 'darkvision',
+          name: '夜视仪',
+          description: '提高黑暗环境视野',
+          price: 220,
+          icon: '👁️',
+          color: '#8b5cf6'
+        }
+      ],
+      rooftop: [
+        {
+          id: 'wind_resistance',
+          name: '抗风装置',
+          description: '减少强风影响',
+          price: 190,
+          icon: '💨',
+          color: '#a5b4fc'
+        }
+      ],
+      hospital: [
+        {
+          id: 'medical_kit',
+          name: '医疗包',
+          description: '缓慢恢复生命值',
+          price: 300,
+          icon: '🏥',
+          color: '#ef4444'
+        }
+      ],
+      none: []
+    };
+    
+    // 合并基础物品和场景物品
+    const allItems = [...baseItems, ...(sceneItems[scene] || [])];
+    
+    // 添加当前数量信息
+    return allItems.map(item => ({
+      ...item,
+      currentCount: player.consumableInventory?.[item.id] || 0
+    }));
+  }
+
+  /**
+   * 渲染商店物品
+   * @param ctx - 画布上下文
+   * @param w - 画布宽度
+   * @param h - 画布高度
+   * @param items - 商店物品列表
+   * @param playerMoney - 玩家金钱
+   */
+  private renderShopItems(
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    items: Array<{
+      id: string;
+      name: string;
+      description: string;
+      price: number;
+      icon: string;
+      color: string;
+      maxCount?: number;
+      currentCount?: number;
+    }>,
+    playerMoney: number
+  ): void {
+    const itemWidth = 160;
+    const itemHeight = 180;
+    const padding = 20;
+    const itemsPerRow = 3;
+    
+    // 计算起始位置
+    const totalWidth = itemsPerRow * itemWidth + (itemsPerRow - 1) * padding;
+    const startX = (w - totalWidth) / 2;
+    const startY = 180;
+    
+    items.forEach((item, index) => {
+      const row = Math.floor(index / itemsPerRow);
+      const col = index % itemsPerRow;
+      
+      const x = startX + col * (itemWidth + padding);
+      const y = startY + row * (itemHeight + padding);
+      
+      const canAfford = playerMoney >= item.price;
+      const canBuyMore = !item.maxCount || (item.currentCount || 0) < item.maxCount;
+      const isAvailable = canAfford && canBuyMore;
+      
+      // 物品背景
+      ctx.fillStyle = isAvailable ? 'rgba(255, 255, 255, 0.1)' : 'rgba(100, 100, 100, 0.1)';
+      ctx.beginPath();
+      ctx.roundRect(x, y, itemWidth, itemHeight, 12);
+      ctx.fill();
+      
+      // 边框
+      ctx.strokeStyle = isAvailable ? item.color : '#666666';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x, y, itemWidth, itemHeight);
+      
+      // 物品图标
+      ctx.fillStyle = isAvailable ? item.color : '#888888';
+      ctx.font = `bold ${itemWidth / 3}px Arial`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(item.icon, x + itemWidth / 2, y + 50);
+      
+      // 物品名称
+      ctx.fillStyle = isAvailable ? '#ffffff' : '#888888';
+      ctx.font = 'bold 16px Arial';
+      ctx.fillText(item.name, x + itemWidth / 2, y + 90);
+      
+      // 物品描述
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+      ctx.font = '12px Arial';
+      const lines = this.wrapText(ctx, item.description, itemWidth - 20);
+      lines.forEach((line, lineIndex) => {
+        ctx.fillText(line, x + itemWidth / 2, y + 110 + lineIndex * 16);
+      });
+      
+      // 价格
+      const priceColor = canAfford ? '#fbbf24' : '#ef4444';
+      ctx.fillStyle = priceColor;
+      ctx.font = 'bold 18px Arial';
+      ctx.fillText(`${item.price}💰`, x + itemWidth / 2, y + itemHeight - 30);
+      
+      // 数量限制提示
+      if (item.maxCount) {
+        const countText = `${item.currentCount || 0}/${item.maxCount}`;
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+        ctx.font = '10px Arial';
+        ctx.fillText(countText, x + itemWidth - 25, y + 25);
+      }
+    });
+  }
+
+  /**
+   * 文本换行处理
+   * @param ctx - 画布上下文
+   * @param text - 原始文本
+   * @param maxWidth - 最大宽度
+   * @returns 换行后的文本数组
+   */
+  private wrapText(
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    maxWidth: number
+  ): string[] {
+    const words = text.split(' ');
+    const lines: string[] = [];
+    let currentLine = words[0];
+    
+    for (let i = 1; i < words.length; i++) {
+      const word = words[i];
+      const width = ctx.measureText(currentLine + ' ' + word).width;
+      
+      if (width < maxWidth) {
+        currentLine += ' ' + word;
+      } else {
+        lines.push(currentLine);
+        currentLine = word;
+      }
+    }
+    
+    lines.push(currentLine);
+    return lines;
   }
 
   /**
@@ -760,9 +1419,262 @@ export class UIManager {
     h: number,
     data: UIRenderData
   ): void {
-    // 升级HUD渲染实现
-    // TODO: 从原始引擎迁移升级HUD渲染逻辑
-    console.log('渲染升级HUD', ctx, w, h, data);
+    const { economy, player, progress } = data;
+    
+    ctx.save();
+    
+    // 升级界面背景
+    const gradient = ctx.createLinearGradient(0, 0, w, h);
+    gradient.addColorStop(0, '#1e1b4b');
+    gradient.addColorStop(1, '#312e81');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, w, h);
+    
+    // 升级界面标题
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 36px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = 'rgba(0,0,0,0.8)';
+    ctx.shadowBlur = 10;
+    ctx.fillText('天赋树', w / 2, 80);
+    ctx.shadowBlur = 0;
+    
+    // 天赋点显示
+    this.renderTalentPoints(ctx, w, player.talentPoints || 0);
+    
+    // 天赋树渲染
+    this.renderTalentTree(ctx, w, h, player, progress);
+    
+    // 操作提示
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+    ctx.font = '14px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('点击天赋升级，按 ESC 键继续游戏', w / 2, h - 40);
+    
+    ctx.restore();
+  }
+
+  /**
+   * 渲染天赋点显示
+   * @param ctx - 画布上下文
+   * @param w - 画布宽度
+   * @param talentPoints - 天赋点数量
+   */
+  private renderTalentPoints(
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    talentPoints: number
+  ): void {
+    ctx.save();
+    
+    // 背景
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.beginPath();
+    ctx.roundRect(w / 2 - 120, 120, 240, 40, 8);
+    ctx.fill();
+    
+    // 天赋点图标
+    ctx.fillStyle = '#8b5cf6';
+    ctx.font = 'bold 20px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('⭐', w / 2 - 70, 140);
+    
+    // 天赋点数量
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 24px Arial';
+    ctx.fillText(`天赋点: ${talentPoints}`, w / 2 + 20, 140);
+    
+    ctx.restore();
+  }
+
+  /**
+   * 渲染天赋树
+   * @param ctx - 画布上下文
+   * @param w - 画布宽度
+   * @param h - 画布高度
+   * @param player - 玩家信息
+   * @param progress - 游戏进度
+   */
+  private renderTalentTree(
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    player: Player,
+    progress?: GameProgress
+  ): void {
+    // 天赋树定义
+    const talentTree = {
+      branches: [
+        {
+          id: 'flame',
+          name: '火焰专精',
+          color: '#ef4444',
+          talents: [
+            {
+              id: 'flame_range',
+              name: '火焰射程',
+              description: '增加火焰喷射距离',
+              maxLevel: 5,
+              costPerLevel: 1,
+              effectPerLevel: '+10%射程'
+            },
+            {
+              id: 'flame_damage',
+              name: '火焰伤害',
+              description: '增加火焰基础伤害',
+              maxLevel: 5,
+              costPerLevel: 2,
+              effectPerLevel: '+15%伤害'
+            },
+            {
+              id: 'flame_pierce',
+              name: '火焰穿透',
+              description: '火焰可以穿透多个敌人',
+              maxLevel: 3,
+              costPerLevel: 3,
+              effectPerLevel: '+1穿透目标'
+            }
+          ]
+        },
+        {
+          id: 'defense',
+          name: '防御专精',
+          color: '#10b981',
+          talents: [
+            {
+              id: 'defense_hp',
+              name: '防御生命',
+              description: '增加防御生命值上限',
+              maxLevel: 5,
+              costPerLevel: 1,
+              effectPerLevel: '+20%生命值'
+            },
+            {
+              id: 'defense_regen',
+              name: '防御恢复',
+              description: '防御生命值自动恢复',
+              maxLevel: 3,
+              costPerLevel: 2,
+              effectPerLevel: '+5%每秒恢复'
+            },
+            {
+              id: 'defense_shield',
+              name: '能量护盾',
+              description: '获得临时护盾吸收伤害',
+              maxLevel: 3,
+              costPerLevel: 3,
+              effectPerLevel: '+10%最大生命值护盾'
+            }
+          ]
+        },
+        {
+          id: 'utility',
+          name: '实用专精',
+          color: '#60a5fa',
+          talents: [
+            {
+              id: 'move_speed',
+              name: '移动速度',
+              description: '增加玩家移动速度',
+              maxLevel: 5,
+              costPerLevel: 1,
+              effectPerLevel: '+10%速度'
+            },
+            {
+              id: 'gas_capacity',
+              name: '燃料容量',
+              description: '增加燃料最大容量',
+              maxLevel: 5,
+              costPerLevel: 2,
+              effectPerLevel: '+20%容量'
+            },
+            {
+              id: 'cooling_rate',
+              name: '冷却效率',
+              description: '提高热量消散速度',
+              maxLevel: 3,
+              costPerLevel: 3,
+              effectPerLevel: '+15%冷却效率'
+            }
+          ]
+        }
+      ]
+    };
+    
+    // 获取玩家当前天赋等级
+    const playerTalents = player.talentLevels || {};
+    
+    // 渲染天赋树分支
+    const branchWidth = w / 3;
+    const startY = 180;
+    const talentHeight = 100;
+    const talentSpacing = 20;
+    
+    talentTree.branches.forEach((branch, branchIndex) => {
+      const branchX = branchIndex * branchWidth;
+      
+      // 分支标题
+      ctx.fillStyle = branch.color;
+      ctx.font = 'bold 20px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(branch.name, branchX + branchWidth / 2, startY - 30);
+      
+      // 渲染该分支的天赋
+      branch.talents.forEach((talent, talentIndex) => {
+        const talentY = startY + talentIndex * (talentHeight + talentSpacing);
+        const talentX = branchX + branchWidth / 2;
+        
+        // 获取当前等级
+        const currentLevel = playerTalents[talent.id] || 0;
+        const canUpgrade = currentLevel < talent.maxLevel && (player.talentPoints || 0) >= talent.costPerLevel;
+        
+        // 天赋背景
+        ctx.fillStyle = canUpgrade ? 'rgba(255, 255, 255, 0.1)' : 'rgba(100, 100, 100, 0.1)';
+        ctx.beginPath();
+        ctx.roundRect(talentX - 140, talentY, 280, talentHeight, 10);
+        ctx.fill();
+        
+        // 边框
+        ctx.strokeStyle = canUpgrade ? branch.color : '#666666';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(talentX - 140, talentY, 280, talentHeight);
+        
+        // 天赋名称
+        ctx.fillStyle = canUpgrade ? '#ffffff' : '#888888';
+        ctx.font = 'bold 16px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(talent.name, talentX, talentY + 20);
+        
+        // 天赋描述
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+        ctx.font = '12px Arial';
+        const descLines = this.wrapText(ctx, talent.description, 260);
+        descLines.forEach((line, lineIndex) => {
+          ctx.fillText(line, talentX, talentY + 40 + lineIndex * 16);
+        });
+        
+        // 等级显示
+        const levelText = `等级: ${currentLevel}/${talent.maxLevel}`;
+        ctx.fillStyle = canUpgrade ? '#fbbf24' : '#888888';
+        ctx.font = 'bold 14px Arial';
+        ctx.fillText(levelText, talentX - 60, talentY + talentHeight - 20);
+        
+        // 升级效果
+        ctx.fillStyle = '#10b981';
+        ctx.font = 'bold 12px Arial';
+        ctx.fillText(talent.effectPerLevel, talentX + 40, talentY + talentHeight - 20);
+        
+        // 升级按钮（如果可升级）
+        if (canUpgrade) {
+          ctx.fillStyle = branch.color;
+          ctx.font = 'bold 14px Arial';
+          ctx.fillText(`升级 [${talent.costPerLevel}点]`, talentX, talentY + talentHeight - 40);
+        }
+      });
+    });
   }
 
   /**
@@ -781,6 +1693,139 @@ export class UIManager {
     // 顶部状态栏渲染实现
     // TODO: 从原始引擎迁移顶部状态栏渲染逻辑
     console.log('渲染顶部状态栏', ctx, w, h, data);
+  }
+
+  /**
+   * 渲染天气效果UI
+   * @param ctx - 画布上下文
+   * @param w - 画布宽度
+   * @param h - 画布高度
+   * @param weather - 天气类型
+   * @param intensity - 天气强度
+   */
+  private renderWeatherUI(
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    weather: WeatherType,
+    intensity: number
+  ): void {
+    if (weather === 'none' || intensity <= 0) return;
+    
+    ctx.save();
+    
+    // 天气图标位置（右上角）
+    const iconSize = 32;
+    const iconX = w - iconSize - 20;
+    const iconY = 60;
+    
+    // 背景
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+    ctx.beginPath();
+    ctx.roundRect(iconX - 5, iconY - 5, iconSize + 10, iconSize + 10, 6);
+    ctx.fill();
+    
+    // 根据天气类型显示不同图标
+    let icon = '☀️';
+    let color = '#fbbf24';
+    let label = '晴天';
+    
+    switch (weather) {
+      case 'rain':
+        icon = '🌧️';
+        color = '#60a5fa';
+        label = '降雨';
+        break;
+      case 'fog':
+        icon = '🌫️';
+        color = '#d1d5db';
+        label = '浓雾';
+        break;
+      case 'wind':
+        icon = '💨';
+        color = '#a5b4fc';
+        label = '强风';
+        break;
+      case 'heatwave':
+        icon = '🔥';
+        color = '#ef4444';
+        label = '热浪';
+        break;
+    }
+    
+    // 天气图标
+    ctx.fillStyle = color;
+    ctx.font = `bold ${iconSize - 8}px Arial`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(icon, iconX + iconSize / 2, iconY + iconSize / 2);
+    
+    // 天气强度条
+    const barWidth = 60;
+    const barHeight = 6;
+    const barX = iconX + (iconSize - barWidth) / 2;
+    const barY = iconY + iconSize + 5;
+    
+    // 背景条
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+    ctx.fillRect(barX, barY, barWidth, barHeight);
+    
+    // 强度条
+    const fillWidth = barWidth * intensity;
+    ctx.fillStyle = color;
+    ctx.fillRect(barX, barY, fillWidth, barHeight);
+    
+    // 天气标签
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 10px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(label, iconX + iconSize / 2, barY + barHeight + 12);
+    
+    ctx.restore();
+  }
+
+  /**
+   * 渲染紧急冷却库存
+   * @param ctx - 画布上下文
+   * @param w - 画布宽度
+   * @param h - 画布高度
+   * @param count - 紧急冷却库存数量
+   */
+  private renderEmergencyCoolInventory(
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    count: number
+  ): void {
+    if (count <= 0) return;
+    
+    ctx.save();
+    
+    // 紧急冷却库存位置（左上角，金钱显示下方）
+    const iconSize = 28;
+    const iconX = 15;
+    const iconY = 50;
+    
+    // 背景
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+    ctx.beginPath();
+    ctx.roundRect(iconX - 5, iconY - 5, iconSize + 10, iconSize + 10, 6);
+    ctx.fill();
+    
+    // 紧急冷却图标
+    ctx.fillStyle = '#60a5fa';
+    ctx.font = `bold ${iconSize - 8}px Arial`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('❄️', iconX + iconSize / 2, iconY + iconSize / 2);
+    
+    // 数量显示
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 12px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(count.toString(), iconX + iconSize / 2, iconY + iconSize + 15);
+    
+    ctx.restore();
   }
 
   /**

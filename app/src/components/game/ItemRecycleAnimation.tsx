@@ -1,6 +1,13 @@
+/**
+ * @fileoverview 未使用道具回收金币动画组件 — 在结算界面将背包中未消耗的道具飞向目标位置并显示回收金币数。
+ * 道具从各自起始位置依次飞向"最终资金"区域，伴随发光效果和粒子特效，
+ * 最后显示总回收金额。动画分为"飞行中"和"已落地"两个阶段。
+ */
+
 import React, { useEffect, useState, useRef } from 'react';
 import { INVENTORY_SELL_PRICES, WEAPON_DROP_DEFS } from '@/game/data';
 
+/** 单个回收道具的飞行参数 */
 interface RecycleItem {
   type: string;
   count: number;
@@ -25,6 +32,7 @@ export const ItemRecycleAnimation: React.FC<ItemRecycleAnimationProps> = ({ inve
   const [phase, setPhase] = useState<'flying' | 'landed'>('flying');
   const containerRef = useRef<HTMLDivElement>(null);
 
+  /** 初始化回收道具列表：筛选有售价且数量大于 0 的道具，计算飞行起始位置 */
   useEffect(() => {
     const recycled = inventory
       .filter(item => (INVENTORY_SELL_PRICES[item.type] || 0) > 0 && item.count > 0)
@@ -40,6 +48,7 @@ export const ItemRecycleAnimation: React.FC<ItemRecycleAnimationProps> = ({ inve
     setItems(recycled);
     setTotalGold(total);
 
+    // 动画阶段切换：1.4s 后从飞行切换到落地，1.8s 后触发 onComplete
     // Phase transition: flying → landed
     const t = setTimeout(() => setPhase('landed'), 1400);
     // Call onComplete after full animation

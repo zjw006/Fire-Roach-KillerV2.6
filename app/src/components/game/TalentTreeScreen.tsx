@@ -1,3 +1,12 @@
+/**
+ * @fileoverview 天赋树界面组件。
+ * 提供永久角色强化系统，分为四大类别：
+ * - 战斗强化（火焰伤害、范围、霰弹、燃烧瓶）
+ * - 生存强化（气罐容量、过热抗性、冷却速度、防线生命）
+ * - 辅助强化（电蚊拍冷却、金钱加成、冰冻武器、毒素武器）
+ * - 道具专精（火焰亲和、机械精通、爆破专家、资源节约）
+ * 首次进入时触发蟑叔引导教程，支持点击天赋卡查看详情并升级。
+ */
 import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Lock, Check, Sparkles, Flame, Target, Gauge, Wind, Shield, Zap, DollarSign, Snowflake, Skull, Bomb, Wrench, Package, X, ChevronUp, ChevronRight } from 'lucide-react';
 import type { GameProgress } from '@/game/types';
@@ -13,6 +22,7 @@ interface TalentTreeScreenProps {
   audio?: AudioManager;
 }
 
+/** 天赋图标映射 */
 const TALENT_ICONS: Record<string, React.ReactNode> = {
   fire_damage: <Flame size={20} />,
   fire_range: <Target size={20} />,
@@ -32,7 +42,7 @@ const TALENT_ICONS: Record<string, React.ReactNode> = {
   resource_saver: <Package size={20} />,
 };
 
-// Talent category definitions
+/** 天赋类别定义（分组显示） */
 const CATEGORIES = [
   {
     id: 'combat',
@@ -68,7 +78,7 @@ const CATEGORIES = [
   },
 ];
 
-// Tutorial steps: 2 combat + 4 survival talents
+/** 新手引导步骤：蟑叔逐个介绍 2 个战斗天赋 + 4 个生存天赋 */
 const TUTORIAL_STEPS: { talentId: string; zhangshuText: string }[] = [
   {
     talentId: 'fire_damage',
@@ -96,17 +106,20 @@ const TUTORIAL_STEPS: { talentId: string; zhangshuText: string }[] = [
   },
 ];
 
+/** localStorage 键：标记是否已完成天赋树引导 */
 const TUTORIAL_KEY = 'talent_tree_tutorial_seen';
 
 export const TalentTreeScreen: React.FC<TalentTreeScreenProps> = ({ progress, talentPoints, onSpendTalent, onClose, audio}) => {
+  // ── 状态管理 ──
   const [selectedTalentId, setSelectedTalentId] = useState<string | null>(null);
   const [flashTalent, setFlashTalent] = useState(false);
+  // ── 新手引导状态 ──
   const [showTutorial, setShowTutorial] = useState(false);
   const [tutorialStep, setTutorialStep] = useState(0);
   const [highlightRect, setHighlightRect] = useState<DOMRect | null>(null);
   const talentRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
-  // Check if first time entering talent tree
+  /** 首次进入天赋树时检查是否需要显示引导 */
   useEffect(() => {
     const seen = localStorage.getItem(TUTORIAL_KEY);
     if (!seen) {
@@ -115,7 +128,7 @@ export const TalentTreeScreen: React.FC<TalentTreeScreenProps> = ({ progress, ta
     }
   }, []);
 
-  // Update highlight position when step changes
+  /** 引导步骤变化时更新高亮区域位置 */
   useEffect(() => {
     if (showTutorial && tutorialStep >= 0 && tutorialStep < TUTORIAL_STEPS.length) {
       const talentId = TUTORIAL_STEPS[tutorialStep].talentId;
@@ -129,6 +142,7 @@ export const TalentTreeScreen: React.FC<TalentTreeScreenProps> = ({ progress, ta
     }
   }, [showTutorial, tutorialStep]);
 
+  /** 从 TALENT_DEFS 计算每个天赋的当前等级和可购买状态 */
   const talents = TALENT_DEFS.map(def => {
     const currentLevel = progress.talentTree.talents[def.id] || 0;
     const isMaxed = currentLevel >= def.maxLevel;
@@ -138,6 +152,7 @@ export const TalentTreeScreen: React.FC<TalentTreeScreenProps> = ({ progress, ta
 
   const selectedTalent = selectedTalentId ? talents.find(t => t.id === selectedTalentId) || null : null;
 
+  /** 升级天赋：调用父组件 onSpendTalent，成功后触发闪烁动画 */
   const handleUpgrade = () => {
     if (!selectedTalent) return;
     const success = onSpendTalent(selectedTalent.id);
@@ -151,6 +166,7 @@ export const TalentTreeScreen: React.FC<TalentTreeScreenProps> = ({ progress, ta
     }
   };
 
+  /** 引导下一步：最后一步时标记完成并关闭引导 */
   const handleNextTutorialStep = () => {
     if (tutorialStep < TUTORIAL_STEPS.length - 1) {
       setTutorialStep(tutorialStep + 1);
@@ -172,9 +188,9 @@ export const TalentTreeScreen: React.FC<TalentTreeScreenProps> = ({ progress, ta
 
   return (
     <div className="fixed inset-0 z-[100] flex flex-col" style={{ backgroundColor: '#000000' }}>
-      {/* ====== SCREEN 1: Talent List ====== */}
+      {/* ═══ 界面 1：天赋列表 ═══ */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Header */}
+        {/* 顶部标题栏 */}
         <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b border-stone-800">
           <button
             onClick={() => { audio?.playClick(); onClose(); }}
@@ -189,7 +205,7 @@ export const TalentTreeScreen: React.FC<TalentTreeScreenProps> = ({ progress, ta
           </div>
         </div>
 
-        {/* Scrollable talent grid */}
+        {/* 可滚动天赋分类网格 */}
         <div className="flex-1 overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}>
           <div className="max-w-md mx-auto px-4 py-4 space-y-3">
             <h2 className="text-2xl font-bold text-white text-center mb-4">天赋树</h2>
@@ -220,7 +236,7 @@ export const TalentTreeScreen: React.FC<TalentTreeScreenProps> = ({ progress, ta
         </div>
       </div>
 
-      {/* ====== TUTORIAL OVERLAY ====== */}
+      {/* ═══ 新手引导遮罩（蟑叔教学）═══ */}
       {showTutorial && currentTutorial && (
         <div className="fixed inset-0 z-[120]">
           {/* 4-piece mask: covers top, bottom, left, right — leaving the highlight area fully transparent */}
@@ -261,7 +277,7 @@ export const TalentTreeScreen: React.FC<TalentTreeScreenProps> = ({ progress, ta
             </>
           )}
 
-          {/* Zhangshu dialog at bottom */}
+          {/* 蟑叔对话框（底部） */}
           <div className="absolute bottom-0 left-0 right-0 p-4">
             <div className="max-w-md mx-auto">
               {/* Step indicator */}
@@ -317,7 +333,7 @@ export const TalentTreeScreen: React.FC<TalentTreeScreenProps> = ({ progress, ta
         </div>
       )}
 
-      {/* ====== SCREEN 2: Talent Detail Modal ====== */}
+      {/* ═══ 界面 2：天赋详情弹窗 ═══ */}
       {selectedTalent && (
         <div
           className="fixed inset-0 z-[110] flex items-end justify-center"
@@ -416,6 +432,7 @@ export const TalentTreeScreen: React.FC<TalentTreeScreenProps> = ({ progress, ta
   );
 };
 
+/** 天赋卡片子组件：显示图标、名称、等级指示器，支持引导高亮 */
 function TalentCard({
   talent,
   onClick,

@@ -2,6 +2,13 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { ArrowRight, SkipForward, Flame, Target, ShoppingCart, Package, Gauge, Fuel, Shield } from 'lucide-react';
 import type { AudioManager } from '@/game/audio';
 
+/**
+ * @fileoverview 厨房首波战斗玩法引导覆盖层
+ * 通过樟叔对话形式，分10步引导新玩家熟悉战斗界面核心区域（火枪控制区、战斗区域、防线、
+ * 血量条、热力条、燃气条、拾取道具区、武器道具栏），使用高亮聚光灯和百分比定位适配不同屏幕。
+ * 引导状态通过 localStorage 持久化，首次进入厨房时自动展示。
+ */
+
 const TUTORIAL_KEY = 'gameplay_tutorial_seen';
 
 interface TutorialStep {
@@ -9,7 +16,7 @@ interface TutorialStep {
   title: string;
   icon: React.ReactNode;
   zhangshuText: string;
-  // Predefined highlight areas (screen percentage based, 0-1)
+  /** 预定义的高亮区域（屏幕百分比，0-1） */
   highlightArea?: {
     x: number;      // left percentage
     y: number;      // top percentage
@@ -19,7 +26,7 @@ interface TutorialStep {
   dialogPosition?: 'top' | 'center-upper' | 'center' | 'bottom' | 'above-highlight' | 'above-highlight-bottom' | 'below-highlight';
 }
 
-// 10-step gameplay tutorial highlighting key UI areas
+/** 10步新手引导步骤定义 */
 const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 'welcome',
@@ -108,6 +115,7 @@ interface GameplayTutorialOverlayProps {
 }
 
 export const GameplayTutorialOverlay: React.FC<GameplayTutorialOverlayProps> = ({ audio, onComplete, onSkip }) => {
+  /** 检查 localStorage 判断是否需要展示引导 */
   const [showTutorial, setShowTutorial] = useState(() => {
     try {
       return !localStorage.getItem(TUTORIAL_KEY);
@@ -115,16 +123,19 @@ export const GameplayTutorialOverlay: React.FC<GameplayTutorialOverlayProps> = (
       return true;
     }
   });
+  /** 当前步骤索引 */
   const [step, setStep] = useState(0);
+  /** 窗口尺寸，用于响应式高亮定位 */
   const [windowSize, setWindowSize] = useState({ width: window.innerWidth, height: window.innerHeight });
 
-  // Track window resize
+  /** 监听窗口尺寸变化 */
   useEffect(() => {
     const handleResize = () => setWindowSize({ width: window.innerWidth, height: window.innerHeight });
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  /** 下一步：前进到下一步或完成引导 */
   const handleNext = useCallback(() => {
     audio?.playClick();
     if (step < TUTORIAL_STEPS.length - 1) {
@@ -136,6 +147,7 @@ export const GameplayTutorialOverlay: React.FC<GameplayTutorialOverlayProps> = (
     }
   }, [step, audio, onComplete]);
 
+  /** 跳过引导，标记已查看 */
   const handleSkip = useCallback(() => {
     audio?.playClick();
     localStorage.setItem(TUTORIAL_KEY, 'true');
@@ -149,7 +161,7 @@ export const GameplayTutorialOverlay: React.FC<GameplayTutorialOverlayProps> = (
   const isLast = step === TUTORIAL_STEPS.length - 1;
   const highlight = current.highlightArea;
 
-  // Convert percentage-based highlight to pixel rect
+  /** 将百分比高亮区域转换为像素坐标 */
   const getPixelRect = () => {
     if (!highlight) return null;
     return {
@@ -163,9 +175,7 @@ export const GameplayTutorialOverlay: React.FC<GameplayTutorialOverlayProps> = (
   const pixelRect = getPixelRect();
   const padding = 12;
 
-  // Determine dialog vertical position: manual config > auto-detect
-  // Manual: 'bottom' | 'center-upper' | 'center' | 'top'
-  // Auto: highlight in upper half → dialog at bottom, lower half → dialog at top
+  /** 确定对话气泡垂直位置：手动配置优先，否则根据高亮中心自动判断 */
   const getDialogPosition = (): string => {
     // If step has explicit dialogPosition, use it
     if (current.dialogPosition) {
@@ -183,6 +193,7 @@ export const GameplayTutorialOverlay: React.FC<GameplayTutorialOverlayProps> = (
   return (
     <div className="fixed inset-0 z-[200] pointer-events-none">
       {/* 4-piece mask spotlight */}
+      {/** 四片遮罩实现聚光灯效果：上、下、左、右四块暗色遮罩围出高亮区域 */}
       {pixelRect && (
         <>
           {/* Top */}
@@ -221,11 +232,13 @@ export const GameplayTutorialOverlay: React.FC<GameplayTutorialOverlayProps> = (
       )}
 
       {/* Full dark overlay when no highlight */}
+      {/** 无高亮区域时显示全屏暗色遮罩 */}
       {!pixelRect && (
         <div className="absolute inset-0 bg-black/75 pointer-events-auto" />
       )}
 
       {/* UI container: dialog + progress dots + buttons, positioned based on config */}
+      {/** 引导 UI：樟叔对话气泡 + 步骤指示点 + 操作按钮，位置根据配置动态计算 */}
       <div className="absolute left-0 right-0 px-4 pointer-events-none transition-all duration-300"
         style={{
           ...(dialogPos === 'above-highlight' && pixelRect

@@ -526,6 +526,15 @@ export interface Player {
   money: number;
   weaponUpgrades?: WeaponUpgrade[];
   flameDamage?: number;
+  // UI系统需要的属性
+  /** 当前波次 */
+  wave?: number;
+  /** 天赋点数 */
+  talentPoints?: number;
+  /** 天赋等级记录 */
+  talentLevels?: Record<string, number>;
+  /** 消耗品库存 */
+  consumableInventory?: Record<string, number>;
   flameRange?: number;
   flameSpeed?: number;
   flameAmmo?: number;

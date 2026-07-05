@@ -96,7 +96,6 @@ export class WeatherSystem {
    * 更新雨天效果
    */
   private updateRain(): void {
-    // 雨滴粒子
     if (Math.random() < 0.4) {
       const rainParticle: Particle = {
         x: Math.random() * this.config.canvasWidth,
@@ -109,10 +108,7 @@ export class WeatherSystem {
         color: 'rgba(150, 180, 220, 0.4)',
         type: ParticleType.RAIN,
       };
-
       this.weatherParticles.push(rainParticle);
-      
-      // 通知外部添加粒子
       if (this.config.onAddParticle) {
         this.config.onAddParticle(rainParticle);
       }
@@ -123,7 +119,6 @@ export class WeatherSystem {
    * 更新雾天效果
    */
   private updateFog(): void {
-    // 缓慢移动的雾
     if (Math.random() < 0.05) {
       const fogParticle: Particle = {
         x: Math.random() < 0.5 ? -20 : this.config.canvasWidth + 20,
@@ -136,10 +131,7 @@ export class WeatherSystem {
         color: `rgba(180, 180, 160, ${0.05 + Math.random() * 0.05})`,
         type: ParticleType.SMOKE,
       };
-
       this.weatherParticles.push(fogParticle);
-      
-      // 通知外部添加粒子
       if (this.config.onAddParticle) {
         this.config.onAddParticle(fogParticle);
       }
@@ -150,14 +142,11 @@ export class WeatherSystem {
    * 更新夜晚效果
    */
   private updateNight(): void {
-    // 闪电
     this.lightningTimer -= this.config.deltaTime;
     if (this.lightningTimer <= 0) {
       this.lightningTimer = 5 + Math.random() * 10;
       if (Math.random() < 0.3) {
         this.lightningFlash = 0.3;
-        
-        // 添加闪电效果文字
         if (this.config.onAddFloatingText) {
           this.config.onAddFloatingText(
             this.config.canvasWidth / 2,
@@ -168,8 +157,6 @@ export class WeatherSystem {
         }
       }
     }
-    
-    // 更新闪电闪光
     if (this.lightningFlash > 0) {
       this.lightningFlash -= this.config.deltaTime;
     }
@@ -180,44 +167,28 @@ export class WeatherSystem {
    */
   private updateWeatherParticles(): void {
     const weather = this.config.weather;
-    
-    // 从后向前遍历，便于删除
     for (let i = this.weatherParticles.length - 1; i >= 0; i--) {
       const p = this.weatherParticles[i];
       p.life -= this.config.deltaTime;
       p.x += p.vx * this.config.deltaTime;
       p.y += p.vy * this.config.deltaTime;
-      
-      // 雾粒子随时间变大
       if (p.type === ParticleType.SMOKE && weather === WeatherType.FOG) {
         p.size *= 1.005;
       }
-      
-      // 移除生命周期结束的粒子
       if (p.life <= 0) {
         this.weatherParticles.splice(i, 1);
       }
     }
   }
 
-  /**
-   * 设置天气类型
-   * @param weather 天气类型
-   */
   setWeather(weather: WeatherType): void {
     this.config.weather = weather;
     this.reset();
   }
 
-  /**
-   * 触发闪电
-   * @param duration 闪光持续时间（秒）
-   */
   triggerLightning(duration: number = 0.3): void {
     this.lightningFlash = duration;
     this.lightningTimer = 5 + Math.random() * 10;
-    
-    // 添加闪电效果文字
     if (this.config.onAddFloatingText) {
       this.config.onAddFloatingText(
         this.config.canvasWidth / 2,
@@ -228,42 +199,24 @@ export class WeatherSystem {
     }
   }
 
-  /**
-   * 重置天气系统
-   */
   reset(): void {
     this.weatherParticles = [];
     this.lightningTimer = 0;
     this.lightningFlash = 0;
   }
 
-  /**
-   * 获取当前天气类型
-   * @returns 天气类型
-   */
   getWeatherType(): WeatherType {
     return this.config.weather;
   }
 
-  /**
-   * 检查是否有闪电闪光
-   * @returns 是否有闪电闪光
-   */
   hasLightningFlash(): boolean {
     return this.lightningFlash > 0;
   }
 
-  /**
-   * 获取天气粒子数量
-   * @returns 天气粒子数量
-   */
   getParticleCount(): number {
     return this.weatherParticles.length;
   }
 
-  /**
-   * 清理过期的天气粒子
-   */
   cleanupExpiredParticles(): void {
     this.weatherParticles = this.weatherParticles.filter(p => p.life > 0);
   }

@@ -22,14 +22,9 @@ export class EconomyManager {
   }
 
   /**
-   * 计算击杀奖励
-   * @param {string} enemyType - 敌人类型
-   * @param {GameProgress} progress - 游戏进度
-   * @param {SceneType} currentScene - 当前场景
-   * @param {string} difficulty - 游戏难度
-   * @returns {number} 击杀奖励金额
+   * 计算击杀奖励（静态方法，无状态）
    */
-  calculateKillReward(
+  static calculateKillReward(
     enemyType: string,
     progress: GameProgress,
     currentScene: SceneType,
@@ -64,7 +59,7 @@ export class EconomyManager {
    * @param {GameProgress} progress - 游戏进度
    * @returns {Record<string, number>} 天赋倍数对象
    */
-  calculateTalentMultipliers(progress: GameProgress): Record<string, number> {
+  static calculateTalentMultipliers(progress: GameProgress): Record<string, number> {
     const mults: Record<string, number> = {};
     
     for (const tid of Object.keys(progress.talentTree.talents)) {
@@ -96,7 +91,7 @@ export class EconomyManager {
     difficulty: string
   ): number {
     // 计算奖励
-    const reward = this.calculateKillReward(enemyType, progress, currentScene, difficulty);
+    const reward = EconomyManager.calculateKillReward(enemyType, progress, currentScene, difficulty);
     
     // 记录击杀统计
     this.recordKill(enemyType, reward);

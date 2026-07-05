@@ -1,3 +1,9 @@
+/**
+ * @fileoverview 成就系统界面组件
+ * 展示玩家已解锁和未解锁的成就列表，支持按"全部/已解锁/未解锁"分类筛选，
+ * 包含进度条、分类图标和奖励展示。
+ */
+
 import React, { useState } from 'react';
 import {
   ArrowLeft, Lock, Check, Trophy, Target, Zap,
@@ -13,6 +19,7 @@ interface AchievementsScreenProps {
   audio?: AudioManager;
 }
 
+/** 成就分类对应的图标映射 */
 const CATEGORY_ICONS: Record<string, React.ReactNode> = {
   kill: <Crosshair size={14} />,
   wave: <TrendingUp size={14} />,
@@ -25,6 +32,7 @@ const CATEGORY_ICONS: Record<string, React.ReactNode> = {
   default: <Trophy size={14} />,
 };
 
+/** 根据成就 ID 推断其所属分类 */
 function getCategory(id: string): string {
   if (id.includes('kill') || id.includes('slayer') || id.includes('exterminator') || id.includes('blood')) return 'kill';
   if (id.includes('wave')) return 'wave';
@@ -38,12 +46,14 @@ function getCategory(id: string): string {
 }
 
 export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ progress, onClose, audio}) => {
+  /** 筛选状态：全部 / 已解锁 / 未解锁 */
   const [filter, setFilter] = useState<'all' | 'unlocked' | 'locked'>('all');
 
   const all = progress.achievements;
   const unlockedList = all.filter(a => a.unlocked);
   const lockedList = all.filter(a => !a.unlocked);
 
+  /** 根据筛选条件计算当前展示列表与完成度 */
   const displayList = filter === 'all' ? all : filter === 'unlocked' ? unlockedList : lockedList;
   const unlocked = unlockedList.length;
   const total = all.length;
@@ -105,7 +115,7 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ progress
           ))}
         </div>
 
-        {/* Achievement list */}
+        {/* 成就列表：按筛选条件展示，每项包含图标、名称、描述、奖励和状态 */}
         <div className="space-y-2">
           {displayList.map((ach) => {
             const category = getCategory(ach.id);

@@ -22,7 +22,7 @@ export class AudioManager {
   private isVibrationEnabled: boolean = true;
   private audioContext: AudioContext | null = null;
   private currentBgmPath: string = '/assets/bgm_kitchen.mp3';
-  private isStartupMusic: boolean = true; // 标记是否为启动音乐
+  private isStartupMusic: boolean = false; // 不再自动播放启动音乐
 
   constructor() {
     this.initAudio();
@@ -68,14 +68,13 @@ export class AudioManager {
    * @returns 配置好的音频元素
    */
   private createAudioElement(src: string, volume: number = 1.0): HTMLAudioElement {
-    // 添加时间戳参数避免缓存问题
-    const timestamp = Date.now();
-    const urlWithCacheBust = src.includes('?') ? `${src}&t=${timestamp}` : `${src}?t=${timestamp}`;
-    
-    const audio = new Audio(urlWithCacheBust);
+    const audio = new Audio();
     audio.volume = volume;
     audio.muted = true; // Start muted to avoid auto-play restrictions
-    audio.preload = 'auto'; // 预加载音频
+    audio.preload = 'none'; // 延迟加载，等用户交互后再加载，避免浏览器拦截
+    
+    // 保存 src 到 data 属性，等用户交互后设置
+    audio.dataset.src = src;
     
     // 添加错误处理
     audio.addEventListener('error', (e) => {
@@ -202,16 +201,27 @@ export class AudioManager {
       
       console.log('Audio elements unmuted');
       
+      // 用户交互后，设置 src 并触发所有音频文件的实际加载
+      const allAudioElements = [
+        this.bgm, this.fireSfx, this.killSfx, this.swatterSfx,
+        this.reloadSfx, this.clickSfx, this.gameOverBgm, this.victoryBgm
+      ];
+      allAudioElements.forEach(audio => {
+        if (audio && audio.dataset.src) {
+          const timestamp = Date.now();
+          const src = audio.dataset.src;
+          const urlWithCacheBust = src.includes('?') ? `${src}&t=${timestamp}` : `${src}?t=${timestamp}`;
+          audio.src = urlWithCacheBust;
+          audio.load(); // 触发实际加载
+        }
+      });
+      
       // Remove event listeners after first interaction
       document.removeEventListener('click', unmuteAudio);
       document.removeEventListener('touchstart', unmuteAudio);
       document.removeEventListener('keydown', unmuteAudio);
       
-      // 尝试立即播放 BGM
-      setTimeout(() => {
-        console.log('Attempting to play BGM after user interaction...');
-        this.startBGM();
-      }, 100);
+      // 不再自动播放 BGM，仅在进入关卡战斗时由 startLevelBGM() 播放
     };
     
     console.log('Setting up audio unmute listeners');
@@ -439,15 +449,24 @@ export class AudioManager {
     
     if (this.currentBgmPath === path) return; // 同一首曲目，无需切换
     this.currentBgmPath = path;
-    // 停止当前 BGM
+    this.isStartupMusic = false; // 切换场景后不再是启动音乐
+    // 彻底停止并清理旧 BGM 元素
     if (this.bgm) {
       this.bgm.pause();
       this.bgm.currentTime = 0;
+      this.bgm.src = ''; // 清空 src，防止任何残留加载
+      this.bgm.load(); // 重置音频元素状态
     }
-    // 创建新的 BGM 元素
-    this.bgm = this.createAudioElement(path, 0.6);
+    // 创建新的 BGM 元素，直接设置 src 并取消静音（用户已交互过）
+    this.bgm = new Audio(path);
+    this.bgm.volume = 0.6;
     this.bgm.loop = true;
-    console.log('BGM switched to:', path, 'but not played yet');
+    this.bgm.muted = false;
+    // 添加错误处理
+    this.bgm.addEventListener('error', (e) => {
+      console.warn(`BGM load error for ${path}:`, e);
+    });
+    console.log('BGM switched to:', path, 'ready to play');
   }
   
   /**
@@ -540,6 +559,9 @@ export class AudioManager {
       console.log(`No custom BGM for scene: ${sceneType}, keeping current BGM`);
       return; // 无自定义 BGM，保持默认
     }
+    
+    // 进入关卡选择后停止启动音乐
+    this.stopStartupMusic();
     
     const path = difficulty === 'hard' ? bgmMap.hard : bgmMap.easy;
     console.log(`Switching to BGM: ${path} (not playing yet)`);

@@ -55,13 +55,7 @@ export class CollisionSystem {
   private config: CollisionSystemConfig;
   
   /** 武器伤害配置 */
-  private weaponDamageConfigs: Record<string, WeaponDamageConfig> = {
-    flamethrower: { baseDamage: 45, falloffFactor: 0.7 },
-    sticky: { baseDamage: 0, falloffFactor: 0 }, // 粘板无伤害
-    poison: { baseDamage: 20, falloffFactor: 0.7 },
-    shotgun: { baseDamage: 50, falloffFactor: 0.5 },
-    molotov: { baseDamage: 40, falloffFactor: 0.6 },
-  };
+  private weaponDamageConfigs: Record<string, WeaponDamageConfig>;
 
   /**
    * 构造函数
@@ -69,9 +63,24 @@ export class CollisionSystem {
    */
   constructor(config: CollisionSystemConfig) {
     this.config = config;
+    this.adjustWeaponDamageForDifficulty();
+  }
+
+  /**
+   * 根据难度调整武器伤害配置
+   */
+  private adjustWeaponDamageForDifficulty(): void {
+    // 重置为默认伤害值
+    this.weaponDamageConfigs = {
+      flamethrower: { baseDamage: 45, falloffFactor: 0.7 },
+      sticky: { baseDamage: 0, falloffFactor: 0 }, // 粘板无伤害
+      poison: { baseDamage: 20, falloffFactor: 0.7 },
+      shotgun: { baseDamage: 50, falloffFactor: 0.5 },
+      molotov: { baseDamage: 40, falloffFactor: 0.6 },
+    };
     
     // 根据难度调整伤害
-    if (config.difficulty === 'hard') {
+    if (this.config.difficulty === 'hard') {
       this.weaponDamageConfigs.flamethrower.baseDamage = 30;
       this.weaponDamageConfigs.poison.baseDamage = 12;
       this.weaponDamageConfigs.shotgun.baseDamage = 35;
@@ -84,12 +93,14 @@ export class CollisionSystem {
    * @param player 玩家对象
    * @param roaches 蟑螂数组
    * @param tripleFlame 三重火焰状态
+   * @param isStuckByBoard 检查蟑螂是否被粘板粘住的函数
    * @returns 更新后的蟑螂数组
    */
   checkFlameCollisions(
     player: Player,
     roaches: Roach[],
-    tripleFlame?: TripleFlameState
+    tripleFlame?: TripleFlameState,
+    isStuckByBoard?: (roachId: number) => boolean
   ): Roach[] {
     if (!player.isFiring || player.isOverheated || player.isReloading || player.gas <= 0) {
       return roaches;
@@ -149,6 +160,11 @@ export class CollisionSystem {
           if (collisionResult.effectTriggered) {
             this.applyWeaponEffect(roach, player.currentWeapon);
           }
+          
+          // 触发护甲破碎时的恐慌效果
+          if (isStuckByBoard) {
+            this.triggerPanicOnArmorBreak(roach, isStuckByBoard(roach.id));
+          }
         }
       }
 
@@ -185,7 +201,7 @@ export class CollisionSystem {
   ): CollisionResult {
     // 飞行蟑螂的特殊处理
     if (roach.type === RoachType.FLYING || roach.type === RoachType.FLYING_SUICIDE) {
-      return this.checkFlyingRoachCollision(roach, gun, nozzleY, maxRange, beamHalfWidth);
+      return this.checkFlyingRoachCollision(player, roach, gun, nozzleY, maxRange, beamHalfWidth);
     }
 
     // 地面蟑螂的碰撞检测
@@ -225,6 +241,7 @@ export class CollisionSystem {
 
   /**
    * 检查飞行蟑螂的碰撞
+   * @param player 玩家对象
    * @param roach 飞行蟑螂对象
    * @param gun 枪口配置
    * @param nozzleY 喷火器Y坐标
@@ -233,6 +250,7 @@ export class CollisionSystem {
    * @returns 碰撞检测结果
    */
   private checkFlyingRoachCollision(
+    player: Player,
     roach: Roach,
     gun: { x: number; damageMult: number },
     nozzleY: number,
@@ -246,12 +264,22 @@ export class CollisionSystem {
     if (flyDist < flyHitWidth && vertDist > 0 && vertDist < maxRange * 1.3) {
       const falloff = 1 - (vertDist / (maxRange * 1.2)) * 0.7;
       
-      // 这里需要玩家对象来获取当前武器，暂时返回基础碰撞结果
+      // 计算伤害
+      let damage = this.getWeaponDamage(player.currentWeapon) * 
+                   player.damageMultiplier * 
+                   falloff * 
+                   gun.damageMult;
+
+      // 女王蟑螂伤害减免
+      if (roach.type === RoachType.QUEEN) {
+        damage *= (1 - BOSS_CONFIG.queen.resistPercent);
+      }
+
       return {
         hit: true,
-        damage: 30 * falloff * gun.damageMult, // 基础伤害值
+        damage,
         effectTriggered: true,
-        effectType: 'flamethrower',
+        effectType: player.currentWeapon,
       };
     }
 
@@ -260,6 +288,26 @@ export class CollisionSystem {
       damage: 0,
       effectTriggered: false,
     };
+  }
+
+  /**
+   * 触发护甲破碎时的恐慌效果
+   * @param roach 蟑螂对象
+   * @param isStuckByBoard 是否被粘板粘住
+   */
+  triggerPanicOnArmorBreak(roach: Roach, isStuckByBoard: boolean): void {
+    if (roach.armorHp <= 0 && roach.panicTimer <= 0 && !isStuckByBoard) {
+      roach.panicTimer = 0.3 + Math.random() * 0.5;
+      
+      if (roach.type === RoachType.SUICIDE || roach.type === RoachType.FLYING_SUICIDE) {
+        // 自杀蟑螂：护甲破碎时冲向防御线
+        // 角度指向下方（朝向防御线）并带有小的随机横向摆动
+        roach.panicAngle = Math.PI / 2 + (Math.random() - 0.5) * 0.6;
+      } else {
+        // 普通蟑螂：恐慌并随机方向逃跑
+        roach.panicAngle = Math.random() * Math.PI * 2;
+      }
+    }
   }
 
   /**
@@ -400,6 +448,7 @@ export class CollisionSystem {
    */
   updateConfig(newConfig: Partial<CollisionSystemConfig>): void {
     this.config = { ...this.config, ...newConfig };
+    this.adjustWeaponDamageForDifficulty();
   }
 
   /**

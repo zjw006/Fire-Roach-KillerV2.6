@@ -1,8 +1,16 @@
+/**
+ * @fileoverview 对话/过场动画屏幕组件 — 以聊天气泡形式展示角色对话，支持打字机效果和逐字音效。
+ * 根据场景类型和难度动态加载背景图片，支持点击跳过打字或推进到下一句。
+ * 对话气泡区分左右侧（说话者侧），自动滚动到最新内容，完成后触发回调。
+ * 打开时暂停背景音乐，关闭时恢复。
+ */
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { SkipForward } from 'lucide-react';
 import type { DialogConfig, DialogLine, SceneType } from '@/game/types';
 import { AudioManager } from '@/game/audio';
 
+/** 根据场景类型和难度获取对应的背景图片 */
 // Get the correct background image for a scene + difficulty
 function getDialogBgImage(sceneType: SceneType, difficulty?: string): string {
   const isHard = difficulty === 'hard';
@@ -61,6 +69,7 @@ const SPEAKER_AVATAR: Record<string, string> = {
   '螂老大': '/assets/langlao-da.png',
 };
 
+/** 通过前缀匹配解析说话者名称（如 "螂老大（管道回声）" → "螂老大"），找不到则降级为"蟑叔" */
 // Match speaker names with suffixes like "螂老大（管道回声）" to base key "螂老大"
 function getSpeakerKey(speaker: string): string {
   if (SPEAKER_AVATAR[speaker]) return speaker;
@@ -153,6 +162,7 @@ export const DialogScreen: React.FC<DialogScreenProps> = ({ config, difficulty, 
 
   const currentLine = config.lines[currentIndex];
 
+  /** 打字机效果：逐字显示当前对话文本，每 3 个字符触发一次打字音效 */
   // Typing effect with sound
   useEffect(() => {
     setIsTyping(true);
@@ -185,6 +195,7 @@ export const DialogScreen: React.FC<DialogScreenProps> = ({ config, difficulty, 
     };
   }, [currentIndex, currentLine.text, audio]);
 
+  /** 自动滚动到底部锚点，确保新内容始终可见 */
   // Auto-scroll: only scrollIntoView on the bottom anchor, never jump to top
   useEffect(() => {
     requestAnimationFrame(() => {
@@ -192,6 +203,7 @@ export const DialogScreen: React.FC<DialogScreenProps> = ({ config, difficulty, 
     });
   }, [lines.length, displayedText]);
 
+  /** 推进到下一句对话：将当前行加入历史记录，切换到下一行或完成对话 */
   const advanceLine = useCallback(() => {
     const fullLine = config.lines[currentIndex];
     setLines(prev => [...prev, fullLine]);
@@ -203,6 +215,7 @@ export const DialogScreen: React.FC<DialogScreenProps> = ({ config, difficulty, 
     }
   }, [currentIndex, config.lines, onComplete]);
 
+  /** 点击处理：打字中则跳过打字显示完整文本，否则推进到下一句 */
   const handleClick = useCallback(() => {
     // Play click sound on every tap
     audio?.playDialogSwitch();

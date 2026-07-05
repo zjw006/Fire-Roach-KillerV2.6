@@ -74,6 +74,8 @@ export interface AchievementSystemConfig {
   canvasHeight: number;
   /** 添加浮动文字回调 */
   onAddFloatingText?: (x: number, y: number, text: string, color: string) => void;
+  /** 添加金钱回调（成就奖励） */
+  onAddMoney?: (amount: number) => void;
   /** 更新经济数据回调 */
   onEconomyUpdate?: (economy: any) => void;
   /** 保存进度回调 */
@@ -138,6 +140,11 @@ export class AchievementSystem {
       if (cond) {
         ach.unlocked = true;
         
+        // 添加成就奖励金钱
+        if (this.config.onAddMoney) {
+          this.config.onAddMoney(ach.reward);
+        }
+
         // 添加成就解锁浮动文字
         if (this.config.onAddFloatingText) {
           this.config.onAddFloatingText(
@@ -160,8 +167,7 @@ export class AchievementSystem {
 
       // 更新经济数据
       if (this.config.onEconomyUpdate) {
-        // 这里需要传递经济对象，实际实现中需要从配置中获取
-        this.config.onEconomyUpdate({} as any);
+        this.config.onEconomyUpdate(this.config.economyStats);
       }
     }
 
@@ -219,6 +225,11 @@ export class AchievementSystem {
 
     ach.unlocked = true;
     
+    // 添加成就奖励金钱
+    if (this.config.onAddMoney) {
+      this.config.onAddMoney(ach.reward);
+    }
+
     // 添加成就解锁浮动文字
     if (this.config.onAddFloatingText) {
       this.config.onAddFloatingText(

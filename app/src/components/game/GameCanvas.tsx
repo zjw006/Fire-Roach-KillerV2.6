@@ -1,3 +1,13 @@
+/**
+ * @fileoverview 游戏主画布组件，是整个游戏的核心容器。
+ * 负责：
+ * - 创建和管理游戏引擎实例（createGameEngine）
+ * - 通过引擎回调（onStateChange / onPlayerUpdate / onWaveClear 等）同步 React 状态
+ * - 管理所有 UI 覆盖层（菜单、HUD、暂停、结算、商店、天赋树、成就、图鉴等）
+ * - 处理全局输入事件（鼠标/触摸/键盘），并转发给引擎
+ * - 管理游戏流程（开始 → 对话 → 漫画 → 准备 → 战斗 → 波次通关 → 商店 → 下一关）
+ * - 云端存档（tRPC）和本地持久化（localStorage）
+ */
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { createGameEngine } from '@/game/engine/index';
 import { GameState, GameMode, SceneType, type Player, type Economy, type GameProgress, type DialogConfig, type BossBattleState, type InventoryItem } from '@/game/types';
@@ -23,19 +33,15 @@ import { GameplayTutorialOverlay } from './GameplayTutorialOverlay';
 import { CountdownOverlay } from './CountdownOverlay';
 import { ItemRecycleAnimation } from './ItemRecycleAnimation';
 import { getComicChapter, hasSeenComic, type ComicChapter } from '@/game/comicData';
+import { SaveSystem } from '@/game/engine/save/SaveSystem';
 
-// Generate or retrieve persistent player ID
+/** 生成或获取持久化玩家 ID，用于云端存档标识 */
 function getOrCreatePlayerId(): string {
-  const key = 'roach_blaster_player_id';
-  let id = localStorage.getItem(key);
-  if (!id) {
-    id = 'p_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
-    localStorage.setItem(key, id);
-  }
-  return id;
+  return SaveSystem.getOrCreatePlayerId();
 }
 
 export const GameCanvas: React.FC = () => {
+  // ── 引用与持久化标识 ──
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<any | null>(null);
   const nextSceneUpgradesRef = useRef<string[]>([]);
@@ -44,10 +50,11 @@ export const GameCanvas: React.FC = () => {
   // const menuShopInventoryRef = useRef<Record<string, number>>({});
   const playerIdRef = useRef<string>(getOrCreatePlayerId());
 
-  // tRPC mutations for cloud save
+  // ── 云端存档（tRPC）──
   const saveMutation = trpc.player.save.useMutation();
   const logSessionMutation = trpc.player.logSession.useMutation();
 
+  // ── 游戏核心状态 ──
   const [gameState, setGameState] = useState<GameState>(GameState.MENU);
   const [showTitleScreen, setShowTitleScreen] = useState(true);
   const [player, setPlayer] = useState<Player | null>(null);
@@ -74,6 +81,7 @@ export const GameCanvas: React.FC = () => {
   const [pendingStartParams, setPendingStartParams] = useState<{ diff: 'easy' | 'hard'; mode: GameMode; scene: SceneType } | null>(null);
   const [seenDialogs, setSeenDialogs] = useState<Set<SceneType>>(new Set());
   const [currentWeapon, setCurrentWeapon] = useState('flamethrower');
+  // ── UI 覆盖层状态 ──
   const [showTalentTree, setShowTalentTree] = useState(false);
   const [showAchievements, setShowAchievements] = useState(false);
   const [showSceneSelect, setShowSceneSelect] = useState(false);
@@ -81,31 +89,31 @@ export const GameCanvas: React.FC = () => {
   const [talentPoints, setTalentPoints] = useState(0);
   const [progress, setProgress] = useState<GameProgress | null>(null);
 
-  // Comic viewer state
+  // ── 漫画查看器状态 ──
   const [showComic, setShowComic] = useState(false);
   const [comicChapter, setComicChapter] = useState<ComicChapter | null>(null);
   const [pendingComicParams, setPendingComicParams] = useState<{ diff: 'easy' | 'hard'; mode: GameMode; scene: SceneType } | null>(null);
 
-  // Item reveal state
+  /** 道具揭示界面数据 */
   const [itemRevealData, setItemRevealData] = useState<{ type: string; name: string; icon: string; desc: string }[]>([]);
 
-  // Preparation screen (item selection before level start)
+  // ── 战前准备（道具选择）状态 ──
   const [showPreparation, setShowPreparation] = useState(false);
   const [preparationItems, setPreparationItems] = useState<string[]>([]);
   const [pendingPreparationParams, setPendingPreparationParams] = useState<{ diff: 'easy' | 'hard'; mode: GameMode; scene: SceneType } | null>(null);
 
-  // Tutorial pause spawn state (kitchen first wave)
+  /** 新手引导暂停出怪状态（厨房第一波） */
   const [tutorialPauseSpawn, setTutorialPauseSpawn] = useState(false);
 
-  // Countdown state (pre-wave 3-2-1)
+  // ── 倒计时状态（波次开始前 3-2-1）──
   const [countdownPhase, setCountdownPhase] = useState(3);
   const [countdownTimer, setCountdownTimer] = useState(0);
 
-  // Item recycle animation state (unsold inventory -> gold at level end)
+  /** 道具回收动画状态（未使用道具 → 金币） */
   const [showRecycleAnim, setShowRecycleAnim] = useState(false);
   const [recycleInventory, setRecycleInventory] = useState<{ type: string; count: number }[]>([]);
 
-  // Carried consumables inventory
+  // ── 携带消耗品状态（从商店购买带入关卡）──
   const [carriedConsumables, setCarriedConsumables] = useState<Record<string, number>>({});
   const [buffFlashTimers, setBuffFlashTimers] = useState<Record<string, number>>({});
   const [emergencyCoolCount, setEmergencyCoolCount] = useState(0);
@@ -114,11 +122,12 @@ export const GameCanvas: React.FC = () => {
   const [combatStartTimer, setCombatStartTimer] = useState(0);
   const [itemCooldowns, setItemCooldowns] = useState<Record<string, number>>({});
 
-  // Endless mode timer UI state
+  // ── 无尽模式计时器状态 ──
   const [endlessTimer, setEndlessTimer] = useState(0);
   const [endlessBestTime, setEndlessBestTime] = useState(0);
   const [endlessNewRecordVisible, setEndlessNewRecordVisible] = useState(false);
 
+  // ── 引擎初始化 & 回调注册（仅挂载时执行一次）──
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -309,7 +318,7 @@ export const GameCanvas: React.FC = () => {
     };
   }, []);
 
-  // Poll aim state and inventory
+  // ── 游戏运行时状态轮询（瞄准、库存、武器等，50ms 间隔）──
   useEffect(() => {
     if (gameState !== GameState.PLAYING) return;
     const interval = setInterval(() => {
@@ -327,6 +336,7 @@ export const GameCanvas: React.FC = () => {
     return () => clearInterval(interval);
   }, [gameState]);
 
+  // ── 音频 & 菜单商店状态 ──
   const [audioMuted, setAudioMuted] = useState(false);
   const [showMenuShop, setShowMenuShop] = useState(false);
   const [menuShopMoney, setMenuShopMoney] = useState(() => {
@@ -344,7 +354,9 @@ export const GameCanvas: React.FC = () => {
     }
   }, []);
 
-  // Check if dialog should be shown for this scene
+  // ── 游戏流程控制回调 ──
+
+  /** 检查是否需要为该场景显示对话 */
   const shouldShowDialog = useCallback((scene: SceneType, mode: GameMode) => {
     // Only show dialog in story mode for scenes not yet seen
     if (mode !== GameMode.STORY) return false;
@@ -352,7 +364,7 @@ export const GameCanvas: React.FC = () => {
     return DIALOG_CONFIGS.some(d => d.sceneType === scene);
   }, [seenDialogs]);
 
-  // Actually start the game engine after dialog/comic/preparation completes
+  /** 实际启动游戏引擎：设置难度/模式/场景，并调用 engine.start() */
   const doStartGame = useCallback((diff: 'easy' | 'hard', mode: GameMode, scene: SceneType, selectedItems?: string[]) => {
     setDifficulty(diff);
     setGameMode(mode);
@@ -385,7 +397,7 @@ export const GameCanvas: React.FC = () => {
     }
   }, [audioMuted, menuShopMoney]);
 
-  // Check if we should show the preparation screen (item selection) before starting
+  /** 判断是否需要展示战前准备界面（道具选择），若不需要则直接开始 */
   const maybeShowPreparation = useCallback((diff: 'easy' | 'hard', mode: GameMode, scene: SceneType) => {
     // Show preparation in story mode when player has 4+ unlocked items
     if (mode === GameMode.STORY && engineRef.current) {
@@ -401,6 +413,7 @@ export const GameCanvas: React.FC = () => {
     doStartGame(diff, mode, scene);
   }, [doStartGame]);
 
+  /** 开始游戏入口：按顺序检查 漫画 → 对话 → 准备界面，全部通过后调用 doStartGame */
   const handleStart = useCallback((diff: 'easy' | 'hard', mode: GameMode, scene: SceneType) => {
     // Check if we need to show a comic first (story mode only)
     if (mode === GameMode.STORY && !hasSeenComic(scene)) {
@@ -426,6 +439,7 @@ export const GameCanvas: React.FC = () => {
     maybeShowPreparation(diff, mode, scene);
   }, [shouldShowDialog, maybeShowPreparation]);
 
+  /** 对话完成回调：标记已读 → 检查准备界面 → 开始游戏 */
   const handleDialogComplete = useCallback(() => {
     setShowDialog(false);
     if (pendingDialogConfig && pendingStartParams) {
@@ -449,7 +463,8 @@ export const GameCanvas: React.FC = () => {
     setPendingStartParams(null);
   }, [pendingDialogConfig, pendingStartParams, maybeShowPreparation]);
 
-  // Comic viewer callbacks
+  // ── 漫画查看器回调 ──
+  /** 漫画观看完成：继续流程 → 检查对话 → 准备界面 */
   const handleComicComplete = useCallback(() => {
     setShowComic(false);
     setComicChapter(null);
@@ -494,6 +509,7 @@ export const GameCanvas: React.FC = () => {
     setPendingComicParams(null);
   }, [pendingComicParams, shouldShowDialog, doStartGame]);
 
+  // ── 暂停 / 恢复 ──
   const handlePause = useCallback(() => {
     engineRef.current?.pause();
   }, []);
@@ -511,6 +527,7 @@ export const GameCanvas: React.FC = () => {
   //   prevPowerBoostRef.current = powerBoostTimer;
   // }, [powerBoostTimer]);
 
+  /** 重新开始当前关卡：停止所有音频 → 引擎重启 → 同步消耗品状态 */
   const handleRestart = useCallback(() => {
     setBossDefeated(false);
     engineRef.current?.audio.stopBGM();
@@ -541,6 +558,7 @@ export const GameCanvas: React.FC = () => {
   //   engineRef.current?.continueFromShop();
   // }, []);
 
+  /** 进入下一关：按解锁链找到下一个场景，依次检查漫画 → 对话 → 开始 */
   const handleNextScene = useCallback(() => {
     const engine = engineRef.current;
     if (!engine) return;
@@ -578,7 +596,7 @@ export const GameCanvas: React.FC = () => {
     }
   }, [doStartGame, shouldShowDialog]);
 
-  // Called when item recycle animation completes — apply gold, refresh UI
+  /** 道具回收动画完成：应用回收金币 → 刷新 UI → 关闭动画 */
   const handleRecycleComplete = useCallback(() => {
     const engine = engineRef.current;
     if (!engine) return;
@@ -593,6 +611,7 @@ export const GameCanvas: React.FC = () => {
     setShowRecycleAnim(false);
   }, []);
 
+  /** 退出到主菜单：停止引擎 → 保存进度 → 关闭所有 UI 覆盖层 */
   const handleQuit = useCallback(() => {
     engineRef.current?.audio.stopBGM();
     engineRef.current?.saveProgress();
@@ -604,17 +623,18 @@ export const GameCanvas: React.FC = () => {
     setGameState(GameState.MENU);
   }, []);
 
-  const handleReload = useCallback(() => {
-    engineRef.current?.startReload();
-  }, []);
-
   const handleEmergencyCool = useCallback(() => {
     engineRef.current?.emergencyCool();
   }, []);
 
+  const handleReload = useCallback(() => {
+    engineRef.current?.startReload();
+  }, []);
 
 
-  // Menu shop: buy consumable with menuShopMoney (persistent across levels)
+
+  // ── 菜单商店购买（使用持久化的 menuShopMoney）──
+  /** 从菜单商店购买消耗品，扣减 menuShopMoney 并更新引擎库存 */
   const handleMenuShopBuy = useCallback((id: string) => {
     const costs: Record<string, number> = {
       gas_refill: 250, defense_repair: 300, emergency_cool: 200,
@@ -653,6 +673,7 @@ export const GameCanvas: React.FC = () => {
     return true;
   }, [menuShopMoney]);
 
+  // ── 游戏内操作回调（消耗品 / 武器切换 / 天赋点）──
   const handleUseConsumable = useCallback((id: string) => {
     engineRef.current?.useConsumable(id);
   }, []);
@@ -680,7 +701,7 @@ export const GameCanvas: React.FC = () => {
     return result;
   }, []);
 
-  // Global input
+  // ── 全局输入事件处理（鼠标 / 触摸 / 键盘）──
   useEffect(() => {
     const handleGlobalMouseMove = (e: MouseEvent) => {
       const engine = engineRef.current;
@@ -812,6 +833,7 @@ export const GameCanvas: React.FC = () => {
     };
   }, []);
 
+  /** 键盘按键处理：空格=射击, R=换弹, Q=电蚊拍, E=切换模式, 1-5=切换武器, Esc=暂停 */
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     const engine = engineRef.current;
     if (!engine) return;
@@ -872,7 +894,7 @@ export const GameCanvas: React.FC = () => {
     };
   }, [handleKeyDown, handleKeyUp]);
 
-  // Endless mode timer polling
+  // ── 无尽模式计时器轮询（100ms）──
   useEffect(() => {
     if (gameMode !== GameMode.ENDLESS || gameState !== GameState.PLAYING) return;
     const interval = setInterval(() => {
@@ -885,7 +907,7 @@ export const GameCanvas: React.FC = () => {
     return () => clearInterval(interval);
   }, [gameMode, gameState]);
 
-  // Countdown state polling
+  // ── 倒计时状态轮询（50ms）──
   useEffect(() => {
     if (gameState !== GameState.COUNTDOWN) return;
     const interval = setInterval(() => {
@@ -902,9 +924,10 @@ export const GameCanvas: React.FC = () => {
 
   return (
     <div className="relative w-screen h-screen bg-black flex items-center justify-center overflow-hidden select-none">
-      {/* Game container: wraps canvas + HUD so HUD aligns precisely with game area */}
+      {/* ═══ 游戏容器：Canvas + HUD ═══ */}
       <div id="game-container" className="relative w-full h-full flex items-center justify-center">
-      {/* Power Boost: border glow + blue-purple tint overlay */}
+      {/* ═══ 视觉特效层 ═══ */}
+      {/* Power Boost 边框光效 */}
       {powerBoostTimer > 0 && (
         <div
           className="absolute inset-0 z-5 pointer-events-none"
@@ -914,7 +937,7 @@ export const GameCanvas: React.FC = () => {
           }}
         />
       )}
-      {/* Power Boost: blue-purple color tint */}
+      {/* Power Boost 蓝紫色色调叠加 */}
       {powerBoostTimer > 0 && (
         <div
           className="absolute inset-0 z-5 pointer-events-none"
@@ -924,7 +947,7 @@ export const GameCanvas: React.FC = () => {
           }}
         />
       )}
-      {/* Defense critical (< 10%): red border flash warning */}
+      {/* 防线危急警告（< 10% 时红色闪烁边框） */}
       {defenseHp > 0 && defenseHp / maxDefenseHp < 0.1 && (
         <div
           className="absolute inset-0 z-6 pointer-events-none"
@@ -934,6 +957,7 @@ export const GameCanvas: React.FC = () => {
         />
       )}
 
+      {/* ═══ 游戏画布 ═══ */}
       <canvas
         ref={canvasRef}
         className="block cursor-crosshair touch-none"
@@ -943,12 +967,12 @@ export const GameCanvas: React.FC = () => {
         onContextMenu={(e) => e.preventDefault()}
       />
 
-      {/* Pre-wave 3-2-1 countdown overlay */}
+      {/* ═══ 波次前倒计时覆盖层 ═══ */}
       {gameState === GameState.COUNTDOWN && (
         <CountdownOverlay phase={countdownPhase} timer={countdownTimer} />
       )}
 
-      {/* Title Screen - shown before main menu */}
+      {/* ═══ 标题画面（首次进入）═══ */}
       {showTitleScreen && (
         <TitleScreen
           onStart={() => {
@@ -967,6 +991,7 @@ export const GameCanvas: React.FC = () => {
         />
       )}
 
+      {/* ═══ 主菜单 ═══ */}
       {gameState === GameState.MENU && !showTitleScreen && !showMenuShop && !showTalentTree && !showAchievements && !showEncyclopedia && (
         <GameMenu
           onStart={handleStart}
@@ -983,7 +1008,7 @@ export const GameCanvas: React.FC = () => {
         />
       )}
 
-      {/* Menu Shop —道具商店入口（从主菜单打开） */}
+      {/* ═══ 菜单商店（道具商店入口）═══ */}
       {showMenuShop && (
         <ShopScreen
           economy={{
@@ -1030,6 +1055,7 @@ export const GameCanvas: React.FC = () => {
         />
       )}
 
+      {/* ═══ 天赋树界面 ═══ */}
       {showTalentTree && progress && (
         <TalentTreeScreen
           progress={progress}
@@ -1043,6 +1069,7 @@ export const GameCanvas: React.FC = () => {
         />
       )}
 
+      {/* ═══ 成就界面 ═══ */}
       {showAchievements && progress && (
         <AchievementsScreen
           progress={progress}
@@ -1053,6 +1080,7 @@ export const GameCanvas: React.FC = () => {
         />
       )}
 
+      {/* ═══ 图鉴界面 ═══ */}
       {showEncyclopedia && progress && (
         <EncyclopediaScreen
           progress={progress}
@@ -1063,6 +1091,7 @@ export const GameCanvas: React.FC = () => {
         />
       )}
 
+      {/* ═══ 场景选择界面 ═══ */}
       {showSceneSelect && progress && (
         <SceneSelectScreen
           progress={progress}
@@ -1078,7 +1107,7 @@ export const GameCanvas: React.FC = () => {
         />
       )}
 
-      {/* Kitchen first-wave gameplay tutorial overlay */}
+      {/* ═══ 厨房第一波操作引导遮罩 ═══ */}
       {tutorialPauseSpawn && (
         <GameplayTutorialOverlay
           audio={engineRef.current?.audio}
@@ -1091,6 +1120,7 @@ export const GameCanvas: React.FC = () => {
         />
       )}
 
+      {/* ═══ 游戏 HUD（战斗中显示）═══ */}
       {(gameState === GameState.PLAYING || gameState === GameState.ITEM_DROP) && player && economy && (
         <GameHUD
           player={player}
@@ -1133,7 +1163,7 @@ export const GameCanvas: React.FC = () => {
         />
       )}
 
-      {/* Endless Mode Timer - top right */}
+      {/* ═══ 无尽模式计时器（右上角）═══ */}
       {gameMode === GameMode.ENDLESS && gameState === GameState.PLAYING && (
         <div className="absolute top-[200px] right-3 z-30 flex flex-col items-end gap-1 pointer-events-none">
           {/* Current timer */}
@@ -1170,6 +1200,7 @@ export const GameCanvas: React.FC = () => {
         </div>
       )}
 
+      {/* ═══ 暂停界面 ═══ */}
       {gameState === GameState.PAUSED && (
         <PauseScreen
           onResume={handleResume}
@@ -1179,6 +1210,7 @@ export const GameCanvas: React.FC = () => {
         />
       )}
 
+      {/* ═══ 游戏结束结算界面（失败）═══ */}
       {gameState === GameState.GAME_OVER && economy && (
         <GameOverScreen
           economy={economy}
@@ -1197,7 +1229,7 @@ export const GameCanvas: React.FC = () => {
         />
       )}
 
-      {/* Post-battle item reveal overlay */}
+      {/* ═══ 战后道具揭示界面 ═══ */}
       {gameState === GameState.ITEM_REVEAL && (
         <ItemRevealScreen
           item={itemRevealData.length > 0 ? itemRevealData[engineRef.current?.rewardIndex || 0] : null}
@@ -1208,6 +1240,7 @@ export const GameCanvas: React.FC = () => {
         />
       )}
 
+      {/* ═══ 波次通关结算界面（胜利）═══ */}
       {gameState === GameState.WAVE_CLEAR && economy && (
         <GameOverScreen
           economy={economy}
@@ -1236,7 +1269,7 @@ export const GameCanvas: React.FC = () => {
         />
       )}
 
-      {/* Comic viewer overlay */}
+      {/* ═══ 漫画查看器 ═══ */}
       {showComic && comicChapter && (
         <ComicViewer
           chapter={comicChapter}
@@ -1246,7 +1279,7 @@ export const GameCanvas: React.FC = () => {
         />
       )}
 
-      {/* Dialog overlay - highest z-index */}
+      {/* ═══ 对话覆盖层（最高 z-index）═══ */}
       {showDialog && pendingDialogConfig && (
         <DialogScreen
           config={pendingDialogConfig}
@@ -1257,7 +1290,7 @@ export const GameCanvas: React.FC = () => {
         />
       )}
 
-      {/* Preparation screen - item selection before level start */}
+      {/* ═══ 战前准备界面（道具选择）═══ */}
       {showPreparation && pendingPreparationParams && (
         <PreparationScreen
           scene={SCENE_CONFIGS[pendingPreparationParams.scene].name}
@@ -1288,7 +1321,7 @@ export const GameCanvas: React.FC = () => {
         />
       )}
 
-      {/* Unused inventory -> gold recycle animation (rendered LAST to be on top of everything) */}
+      {/* ═══ 道具回收动画（未使用道具 → 金币，最后渲染以覆盖所有 UI）═══ */}
       {showRecycleAnim && (
         <ItemRecycleAnimation
           inventory={recycleInventory}

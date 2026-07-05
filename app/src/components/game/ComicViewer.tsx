@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 漫画查看器组件 — 以分镜形式展示剧情漫画，支持滑动手势和键盘导航切换页面。
+ * 每页漫画加载后自动播放打字机效果的文字对话，点击可跳过打字或翻到下一页。
+ * 最后一页显示"开始战斗"按钮，支持跳过功能。采用废土工业风格 UI。
+ * 打开时暂停背景音乐，关闭时恢复。
+ */
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { SkipForward, ChevronLeft, ChevronRight, Swords } from 'lucide-react';
 import type { ComicChapter } from '@/game/comicData';
@@ -29,6 +36,7 @@ export const ComicViewer: React.FC<ComicViewerProps> = ({ chapter, onComplete, o
   const isLastPanel = currentIndex === totalPanels - 1;
   const progress = ((currentIndex + 1) / totalPanels) * 100;
 
+  /** 打开漫画时暂停 BGM，关闭时恢复 */
   // Pause BGM when comic opens, resume on close
   useEffect(() => {
     audio?.pauseBGM();
@@ -45,6 +53,7 @@ export const ComicViewer: React.FC<ComicViewerProps> = ({ chapter, onComplete, o
     }
   }, []);
 
+  /** 启动打字机效果：逐字显示对话文本，速度约 40ms/字 */
   // Start typing effect
   const startTyping = useCallback((text: string) => {
     stopTyping();
@@ -66,6 +75,7 @@ export const ComicViewer: React.FC<ComicViewerProps> = ({ chapter, onComplete, o
     }, speed);
   }, [stopTyping]);
 
+  /** 切换分镜时：预加载图片 → 图片加载完成后启动打字机效果 */
   // When panel changes, start typing
   useEffect(() => {
     setImageLoaded(false);
@@ -94,6 +104,7 @@ export const ComicViewer: React.FC<ComicViewerProps> = ({ chapter, onComplete, o
     };
   }, [stopTyping]);
 
+  /** 翻到下一页：打字中则跳过打字，最后一页则完成漫画，否则带动画翻页 */
   const goNext = useCallback(() => {
     if (isTransitioning) return;
 
@@ -101,6 +112,7 @@ export const ComicViewer: React.FC<ComicViewerProps> = ({ chapter, onComplete, o
     audio?.playDialogSwitch();
 
     if (isTyping) {
+      // 打字中：跳过打字，直接显示完整文本
       // Skip typing, show full text
       setDisplayedText(currentPanel.dialog);
       setIsTyping(false);
@@ -109,6 +121,7 @@ export const ComicViewer: React.FC<ComicViewerProps> = ({ chapter, onComplete, o
     }
 
     if (isLastPanel) {
+      // 最后一页：标记已读并完成漫画
       // Complete
       markComicSeen(chapter.scene);
       setIsTransitioning(true);
@@ -118,6 +131,7 @@ export const ComicViewer: React.FC<ComicViewerProps> = ({ chapter, onComplete, o
       return;
     }
 
+    // 翻到下一页，带滑动动画
     setDirection('next');
     setIsTransitioning(true);
     setTimeout(() => {
@@ -159,6 +173,7 @@ export const ComicViewer: React.FC<ComicViewerProps> = ({ chapter, onComplete, o
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [goNext, goPrev]);
 
+  /** 触摸滑动处理：左滑翻下一页，右滑翻上一页，阈值 60px */
   // Touch/swipe handling
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.touches[0]?.clientX ?? 0;
@@ -184,6 +199,7 @@ export const ComicViewer: React.FC<ComicViewerProps> = ({ chapter, onComplete, o
     onSkip();
   }, [chapter.scene, onSkip]);
 
+  /** 根据翻页方向返回对应的滑出动画类名 */
   // Slide animation classes
   const getSlideClass = () => {
     if (direction === 'next') return 'animate-slideOutLeft';

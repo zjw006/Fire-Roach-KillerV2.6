@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 主菜单组件。
+ * 提供游戏模式选择（剧情 / 无尽 / 每日挑战 / BOSS 战）、
+ * 剧情模式下的难度选择（简单 / 困难）和关卡选择，
+ * 以及天赋树、道具商店、成就、图鉴等子界面的入口。
+ * 采用废土风格（铆钉金属板）视觉设计。
+ */
 import React, { useEffect, useState } from 'react';
 import {
   Flame, Volume2, VolumeX, Swords, Trophy,
@@ -26,15 +33,17 @@ interface GameMenuProps {
 export const GameMenu: React.FC<GameMenuProps> = ({
   onStart, onOpenTalentTree, onOpenAchievements, onOpenEncyclopedia,
   audioMuted, onToggleMute, onOpenShop, progress, talentPoints, audio}) => {
+  // ── 状态管理 ──
   const [bgLoaded, setBgLoaded] = useState(false);
   const [showModes, setShowModes] = useState(false);
   const [selectedMode, setSelectedMode] = useState<GameMode | null>(null);
   const [selectedScene, setSelectedScene] = useState<SceneType>(SceneType.KITCHEN);
-  // Story mode: 'difficulty' → select easy/hard, 'scenes' → select level
+  /** 剧情模式流程步骤：'difficulty' → 选择难度，'scenes' → 选择关卡 */
   const [storyStep, setStoryStep] = useState<'difficulty' | 'scenes'>('difficulty');
   const [storyDifficulty, setStoryDifficulty] = useState<'easy' | 'hard' | null>(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
+  /** 预加载菜单背景图 */
   useEffect(() => {
     const img = new Image();
     img.onload = () => setBgLoaded(true);
@@ -43,6 +52,7 @@ export const GameMenu: React.FC<GameMenuProps> = ({
 
   const scenesUnlocked = progress?.scenesUnlocked || [SceneType.KITCHEN];
 
+  /** 游戏模式列表（部分模式暂未开放） */
   const gameModes = [
     { id: GameMode.STORY, name: '剧情模式', icon: <Swords size={24} />, desc: '10波标准关卡', disabled: false },
     { id: GameMode.ENDLESS, name: '无尽模式', icon: <Skull size={24} />, desc: '无限波次挑战', disabled: true },
@@ -51,6 +61,7 @@ export const GameMenu: React.FC<GameMenuProps> = ({
     // { id: GameMode.BOSS, name: 'BOSS战', icon: <Shield size={24} />, desc: '挑战螂老大' },
   ];
 
+  /** 重置所有游戏进度：清除 localStorage → 刷新页面 */
   const handleReset = () => {
     resetSeenComics();
     localStorage.clear();
@@ -59,6 +70,7 @@ export const GameMenu: React.FC<GameMenuProps> = ({
     }, 100);
   };
 
+  /** 选择游戏模式：剧情模式进入难度选择流程，其他模式直接进入场景+难度选择 */
   const handleModeSelect = (mode: GameMode) => {
     setSelectedMode(mode);
     if (mode === GameMode.STORY) {
@@ -73,6 +85,7 @@ export const GameMenu: React.FC<GameMenuProps> = ({
   // Talent overlay REMOVED - handled by parent GameCanvas
   // Achievements overlay REMOVED - handled by parent GameCanvas
 
+  {/* ═══ 剧情模式 → 难度选择 / 关卡选择 ═══ */}
   if (showModes && selectedMode === GameMode.STORY) {
     return (
       <div className="absolute inset-0 flex items-center justify-center overflow-y-auto py-4">
@@ -93,7 +106,7 @@ export const GameMenu: React.FC<GameMenuProps> = ({
 
           {storyStep === 'difficulty' ? (
             <>
-              {/* STEP 1: Difficulty Selection */}
+              {/* 步骤 1：难度选择 */}
               <h2 className="text-2xl font-bold text-white mb-2 flex items-center justify-center gap-2">
                 <Swords size={20} className="text-amber-400" />
                 选择难度
@@ -148,7 +161,7 @@ export const GameMenu: React.FC<GameMenuProps> = ({
             </>
           ) : (
             <>
-              {/* STEP 2: Scene Selection */}
+              {/* 步骤 2：关卡选择 */}
               <h2 className="text-2xl font-bold text-white mb-2 flex items-center justify-center gap-2">
                 <Map size={20} className="text-amber-400" />
                 选择关卡
@@ -209,7 +222,7 @@ export const GameMenu: React.FC<GameMenuProps> = ({
 
       <div className="relative z-10 text-center max-w-sm w-full mx-4 flex flex-col items-center">
 
-        {/* Audio toggle — top-right corner speaker icon */}
+        {/* ═══ 音频开关按钮（右上角）═══ */}
         <button
           onClick={() => { audio?.playClick(); onToggleMute(); }}
           className="fixed top-3 right-3 z-50 p-2 rounded-full bg-black/40 text-stone-400 hover:text-amber-300 hover:bg-black/60 transition-all"
@@ -218,7 +231,7 @@ export const GameMenu: React.FC<GameMenuProps> = ({
           {audioMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
         </button>
 
-        {/* Title — wasteland style */}
+        {/* ═══ 游戏标题（废土风格）═══ */}
         <div className="mb-4">
           <div className="flex items-center justify-center gap-3 mb-2">
             <Flame size={28} style={{ color: '#8B4513', filter: 'drop-shadow(0 0 6px rgba(255,100,30,0.4))' }} />
@@ -241,12 +254,12 @@ export const GameMenu: React.FC<GameMenuProps> = ({
           </h2>
         </div>
 
-        {/* Gun image */}
+        {/* ═══ 喷火枪图片 ═══ */}
         <div className="mb-5">
           <img src="/assets/gun.png" alt="gun" className="w-24 h-24 object-contain drop-shadow-2xl" draggable={false} />
         </div>
 
-        {/* Talent tree entrance button */}
+        {/* ═══ 天赋树入口按钮 ═══ */}
         <button
           onClick={() => { audio?.playClick(); onOpenTalentTree(); }}
           className="mb-3 w-full bg-yellow-900/60 border border-yellow-600/40 rounded-lg px-3 py-1.5 flex items-center gap-2 hover:bg-yellow-800/60 transition-all hover:scale-105"
@@ -258,7 +271,7 @@ export const GameMenu: React.FC<GameMenuProps> = ({
           )}
         </button>
 
-        {/* 4 Game Mode Cards — wasteland riveted metal plates */}
+        {/* ═══ 游戏模式卡片（废土铆钉金属板风格）═══ */}
         {!showModes ? (
           <div className="w-full grid grid-cols-2 gap-3 mb-4">
             {gameModes.map((mode) => (
@@ -303,7 +316,7 @@ export const GameMenu: React.FC<GameMenuProps> = ({
             ))}
           </div>
         ) : (
-          /* Endless/Boss Mode: Scene + Difficulty Selection */
+          /* ═══ 无尽 / Boss 模式：场景 + 难度选择 ═══ */
           <div className="w-full space-y-2 mb-4">
             {/* Scene selection for endless mode */}
             {selectedMode === GameMode.ENDLESS && (
@@ -397,8 +410,7 @@ export const GameMenu: React.FC<GameMenuProps> = ({
           </div>
         )}
 
-        {/* Bottom buttons — wasteland riveted metal plates */}
-        {/* Order: 道具商店 → 天赋 → 成就 → 图鉴 */}
+        {/* ═══ 底部功能按钮：道具商店 → 天赋 → 成就 → 图鉴 ═══ */}
         <div className="w-full grid grid-cols-4 gap-2 mb-3">
           {/* 1. 道具商店 */}
           <button
@@ -473,7 +485,7 @@ export const GameMenu: React.FC<GameMenuProps> = ({
 
         </div>
 
-        {/* Reset progress button */}
+        {/* ═══ 重置进度按钮 ═══ */}
         <div className="w-full flex justify-start mt-2">
           <button
             onClick={() => { audio?.playClick(); setShowResetConfirm(true); }}
@@ -485,7 +497,7 @@ export const GameMenu: React.FC<GameMenuProps> = ({
           </button>
         </div>
 
-        {/* Custom reset confirmation dialog */}
+        {/* ═══ 重置确认对话框 ═══ */}
         {showResetConfirm && (
           <div
             className="absolute inset-0 z-50 flex items-center justify-center"

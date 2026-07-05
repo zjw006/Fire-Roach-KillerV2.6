@@ -1,3 +1,9 @@
+/**
+ * @fileoverview 暂停菜单覆盖层组件
+ * 在游戏战斗过程中弹出，提供"继续游戏"、"重新开始"和"返回主菜单"三个操作选项，
+ * 采用暗色调半透明背景和火焰主题装饰，与标题画面风格保持一致。
+ */
+
 import React from 'react';
 import { Play, RotateCcw, Home, Flame } from 'lucide-react';
 import type { AudioManager } from '@/game/audio';
@@ -11,6 +17,7 @@ interface PauseScreenProps {
 }
 
 export const PauseScreen: React.FC<PauseScreenProps> = ({ onResume, onRestart, onQuit, audio}) => {
+  /** 暂停菜单：继续游戏、重新开始、返回主菜单三个操作 */
   return (
     <div className="absolute inset-0 flex items-center justify-center bg-black/80 backdrop-blur-sm">
       <div className="relative max-w-sm w-full mx-4">

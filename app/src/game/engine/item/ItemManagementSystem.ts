@@ -28,6 +28,8 @@ export interface ItemManagementSystemConfig {
   onAddFloatingText?: (x: number, y: number, text: string, color: string) => void;
   /** 播放音效回调 */
   onPlaySound?: (soundId: 'pickup' | 'item_drop_fanfare') => void;
+  /** 状态变化回调（用于通知引擎道具揭示状态变化） */
+  onStateChange?: (state: 'item_reveal_start' | 'item_reveal_complete') => void;
 }
 
 /**
@@ -227,6 +229,7 @@ export class ItemManagementSystem {
     
     if (this.itemRevealData.length > 0) {
       this.spawnNextRewardDrop(0);
+      this.config.onStateChange?.('item_reveal_start');
     }
   }
 
@@ -257,6 +260,7 @@ export class ItemManagementSystem {
       // 所有奖励都已显示
       this.itemRevealData = [];
       this.rewardIndex = 0;
+      this.config.onStateChange?.('item_reveal_complete');
     }
   }
 

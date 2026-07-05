@@ -1,3 +1,9 @@
+/**
+ * @fileoverview 场景选择界面组件
+ * 按固定顺序展示所有可解锁场景，已解锁场景显示名称、敌人强度、奖励倍率和天气信息，
+ * 未解锁场景显示解锁条件，页面加载后自动滚动到最新解锁的场景位置。
+ */
+
 import React, { useRef, useLayoutEffect } from 'react';
 import { ArrowLeft, Map, Lock, Check } from 'lucide-react';
 import type { GameProgress, SceneType } from '@/game/types';
@@ -15,11 +21,11 @@ export const SceneSelectScreen: React.FC<SceneSelectScreenProps> = ({ progress, 
   const scenesUnlocked = progress?.scenesUnlocked || ['kitchen'];
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Find the last unlocked scene
+  /** 找到最后一个已解锁场景，用于自动滚动定位 */
   const lastUnlockedScene = [...SCENE_ORDER].reverse().find(s => scenesUnlocked.includes(s));
   const lastUnlockedIndex = SCENE_ORDER.indexOf(lastUnlockedScene as SceneType);
 
-  // Auto-scroll to last unlocked scene after DOM is ready
+  /** 自动滚动到最新解锁场景 */
   useLayoutEffect(() => {
     const doScroll = () => {
       const el = document.getElementById('scene-card-' + lastUnlockedIndex);
@@ -33,6 +39,7 @@ export const SceneSelectScreen: React.FC<SceneSelectScreenProps> = ({ progress, 
     setTimeout(doScroll, 50);
   }, [lastUnlockedIndex]);
 
+  /** 场景列表：按 SCENE_ORDER 顺序渲染，已解锁可点击选择，未解锁显示解锁条件 */
   return (
     <div ref={containerRef} className="absolute inset-0 flex items-start justify-center bg-black/90 backdrop-blur-sm overflow-y-auto">
       <div className="w-full max-w-md mx-4 py-6">

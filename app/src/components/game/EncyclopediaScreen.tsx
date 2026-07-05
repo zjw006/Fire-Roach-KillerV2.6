@@ -1,3 +1,9 @@
+/**
+ * @fileoverview 蟑螂图鉴（百科）界面组件
+ * 以网格展示所有蟑螂类型的解锁状态，点击已解锁的蟑螂可弹出详情模态框，
+ * 显示生命值、速度、特殊能力、描述和趣味冷知识等完整信息。
+ */
+
 import React, { useState } from 'react';
 import {
   ArrowLeft, Lock, Bug, Heart, Zap, Skull, Star, Sparkles, X, Flame, Shield, Wind, Bomb, Crown
@@ -12,6 +18,7 @@ interface EncyclopediaScreenProps {
   audio?: AudioManager;
 }
 
+/** 蟑螂类型对应的图标映射 */
 const ROACH_ICONS: Record<RoachType, React.ReactNode> = {
   [RoachType.SMALL]: <Bug size={20} />,
   [RoachType.LARGE]: <Bug size={22} />,
@@ -26,6 +33,7 @@ const ROACH_ICONS: Record<RoachType, React.ReactNode> = {
   [RoachType.TIMED_SUICIDE]: <Bomb size={20} />,
 };
 
+/** 蟑螂类型对应的渐变色（用于图标背景） */
 const ROACH_COLORS: Record<RoachType, string> = {
   [RoachType.SMALL]: 'from-amber-700 to-amber-600',
   [RoachType.LARGE]: 'from-orange-700 to-orange-600',
@@ -40,6 +48,7 @@ const ROACH_COLORS: Record<RoachType, string> = {
   [RoachType.TIMED_SUICIDE]: 'from-yellow-700 to-yellow-600',
 };
 
+/** 蟑螂类型对应的卡片背景色 */
 const ROACH_BG_COLORS: Record<RoachType, string> = {
   [RoachType.SMALL]: 'bg-amber-950/40 border-amber-800/40',
   [RoachType.LARGE]: 'bg-orange-950/40 border-orange-800/40',
@@ -54,6 +63,7 @@ const ROACH_BG_COLORS: Record<RoachType, string> = {
   [RoachType.TIMED_SUICIDE]: 'bg-yellow-950/40 border-yellow-800/40',
 };
 
+/** 蟑螂类型对应的文字颜色 */
 const ROACH_TEXT_COLORS: Record<RoachType, string> = {
   [RoachType.SMALL]: 'text-amber-400',
   [RoachType.LARGE]: 'text-orange-400',
@@ -68,6 +78,7 @@ const ROACH_TEXT_COLORS: Record<RoachType, string> = {
   [RoachType.TIMED_SUICIDE]: 'text-yellow-400',
 };
 
+/** 蟑螂类型对应的发光阴影颜色 */
 const ROACH_GLOW_COLORS: Record<RoachType, string> = {
   [RoachType.SMALL]: 'shadow-amber-900/30',
   [RoachType.LARGE]: 'shadow-orange-900/30',
@@ -82,6 +93,7 @@ const ROACH_GLOW_COLORS: Record<RoachType, string> = {
   [RoachType.TIMED_SUICIDE]: 'shadow-yellow-900/30',
 };
 
+/** 根据速度值返回星级（1-5） */
 function getSpeedStars(speed: number): number {
   if (speed <= 0.4) return 1;
   if (speed <= 0.7) return 2;
@@ -90,6 +102,7 @@ function getSpeedStars(speed: number): number {
   return 5;
 }
 
+/** 根据生命值返回格子数（1-5） */
 function getHpBars(hp: number): number {
   if (hp <= 1) return 1;
   if (hp <= 3) return 2;
@@ -99,6 +112,7 @@ function getHpBars(hp: number): number {
 }
 
 export const EncyclopediaScreen: React.FC<EncyclopediaScreenProps> = ({ progress, onClose, audio}) => {
+  /** 当前选中查看详情的蟑螂条目 */
   const [selectedRoach, setSelectedRoach] = useState<EncyclopediaEntry | null>(null);
 
   const entries = progress.encyclopedia?.entries || [];
@@ -139,7 +153,7 @@ export const EncyclopediaScreen: React.FC<EncyclopediaScreenProps> = ({ progress
           </div>
         </div>
 
-        {/* Roach Grid */}
+        {/* 蟑螂图鉴网格：2列布局，已解锁显示图标和击杀数，未解锁显示问号 */}
         <div className="grid grid-cols-2 gap-3 mb-6">
           {entries.map((entry) => {
             const isUnlocked = entry.unlocked;
@@ -204,7 +218,7 @@ export const EncyclopediaScreen: React.FC<EncyclopediaScreenProps> = ({ progress
         </div>
       </div>
 
-      {/* Detail Modal */}
+      {/* 详情模态框：显示选中蟑螂的完整数据（头像、属性、特殊能力、描述、冷知识） */}
       {selectedRoach && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           {/* Backdrop */}
