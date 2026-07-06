@@ -12,8 +12,18 @@ import { ENEMY_DEFS, BOSS_CONFIG } from '../../data';
 export interface CollisionSystemConfig {
   /** 游戏难度 */
   difficulty: 'easy' | 'hard';
-  /** 当前游戏状态 */
-  gameState: GameState;
+  /** 当前场景 */
+  currentScene: string;
+  /** 添加浮动文字回调 */
+  onAddFloatingText?: (x: number, y: number, text: string, color: string) => void;
+  /** 生成火花粒子回调 */
+  onSpawnSpark?: (x: number, y: number, count: number) => void;
+  /** 播放音效回调 */
+  onPlayBreach?: () => void;
+  /** 震动回调 */
+  onVibrateBreach?: () => void;
+  /** 震动游戏结束回调 */
+  onVibrateGameOver?: () => void;
   /** 玩家天赋伤害加成 */
   talentDamageMultiplier?: number;
   /** 玩家天赋防御加成 */
@@ -44,6 +54,22 @@ export interface WeaponDamageConfig {
   falloffFactor: number;
   /** 特殊效果配置 */
   effects?: Record<string, any>;
+}
+
+/**
+ * 防线突破检测结果
+ */
+export interface BreachResult {
+  /** 防线血量是否归零（游戏结束） */
+  gameOver: boolean;
+  /** 被移除的蟑螂索引列表（从大到小排序，便于外部 splice） */
+  removedIndices: number[];
+  /** 总防线伤害 */
+  totalDefenseDamage: number;
+  /** 突破次数 */
+  breachCount: number;
+  /** 自杀爆炸的蟑螂索引列表 */
+  suicideExplodeIndices: number[];
 }
 
 /**
@@ -89,22 +115,19 @@ export class CollisionSystem {
   }
 
   /**
-   * 检查火焰与蟑螂的碰撞
+   * 检查火焰与蟑螂的碰撞（原地修改模式，与旧引擎行为一致）
    * @param player 玩家对象
-   * @param roaches 蟑螂数组
+   * @param roaches 蟑螂数组（原地修改）
    * @param tripleFlame 三重火焰状态
    * @param isStuckByBoard 检查蟑螂是否被粘板粘住的函数
-   * @returns 更新后的蟑螂数组
    */
   checkFlameCollisions(
     player: Player,
     roaches: Roach[],
     tripleFlame?: TripleFlameState,
     isStuckByBoard?: (roachId: number) => boolean
-  ): Roach[] {
-    if (!player.isFiring || player.isOverheated || player.isReloading || player.gas <= 0) {
-      return roaches;
-    }
+  ): void {
+    if (!player.isFiring || player.isOverheated || player.isReloading || player.gas <= 0) return;
 
     // 确定喷火器位置
     const nozzleY = player.y - 322;
@@ -113,181 +136,54 @@ export class CollisionSystem {
 
     // 构建枪口位置列表（支持三重火焰）
     const guns: { x: number; damageMult: number }[] = [
-      { x: player.x, damageMult: 1.0 }, // 中心主枪口
+      { x: player.x, damageMult: 1.0 },
     ];
 
-    // 添加侧边枪口（如果三重火焰激活）
     if (tripleFlame?.active) {
-      guns.push({ 
-        x: player.x - tripleFlame.sideOffset, 
-        damageMult: tripleFlame.sideDamageMult 
-      });
-      guns.push({ 
-        x: player.x + tripleFlame.sideOffset, 
-        damageMult: tripleFlame.sideDamageMult 
-      });
+      guns.push({ x: player.x - tripleFlame.sideOffset, damageMult: tripleFlame.sideDamageMult });
+      guns.push({ x: player.x + tripleFlame.sideOffset, damageMult: tripleFlame.sideDamageMult });
     }
 
-    // 更新每个蟑螂的燃烧伤害
-    return roaches.map(roach => {
-      if (roach.state !== RoachState.ALIVE || roach.isBoss) {
-        return roach;
-      }
-
-      // 医院场景专属：放置炸弹的定时自杀蟑螂免疫伤害
-      if (roach.type === RoachType.TIMED_SUICIDE && roach.placeTimer && roach.placeTimer > 0) {
-        return roach;
-      }
-
-      let totalDamage = 0;
-      let inFire = false;
+    for (const r of roaches) {
+      if (r.state !== RoachState.ALIVE) continue;
+      if (r.isBoss) continue;
+      if (r.type === RoachType.TIMED_SUICIDE && r.placeTimer && r.placeTimer > 0) continue;
 
       for (const gun of guns) {
-        const collisionResult = this.checkSingleFlameCollision(
-          player,
-          roach,
-          gun,
-          nozzleY,
-          maxRange,
-          beamHalfWidth
-        );
+        if (r.type === RoachType.FLYING || r.type === RoachType.FLYING_SUICIDE) {
+          const flyDist = Math.abs(r.x - gun.x);
+          const vertDist = nozzleY - r.y;
+          const flyHitWidth = beamHalfWidth * 4;
+          if (flyDist < flyHitWidth && vertDist > 0 && vertDist < maxRange * 1.3) {
+            const falloff = 1 - (vertDist / (maxRange * 1.2)) * 0.7;
+            const damage = this.getWeaponDamage(player.currentWeapon) * player.damageMultiplier * falloff * gun.damageMult;
+            this.applyWeaponEffect(r, player.currentWeapon);
+            r.burnDamage += damage;
+            r.inFire = true;
+            this.triggerPanicOnArmorBreak(r, isStuckByBoard ? isStuckByBoard(r.id) : false);
+          }
+          continue;
+        }
 
-        if (collisionResult.hit) {
-          totalDamage += collisionResult.damage;
-          inFire = true;
-          
-          // 应用武器效果
-          if (collisionResult.effectTriggered) {
-            this.applyWeaponEffect(roach, player.currentWeapon);
+        const t = -(r.y - nozzleY) / maxRange;
+        const clampedT = Math.max(0, Math.min(1, t));
+        const perpDist = Math.abs(r.x - gun.x);
+
+        if (perpDist < beamHalfWidth) {
+          const distFromNozzle = clampedT * maxRange;
+          const falloff = 1 - (distFromNozzle / maxRange) * 0.7;
+          let damage = this.getWeaponDamage(player.currentWeapon) * player.damageMultiplier * falloff * gun.damageMult;
+
+          if (r.type === RoachType.QUEEN) {
+            damage *= (1 - BOSS_CONFIG.queen.resistPercent);
           }
-          
-          // 触发护甲破碎时的恐慌效果
-          if (isStuckByBoard) {
-            this.triggerPanicOnArmorBreak(roach, isStuckByBoard(roach.id));
-          }
+          this.applyWeaponEffect(r, player.currentWeapon);
+          r.burnDamage += damage;
+          r.inFire = true;
+          this.triggerPanicOnArmorBreak(r, isStuckByBoard ? isStuckByBoard(r.id) : false);
         }
       }
-
-      // 更新蟑螂状态
-      if (totalDamage > 0) {
-        return {
-          ...roach,
-          burnDamage: roach.burnDamage + totalDamage,
-          inFire: inFire || roach.inFire,
-        };
-      }
-
-      return roach;
-    });
-  }
-
-  /**
-   * 检查单个火焰与蟑螂的碰撞
-   * @param player 玩家对象
-   * @param roach 蟑螂对象
-   * @param gun 枪口配置
-   * @param nozzleY 喷火器Y坐标
-   * @param maxRange 最大射程
-   * @param beamHalfWidth 火焰半宽
-   * @returns 碰撞检测结果
-   */
-  private checkSingleFlameCollision(
-    player: Player,
-    roach: Roach,
-    gun: { x: number; damageMult: number },
-    nozzleY: number,
-    maxRange: number,
-    beamHalfWidth: number
-  ): CollisionResult {
-    // 飞行蟑螂的特殊处理
-    if (roach.type === RoachType.FLYING || roach.type === RoachType.FLYING_SUICIDE) {
-      return this.checkFlyingRoachCollision(player, roach, gun, nozzleY, maxRange, beamHalfWidth);
     }
-
-    // 地面蟑螂的碰撞检测
-    const t = -(roach.y - nozzleY) / maxRange;
-    const clampedT = Math.max(0, Math.min(1, t));
-    const perpDist = Math.abs(roach.x - gun.x);
-
-    if (perpDist < beamHalfWidth) {
-      const distFromNozzle = clampedT * maxRange;
-      const falloff = 1 - (distFromNozzle / maxRange) * 0.7;
-      
-      // 计算伤害
-      let damage = this.getWeaponDamage(player.currentWeapon) * 
-                   player.damageMultiplier * 
-                   falloff * 
-                   gun.damageMult;
-
-      // 女王蟑螂伤害减免
-      if (roach.type === RoachType.QUEEN) {
-        damage *= (1 - BOSS_CONFIG.queen.resistPercent);
-      }
-
-      return {
-        hit: true,
-        damage,
-        effectTriggered: true,
-        effectType: player.currentWeapon,
-      };
-    }
-
-    return {
-      hit: false,
-      damage: 0,
-      effectTriggered: false,
-    };
-  }
-
-  /**
-   * 检查飞行蟑螂的碰撞
-   * @param player 玩家对象
-   * @param roach 飞行蟑螂对象
-   * @param gun 枪口配置
-   * @param nozzleY 喷火器Y坐标
-   * @param maxRange 最大射程
-   * @param beamHalfWidth 火焰半宽
-   * @returns 碰撞检测结果
-   */
-  private checkFlyingRoachCollision(
-    player: Player,
-    roach: Roach,
-    gun: { x: number; damageMult: number },
-    nozzleY: number,
-    maxRange: number,
-    beamHalfWidth: number
-  ): CollisionResult {
-    const flyDist = Math.abs(roach.x - gun.x);
-    const vertDist = nozzleY - roach.y;
-    const flyHitWidth = beamHalfWidth * 4; // 飞行蟑螂有更宽的命中范围
-
-    if (flyDist < flyHitWidth && vertDist > 0 && vertDist < maxRange * 1.3) {
-      const falloff = 1 - (vertDist / (maxRange * 1.2)) * 0.7;
-      
-      // 计算伤害
-      let damage = this.getWeaponDamage(player.currentWeapon) * 
-                   player.damageMultiplier * 
-                   falloff * 
-                   gun.damageMult;
-
-      // 女王蟑螂伤害减免
-      if (roach.type === RoachType.QUEEN) {
-        damage *= (1 - BOSS_CONFIG.queen.resistPercent);
-      }
-
-      return {
-        hit: true,
-        damage,
-        effectTriggered: true,
-        effectType: player.currentWeapon,
-      };
-    }
-
-    return {
-      hit: false,
-      damage: 0,
-      effectTriggered: false,
-    };
   }
 
   /**
@@ -347,74 +243,127 @@ export class CollisionSystem {
   }
 
   /**
-   * 检查防线突破
+   * 检查防线突破（完整版，含所有副作用回调）
    * @param roaches 蟑螂数组
    * @param defenseLineY 防线Y坐标
    * @param player 玩家对象
-   * @returns 突破防线的蟑螂ID数组和总伤害
+   * @param defenseHp 当前防线HP（会被修改）
+   * @param activeBosses 当前活跃Boss数量（会被修改）
+   * @param callbacks 副作用回调
+   * @returns 突破检测结果
    */
   checkDefenseBreach(
     roaches: Roach[],
     defenseLineY: number,
-    player: Player
-  ): { breachedRoachIds: number[]; totalDamage: number } {
-    const breachedRoachIds: number[] = [];
-    let totalDamage = 0;
+    player: Player,
+    defenseHp: { value: number },
+    activeBosses: { value: number },
+    callbacks: {
+      onSuicideExplode?: (roach: Roach, index: number) => void;
+      onAddFloatingText?: (x: number, y: number, text: string, color: string) => void;
+      onPlayBreach?: () => void;
+      onVibrateBreach?: () => void;
+      onScreenShake?: (amount: number) => void;
+      onBossStop?: boolean;
+    }
+  ): BreachResult {
+    const removedIndices: number[] = [];
+    const suicideExplodeIndices: number[] = [];
+    let totalDefenseDamage = 0;
+    let breachCount = 0;
+    let gameOver = false;
 
-    for (const roach of roaches) {
-      if (!roach || roach.state !== RoachState.ALIVE) {
+    for (let i = roaches.length - 1; i >= 0; i--) {
+      const r = roaches[i];
+      if (!r || r.state !== RoachState.ALIVE) continue;
+
+      const roachSize = ENEMY_DEFS[r.type]?.size || 30;
+      const roachBottom = r.y + roachSize * 0.4;
+      if (roachBottom < defenseLineY) continue;
+
+      let dmg = 0;
+      switch (r.type) {
+        case RoachType.SMALL: dmg = this.config.difficulty === 'hard' ? 5 : 2; break;
+        case RoachType.LARGE: dmg = this.config.difficulty === 'hard' ? 15 : 5; break;
+        case RoachType.FLYING: dmg = this.config.difficulty === 'hard' ? 8 : 3; break;
+        case RoachType.ARMORED: dmg = this.config.difficulty === 'hard' ? 12 : 4; break;
+        case RoachType.SPLITTING: dmg = this.config.difficulty === 'hard' ? 10 : 4; break;
+        case RoachType.SUICIDE:
+        case RoachType.FLYING_SUICIDE:
+          suicideExplodeIndices.push(i);
+          continue;
+        case RoachType.TIMED_SUICIDE:
+          if (r.hasPlacedBomb) { dmg = this.config.difficulty === 'hard' ? 15 : 5; }
+          else { r.y = defenseLineY - 64; continue; }
+          break;
+        case RoachType.QUEEN: dmg = this.config.difficulty === 'hard' ? 35 : 12; break;
+      }
+
+      dmg = Math.floor(dmg * (1 - player.damageReduction));
+
+      // Boss 安全网：不允许 BOSS 穿过防线
+      if (callbacks.onBossStop && r.isBoss && r.type === RoachType.QUEEN) {
+        r.y = Math.min(r.y, defenseLineY - 15);
         continue;
       }
 
-      const roachSize = ENEMY_DEFS[roach.type]?.size || 30;
-      const roachBottom = roach.y + roachSize * 0.4;
+      if (player.shieldTimer > 0) {
+        callbacks.onAddFloatingText?.(r.x, defenseLineY - 20, '护盾抵消!', '#22d3ee');
+      } else {
+        defenseHp.value -= dmg;
+        breachCount++;
+        callbacks.onPlayBreach?.();
+        callbacks.onVibrateBreach?.();
+      }
+      callbacks.onScreenShake?.(10);
 
-      if (roachBottom >= defenseLineY) {
-        // 计算伤害
-        const damage = this.calculateBreachDamage(roach.type);
-        
-        // 应用玩家伤害减免
-        const finalDamage = Math.floor(damage * (1 - player.damageReduction));
-        
-        breachedRoachIds.push(roach.id);
-        totalDamage += finalDamage;
+      removedIndices.push(i);
+      if (r.isBoss) activeBosses.value--;
+      callbacks.onAddFloatingText?.(r.x, defenseLineY - 20, '防线突破!', '#ef4444');
+
+      totalDefenseDamage += dmg;
+
+      if (defenseHp.value <= 0) {
+        defenseHp.value = 0;
+        gameOver = true;
+        break;
       }
     }
 
-    return { breachedRoachIds, totalDamage };
+    return { gameOver, removedIndices, totalDefenseDamage, breachCount, suicideExplodeIndices };
   }
 
   /**
-   * 计算防线突破伤害
-   * @param roachType 蟑螂类型
-   * @returns 伤害值
+   * 对蟑螂应用伤害（含护甲、变异变身无敌、定时自爆放置免疫等逻辑）
+   * @param r 蟑螂对象（原地修改）
+   * @param damage 伤害值
+   * @param armorShieldCache 护甲保护缓存（Set）
    */
-  private calculateBreachDamage(roachType: RoachType): number {
-    const isHard = this.config.difficulty === 'hard';
-    
-    switch (roachType) {
-      case RoachType.SMALL:
-        return isHard ? 5 : 2;
-      case RoachType.LARGE:
-        return isHard ? 15 : 5;
-      case RoachType.FLYING:
-        return isHard ? 8 : 3;
-      case RoachType.ARMORED:
-        return isHard ? 12 : 4;
-      case RoachType.SPLITTING:
-        return isHard ? 10 : 4;
-      case RoachType.SUICIDE:
-      case RoachType.FLYING_SUICIDE:
-        // 自杀蟑螂爆炸伤害，这里返回基础值，实际爆炸逻辑在其他地方处理
-        return isHard ? 20 : 8;
-      case RoachType.TIMED_SUICIDE:
-        // 定时自杀蟑螂放置炸弹后的伤害
-        return isHard ? 15 : 5;
-      case RoachType.QUEEN:
-        return isHard ? 35 : 12;
-      default:
-        return isHard ? 10 : 4;
+  applyDamageToRoach(r: Roach, damage: number, armorShieldCache: Set<number>): void {
+    if (r.isBoss) return;
+    if (r.type === RoachType.MUTANT && r.transformTimer && r.transformTimer > 0) return;
+    if (r.type === RoachType.TIMED_SUICIDE && r.placeTimer && r.placeTimer > 0) return;
+    if (r.spawnImmuneTimer && r.spawnImmuneTimer > 0) return;
+
+    // 护甲肉盾保护：仅20%伤害穿透
+    if (r.armorHp <= 0 && armorShieldCache.has(r.id)) {
+      damage *= 0.2;
     }
+
+    // 护甲吸收80%火焰伤害
+    if (r.armorHp > 0) {
+      const armorAbsorb = Math.min(r.armorHp, damage * 0.8);
+      r.armorHp -= armorAbsorb;
+      damage *= 0.2;
+      if (r.armorHp <= 0) {
+        this.config.onSpawnSpark?.(r.x, r.y, 8);
+        const label = r.type === RoachType.NURSE || r.type === RoachType.TIMED_SUICIDE ? '护甲碎裂!' : '破甲!';
+        this.config.onAddFloatingText?.(r.x, r.y - 30, label, '#fbbf24');
+      }
+    }
+    r.hp -= damage;
+    const hasProtection = r.armorHp > 0;
+    r.damageFlash = hasProtection ? 0 : (r.isBoss ? 2.0 : 0.4);
   }
 
   /**

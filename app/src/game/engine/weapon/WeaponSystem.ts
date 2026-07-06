@@ -27,6 +27,14 @@ export interface WeaponSystemConfig {
     /** 物品弹药加成 */
     itemAmmo?: number;
   };
+  /** 画布宽度（用于掉落位置计算） */
+  canvasWidth?: number;
+  /** 场景敌人修正系数（用于调整掉落间隔） */
+  sceneEnemyModifier?: number;
+  /** 拾取武器掉落回调（用于浮动文字、屏幕震动、物品栏管理等） */
+  onPickup?: (drop: WeaponDrop, pickupCount: number, bonusText: string) => void;
+  /** 切换武器回调（用于浮动文字提示） */
+  onSwitchWeapon?: (weapon: string, weaponName: string) => void;
 }
 
 /**
@@ -42,6 +50,9 @@ export interface WeaponDropSpawnConfig {
   /** 掉落漂浮速度 */
   bobSpeed: number;
 }
+
+/** 全局掉落物 ID 计数器 */
+let nextDropId = 1;
 
 /**
  * 武器系统类
@@ -89,12 +100,14 @@ export class WeaponSystem {
    * @param deltaTime 时间增量
    * @param player 玩家对象
    * @param defenseLineY 防线Y坐标
+   * @param tutorialPauseSpawn 教程暂停生成标志
    * @returns 更新后的武器掉落数组
    */
   update(
     deltaTime: number,
     player: Player,
-    defenseLineY: number
+    defenseLineY: number,
+    tutorialPauseSpawn: boolean = false
   ): WeaponDrop[] {
     // 跳过非游戏状态
     if (this.config.gameState !== GameState.PLAYING) {
@@ -102,7 +115,7 @@ export class WeaponSystem {
     }
 
     // 更新武器掉落
-    this.updateWeaponDrops(deltaTime, player, defenseLineY);
+    this.updateWeaponDrops(deltaTime, player, defenseLineY, tutorialPauseSpawn);
 
     return this.weaponDrops;
   }
@@ -112,21 +125,27 @@ export class WeaponSystem {
    * @param deltaTime 时间增量
    * @param player 玩家对象
    * @param defenseLineY 防线Y坐标
+   * @param tutorialPauseSpawn 教程暂停生成标志
    */
   private updateWeaponDrops(
     deltaTime: number,
     player: Player,
-    defenseLineY: number
+    defenseLineY: number,
+    tutorialPauseSpawn: boolean
   ): void {
     const sceneConfig = this.getCurrentSceneConfig();
     
-    // 更新掉落生成计时器
-    this.dropSpawnTimer -= deltaTime;
-    
-    // 生成新的武器掉落
-    if (this.dropSpawnTimer <= 0) {
-      this.spawnWeaponDrop(sceneConfig.dropCount, defenseLineY);
-      this.dropSpawnTimer = sceneConfig.spawnInterval;
+    // 更新掉落生成计时器（跳过教程暂停期间）
+    if (!tutorialPauseSpawn) {
+      this.dropSpawnTimer -= deltaTime;
+      
+      // 生成新的武器掉落
+      if (this.dropSpawnTimer <= 0) {
+        this.spawnWeaponDrop(sceneConfig.dropCount, defenseLineY);
+        // 应用场景敌人修正系数
+        const enemyModifier = this.config.sceneEnemyModifier || 1;
+        this.dropSpawnTimer = sceneConfig.spawnInterval / enemyModifier;
+      }
     }
 
     // 更新现有掉落
@@ -167,7 +186,8 @@ export class WeaponSystem {
     }
 
     // 基础生成位置
-    const baseX = 60 + Math.random() * (540 - 120); // 假设画布宽度为540
+    const canvasWidth = this.config.canvasWidth || 540;
+    const baseX = 60 + Math.random() * (canvasWidth - 120);
     const baseY = defenseLineY - 135 + Math.random() * 30;
 
     for (let i = 0; i < count; i++) {
@@ -177,14 +197,14 @@ export class WeaponSystem {
       
       // 计算掉落位置
       const x = count > 1
-        ? Math.max(40, Math.min(500, baseX + (i - (count - 1) / 2) * 100))
+        ? Math.max(40, Math.min(canvasWidth - 40, baseX + (i - (count - 1) / 2) * 100))
         : baseX;
       
       const y = baseY + (Math.random() - 0.5) * 20;
       
       // 创建新的武器掉落
       this.weaponDrops.push({
-        id: Date.now() + i, // 使用时间戳作为ID
+        id: nextDropId++,
         x,
         y,
         type,
@@ -241,7 +261,9 @@ export class WeaponSystem {
 
     // 生成拾取提示文本
     const bonusText = itemAmmoBonus > 0 ? `(+${itemAmmoBonus}天赋)` : '';
-    console.log(`拾取: ${weaponDef.name}!${bonusText}`);
+    
+    // 调用拾取回调（用于浮动文字、屏幕震动、物品栏管理等）
+    this.config.onPickup?.(drop, pickupCount, bonusText);
   }
 
   /**
@@ -300,7 +322,7 @@ export class WeaponSystem {
     // 显示切换提示
     const weaponDef = WEAPON_DROP_DEFS[weapon as keyof typeof WEAPON_DROP_DEFS];
     if (weaponDef) {
-      console.log(`切换到: ${weaponDef.name}`);
+      this.config.onSwitchWeapon?.(weapon, weaponDef.name);
     }
 
     return true;
@@ -319,7 +341,7 @@ export class WeaponSystem {
    * @returns 武器掉落数组
    */
   getWeaponDrops(): WeaponDrop[] {
-    return [...this.weaponDrops];
+    return this.weaponDrops;
   }
 
   /**
@@ -327,6 +349,15 @@ export class WeaponSystem {
    */
   clearWeaponDrops(): void {
     this.weaponDrops = [];
+  }
+
+  /**
+   * 重置武器系统（清空掉落和计时器）
+   */
+  reset(): void {
+    this.weaponDrops = [];
+    this.inventory = [];
+    this.dropSpawnTimer = this.getCurrentSceneConfig().spawnInterval;
   }
 
   /**

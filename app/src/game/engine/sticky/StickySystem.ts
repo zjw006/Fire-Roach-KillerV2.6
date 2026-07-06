@@ -1,255 +1,173 @@
 /**
- * @fileoverview 粘性板系统模块
- * @description 负责管理游戏中粘性板和粘性弹丸的逻辑，包括自动瞄准、减速效果、伤害计算等
+ * @fileoverview 粘板/粘液弹系统模块
+ * @description 负责管理粘性板（legacy）和粘液弹（auto-targeting）的完整生命周期
  */
 
-import { 
-  type StickyBoard,
-  type StickyDrop,
-  type Roach,
-  RoachState,
-  ParticleType
-} from '../../types';
+import { RoachState, ParticleType, type StickyBoard, type StickyDrop, type Roach, type Particle } from '../../types';
+import { ENEMY_DEFS } from '../../data';
 
 /**
- * 粘性板系统配置接口
+ * 粘板/粘液弹系统配置接口
  */
 export interface StickySystemConfig {
-  /** 时间增量 */
-  deltaTime: number;
-  /** 游戏时间 */
-  gameTime: number;
-  /** 添加浮动文字回调函数 */
+  /** 画布宽度 */
+  canvasWidth: number;
+  /** 画布高度 */
+  canvasHeight: number;
+  /** 防线Y坐标获取函数 */
+  getDefenseLineY: () => number;
+  /** 添加浮动文字回调 */
   onAddFloatingText?: (x: number, y: number, text: string, color: string) => void;
-  /** 添加粒子回调函数 */
-  onAddParticle?: (particle: any) => void;
+  /** 添加粒子回调 */
+  onAddParticle?: (particle: Particle) => void;
+  /** 生成火花粒子回调 */
+  onSpawnSpark?: (x: number, y: number, count: number) => void;
+  /** 播放粘液弹音效回调 */
+  onPlayStickySpray?: () => void;
+  /** 震动回调 */
+  onVibrateItemUse?: () => void;
+  /** 屏幕震动回调 */
+  onScreenShake?: (amount: number) => void;
 }
 
 /**
- * 粘性板系统类
- * @description 管理游戏中粘性板和粘性弹丸的逻辑，包括自动瞄准、减速效果、伤害计算等
+ * 粘板/粘液弹系统类
  */
 export class StickySystem {
-  /** 系统配置 */
   private config: StickySystemConfig;
-  
-  /** 粘性板数组 */
-  private stickyBoards: StickyBoard[] = [];
-  
-  /** 粘性弹丸数组 */
-  private stickyDrops: StickyDrop[] = [];
-  
-  /** 下一个粘性弹丸ID */
-  private nextStickyDropId: number = 1;
-  
-  /**
-   * 构造函数
-   * @param config 系统配置
-   */
+
+  /** 粘性板数组（legacy） */
+  stickyBoards: StickyBoard[] = [];
+  /** 粘液弹数组（auto-targeting） */
+  stickyDrops: StickyDrop[] = [];
+  /** 下一个粘液弹ID */
+  nextStickyDropId: number = 1;
+
   constructor(config: StickySystemConfig) {
     this.config = config;
   }
-  
-  /**
-   * 更新系统配置
-   * @param config 新的配置
-   */
-  updateConfig(config: Partial<StickySystemConfig>): void {
-    this.config = { ...this.config, ...config };
+
+  /** 更新配置 */
+  updateConfig(newConfig: Partial<StickySystemConfig>): void {
+    this.config = { ...this.config, ...newConfig };
   }
-  
-  /**
-   * 添加粘性板
-   * @param board 粘性板数据
-   */
-  addStickyBoard(board: StickyBoard): void {
-    this.stickyBoards.push(board);
+
+  // ========== 透视缩放（用于粘板渲染和碰撞） ==========
+  /** 计算透视缩放：越高（离底部越远）越小 */
+  getPerspectiveScale(y: number): number {
+    const bottomY = this.config.getDefenseLineY();
+    const topY = this.config.canvasHeight * 0.2;
+    const t = Math.max(0, Math.min(1, (bottomY - y) / (bottomY - topY)));
+    return 0.3 + t * 0.7;
   }
-  
-  /**
-   * 添加粘性弹丸
-   * @param drop 粘性弹丸数据
-   */
-  addStickyDrop(drop: StickyDrop): void {
-    this.stickyDrops.push(drop);
-  }
-  
-  /**
-   * 获取所有粘性板
-   * @returns 粘性板数组
-   */
-  getStickyBoards(): StickyBoard[] {
-    return [...this.stickyBoards];
-  }
-  
-  /**
-   * 获取所有粘性弹丸
-   * @returns 粘性弹丸数组
-   */
-  getStickyDrops(): StickyDrop[] {
-    return [...this.stickyDrops];
-  }
-  
-  /**
-   * 清除所有粘性板和弹丸
-   */
-  clearAll(): void {
-    this.stickyBoards = [];
-    this.stickyDrops = [];
-  }
-  
-  /**
-   * 更新粘性板逻辑
-   * @param roaches 当前蟑螂数组
-   * @returns 更新后的粘性板数组
-   */
-  updateStickyBoards(roaches: Roach[]): StickyBoard[] {
-    const { deltaTime } = this.config;
-    
-    // 从后向前遍历，便于删除
-    for (let i = this.stickyBoards.length - 1; i >= 0; i--) {
-      const board = this.stickyBoards[i];
-      board.life -= deltaTime;
-      
-      // 检查生命周期结束
-      if (board.life <= 0) {
-        // 释放被粘住的蟑螂
-        for (const roachId of board.stuckRoaches) {
-          const r = roaches.find(r => r.id === roachId);
-          if (r && r.state === RoachState.ALIVE) {
-            r.speed = r.baseSpeed; // 恢复速度
-          }
-        }
-        this.stickyBoards.splice(i, 1);
-        continue;
-      }
-      
-      // 检查蟑螂进入粘性板区域
-      const hitHalfW = board.hitWidth / 2;
-      const hitHalfH = board.hitHeight / 2;
-      
-      for (const r of roaches) {
-        if (r.state !== RoachState.ALIVE) continue;
-        
-        // 已经被这个粘性板粘住
-        if (board.stuckRoaches.includes(r.id)) {
-          // 保持蟑螂在碰撞区域内
-          r.x = Math.max(board.x - hitHalfW + 10, Math.min(board.x + hitHalfW - 10, r.x));
-          r.y = Math.max(board.y - hitHalfH + 10, Math.min(board.y + hitHalfH - 10, r.y));
-          r.vx = 0;
-          r.vy = 0;
-          r.speed = 0;
-          continue;
-        }
-        
-        // 粘性板已满
-        if (board.stuckRoaches.length >= board.maxStuck) continue;
-        
-        // 检查蟑螂是否在碰撞区域内
-        if (r.x > board.x - hitHalfW && r.x < board.x + hitHalfW &&
-            r.y > board.y - hitHalfH && r.y < board.y + hitHalfH) {
-          board.stuckRoaches.push(r.id);
-          r.speed = 0;
-          r.vx = 0;
-          r.vy = 0;
-          
-          // 只显示第一个被粘住的蟑螂的提示文字（减少视觉混乱）
-          if (board.stuckRoaches.length === 1 && this.config.onAddFloatingText) {
-            this.config.onAddFloatingText(r.x, r.y - 20, '粘住!', '#facc15');
-          }
-        }
-      }
+
+  // ========== 粘液弹喷射（10个追踪水滴） ==========
+  /** 激活粘液弹喷射：发射10个追踪水滴 */
+  activateStickySpray(): void {
+    const cx = this.config.canvasWidth / 2;
+    const cy = this.config.getDefenseLineY();
+    const DROP_COUNT = 10;
+    const FIRE_INTERVAL = 0.08;
+
+    for (let i = 0; i < DROP_COUNT; i++) {
+      const delay = i * FIRE_INTERVAL;
+      this.scheduleStickyDrop(cx, cy, delay);
     }
-    
-    return this.stickyBoards;
+
+    this.config.onPlayStickySpray?.();
+    this.config.onVibrateItemUse?.();
+    this.config.onAddFloatingText?.(cx, cy - 60, '蟑螂贴板发射!', '#facc15');
+    this.config.onAddFloatingText?.(cx, cy - 40, '10个追踪水滴', '#fde047');
+    this.config.onScreenShake?.(3);
   }
-  
-  /**
-   * 更新粘性弹丸逻辑
-   * @param roaches 当前蟑螂数组
-   * @returns 更新后的粘性弹丸数组
-   */
-  updateStickyDrops(roaches: Roach[]): StickyDrop[] {
-    const { deltaTime, gameTime } = this.config;
-    
-    // 从后向前遍历，便于删除
+
+  /** 调度一个延迟激活的粘液弹 */
+  scheduleStickyDrop(cx: number, cy: number, delay: number): void {
+    this.stickyDrops.push({
+      id: this.nextStickyDropId++,
+      x: cx,
+      y: cy,
+      vx: 0,
+      vy: -80 - Math.random() * 40,
+      targetId: null,
+      speed: 250 + Math.random() * 100,
+      life: delay + 3,
+      maxLife: 3,
+      size: 6 + Math.random() * 3,
+      hit: false,
+    });
+  }
+
+  // ========== 粘液弹更新 ==========
+  /** 更新粘液弹（含追踪、碰撞、伤害、过期清理） */
+  updateStickyDrops(deltaTime: number, gameTime: number, roaches: Roach[]): void {
     for (let i = this.stickyDrops.length - 1; i >= 0; i--) {
       const drop = this.stickyDrops[i];
       drop.life -= deltaTime;
-      
-      // 预生成阶段（延迟阶段）
+
+      // 预生成阶段（延迟 > 剩余生命 > maxLife）
       if (drop.life > drop.maxLife) {
-        // 仍在延迟阶段 - 在生成点做小的空闲动画
         drop.y += Math.sin(gameTime * 10 + drop.id) * 0.5;
         continue;
       }
-      
-      // 弹丸已过期
+
+      // 弹丸过期
       if (drop.life <= 0) {
-        // 释放被包裹的蟑螂（如果有）
         if (drop.targetId !== null) {
           const r = roaches.find(r => r.id === drop.targetId);
           if (r && r.state === RoachState.ALIVE) {
             r.wrappedByDropId = null;
             r.wrapTimer = 0;
-            r.speed = r.baseSpeed; // 恢复速度
+            r.speed = r.baseSpeed;
           }
         }
         this.stickyDrops.splice(i, 1);
         continue;
       }
-      
-      // 如果已经击中蟑螂，保持粘在蟑螂上
+
+      // 已击中蟑螂，保持粘附
       if (drop.hit && drop.targetId !== null) {
         const target = roaches.find(r => r.id === drop.targetId);
         if (target && target.state === RoachState.ALIVE) {
           drop.x = target.x;
           drop.y = target.y;
-          
-          // 粘性板对Boss无效 - 完全跳过
+          // Boss 免疫
           if (target.isBoss) {
-            // 移除弹丸而不产生任何效果
             this.stickyDrops.splice(i, 1);
             continue;
           } else {
-            // 普通蟑螂：在弹丸剩余生命周期内被固定（最多12秒）
             target.vx = 0;
             target.vy = 0;
             target.speed = 0;
             target.wrappedByDropId = drop.id;
             target.wrapTimer = drop.life;
           }
-          
-          // 周期性伤害（仅当没有护甲且不在放置炸弹时）
-          if (Math.random() < deltaTime * 2 && 
-              !(target.type === 'timed_suicide' && target.placeTimer && target.placeTimer > 0)) {
+          // 周期性伤害（无护甲且不在放置炸弹时）
+          const isTimedPlacing = (target as any).type === 'timed_suicide' && (target as any).placeTimer && (target as any).placeTimer > 0;
+          if (Math.random() < deltaTime * 2 && !isTimedPlacing) {
             if (target.armorHp > 0) {
-              // 护甲阻挡粘性板伤害
-              if (Math.random() < 0.1 && this.config.onAddFloatingText) {
-                this.config.onAddFloatingText(target.x, target.y - 15, '护甲免疫', '#60a5fa');
+              if (Math.random() < 0.1) {
+                this.config.onAddFloatingText?.(target.x, target.y - 15, '护甲免疫', '#60a5fa');
               }
             } else {
               target.hp -= 0.5;
               target.damageFlash = 0.1;
             }
           }
-          
-          // 发射黄色粒子
-          if (Math.random() < 0.1 && this.config.onAddParticle) {
-            this.config.onAddParticle({
+          // 黄色粒子
+          if (Math.random() < 0.1) {
+            this.config.onAddParticle?.({
               x: target.x + (Math.random() - 0.5) * 20,
               y: target.y + (Math.random() - 0.5) * 20,
               vx: (Math.random() - 0.5) * 20,
               vy: -10 - Math.random() * 20,
-              life: 0.3,
-              maxLife: 0.3,
+              life: 0.3, maxLife: 0.3,
               size: 2 + Math.random() * 3,
               color: `rgba(250, 200, 50, ${0.5 + Math.random() * 0.3})`,
-              type: ParticleType.ICE
+              type: ParticleType.ICE,
             });
           }
         } else {
-          // 目标死亡 - 立即移除弹丸并清理
           if (target) {
             target.wrappedByDropId = null;
             target.wrapTimer = 0;
@@ -258,137 +176,180 @@ export class StickySystem {
         }
         continue;
       }
-      
-      // 飞行阶段 - 寻找目标
-      // 找到最近的存活且未被包裹的蟑螂
+
+      // 飞行阶段 - 寻找最近的未包裹蟑螂
       let target: Roach | null = null;
       let minDist = Infinity;
-      
       for (const r of roaches) {
         if (r.state !== RoachState.ALIVE) continue;
-        if (r.wrappedByDropId !== null) continue; // 已经被包裹
-        if (r.isBoss) continue; // 跳过Boss
-        
+        if (r.wrappedByDropId !== null) continue;
         const dx = r.x - drop.x;
         const dy = r.y - drop.y;
         const d = Math.sqrt(dx * dx + dy * dy);
-        
-        if (d < minDist && d < 400) { // 最大追踪范围
+        if (d < minDist && d < 400) {
           minDist = d;
           target = r;
         }
       }
-      
+
       if (target) {
-        // 追踪行为
+        // 追踪行为（平滑转向）
         const dx = target.x - drop.x;
         const dy = target.y - drop.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        
-        // 使用目标的大小或默认值
-        const targetSize = target.size || 40;
-        
-        if (dist < drop.size + targetSize) {
-          // 击中目标
-          drop.hit = true;
-          drop.targetId = target.id;
-          drop.vx = 0;
-          drop.vy = 0;
-          
-          // 添加击中效果
-          if (this.config.onAddFloatingText) {
-            this.config.onAddFloatingText(target.x, target.y - 20, '粘住!', '#facc15');
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d > 1) {
+          const targetVx = (dx / d) * drop.speed;
+          const targetVy = (dy / d) * drop.speed;
+          drop.vx += (targetVx - drop.vx) * 5 * deltaTime;
+          drop.vy += (targetVy - drop.vy) * 5 * deltaTime;
+        }
+        drop.targetId = target.id;
+
+        // 碰撞检测
+        const targetSize = (target.size ?? ENEMY_DEFS[target.type]?.size ?? 30) * this.getPerspectiveScale(target.y);
+        if (d < targetSize * 0.5 + drop.size) {
+          // 击中
+          if (target.isBoss) {
+            drop.hit = true;
+            drop.life = 0;
+            continue;
+          } else {
+            drop.hit = true;
+            drop.life = 12;
+            drop.x = target.x;
+            drop.y = target.y;
+            target.wrappedByDropId = drop.id;
+            target.wrapTimer = 12;
+            target.speed = 0;
+            target.vx = 0;
+            target.vy = 0;
+            this.config.onAddFloatingText?.(target.x, target.y - 20, '粘住12秒!', '#facc15');
           }
-        } else {
-          // 向目标移动
-          const speed = drop.speed;
-          const angle = Math.atan2(dy, dx);
-          
-          drop.vx = Math.cos(angle) * speed;
-          drop.vy = Math.sin(angle) * speed;
-          
-          drop.x += drop.vx * deltaTime;
-          drop.y += drop.vy * deltaTime;
+          // 击中粒子
+          for (let p = 0; p < 8; p++) {
+            this.config.onAddParticle?.({
+              x: target.x + (Math.random() - 0.5) * 15,
+              y: target.y + (Math.random() - 0.5) * 15,
+              vx: (Math.random() - 0.5) * 60,
+              vy: (Math.random() - 0.5) * 60,
+              life: 0.3, maxLife: 0.3,
+              size: 2 + Math.random() * 4,
+              color: `rgba(250, 220, 50, ${0.6 + Math.random() * 0.4})`,
+              type: ParticleType.ICE,
+            });
+          }
         }
       } else {
-        // 没有目标，继续直线飞行
-        drop.x += drop.vx * deltaTime;
-        drop.y += drop.vy * deltaTime;
+        // 无目标，向上飞行并微弯
+        drop.vy -= 20 * deltaTime;
+        drop.vx += Math.sin(gameTime * 3 + drop.id) * 30 * deltaTime;
+      }
+
+      // 移动弹丸
+      drop.x += drop.vx * deltaTime;
+      drop.y += drop.vy * deltaTime;
+
+      // 边界检查
+      if (drop.y < -50 || drop.y > this.config.canvasHeight + 50 || drop.x < -50 || drop.x > this.config.canvasWidth + 50) {
+        this.stickyDrops.splice(i, 1);
       }
     }
-    
-    return this.stickyDrops;
   }
-  
-  /**
-   * 生成新的粘性弹丸
-   * @param x 起始X坐标
-   * @param y 起始Y坐标
-   * @param vx 起始X速度
-   * @param vy 起始Y速度
-   * @param targetId 目标蟑螂ID（可选）
-   * @returns 生成的粘性弹丸
-   */
-  createStickyDrop(
-    x: number,
-    y: number,
-    vx: number,
-    vy: number,
-    targetId: number | null = null
-  ): StickyDrop {
-    const drop: StickyDrop = {
-      id: this.nextStickyDropId++,
-      x,
-      y,
-      vx,
-      vy,
-      targetId,
-      speed: 300,
-      life: 12.5, // 12秒效果 + 0.5秒延迟
-      maxLife: 12,
-      size: 12,
-      hit: false
-    };
-    
-    this.stickyDrops.push(drop);
-    return drop;
-  }
-  
-  /**
-   * 生成新的粘性板
-   * @param x X坐标
-   * @param y Y坐标
-   * @param life 生命周期（秒）
-   * @returns 生成的粘性板
-   */
-  createStickyBoard(
-    x: number,
-    y: number,
-    life: number = 10
-  ): StickyBoard {
-    const board: StickyBoard = {
-      id: this.nextStickyDropId++,
-      x,
-      y,
-      width: 240,
-      height: 240,
-      life,
-      maxLife: life,
+
+  // ========== 粘性板（legacy） ==========
+  /** 应用粘性板效果（在指定位置放置粘板） */
+  applyStickyBoardEffect(x: number, y: number): void {
+    const BASE_W = 240;
+    const BASE_H = 240;
+    const scale = this.getPerspectiveScale(y);
+
+    this.stickyBoards.push({
+      id: Date.now() + Math.random(),
+      x, y,
+      width: Math.round(BASE_W * scale),
+      height: Math.round(BASE_H * scale),
       hitWidth: 240,
       hitHeight: 240,
+      life: 5,
+      maxLife: 5,
+      stuckRoaches: [],
       maxStuck: 5,
-      stuckRoaches: []
-    };
-    
-    this.stickyBoards.push(board);
-    return board;
+    });
+
+    this.config.onSpawnSpark?.(x, y, 4);
+    this.config.onAddFloatingText?.(x, y - 30, '贴板!', '#facc15');
   }
-  
-  /**
-   * 获取下一个粘性弹丸ID
-   * @returns 下一个ID
-   */
-  getNextStickyDropId(): number {
-    return this.nextStickyDropId;
+
+  /** 更新粘性板（含生命周期和蟑螂捕获） */
+  updateStickyBoards(deltaTime: number, roaches: Roach[]): void {
+    for (let i = this.stickyBoards.length - 1; i >= 0; i--) {
+      const board = this.stickyBoards[i];
+      board.life -= deltaTime;
+
+      if (board.life <= 0) {
+        // 释放被粘蟑螂
+        for (const roachId of board.stuckRoaches) {
+          const r = roaches.find(r => r.id === roachId);
+          if (r && r.state === RoachState.ALIVE) {
+            r.speed = r.baseSpeed;
+          }
+        }
+        this.stickyBoards.splice(i, 1);
+        continue;
+      }
+
+      const hitHalfW = board.hitWidth / 2;
+      const hitHalfH = board.hitHeight / 2;
+
+      for (const r of roaches) {
+        if (r.state !== RoachState.ALIVE) continue;
+        if (board.stuckRoaches.includes(r.id)) {
+          r.x = Math.max(board.x - hitHalfW + 10, Math.min(board.x + hitHalfW - 10, r.x));
+          r.y = Math.max(board.y - hitHalfH + 10, Math.min(board.y + hitHalfH - 10, r.y));
+          r.vx = 0;
+          r.vy = 0;
+          r.speed = 0;
+          continue;
+        }
+        if (board.stuckRoaches.length >= board.maxStuck) continue;
+        if (r.x > board.x - hitHalfW && r.x < board.x + hitHalfW &&
+            r.y > board.y - hitHalfH && r.y < board.y + hitHalfH) {
+          board.stuckRoaches.push(r.id);
+          r.speed = 0;
+          r.vx = 0;
+          r.vy = 0;
+          if (board.stuckRoaches.length === 1) {
+            this.config.onAddFloatingText?.(r.x, r.y - 20, '粘住!', '#facc15');
+          }
+        }
+      }
+    }
+  }
+
+  // ========== 查询方法 ==========
+  /** 检查蟑螂是否被粘板或粘液弹困住 */
+  isStuckByBoard(roachId: number, roaches: Roach[]): boolean {
+    if (this.stickyBoards.some(b => b.stuckRoaches.includes(roachId))) return true;
+    const r = roaches.find(r => r.id === roachId);
+    return r !== undefined && r.wrappedByDropId !== null;
+  }
+
+  /** 清理蟑螂死亡时的粘液弹包裹 */
+  cleanupRoachDeath(roach: Roach): void {
+    if (roach.wrappedByDropId !== null) {
+      const dropIdx = this.stickyDrops.findIndex(d => d.id === roach.wrappedByDropId);
+      if (dropIdx >= 0) {
+        this.stickyDrops.splice(dropIdx, 1);
+      }
+      roach.wrappedByDropId = null;
+      roach.wrapTimer = 0;
+    }
+  }
+
+  /** 重置系统 */
+  reset(): void {
+    this.stickyBoards = [];
+    this.stickyDrops = [];
+    this.nextStickyDropId = 1;
   }
 }
