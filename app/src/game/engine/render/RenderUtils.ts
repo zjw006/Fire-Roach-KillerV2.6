@@ -3,8 +3,9 @@
  * @description 提供特殊武器和效果的静态渲染方法，用于与旧引擎渐进式集成
  */
 
-import { RoachState, RoachType } from '../../types';
+import { SceneType, RoachState, RoachType } from '../../types';
 import type { RadarLaser, Roach, Player, TripleFlameState } from '../../types';
+import { SCENE_GROUND_BOUNDS } from '../../data';
 
 /** 杀虫剂喷雾状态（引擎内联类型） */
 export interface InsecticideSprayState {
@@ -37,6 +38,7 @@ export class RenderUtils {
     radarLaser: RadarLaser,
     roaches: Roach[],
     playerX: number,
+    playerY: number,
     time: number
   ): void {
     if (!radarLaser.active) return;
@@ -63,7 +65,7 @@ export class RenderUtils {
     if (!target) return;
 
     const px = playerX;
-    const py = -20; // 略高于玩家
+    const py = playerY; // 从玩家位置发射
     const tx = target.x;
     const ty = target.y;
 
@@ -364,6 +366,305 @@ export class RenderUtils {
         }
       }
     }
+
+    ctx.restore();
+  }
+
+  /**
+   * 渲染道具放置预览（范围椭圆、十字准星、标签）
+   * @param ctx Canvas 渲染上下文
+   * @param itemPlaceState 放置状态
+   * @param selectedItemIndex 选中道具索引
+   * @param inventory 道具库存
+   * @param cursorX 光标 X
+   * @param cursorY 光标 Y
+   * @param radiusX 效果范围 X
+   * @param radiusY 效果范围 Y
+   * @param time 游戏时间
+   */
+  static renderItemPlacement(
+    ctx: CanvasRenderingContext2D,
+    itemPlaceState: string,
+    selectedItemIndex: number,
+    inventory: { type: string }[],
+    cursorX: number,
+    cursorY: number,
+    radiusX: number,
+    radiusY: number,
+    time: number
+  ): void {
+    if (itemPlaceState !== 'placing' || selectedItemIndex < 0) return;
+    const item = inventory[selectedItemIndex];
+    if (!item) return;
+
+    const cx = cursorX;
+    const cy = cursorY;
+    const rx = radiusX;
+    const ry = radiusY;
+    const pulse = (Math.sin(time * 4) + 1) * 0.5;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+
+    const colors: Record<string, string> = { sticky: '250, 200, 50', poison: '180, 130, 255', molotov: '255, 100, 80', shotgun: '255, 200, 100' };
+    const c = colors[item.type] || '255, 255, 255';
+
+    // Large filled area (ellipse)
+    ctx.fillStyle = `rgba(${c}, 0.12)`;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Outer boundary ring (pulsing, ellipse)
+    ctx.strokeStyle = `rgba(${c}, ${0.5 + pulse * 0.3})`;
+    ctx.lineWidth = 3;
+    ctx.setLineDash([10 + pulse * 6, 8]);
+    ctx.lineDashOffset = -time * 40;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Inner ring (ellipse)
+    ctx.strokeStyle = `rgba(${c}, 0.6)`;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx * 0.5, ry * 0.5, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // 4 directional range lines
+    ctx.strokeStyle = `rgba(${c}, 0.35)`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cx - rx, cy); ctx.lineTo(cx + rx, cy);
+    ctx.moveTo(cx, cy - ry); ctx.lineTo(cx, cy + ry);
+    ctx.stroke();
+
+    // Crosshair with glow
+    ctx.shadowColor = `rgba(${c}, 0.8)`;
+    ctx.shadowBlur = 8;
+    ctx.strokeStyle = `rgba(${c}, 1)`;
+    ctx.lineWidth = 2.5;
+    const csx = Math.min(14, rx * 0.3);
+    const csy = Math.min(14, ry * 0.3);
+    ctx.beginPath();
+    ctx.moveTo(cx - csx, cy); ctx.lineTo(cx - 4, cy);
+    ctx.moveTo(cx + 4, cy); ctx.lineTo(cx + csx, cy);
+    ctx.moveTo(cx, cy - csy); ctx.lineTo(cx, cy - 4);
+    ctx.moveTo(cx, cy + 4); ctx.lineTo(cx, cy + csy);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Center dot with glow
+    ctx.shadowColor = `rgba(${c}, 1)`;
+    ctx.shadowBlur = 12;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Label background
+    const names: Record<string, string> = { sticky: '蟑螂贴板', poison: '杀虫剂', molotov: '燃烧瓶', shotgun: '散弹模式' };
+    const label1 = `点击放置 ${names[item.type] || '道具'}`;
+    const label2 = `范围: X${rx} x Y${ry}`;
+    ctx.font = 'bold 14px sans-serif';
+    ctx.textAlign = 'center';
+    const m1 = ctx.measureText(label1);
+    const m2 = ctx.measureText(label2);
+    const lw = Math.max(m1.width, m2.width) + 20;
+    const ly = cy - ry - 42;
+
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+    ctx.beginPath();
+    ctx.roundRect(cx - lw / 2, ly, lw, 44, 8);
+    ctx.fill();
+
+    ctx.fillStyle = '#fff';
+    ctx.fillText(label1, cx, ly + 20);
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillStyle = `rgba(${c}, 1)`;
+    ctx.fillText(label2, cx, ly + 37);
+
+    ctx.restore();
+  }
+
+  /**
+   * 渲染防线（虚线 + 护盾光效）
+   * @param ctx Canvas 渲染上下文
+   * @param w 画布宽度
+   * @param defenseLineY 防线 Y 坐标
+   * @param defenseLineColor 防线颜色
+   * @param time 游戏时间
+   * @param shieldTimer 护盾剩余时间
+   */
+  static renderDefenseLine(
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    defenseLineY: number,
+    defenseLineColor: string,
+    time: number,
+    shieldTimer: number
+  ): void {
+    const dl = defenseLineY;
+
+    ctx.save();
+    ctx.strokeStyle = defenseLineColor;
+    ctx.lineWidth = 3;
+    ctx.setLineDash([12, 8]);
+    ctx.lineDashOffset = -time * 30;
+    ctx.beginPath();
+    ctx.moveTo(0, dl);
+    ctx.lineTo(w, dl);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = defenseLineColor.replace('0.7', '0.08');
+    ctx.fillRect(0, dl, w, 25);
+    ctx.restore();
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+    ctx.font = 'bold 13px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('防 线', w / 2, dl - 8);
+
+    // ===== SHIELD: blue energy line 20px above defense line =====
+    if (shieldTimer > 0) {
+      const shieldAlpha = 0.4 + Math.sin(time * 6) * 0.2; // pulse 0.2~0.6
+      const shieldY = dl - 20;
+      ctx.save();
+      // Outer glow
+      ctx.shadowColor = 'rgba(6, 182, 212, 0.8)';
+      ctx.shadowBlur = 12 + Math.sin(time * 4) * 4;
+      // Main line
+      ctx.strokeStyle = `rgba(6, 182, 212, ${shieldAlpha})`;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(0, shieldY);
+      ctx.lineTo(w, shieldY);
+      ctx.stroke();
+      // Inner bright core
+      ctx.strokeStyle = `rgba(165, 243, 252, ${shieldAlpha * 0.6})`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(0, shieldY);
+      ctx.lineTo(w, shieldY);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  /**
+   * 渲染移动范围（蟑螂地面边界6点折线可视化）
+   * @param ctx Canvas 渲染上下文
+   * @param currentScene 当前场景类型
+   * @param defenseLineY 防线 Y 坐标
+   * @param getGroundBoundsAtY 根据 Y 坐标获取地面边界回调
+   */
+  static renderMovementRange(
+    ctx: CanvasRenderingContext2D,
+    currentScene: SceneType,
+    defenseLineY: number,
+    getGroundBoundsAtY: (y: number) => [number, number]
+  ): void {
+    const [farL, farLY, farR, farRY, midL, midLY, midR, midRY, nearL, nearR, nearY] = SCENE_GROUND_BOUNDS[currentScene];
+
+    ctx.save();
+
+    // 1. Green semi-transparent fill (6-point polygon with mid折线)
+    ctx.fillStyle = 'rgba(0, 255, 100, 0.06)';
+    ctx.beginPath();
+    ctx.moveTo(farL, farLY);
+    ctx.lineTo(farR, farRY);
+    ctx.lineTo(midR, midRY);
+    ctx.lineTo(nearR, nearY);
+    ctx.lineTo(nearL, nearY);
+    ctx.lineTo(midL, midLY);
+    ctx.closePath();
+    ctx.fill();
+
+    // 2. Left side: 2-segment折线 (far→mid→near)
+    ctx.strokeStyle = 'rgba(0, 255, 80, 0.8)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(farL, farLY);
+    ctx.lineTo(midL, midLY);
+    ctx.lineTo(nearL, nearY);
+    ctx.stroke();
+
+    // 3. Right side: 2-segment折线 (far→mid→near)
+    ctx.beginPath();
+    ctx.moveTo(farR, farRY);
+    ctx.lineTo(midR, midRY);
+    ctx.lineTo(nearR, nearY);
+    ctx.stroke();
+
+    // 4. Far boundary line (top)
+    ctx.strokeStyle = 'rgba(0, 255, 80, 0.5)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(farL, farLY);
+    ctx.lineTo(farR, farRY);
+    ctx.stroke();
+
+    // 5. Near boundary line (bottom)
+    ctx.strokeStyle = 'rgba(0, 255, 80, 0.9)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(nearL, nearY);
+    ctx.lineTo(nearR, nearY);
+    ctx.stroke();
+
+    // 6. Defense line reference (dashed green)
+    const [defL, defR] = getGroundBoundsAtY(defenseLineY);
+    ctx.strokeStyle = 'rgba(0, 255, 80, 0.4)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    ctx.moveTo(defL, defenseLineY);
+    ctx.lineTo(defR, defenseLineY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // 7. Corner markers (green dots + coordinate labels) - all 6 points
+    const corners = [
+      { x: farL,  y: farLY, label: `(${Math.round(farL)},${Math.round(farLY)})`, name: 'farL', alignX: 'left', offsetX: 10 },
+      { x: farR,  y: farRY, label: `(${Math.round(farR)},${Math.round(farRY)})`, name: 'farR', alignX: 'right', offsetX: -10 },
+      { x: midL,  y: midLY, label: `(${Math.round(midL)},${Math.round(midLY)})`, name: 'midL', alignX: 'left', offsetX: 10 },
+      { x: midR,  y: midRY, label: `(${Math.round(midR)},${Math.round(midRY)})`, name: 'midR', alignX: 'right', offsetX: -10 },
+      { x: nearL, y: nearY, label: `(${Math.round(nearL)},${Math.round(nearY)})`, name: 'nearL', alignX: 'left', offsetX: 10 },
+      { x: nearR, y: nearY, label: `(${Math.round(nearR)},${Math.round(nearY)})`, name: 'nearR', alignX: 'right', offsetX: -10 },
+    ];
+    for (const c of corners) {
+      ctx.font = 'bold 12px monospace';
+      const textWidth = ctx.measureText(c.label).width;
+      const pillW = textWidth + 8;
+      const pillH = 16;
+      const pillX = c.alignX === 'left' ? c.x + c.offsetX - 4 : c.x + c.offsetX - pillW + 4;
+      const pillY = c.y + 3 - pillH / 2;
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.beginPath();
+      ctx.roundRect(pillX, pillY, pillW, pillH, 4);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(0, 255, 80, 1)';
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(255, 255, 0, 1)';
+      ctx.textAlign = c.alignX as CanvasTextAlign;
+      ctx.fillText(c.label, c.x + c.offsetX, c.y + 4);
+    }
+
+    // 8. Label
+    ctx.fillStyle = 'rgba(0, 255, 80, 0.7)';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'center';
+    const lblX = (farL + farR) / 2;
+    const lblY = Math.min(farLY, farRY);
+    ctx.fillText('蟑螂地面边界(6点折线)', lblX, lblY - 14);
 
     ctx.restore();
   }

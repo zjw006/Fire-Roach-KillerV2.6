@@ -1,296 +1,241 @@
 /**
  * @fileoverview 消耗品系统模块
- * @description 负责管理游戏中所有消耗品的逻辑，包括自动使用、冷却系统、效果应用等
+ * @description 负责管理游戏中所有消耗品的逻辑，包括购买、库存、自动使用、冷却系统、效果应用等
  */
 
-import { GameState, type Player } from '../../types';
-
-/**
- * 消耗品效果接口
- */
-export interface ConsumableEffect {
-  /** 消耗品ID */
-  id: string;
-  /** 消耗品名称 */
-  name: string;
-  /** 消耗品描述 */
-  description: string;
-  /** 冷却时间（秒） */
-  cooldown?: number;
-  /** 是否自动使用 */
-  autoUse?: boolean;
-}
+import { GameState, ParticleType } from '../../types';
+import type { Player, Particle, ConsumableDef } from '../../types';
 
 /**
  * 消耗品系统配置接口
  */
 export interface ConsumableSystemConfig {
-  /** 游戏画布宽度 */
-  canvasWidth: number;
-  /** 游戏画布高度 */
-  canvasHeight: number;
-  /** 时间增量（秒） */
-  deltaTime: number;
-  /** 防御线Y坐标 */
-  defenseLineY: () => number;
-  /** 最大防御生命值 */
-  maxDefenseHp: number;
-  /** 当前防御生命值 */
-  defenseHp: number;
-  /** 玩家对象 */
-  player: Player;
-  /** 游戏状态 */
-  gameState: GameState;
   /** 消耗品定义列表 */
-  consumableDefs?: ConsumableEffect[];
+  consumableDefs: ConsumableDef[];
   /** 添加浮动文字回调 */
-  onAddFloatingText?: (x: number, y: number, text: string, color: string, duration?: number, fontSize?: number) => void;
-  /** 更新消耗品状态回调 */
-  onConsumableUpdate?: (
-    inventory: Record<string, number>,
-    buffTimers: Record<string, number>,
-    cooldowns?: Record<string, number>,
-    globalCooldown?: number,
-    combatStartTimer?: number,
-    itemCooldowns?: Record<string, number>
-  ) => void;
-  /** 更新玩家状态回调 */
-  onPlayerUpdate?: (player: Player) => void;
-  /** 更新防御状态回调 */
-  onDefenseUpdate?: (defenseHp: number, maxDefenseHp: number) => void;
-  /** 更新紧急冷却库存回调 */
+  onAddFloatingText: (x: number, y: number, text: string, color: string, duration?: number, fontSize?: number) => void;
+  /** 生成烟雾粒子回调 */
+  onSpawnSmokeParticles: (x: number, y: number, count: number) => void;
+  /** 添加粒子回调 */
+  onAddParticle: (particle: Particle) => void;
+  /** 消耗品UI更新回调 */
+  onConsumableUpdate?: (inventory: Record<string, number>, buffTimers: Record<string, number>, cooldowns?: Record<string, number>, globalCooldown?: number, combatStartTimer?: number, itemCooldowns?: Record<string, number>) => void;
+  /** 紧急冷却库存更新回调 */
   onEmergencyCoolUpdate?: (count: number) => void;
-  /** 获取地面中心坐标回调 */
-  onGetGroundCenter?: () => [number, number];
+  /** 经济系统更新回调 */
+  onEconomyUpdate?: (economy: any) => void;
+  /** 玩家状态更新回调 */
+  onPlayerUpdate?: (player: Player) => void;
+  /** 防御状态更新回调 */
+  onDefenseUpdate?: (defenseHp: number, maxDefenseHp: number) => void;
+  /** 获取玩家回调 */
+  getPlayer: () => Player;
+  /** 获取防御生命值回调 */
+  getDefenseHp: () => number;
+  /** 获取最大防御生命值回调 */
+  getMaxDefenseHp: () => number;
+  /** 获取画布宽度回调 */
+  getCanvasWidth: () => number;
+  /** 获取画布高度回调 */
+  getCanvasHeight: () => number;
+  /** 获取游戏状态回调 */
+  getGameState: () => GameState;
+  /** 获取防御线Y坐标回调 */
+  getDefenseLineY: () => number;
+  /** 获取地面中心回调 */
+  getGroundCenter: () => [number, number];
+  /** 获取粒子限制回调 */
+  getParticleLimit: () => number;
+  /** 获取当前粒子数量回调 */
+  getParticleCount: () => number;
+  /** 获取经济系统回调 */
+  getEconomy: () => any;
+  /** 设置经济系统回调 */
+  setEconomy: (economy: any) => void;
 }
 
 /**
  * 消耗品系统类
- * @description 管理消耗品的库存、自动使用、冷却和效果应用
+ * @description 管理消耗品的库存、购买、自动使用、冷却和效果应用
  */
 export class ConsumableSystem {
-  /** 消耗品库存 */
-  private consumableInventory: Record<string, number> = {};
-  /** 自动使用设置 */
-  private autoUseEnabled: Record<string, boolean> = {};
-  /** 紧急冷却库存 */
-  private emergencyCoolInventory: number = 0;
-  /** 增益闪光计时器 */
-  private buffFlashTimers: Record<string, number> = {};
-  /** 消耗品冷却时间 */
-  private consumableCooldowns: Record<string, number> = {};
-  /** 全局消耗品冷却时间 */
-  private globalConsumableCooldown: number = 0;
-  /** 战斗开始计时器 */
-  private combatStartTimer: number = 0;
-  /** 物品冷却时间 */
-  private itemCooldowns: Record<string, number> = {};
   /** 系统配置 */
   private config: ConsumableSystemConfig;
-  /** 诱饵投掷动画状态 */
-  private baitThrowAnim: {
-    active: boolean;
-    x: number;
-    y: number;
-    targetX: number;
-    targetY: number;
-    timer: number;
-  } = { active: false, x: 0, y: 0, targetX: 0, targetY: 0, timer: 0 };
-  /** 诱饵目标位置 */
-  private baitTarget: { x: number; y: number; active: boolean } = { x: 0, y: 0, active: false };
 
-  /**
-   * 构造函数
-   * @param config 消耗品系统配置
-   */
+  /** 消耗品库存 */
+  consumableInventory: Record<string, number> = {};
+  /** 自动使用设置 */
+  autoUseEnabled: Record<string, boolean> = {};
+  /** 紧急冷却库存 */
+  emergencyCoolInventory: number = 0;
+  /** 增益闪光计时器 */
+  buffFlashTimers: Record<string, number> = {};
+  /** 消耗品冷却时间 */
+  consumableCooldowns: Record<string, number> = {};
+  /** 全局消耗品冷却时间 */
+  globalConsumableCooldown: number = 0;
+  /** 战斗开始计时器 */
+  combatStartTimer: number = 0;
+  /** 物品冷却时间（拾取道具） */
+  itemCooldowns: Record<string, number> = {};
+  /** 诱饵投掷动画状态 */
+  baitThrowAnim: { active: boolean; x: number; y: number; targetX: number; targetY: number; timer: number } = { active: false, x: 0, y: 0, targetX: 0, targetY: 0, timer: 0 };
+  /** 诱饵目标位置 */
+  baitTarget: { x: number; y: number; active: boolean } = { x: 0, y: 0, active: false };
+  /** 火力全开倒计时跟踪 */
+  _lastPowerBoostCountdown: number = -1;
+
   constructor(config: ConsumableSystemConfig) {
     this.config = config;
   }
 
-  /**
-   * 更新系统配置
-   * @param config 新的配置
-   */
   updateConfig(config: Partial<ConsumableSystemConfig>): void {
     this.config = { ...this.config, ...config };
   }
 
-  /**
-   * 更新消耗品系统
-   */
-  update(): void {
-    this.updateConsumableEffects(this.config.deltaTime);
+  // ========== 重置 ==========
+
+  reset(): void {
+    this.consumableCooldowns = {};
+    this.globalConsumableCooldown = 0;
+    this.combatStartTimer = 1;
+    this.baitTarget = { x: 0, y: 0, active: false };
+    this._lastPowerBoostCountdown = -1;
+    this.itemCooldowns = {};
+    // consumableInventory and autoUseEnabled are persisted across levels
+    this.buffFlashTimers = {};
+    this.baitThrowAnim = { active: false, x: 0, y: 0, targetX: 0, targetY: 0, timer: 0 };
   }
 
-  /**
-   * 获取消耗品库存
-   * @returns 消耗品库存
-   */
-  getInventory(): Record<string, number> {
-    return { ...this.consumableInventory };
-  }
+  // ========== 购买 ==========
 
   /**
-   * 获取自动使用设置
-   * @returns 自动使用设置
+   * 购买消耗品
    */
-  getAutoUseSettings(): Record<string, boolean> {
-    return { ...this.autoUseEnabled };
-  }
+  buyConsumable(id: string): boolean {
+    const def = this.config.consumableDefs.find(c => c.id === id);
+    if (!def) return false;
+    const economy = this.config.getEconomy();
+    if (economy.money < def.cost) return false;
 
-  /**
-   * 获取紧急冷却库存
-   * @returns 紧急冷却库存数量
-   */
-  getEmergencyCoolInventory(): number {
-    return this.emergencyCoolInventory;
-  }
-
-  /**
-   * 获取增益闪光计时器
-   * @returns 增益闪光计时器
-   */
-  getBuffFlashTimers(): Record<string, number> {
-    return { ...this.buffFlashTimers };
-  }
-
-  /**
-   * 获取冷却时间
-   * @returns 冷却时间对象
-   */
-  getCooldowns(): {
-    consumableCooldowns: Record<string, number>;
-    globalCooldown: number;
-    combatStartTimer: number;
-    itemCooldowns: Record<string, number>;
-  } {
-    return {
-      consumableCooldowns: { ...this.consumableCooldowns },
-      globalCooldown: this.globalConsumableCooldown,
-      combatStartTimer: this.combatStartTimer,
-      itemCooldowns: { ...this.itemCooldowns },
-    };
-  }
-
-  /**
-   * 获取诱饵投掷动画状态
-   * @returns 诱饵投掷动画状态
-   */
-  getBaitThrowAnim(): typeof this.baitThrowAnim {
-    return { ...this.baitThrowAnim };
-  }
-
-  /**
-   * 获取诱饵目标位置
-   * @returns 诱饵目标位置
-   */
-  getBaitTarget(): typeof this.baitTarget {
-    return { ...this.baitTarget };
-  }
-
-  /**
-   * 设置消耗品库存
-   * @param inventory 消耗品库存
-   */
-  setInventory(inventory: Record<string, number>): void {
-    this.consumableInventory = { ...inventory };
-    this.notifyUpdate();
-  }
-
-  /**
-   * 设置自动使用设置
-   * @param settings 自动使用设置
-   */
-  setAutoUseSettings(settings: Record<string, boolean>): void {
-    this.autoUseEnabled = { ...settings };
-    this.notifyUpdate();
-  }
-
-  /**
-   * 添加消耗品到库存
-   * @param id 消耗品ID
-   * @param count 数量
-   */
-  addConsumable(id: string, count: number = 1): void {
-    if (!this.consumableInventory[id]) {
-      this.consumableInventory[id] = 0;
+    economy.money -= def.cost;
+    this.consumableInventory[id] = (this.consumableInventory[id] || 0) + 1;
+    if (this.autoUseEnabled[id] === undefined) {
+      this.autoUseEnabled[id] = true;
     }
-    this.consumableInventory[id] += count;
-    this.notifyUpdate();
-  }
 
-  /**
-   * 移除消耗品
-   * @param id 消耗品ID
-   * @param count 数量
-   * @returns 是否成功移除
-   */
-  removeConsumable(id: string, count: number = 1): boolean {
-    if (!this.consumableInventory[id] || this.consumableInventory[id] < count) {
-      return false;
-    }
-    this.consumableInventory[id] -= count;
-    if (this.consumableInventory[id] <= 0) {
-      delete this.consumableInventory[id];
-    }
-    this.notifyUpdate();
+    this.config.setEconomy({ ...economy });
+    this.config.onEconomyUpdate?.(this.config.getEconomy());
+    this.notifyConsumableUpdate();
     return true;
   }
 
+  // ========== 使用消耗品 ==========
+
   /**
-   * 使用消耗品
-   * @param id 消耗品ID
-   * @returns 是否成功使用
+   * 使用库存中的消耗品
    */
   useConsumable(id: string): boolean {
-    // 检查库存
-    if (!this.consumableInventory[id] || this.consumableInventory[id] <= 0) {
-      return false;
-    }
+    const player = this.config.getPlayer();
+    if (!player) return false;
+    if ((this.consumableInventory[id] || 0) <= 0) return false;
 
-    // 检查冷却时间
-    if (this.globalConsumableCooldown > 0 || this.combatStartTimer > 0) {
-      return false;
-    }
-
-    // 检查物品特定冷却时间
-    if (this.consumableCooldowns[id] && this.consumableCooldowns[id] > 0) {
-      return false;
-    }
-
-    // 应用消耗品效果
-    const success = this.applyConsumableEffect(id);
-    if (!success) {
-      return false;
-    }
-
-    // 减少库存
-    this.consumableInventory[id]--;
-    if (this.consumableInventory[id] <= 0) {
-      delete this.consumableInventory[id];
-    }
-
-    // 应用冷却时间（紧急冷却除外）
     if (id !== 'emergency_cool') {
-      const def = this.config.consumableDefs?.find(c => c.id === id);
+      if (this.combatStartTimer > 0) {
+        this.config.onAddFloatingText(player.x, player.y - 40, `冷却中... (${this.combatStartTimer.toFixed(1)}s)`, '#94a3b8', 800);
+        return false;
+      }
+      if ((this.consumableCooldowns[id] || 0) > 0) {
+        this.config.onAddFloatingText(player.x, player.y - 40, `${this.config.consumableDefs.find(c => c.id === id)?.name || ''}冷却中... (${this.consumableCooldowns[id].toFixed(1)}s)`, '#94a3b8', 800);
+        return false;
+      }
+      if (this.globalConsumableCooldown > 0) {
+        this.config.onAddFloatingText(player.x, player.y - 40, `全局冷却中... (${this.globalConsumableCooldown.toFixed(1)}s)`, '#94a3b8', 800);
+        return false;
+      }
+    }
+
+    this.consumableInventory[id]--;
+    if (this.consumableInventory[id] <= 0) delete this.consumableInventory[id];
+
+    switch (id) {
+      case 'gas_refill': {
+        player.gas = player.maxGas;
+        this.buffFlashTimers['gas_refill'] = 2;
+        this.config.onAddFloatingText(player.x, player.y - 40, '燃气已回满!', '#fbbf24', 1500);
+        break;
+      }
+      case 'defense_repair': {
+        const maxDefenseHp = this.config.getMaxDefenseHp();
+        const healAmount = Math.floor(maxDefenseHp * 0.2);
+        const oldHp = this.config.getDefenseHp();
+        const newHp = Math.min(maxDefenseHp, oldHp + healAmount);
+        const actualHeal = newHp - oldHp;
+        this.buffFlashTimers['defense_repair'] = 2;
+        if (actualHeal > 0) {
+          this.config.onAddFloatingText(this.config.getCanvasWidth() / 2, this.config.getDefenseLineY() - 30, `防线修复 +${actualHeal}`, '#4ade80', 1500);
+        }
+        this.config.onDefenseUpdate?.(newHp, maxDefenseHp);
+        break;
+      }
+      case 'emergency_cool': {
+        this.emergencyCoolInventory++;
+        this.config.onEmergencyCoolUpdate?.(this.emergencyCoolInventory);
+        this.config.onAddFloatingText(player.x, player.y - 40, `紧急冷却 +1 (共${this.emergencyCoolInventory}次)`, '#60a5fa', 1500);
+        break;
+      }
+      case 'power_boost': {
+        player.powerBoostTimer = 8;
+        this.config.onAddFloatingText(this.config.getCanvasWidth() / 2, this.config.getCanvasHeight() / 2, '>>> 火力全开 8秒 <<<', '#ef4444', 2000, 32);
+        break;
+      }
+      case 'shield': {
+        player.shieldTimer = 5;
+        player.shieldActive = true;
+        this.buffFlashTimers['shield'] = 5;
+        this.config.onAddFloatingText(this.config.getCanvasWidth() / 2, this.config.getCanvasHeight() / 2 - 50, '>>> 防线护盾 5秒 <<<', '#06b6d4', 2000);
+        break;
+      }
+      case 'bait': {
+        player.baitTimer = 3;
+        const [targetX, targetY] = this.config.getGroundCenter();
+        this.baitTarget = { x: targetX, y: targetY, active: true };
+        this.baitThrowAnim = {
+          active: true,
+          x: player.x,
+          y: player.y - 50,
+          targetX,
+          targetY,
+          timer: 0.8,
+        };
+        this.config.onAddFloatingText(targetX, targetY - 40, '>>> 蟑螂诱饵已投放 <<<', '#fbbf24', 2000);
+        break;
+      }
+    }
+
+    if (id !== 'emergency_cool') {
+      const def = this.config.consumableDefs.find(c => c.id === id);
       if (def?.cooldown) {
         this.consumableCooldowns[id] = def.cooldown;
       }
-      this.globalConsumableCooldown = 1; // 1秒全局冷却时间
+      this.globalConsumableCooldown = 1;
     }
 
-    this.notifyUpdate();
+    this.notifyConsumableUpdate();
+    this.config.onPlayerUpdate?.(player);
+    this.config.onDefenseUpdate?.(this.config.getDefenseHp(), this.config.getMaxDefenseHp());
+
     return true;
   }
 
+  // ========== 自动使用 ==========
+
   /**
    * 切换自动使用设置
-   * @param id 消耗品ID
-   * @returns 切换后的自动使用状态
    */
   toggleAutoUse(id: string): boolean {
     this.autoUseEnabled[id] = !this.autoUseEnabled[id];
-    this.notifyUpdate();
+    this.notifyConsumableUpdate();
     return this.autoUseEnabled[id];
   }
 
@@ -298,21 +243,20 @@ export class ConsumableSystem {
    * 检查并自动使用消耗品
    */
   checkAutoUseConsumables(): void {
-    if (!this.config.player || this.config.gameState !== GameState.PLAYING) return;
+    const player = this.config.getPlayer();
+    if (!player || this.config.getGameState() !== GameState.PLAYING) return;
 
     for (const [id, count] of Object.entries(this.consumableInventory)) {
       if (count <= 0) continue;
 
       let shouldUse = false;
       switch (id) {
-        // 燃气补充：手动使用（已移至HUD）
         case 'emergency_cool':
-          shouldUse = this.config.player.isOverheated;
+          shouldUse = player.isOverheated;
           break;
         case 'shield':
-          shouldUse = this.config.defenseHp / this.config.maxDefenseHp < 0.15;
+          shouldUse = this.config.getDefenseHp() / this.config.getMaxDefenseHp() < 0.15;
           break;
-        // 手动：gas_refill, defense_repair, power_boost, bait
       }
 
       if (shouldUse) {
@@ -321,12 +265,99 @@ export class ConsumableSystem {
     }
   }
 
+  // ========== 紧急冷却 ==========
+
   /**
-   * 更新增益闪光计时器
-   * @param dt 时间增量
+   * 紧急冷却（玩家过热时使用）
    */
-  updateBuffFlashTimers(dt: number): void {
-    // 更新增益闪光计时器
+  emergencyCool(): boolean {
+    const player = this.config.getPlayer();
+    if (!player.isOverheated) return false;
+    if (this.emergencyCoolInventory > 0) {
+      this.emergencyCoolInventory--;
+      player.isOverheated = false;
+      player.overheatTimer = 0;
+      player.heat = 0;
+      this.config.onSpawnSmokeParticles(player.x, player.y, 20);
+      this.config.onAddFloatingText(player.x, player.y - 60, `紧急冷却! (剩余${this.emergencyCoolInventory}次)`, '#60a5fa');
+      this.config.onEmergencyCoolUpdate?.(this.emergencyCoolInventory);
+      return true;
+    }
+    return false;
+  }
+
+  // ========== 更新 ==========
+
+  /**
+   * 主更新方法（每帧调用）
+   */
+  update(dt: number): void {
+    this.updateConsumableEffects(dt);
+    this.updateBuffFlashTimers(dt);
+  }
+
+  /**
+   * 更新消耗品临时效果计时器
+   */
+  private updateConsumableEffects(dt: number): void {
+    const player = this.config.getPlayer();
+    if (!player) return;
+
+    if (player.powerBoostTimer > 0) {
+      player.powerBoostTimer -= dt;
+      const secondsLeft = Math.ceil(player.powerBoostTimer);
+      if (secondsLeft > 0 && secondsLeft !== this._lastPowerBoostCountdown) {
+        this._lastPowerBoostCountdown = secondsLeft;
+        this.config.onAddFloatingText(this.config.getCanvasWidth() / 2, this.config.getCanvasHeight() / 2, `火力全开 ${secondsLeft}秒`, '#ef4444', 800, 32);
+      }
+      if (player.powerBoostTimer <= 0) {
+        player.powerBoostTimer = 0;
+        this._lastPowerBoostCountdown = -1;
+        this.config.onAddFloatingText(this.config.getCanvasWidth() / 2, this.config.getCanvasHeight() / 2, '火力全开 结束', '#f87171', 1500, 32);
+      }
+    }
+
+    if (player.shieldTimer > 0) {
+      player.shieldTimer -= dt;
+      this.buffFlashTimers['shield'] = player.shieldTimer;
+      if (player.shieldTimer <= 0) {
+        player.shieldTimer = 0;
+        player.shieldActive = false;
+        delete this.buffFlashTimers['shield'];
+        this.config.onAddFloatingText(this.config.getCanvasWidth() / 2, this.config.getCanvasHeight() / 2 - 50, '防线护盾 消失', '#22d3ee', 1500);
+      }
+    }
+
+    if (player.baitTimer > 0) {
+      player.baitTimer -= dt;
+      // 持续气味粒子
+      if (this.baitTarget.active && this.config.getParticleCount() < this.config.getParticleLimit() - 20) {
+        for (let i = 0; i < 2; i++) {
+          this.config.onAddParticle({
+            x: this.baitTarget.x + (Math.random() - 0.5) * 30,
+            y: this.baitTarget.y - Math.random() * 10,
+            vx: (Math.random() - 0.5) * 8,
+            vy: -(15 + Math.random() * 20),
+            life: 1.2 + Math.random() * 0.8,
+            maxLife: 2,
+            color: Math.random() < 0.5 ? '#fbbf24' : '#fcd34d',
+            size: 2 + Math.random() * 2.5,
+            type: ParticleType.SMOKE,
+          });
+        }
+      }
+      if (player.baitTimer <= 0) {
+        player.baitTimer = 0;
+        this.baitTarget.active = false;
+        this.config.onAddFloatingText(this.baitTarget.x, this.baitTarget.y - 40, '诱饵效果 消失', '#fbbf24', 1500);
+      }
+    }
+  }
+
+  /**
+   * 更新增益闪光计时器和冷却时间
+   */
+  private updateBuffFlashTimers(dt: number): void {
     for (const [id, timer] of Object.entries(this.buffFlashTimers)) {
       if (timer > 0) {
         this.buffFlashTimers[id] = timer - dt;
@@ -336,19 +367,16 @@ export class ConsumableSystem {
       }
     }
 
-    // 更新战斗开始计时器
     if (this.combatStartTimer > 0) {
       this.combatStartTimer -= dt;
       if (this.combatStartTimer < 0) this.combatStartTimer = 0;
     }
 
-    // 更新全局冷却时间
     if (this.globalConsumableCooldown > 0) {
       this.globalConsumableCooldown -= dt;
       if (this.globalConsumableCooldown < 0) this.globalConsumableCooldown = 0;
     }
 
-    // 更新单个消耗品冷却时间
     for (const [id, timer] of Object.entries(this.consumableCooldowns)) {
       if (timer > 0) {
         this.consumableCooldowns[id] = timer - dt;
@@ -358,7 +386,6 @@ export class ConsumableSystem {
       }
     }
 
-    // 更新拾取物品冷却时间（与商店消耗品共享全局冷却时间）
     for (const [type, timer] of Object.entries(this.itemCooldowns)) {
       if (timer > 0) {
         this.itemCooldowns[type] = timer - dt;
@@ -368,255 +395,164 @@ export class ConsumableSystem {
       }
     }
 
-    // 通知React UI冷却时间变化（节流以避免过多重新渲染）
     if (this.globalConsumableCooldown > 0 || Object.keys(this.consumableCooldowns).length > 0 || Object.keys(this.itemCooldowns).length > 0) {
-      this.notifyUpdate();
+      this.notifyConsumableUpdate();
     }
 
-    // 更新诱饵投掷动画
-    this.updateBaitThrowAnimation(dt);
+    // 诱饵投掷动画
+    if (this.baitThrowAnim.active) {
+      this.baitThrowAnim.timer -= dt;
+      const progress = 1 - this.baitThrowAnim.timer / 0.8;
+      if (progress < 1) {
+        this.baitThrowAnim.x += (this.baitThrowAnim.targetX - this.baitThrowAnim.x) * 0.15;
+        const height = 150 * Math.sin(progress * Math.PI);
+        this.baitThrowAnim.y = this.baitThrowAnim.targetY - height;
+      } else {
+        this.baitThrowAnim.active = false;
+        // 粉碎效果：黄色爆裂模拟诱饵罐破碎 + 气味释放
+        for (let i = 0; i < 15; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const dist = Math.random() * 60;
+          this.config.onAddParticle({
+            x: this.baitThrowAnim.targetX + Math.cos(angle) * dist,
+            y: this.baitThrowAnim.targetY + Math.sin(angle) * dist * 0.3,
+            vx: Math.cos(angle) * (30 + Math.random() * 40),
+            vy: Math.sin(angle) * (15 + Math.random() * 25) - 20,
+            life: 1.5 + Math.random(),
+            maxLife: 2.5,
+            color: '#fbbf24',
+            size: 2 + Math.random() * 3,
+            type: ParticleType.EMBER,
+          });
+        }
+        // 玻璃碎片
+        for (let i = 0; i < 8; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          this.config.onAddParticle({
+            x: this.baitThrowAnim.targetX,
+            y: this.baitThrowAnim.targetY,
+            vx: Math.cos(angle) * (40 + Math.random() * 60),
+            vy: Math.sin(angle) * (20 + Math.random() * 30) - 30,
+            life: 1 + Math.random() * 0.8,
+            maxLife: 1.8,
+            color: '#e5e7eb',
+            size: 1 + Math.random() * 2,
+            type: ParticleType.SPARK,
+          });
+        }
+      }
+    }
+    this.notifyConsumableUpdate();
+  }
+
+  // ========== 通知 ==========
+
+  private notifyConsumableUpdate(): void {
+    this.config.onConsumableUpdate?.(
+      { ...this.consumableInventory },
+      { ...this.buffFlashTimers },
+      { ...this.consumableCooldowns },
+      this.globalConsumableCooldown,
+      this.combatStartTimer,
+      { ...this.itemCooldowns }
+    );
   }
 
   /**
-   * 更新消耗品效果
-   * @param dt 时间增量
+   * 渲染诱饵投掷动画（罐子飞行 + 拖尾）
    */
-  updateConsumableEffects(dt: number): void {
-    // 更新玩家状态中的消耗品效果计时器
-    if (this.config.player.powerBoostTimer > 0) {
-      this.config.player.powerBoostTimer -= dt;
-      if (this.config.player.powerBoostTimer <= 0) {
-        this.config.player.powerBoostTimer = 0;
-      }
+  static renderBaitThrow(
+    ctx: CanvasRenderingContext2D,
+    baitThrowAnim: { active: boolean; x: number; y: number; targetX: number; targetY: number; timer: number },
+    time: number
+  ): void {
+    if (!baitThrowAnim.active) return;
+    ctx.save();
+    const { x, y, targetX, targetY } = baitThrowAnim;
+    // Shadow on ground below
+    const shadowY = targetY;
+    const height = shadowY - y;
+    const shadowScale = Math.max(0.3, 1 - height / 200);
+    ctx.globalAlpha = 0.2 * shadowScale;
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.ellipse(x, shadowY, 10 * shadowScale, 4 * shadowScale, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    // Bait jar body
+    ctx.translate(x, y);
+    const jarW = 14, jarH = 18;
+    ctx.fillStyle = '#78350f';
+    ctx.beginPath();
+    ctx.roundRect(-jarW / 2, -jarH / 2, jarW, jarH, 4);
+    ctx.fill();
+    ctx.fillStyle = '#92400e';
+    ctx.beginPath();
+    ctx.roundRect(-jarW / 2 + 2, -jarH / 2 + 2, jarW - 6, jarH - 6, 2);
+    ctx.fill();
+    ctx.fillStyle = '#57534e';
+    ctx.fillRect(-jarW / 2 - 1, -jarH / 2 - 3, jarW + 2, 5);
+    ctx.fillStyle = '#fbbf24';
+    ctx.fillRect(-jarW / 2 + 1, -2, jarW - 2, 4);
+    ctx.fillStyle = '#fff';
+    ctx.globalAlpha = 0.6 + 0.4 * Math.sin(time * 8);
+    ctx.beginPath();
+    ctx.arc(-3, -3, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    // Trail dots
+    const dx = targetX - x;
+    const dy = targetY - y;
+    for (let i = 1; i <= 3; i++) {
+      const t = i / 4;
+      const trailProgress = Math.max(0, 1 - baitThrowAnim.timer / 0.8 - t * 0.15);
+      if (trailProgress <= 0) continue;
+      const trailX = x - dx * t * 0.3;
+      const trailY = y - dy * t * 0.3;
+      ctx.globalAlpha = 0.4 * (1 - t);
+      ctx.fillStyle = '#fbbf24';
+      ctx.beginPath();
+      ctx.arc(trailX, trailY, 2 - t * 0.5, 0, Math.PI * 2);
+      ctx.fill();
     }
-
-    if (this.config.player.shieldTimer > 0) {
-      this.config.player.shieldTimer -= dt;
-      if (this.config.player.shieldTimer <= 0) {
-        this.config.player.shieldTimer = 0;
-        this.config.player.shieldActive = false;
-      }
-    }
-
-    if (this.config.player.baitTimer > 0) {
-      this.config.player.baitTimer -= dt;
-      if (this.config.player.baitTimer <= 0) {
-        this.config.player.baitTimer = 0;
-        this.baitTarget.active = false;
-      }
-    }
+    ctx.globalAlpha = 1;
   }
 
   /**
-   * 重置消耗品系统
+   * 渲染诱饵地面标记（香味光环 + 玻璃碎片）
    */
-  reset(): void {
-    this.consumableInventory = {};
-    this.autoUseEnabled = {};
-    this.emergencyCoolInventory = 0;
-    this.buffFlashTimers = {};
-    this.consumableCooldowns = {};
-    this.globalConsumableCooldown = 0;
-    this.combatStartTimer = 0;
-    this.itemCooldowns = {};
-    this.baitThrowAnim = { active: false, x: 0, y: 0, targetX: 0, targetY: 0, timer: 0 };
-    this.baitTarget = { x: 0, y: 0, active: false };
-  }
-
-  /**
-   * 设置战斗开始计时器
-   * @param timer 计时器值
-   */
-  setCombatStartTimer(timer: number): void {
-    this.combatStartTimer = timer;
-  }
-
-  /**
-   * 设置物品冷却时间
-   * @param type 物品类型
-   * @param cooldown 冷却时间
-   */
-  setItemCooldown(type: string, cooldown: number): void {
-    this.itemCooldowns[type] = cooldown;
-  }
-
-  /**
-   * 应用消耗品效果
-   * @param id 消耗品ID
-   * @returns 是否成功应用
-   */
-  private applyConsumableEffect(id: string): boolean {
-    switch (id) {
-      case 'gas_refill': {
-        const oldGas = this.config.player.gas;
-        this.config.player.gas = this.config.player.maxGas;
-        const actualRefill = this.config.player.gas - oldGas;
-        if (actualRefill > 0 && this.config.onAddFloatingText) {
-          this.config.onAddFloatingText(
-            this.config.player.x,
-            this.config.player.y - 40,
-            `燃气补充 +${actualRefill}`,
-            '#60a5fa',
-            1500
-          );
-        }
-        break;
-      }
-      case 'defense_repair': {
-        const healAmount = Math.floor(this.config.maxDefenseHp * 0.2); // 最大生命值的20%
-        const oldHp = this.config.defenseHp;
-        const newHp = Math.min(this.config.maxDefenseHp, this.config.defenseHp + healAmount);
-        const actualHeal = newHp - oldHp;
-        this.buffFlashTimers['defense_repair'] = 2; // 2秒增益闪光
-        if (actualHeal > 0 && this.config.onAddFloatingText) {
-          this.config.onAddFloatingText(
-            this.config.canvasWidth / 2,
-            this.config.defenseLineY() - 30,
-            `防线修复 +${actualHeal}`,
-            '#4ade80',
-            1500
-          );
-        }
-        // 更新防御生命值
-        if (this.config.onDefenseUpdate) {
-          this.config.onDefenseUpdate(newHp, this.config.maxDefenseHp);
-        }
-        break;
-      }
-      case 'emergency_cool': {
-        // 从商店购买 → 添加到紧急冷却库存（免费使用）
-        this.emergencyCoolInventory++;
-        if (this.config.onEmergencyCoolUpdate) {
-          this.config.onEmergencyCoolUpdate(this.emergencyCoolInventory);
-        }
-        if (this.config.onAddFloatingText) {
-          this.config.onAddFloatingText(
-            this.config.player.x,
-            this.config.player.y - 40,
-            `紧急冷却 +1 (共${this.emergencyCoolInventory}次)`,
-            '#60a5fa',
-            1500
-          );
-        }
-        break;
-      }
-      case 'power_boost': {
-        this.config.player.powerBoostTimer = 8;
-        if (this.config.onAddFloatingText) {
-          this.config.onAddFloatingText(
-            this.config.canvasWidth / 2,
-            this.config.canvasHeight / 2,
-            '>>> 火力全开 8秒 <<<',
-            '#ef4444',
-            2000,
-            32
-          );
-        }
-        break;
-      }
-      case 'shield': {
-        this.config.player.shieldTimer = 5;
-        this.config.player.shieldActive = true;
-        this.buffFlashTimers['shield'] = 5; // 与React UI同步以显示增益图标
-        if (this.config.onAddFloatingText) {
-          this.config.onAddFloatingText(
-            this.config.canvasWidth / 2,
-            this.config.canvasHeight / 2 - 50,
-            '>>> 防线护盾 5秒 <<<',
-            '#06b6d4',
-            2000
-          );
-        }
-        break;
-      }
-      case 'bait': {
-        this.config.player.baitTimer = 3;
-        // 目标：地面边界中心（蟑螂可行走区域）
-        let targetX = this.config.canvasWidth / 2;
-        let targetY = this.config.canvasHeight * 0.7;
-        
-        if (this.config.onGetGroundCenter) {
-          [targetX, targetY] = this.config.onGetGroundCenter();
-        }
-        
-        this.baitTarget = { x: targetX, y: targetY, active: true };
-        
-        // 开始向地面中心投掷动画
-        this.baitThrowAnim = {
-          active: true,
-          x: this.config.player.x,
-          y: this.config.player.y - 50,
-          targetX,
-          targetY,
-          timer: 0.8,
-        };
-        
-        if (this.config.onAddFloatingText) {
-          this.config.onAddFloatingText(
-            targetX,
-            targetY - 40,
-            '>>> 蟑螂诱饵已投放 <<<',
-            '#fbbf24',
-            2000
-          );
-        }
-        break;
-      }
-      default:
-        return false;
+  static renderBaitMark(
+    ctx: CanvasRenderingContext2D,
+    baitTarget: { active: boolean; x: number; y: number },
+    baitTimer: number,
+    time: number
+  ): void {
+    if (!baitTarget.active || baitTimer <= 0) return;
+    ctx.save();
+    const { x, y } = baitTarget;
+    const pulse = 0.7 + 0.3 * Math.sin(time * 4);
+    const auraGrad = ctx.createRadialGradient(x, y, 0, x, y, 50 * pulse);
+    auraGrad.addColorStop(0, 'rgba(251, 191, 36, 0.25)');
+    auraGrad.addColorStop(0.5, 'rgba(251, 191, 36, 0.1)');
+    auraGrad.addColorStop(1, 'rgba(251, 191, 36, 0)');
+    ctx.fillStyle = auraGrad;
+    ctx.beginPath();
+    ctx.ellipse(x, y, 50 * pulse, 20 * pulse, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 0.6 * (baitTimer / 3);
+    for (let i = 0; i < 5; i++) {
+      const angle = (i / 5) * Math.PI * 2 + time * 0.5;
+      const dist = 8 + Math.sin(i * 3) * 4;
+      const sx = x + Math.cos(angle) * dist;
+      const sy = y + Math.sin(angle) * dist * 0.4;
+      ctx.fillStyle = '#c0c8d8';
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(sx + Math.cos(angle + 0.3) * 4, sy + Math.sin(angle + 0.3) * 2);
+      ctx.lineTo(sx + Math.cos(angle - 0.2) * 3, sy + Math.sin(angle - 0.2) * 1.5);
+      ctx.closePath();
+      ctx.fill();
     }
-
-    return true;
-  }
-
-  /**
-   * 更新诱饵投掷动画
-   * @param dt 时间增量
-   */
-  private updateBaitThrowAnimation(dt: number): void {
-    if (!this.baitThrowAnim.active) return;
-
-    this.baitThrowAnim.timer -= dt;
-    const progress = 1 - this.baitThrowAnim.timer / 0.8;
-
-    if (progress < 1) {
-      // 抛物线弧线朝向目标蟑螂
-      const t = progress;
-      const startX = this.baitThrowAnim.x;
-      const startY = this.baitThrowAnim.y;
-      const targetX = this.baitThrowAnim.targetX;
-      const targetY = this.baitThrowAnim.targetY;
-
-      // 简单的抛物线插值
-      const currentX = startX + (targetX - startX) * t;
-      const currentY = startY + (targetY - startY) * t + 100 * Math.sin(t * Math.PI); // 抛物线高度
-
-      // 更新动画位置（用于渲染）
-      this.baitThrowAnim.x = currentX;
-      this.baitThrowAnim.y = currentY;
-    } else {
-      // 动画完成
-      this.baitThrowAnim.active = false;
-    }
-  }
-
-  /**
-   * 通知更新
-   */
-  private notifyUpdate(): void {
-    if (this.config.onConsumableUpdate) {
-      this.config.onConsumableUpdate(
-        this.consumableInventory,
-        this.buffFlashTimers,
-        this.consumableCooldowns,
-        this.globalConsumableCooldown,
-        this.combatStartTimer,
-        this.itemCooldowns
-      );
-    }
-
-    if (this.config.onPlayerUpdate) {
-      this.config.onPlayerUpdate(this.config.player);
-    }
+    ctx.restore();
   }
 }

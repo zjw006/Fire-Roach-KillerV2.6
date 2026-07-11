@@ -296,6 +296,7 @@ export class AudioManager {
       this.bgm.play().then(() => {
         console.log('BGM playback started successfully');
       }).catch((error) => {
+        if (error.name === 'AbortError') return; // 正常竞态
         console.error('Failed to play BGM:', error);
         // 尝试强制取消静音并重试
         console.log('Attempting to unmute and retry...');
@@ -303,6 +304,7 @@ export class AudioManager {
         this.bgm!.play().then(() => {
           console.log('BGM playback started after unmute');
         }).catch((retryError) => {
+          if (retryError.name === 'AbortError') return; // 正常竞态
           console.error('Failed to play BGM even after unmute:', retryError);
         });
       });
@@ -454,8 +456,8 @@ export class AudioManager {
     if (this.bgm) {
       this.bgm.pause();
       this.bgm.currentTime = 0;
-      this.bgm.src = ''; // 清空 src，防止任何残留加载
-      this.bgm.load(); // 重置音频元素状态
+      // 移除旧元素的 src 以释放资源，不调用 load() 避免触发 error 事件
+      this.bgm.removeAttribute('src');
     }
     // 创建新的 BGM 元素，直接设置 src 并取消静音（用户已交互过）
     this.bgm = new Audio(path);
@@ -489,6 +491,7 @@ export class AudioManager {
       console.log('Playing current BGM');
       this.bgm.currentTime = 0;
       this.bgm.play().catch((error) => {
+        if (error.name === 'AbortError') return; // 正常竞态：pause打断了play
         console.error('Failed to play current BGM:', error);
       });
     } else {

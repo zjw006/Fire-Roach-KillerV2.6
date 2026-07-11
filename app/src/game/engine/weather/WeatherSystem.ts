@@ -220,4 +220,57 @@ export class WeatherSystem {
   cleanupExpiredParticles(): void {
     this.weatherParticles = this.weatherParticles.filter(p => p.life > 0);
   }
+
+  /**
+   * 渲染天气背景（闪电闪光）
+   */
+  static renderWeatherBackground(
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    lightningFlash: number
+  ): void {
+    if (lightningFlash > 0) {
+      ctx.fillStyle = `rgba(255, 255, 255, ${lightningFlash * 0.3})`;
+      ctx.fillRect(0, 0, w, h);
+    }
+  }
+
+  /**
+   * 渲染天气前景（雨滴、烟雾粒子）
+   */
+  static renderWeatherForeground(
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    weatherParticles: Particle[],
+    renderDefenseLine: () => void
+  ): void {
+    ctx.save();
+    for (const p of weatherParticles) {
+      const alpha = p.life / p.maxLife;
+      if (p.type === ParticleType.RAIN) {
+        ctx.globalAlpha = alpha * 0.4;
+        ctx.strokeStyle = p.color;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.x + p.vx * 0.02, p.y + p.vy * 0.02);
+        ctx.stroke();
+      } else if (p.type === ParticleType.SMOKE) {
+        ctx.globalAlpha = alpha * 0.3;
+        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size);
+        grad.addColorStop(0, p.color);
+        grad.addColorStop(1, 'rgba(180, 180, 160, 0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.restore();
+
+    renderDefenseLine();
+  }
 }

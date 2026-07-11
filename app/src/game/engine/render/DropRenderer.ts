@@ -169,4 +169,61 @@ export class DropRenderer {
       ctx.restore();
     }
   }
+
+  /**
+   * 渲染战场掉落道具（关卡结束后掉落的金色道具箱）
+   * @param ctx Canvas 渲染上下文
+   * @param drop 掉落道具状态
+   * @param dropImages 道具图片映射
+   */
+  static renderItemDropOnField(
+    ctx: CanvasRenderingContext2D,
+    drop: { type: string; name: string; icon: string; x: number; y: number; targetY: number; bobPhase: number; collected: boolean; falling: boolean; fallSpeed: number },
+    dropImages?: Record<string, HTMLImageElement> | null
+  ): void {
+    const bobY = Math.sin(drop.bobPhase) * 12;
+    const x = drop.x;
+    const y = drop.y + bobY;
+    const size = 48;
+
+    // Glow effect behind the item
+    const glowPulse = (Math.sin(drop.bobPhase * 2) + 1) * 0.5;
+    const gradient = ctx.createRadialGradient(x, y, size * 0.3, x, y, size * 2);
+    gradient.addColorStop(0, `rgba(251, 191, 36, ${0.4 + glowPulse * 0.3})`);
+    gradient.addColorStop(0.5, `rgba(245, 158, 11, ${0.2 + glowPulse * 0.2})`);
+    gradient.addColorStop(1, 'rgba(245, 158, 11, 0)');
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(x, y, size * 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Outer ring animation
+    ctx.strokeStyle = `rgba(251, 191, 36, ${0.6 + glowPulse * 0.4})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y, size * (0.8 + glowPulse * 0.2), 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Inner ring (counter-rotating)
+    ctx.strokeStyle = `rgba(252, 211, 77, ${0.4 + glowPulse * 0.3})`;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(x, y, size * (0.6 - glowPulse * 0.1), drop.bobPhase, drop.bobPhase + Math.PI * 1.5);
+    ctx.stroke();
+
+    // Draw item icon using preloaded drop images
+    const itemImg = dropImages?.[drop.type];
+    if (itemImg) {
+      ctx.drawImage(itemImg, x - size / 2, y - size / 2, size, size);
+    } else {
+      // Fallback: draw a golden box with ?
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillRect(x - size / 2, y - size / 2, size, size);
+      ctx.fillStyle = '#000';
+      ctx.font = 'bold 28px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('?', x, y);
+    }
+  }
 }

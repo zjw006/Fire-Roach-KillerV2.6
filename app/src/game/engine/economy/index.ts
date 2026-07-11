@@ -4,8 +4,6 @@
  */
 
 export { EconomyManager } from './EconomyManager';
-export { AchievementManager } from './AchievementManager';
-export { ShopManager } from './ShopManager';
 
 /**
  * 经济系统工具函数

@@ -1,24 +1,50 @@
 /**
  * @fileoverview 游戏波次管理器
- * @description 负责管理游戏波次的生成、配置和进度跟踪
+ * @description 负责管理游戏波次的生成、配置、倒计时、多阶段生成和进度跟踪
  */
 
-import { SceneType, RoachType, GameMode } from '../../types';
-import type { WaveConfig, GameProgress } from '../../types';
-import { SCENE_WAVE_CONFIGS, SCENE_ROACH_TYPES, SCENE_CONFIGS } from '../../data';
+import { SceneType, RoachType, GameMode, GameState } from '../../types';
+import type { WaveConfig } from '../../types';
+import { SCENE_WAVE_CONFIGS, SCENE_ROACH_TYPES } from '../../data';
+
+// ===== 波次管理器配置接口 =====
+export interface WaveManagerConfig {
+  width: number;
+  height: number;
+  difficulty: string;
+  gameMode: GameMode;
+  currentScene: SceneType;
+}
+
+// ===== 波次管理器回调接口 =====
+export interface WaveCallbacks {
+  onSpawnRoach: (type: RoachType, clusterId?: number) => void;
+  onAddFloatingText: (x: number, y: number, text: string, color: string) => void;
+  onStateChange: (state: GameState) => void;
+  onGameVictory: () => void;
+  onSaveProgress: () => void;
+  onUnlockNextScene: () => void;
+  onPlayBGM: () => void;
+  onTutorialPauseChange: (paused: boolean) => void;
+  onKillRoach: (roach: any, index: number) => void;
+  onGetRoaches: () => any[];
+  onGetEconomy: () => any;
+  onGetProgress: () => any;
+  onGetTimedSuicideRemaining: () => number;
+  onSetTimedSuicideRemaining: (count: number) => void;
+  onSetTimedSuicideTimer: (timer: number) => void;
+}
 
 /**
  * 波次管理器类
- * @description 管理游戏波次的生成、配置和进度跟踪
  */
 export class WaveManager {
-  private currentScene: SceneType;
-  private gameMode: GameMode;
-  private difficulty: string;
-  
+  private cfg: WaveManagerConfig;
+  private cb: WaveCallbacks;
+
   /** 当前波次 */
   wave: number = 0;
-  /** 波次计时器 */
+  /** 波次计时器（波次间间隔） */
   waveTimer: number = 0;
   /** 是否正在生成波次 */
   waveSpawning: boolean = false;
@@ -30,7 +56,6 @@ export class WaveManager {
   waveJustCleared: boolean = false;
   /** 波次清除计时器 */
   waveClearTimer: number = 0;
-  
   /** 教程暂停生成标志 */
   tutorialPauseSpawn: boolean = false;
   /** 倒计时阶段 */
@@ -40,211 +65,17 @@ export class WaveManager {
   /** 倒计时波次待处理标志 */
   countdownWavePending: boolean = false;
 
-  /**
-   * 构造函数
-   * @param {SceneType} currentScene - 当前场景
-   * @param {GameMode} gameMode - 游戏模式
-   * @param {string} difficulty - 游戏难度
-   */
-  constructor(
-    currentScene: SceneType,
-    gameMode: GameMode,
-    difficulty: string = 'normal'
-  ) {
-    this.currentScene = currentScene;
-    this.gameMode = gameMode;
-    this.difficulty = difficulty;
+  constructor(config: WaveManagerConfig, callbacks: WaveCallbacks) {
+    this.cfg = config;
+    this.cb = callbacks;
   }
 
-  /**
-   * 启动新波次
-   * @returns {boolean} 是否成功启动波次
-   */
-  startWave(): boolean {
-    this.wave++;
-
-    // 厨房第一波教程暂停
-    if (this.currentScene === SceneType.KITCHEN && this.wave === 1 && this.gameMode === GameMode.STORY) {
-      const tutorialSeen = (() => {
-        try { return !!localStorage.getItem('gameplay_tutorial_seen'); } catch { return false; }
-      })();
-      if (!tutorialSeen) {
-        this.tutorialPauseSpawn = true;
-        return false; // 退出，不生成任何东西
-      }
-    }
-
-    // 启动3-2-1倒计时
-    if (this.startCountdown()) return true;
-
-    // 不需要倒计时，立即生成
-    this.doWaveSpawn();
-    return true;
+  /** 更新配置 */
+  updateConfig(config: Partial<WaveManagerConfig>): void {
+    Object.assign(this.cfg, config);
   }
 
-  /**
-   * 启动3-2-1倒计时
-   * @returns {boolean} 是否启动了倒计时
-   */
-  startCountdown(): boolean {
-    // 只在每个关卡的第一波触发倒计时（不在波次之间）
-    // BOSS模式有自己的计时
-    if (this.wave !== 1 || this.gameMode === GameMode.BOSS) return false;
-
-    this.countdownPhase = 3;
-    this.countdownTimer = 3.0; // 总共3秒：3, 2, 1
-    this.countdownWavePending = true;
-    return true;
-  }
-
-  /**
-   * 执行波次生成
-   */
-  doWaveSpawn(): void {
-    this.countdownWavePending = false;
-
-    // 检查是否所有波次都已清除
-    if (this.gameMode === GameMode.STORY) {
-      const configs = SCENE_WAVE_CONFIGS[this.currentScene] || SCENE_WAVE_CONFIGS[SceneType.KITCHEN];
-      const totalWaves = configs.length;
-      if (this.wave > totalWaves) {
-        // 所有波次都已清除！胜利！
-        this.waveJustCleared = true;
-        this.waveClearTimer = 6;
-        this.waveSpawning = true;
-        this.spawnQueue = [];
-        this.waveTimer = 999;
-        return;
-      }
-    }
-
-    const config = this.getWaveConfig(this.wave);
-    let clusterId = 1;
-
-    // 获取当前场景可用的蟑螂类型
-    const allTypes = [
-      RoachType.SMALL, RoachType.LARGE, RoachType.FLYING, 
-      RoachType.ARMORED, RoachType.SPLITTING, RoachType.SUICIDE, 
-      RoachType.FLYING_SUICIDE, RoachType.QUEEN
-    ];
-    
-    const availableTypes = this.gameMode === GameMode.STORY
-      ? (this.difficulty === 'hard' ? allTypes : (SCENE_ROACH_TYPES[this.currentScene] || [RoachType.SMALL]))
-      : allTypes;
-
-    // 辅助函数：添加蟑螂到队列
-    const addToQueue = (queue: { type: RoachType; clusterId?: number }[], type: RoachType, count: number) => {
-      if (!availableTypes.includes(type)) return;
-      for (let i = 0; i < count; i++) {
-        queue.push({ 
-          type, 
-          clusterId: Math.random() < config.clusterChance ? clusterId : undefined 
-        });
-        if (Math.random() < config.clusterChance) clusterId++;
-      }
-    };
-
-    // 辅助函数：随机打乱队列
-    const shuffle = (queue: { type: RoachType; clusterId?: number }[]) => {
-      for (let i = queue.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [queue[i], queue[j]] = [queue[j], queue[i]];
-      }
-    };
-
-    // 根据配置生成波次
-    const queue: { type: RoachType; clusterId?: number }[] = [];
-    
-    // 添加小型蟑螂
-    addToQueue(queue, RoachType.SMALL, config.smallCount);
-    
-    // 添加大型蟑螂
-    addToQueue(queue, RoachType.LARGE, config.largeCount);
-    
-    // 添加飞行蟑螂
-    addToQueue(queue, RoachType.FLYING, config.flyingCount);
-    
-    // 添加装甲蟑螂
-    addToQueue(queue, RoachType.ARMORED, config.armoredCount);
-    
-    // 添加分裂蟑螂
-    addToQueue(queue, RoachType.SPLITTING, config.splittingCount);
-    
-    // 添加自爆蟑螂
-    addToQueue(queue, RoachType.SUICIDE, config.suicideCount);
-    
-    // 添加飞行自爆蟑螂
-    addToQueue(queue, RoachType.FLYING_SUICIDE, config.flyingSuicideCount);
-    
-    // 添加女王蟑螂
-    addToQueue(queue, RoachType.QUEEN, config.queenCount);
-
-    // 随机打乱队列
-    shuffle(queue);
-
-    // 设置波次状态
-    this.spawnQueue = queue;
-    this.waveSpawning = true;
-    this.spawnTimer = config.spawnInterval ?? 1.0;
-  }
-
-  /**
-   * 获取波次配置
-   * @param {number} waveNumber - 波次编号
-   * @returns {WaveConfig} 波次配置
-   */
-  getWaveConfig(waveNumber: number): WaveConfig {
-    const configs = SCENE_WAVE_CONFIGS[this.currentScene] || SCENE_WAVE_CONFIGS[SceneType.KITCHEN];
-    const config = configs[waveNumber - 1];
-    
-    if (!config) {
-      // 返回默认配置
-      return {
-        wave: waveNumber,
-        smallCount: 10,
-        largeCount: 5,
-        flyingCount: 3,
-        armoredCount: 2,
-        splittingCount: 1,
-        suicideCount: 1,
-        flyingSuicideCount: 0,
-        queenCount: 0,
-        speed: 1.0,
-        interval: 1.0,
-        spawnInterval: 0.5,
-        clusterChance: 0.3,
-        name: `波次 ${waveNumber}`
-      };
-    }
-    
-    return config;
-  }
-
-  /**
-   * 获取总波次数
-   * @returns {number} 总波次数
-   */
-  getTotalWaves(): number {
-    if (this.gameMode === GameMode.STORY) {
-      const configs = SCENE_WAVE_CONFIGS[this.currentScene] || SCENE_WAVE_CONFIGS[SceneType.KITCHEN];
-      return configs.length;
-    }
-    
-    // 无尽模式没有固定波次数
-    return 0;
-  }
-
-  /**
-   * 检查波次是否完成
-   * @returns {boolean} 波次是否完成
-   */
-  isWaveComplete(): boolean {
-    return !this.waveSpawning && this.spawnQueue.length === 0;
-  }
-
-  /**
-   * 重置波次管理器
-   */
+  /** 重置波次管理器 */
   reset(): void {
     this.wave = 0;
     this.waveTimer = 0;
@@ -259,130 +90,354 @@ export class WaveManager {
     this.countdownWavePending = false;
   }
 
-  /**
-   * 更新波次计时器
-   * @param {number} deltaTime - 时间增量
-   */
-  update(deltaTime: number): void {
-    // 更新倒计时
-    if (this.countdownTimer > 0) {
-      this.countdownTimer -= deltaTime;
-      if (this.countdownTimer <= 0) {
-        this.countdownPhase--;
-        if (this.countdownPhase > 0) {
-          this.countdownTimer = 1.0; // 每个数字1秒
-        } else {
-          // 倒计时结束，生成波次
-          this.doWaveSpawn();
+  /** 获取波次配置 */
+  getWaveConfig(waveNumber: number): WaveConfig {
+    const configs = SCENE_WAVE_CONFIGS[this.cfg.currentScene] || SCENE_WAVE_CONFIGS[SceneType.KITCHEN];
+    const config = configs[waveNumber - 1];
+    if (!config) {
+      return {
+        wave: waveNumber,
+        smallCount: 10, largeCount: 5, flyingCount: 3, armoredCount: 2,
+        splittingCount: 1, suicideCount: 1, flyingSuicideCount: 0, queenCount: 0,
+        speed: 1.0, interval: 1.0, spawnInterval: 0.5, clusterChance: 0.3,
+        name: `波次 ${waveNumber}`,
+      };
+    }
+    return config;
+  }
+
+  /** 获取总波次数 */
+  getTotalWaves(): number {
+    if (this.cfg.gameMode === GameMode.STORY) {
+      const configs = SCENE_WAVE_CONFIGS[this.cfg.currentScene] || SCENE_WAVE_CONFIGS[SceneType.KITCHEN];
+      return configs.length;
+    }
+    return 0;
+  }
+
+  // ========== 主更新循环 ==========
+
+  /** 更新波次逻辑（每帧调用） */
+  update(deltaTime: number): { skipRest?: boolean } {
+    // 波次清除后等待
+    if (this.waveJustCleared) {
+      this.waveClearTimer -= deltaTime;
+      if (this.waveClearTimer <= 0) this.waveJustCleared = false;
+      return { skipRest: true };
+    }
+
+    // ===== HOSPITAL EXCLUSIVE: Auto-skip wave if only nurse roaches remain =====
+    if (this.cfg.currentScene === SceneType.HOSPITAL && !this.waveSpawning &&
+        this.spawnQueue.length === 0 && this.wave > 0) {
+      const roaches = this.cb.onGetRoaches();
+      if (roaches.length > 0) {
+        const allNurses = roaches.every((r: any) => r.state === 'alive' && r.type === RoachType.NURSE);
+        if (allNurses) {
+          for (let i = roaches.length - 1; i >= 0; i--) {
+            const nr = roaches[i];
+            if (nr.type === RoachType.NURSE && nr.state === 'alive') {
+              nr.hp = 0;
+              this.cb.onKillRoach(nr, i);
+            }
+          }
+          this.cb.onAddFloatingText(this.cfg.width / 2, this.cfg.height * 0.35, '支援单位已清除，推进下一波!', '#fbbf24');
         }
       }
     }
 
-    // 更新波次清除计时器
-    if (this.waveClearTimer > 0) {
-      this.waveClearTimer -= deltaTime;
-      if (this.waveClearTimer <= 0) {
-        this.waveJustCleared = false;
+    // 波次完成：自动开始下一波
+    if (!this.tutorialPauseSpawn && !this.waveSpawning &&
+        this.cb.onGetRoaches().length === 0 && this.spawnQueue.length === 0 && this.wave > 0) {
+      this.waveTimer -= deltaTime;
+      if (this.waveTimer <= 0) {
+        this.waveTimer = 2;
+        if (this.cfg.gameMode === GameMode.STORY) {
+          const configs = SCENE_WAVE_CONFIGS[this.cfg.currentScene] || SCENE_WAVE_CONFIGS[SceneType.KITCHEN];
+          if (this.wave >= configs.length) {
+            this.cb.onUnlockNextScene();
+            this.waveJustCleared = true;
+            this.waveClearTimer = 6;
+            this.waveSpawning = true;
+            this.spawnQueue = [];
+            this.waveTimer = 999;
+            this.cb.onGameVictory();
+            return { skipRest: true };
+          }
+        }
+        this.startWave();
       }
     }
 
-    // 更新生成计时器
-    if (this.waveSpawning && this.spawnQueue.length > 0) {
+    // 生成队列处理
+    if (this.waveSpawning) {
       this.spawnTimer -= deltaTime;
-      if (this.spawnTimer <= 0) {
-        // 重置生成计时器
-        const config = this.getWaveConfig(this.wave);
-        this.spawnTimer = config.spawnInterval ?? 1.0;
+      if (this.spawnTimer <= 0 && this.spawnQueue.length > 0) {
+        const spawn = this.spawnQueue.shift()!;
+        this.cb.onSpawnRoach(spawn.type, spawn.clusterId);
+        this.spawnTimer = 0.3 + Math.random() * 0.5;
       }
+      if (this.spawnQueue.length === 0) this.waveSpawning = false;
     }
+
+    return {};
   }
 
-  /**
-   * 获取下一个要生成的蟑螂
-   * @returns {{ type: RoachType; clusterId?: number } | null} 下一个蟑螂信息
-   */
-  getNextSpawn(): { type: RoachType; clusterId?: number } | null {
-    if (!this.waveSpawning || this.spawnQueue.length === 0) {
-      return null;
+  // ========== 波次启动 ==========
+
+  /** 启动新波次（显示倒计时或直接生成） */
+  startWave(): void {
+    this.wave++;
+
+    // 厨房第一波教程暂停
+    if (this.cfg.currentScene === SceneType.KITCHEN && this.wave === 1 && this.cfg.gameMode === GameMode.STORY) {
+      const tutorialSeen = (() => {
+        try { return !!localStorage.getItem('gameplay_tutorial_seen'); } catch { return false; }
+      })();
+      if (!tutorialSeen) {
+        this.tutorialPauseSpawn = true;
+        this.cb.onTutorialPauseChange(true);
+        return;
+      }
     }
-    
+
+    // 启动3-2-1倒计时
+    if (this.startCountdown()) return;
+
+    // 不需要倒计时，立即生成
+    this.doWaveSpawn();
+  }
+
+  /** 启动3-2-1倒计时。返回 true 表示已启动倒计时 */
+  startCountdown(): boolean {
+    if (this.wave !== 1 || this.cfg.gameMode === GameMode.BOSS) return false;
+
+    this.countdownPhase = 3;
+    this.countdownTimer = 3.0;
+    this.countdownWavePending = true;
+    this.cb.onStateChange(GameState.COUNTDOWN);
+    this.cb.onPlayBGM();
+    return true;
+  }
+
+  /** 执行波次生成 */
+  doWaveSpawn(): void {
+    this.cb.onStateChange(GameState.PLAYING);
+    this.countdownWavePending = false;
+
+    // Boss 模式跳过倒计时，在此处启动关卡 BGM
+    if (this.wave === 1 && this.cfg.gameMode === GameMode.BOSS) {
+      this.cb.onPlayBGM();
+    }
+
+    // 检查是否所有波次都已清除
+    if (this.cfg.gameMode === GameMode.STORY) {
+      const configs = SCENE_WAVE_CONFIGS[this.cfg.currentScene] || SCENE_WAVE_CONFIGS[SceneType.KITCHEN];
+      const totalWaves = configs.length;
+      if (this.wave > totalWaves) {
+        const economy = this.cb.onGetEconomy();
+        const progress = this.cb.onGetProgress();
+        economy.highestWave = totalWaves;
+        progress.highestWave = Math.max(progress.highestWave, totalWaves);
+        this.cb.onUnlockNextScene();
+        this.cb.onSaveProgress();
+        this.waveJustCleared = true;
+        this.waveClearTimer = 6;
+        this.waveSpawning = true;
+        this.spawnQueue = [];
+        this.waveTimer = 999;
+        this.cb.onGameVictory();
+        return;
+      }
+    }
+
+    const config = this.getWaveConfig(this.wave);
+    let clusterId = 1;
+
+    const allTypes = [RoachType.SMALL, RoachType.LARGE, RoachType.FLYING, RoachType.ARMORED, RoachType.SPLITTING, RoachType.SUICIDE, RoachType.FLYING_SUICIDE, RoachType.QUEEN];
+    const availableTypes = this.cfg.gameMode === GameMode.STORY
+      ? (this.cfg.difficulty === 'hard' ? allTypes : (SCENE_ROACH_TYPES[this.cfg.currentScene] || [RoachType.SMALL]))
+      : allTypes;
+
+    const addToQueue = (queue: { type: RoachType; clusterId?: number }[], type: RoachType, count: number) => {
+      if (!availableTypes.includes(type)) return;
+      for (let i = 0; i < count; i++) {
+        queue.push({ type, clusterId: Math.random() < config.clusterChance ? clusterId : undefined });
+        if (Math.random() < config.clusterChance) clusterId++;
+      }
+    };
+    const shuffle = (queue: { type: RoachType; clusterId?: number }[]) => {
+      for (let i = queue.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [queue[i], queue[j]] = [queue[j], queue[i]];
+      }
+    };
+
+    // 三阶段生成
+    const phase1: typeof this.spawnQueue = [];
+    const phase2: typeof this.spawnQueue = [];
+    const phase3: typeof this.spawnQueue = [];
+
+    const p1Small = Math.floor(config.smallCount * 0.3);
+    const p1Large = Math.floor(config.largeCount * 0.3);
+    addToQueue(phase1, RoachType.SMALL, p1Small);
+    addToQueue(phase1, RoachType.LARGE, p1Large);
+    shuffle(phase1);
+
+    const p2Small = Math.floor(config.smallCount * 0.5);
+    const p2Large = Math.floor(config.largeCount * 0.5);
+    addToQueue(phase2, RoachType.SMALL, p2Small);
+    addToQueue(phase2, RoachType.LARGE, p2Large);
+    addToQueue(phase2, RoachType.FLYING, config.flyingCount);
+    addToQueue(phase2, RoachType.ARMORED, config.armoredCount);
+    addToQueue(phase2, RoachType.SPLITTING, config.splittingCount);
+    addToQueue(phase2, RoachType.SUICIDE, config.suicideCount);
+    addToQueue(phase2, RoachType.FLYING_SUICIDE, config.flyingSuicideCount);
+    addToQueue(phase2, RoachType.QUEEN, config.queenCount);
+    shuffle(phase2);
+
+    const p3Small = config.smallCount - p1Small - p2Small;
+    const p3Large = config.largeCount - p1Large - p2Large;
+    addToQueue(phase3, RoachType.SMALL, Math.max(0, p3Small));
+    addToQueue(phase3, RoachType.LARGE, Math.max(0, p3Large));
+    shuffle(phase3);
+
+    // 医院特殊单位
+    if (this.cfg.currentScene === SceneType.HOSPITAL) {
+      const { nurseCount = 0, mutantCount = 0, timedSuicideCount = 0 } = config;
+      addToQueue(phase1, RoachType.NURSE, nurseCount);
+      shuffle(phase1);
+      addToQueue(phase2, RoachType.MUTANT, mutantCount);
+      this.cb.onSetTimedSuicideRemaining(timedSuicideCount);
+      this.cb.onSetTimedSuicideTimer(timedSuicideCount > 0 ? 5.0 : 0);
+    }
+
+    this.spawnQueue = [...phase1, ...phase2, ...phase3];
+    this.waveSpawning = true;
+    this.spawnTimer = 0;
+  }
+
+  // ========== 辅助方法 ==========
+
+  /** 获取下一个要生成的蟑螂 */
+  getNextSpawn(): { type: RoachType; clusterId?: number } | null {
+    if (!this.waveSpawning || this.spawnQueue.length === 0) return null;
     return this.spawnQueue[0];
   }
 
-  /**
-   * 移除已生成的蟑螂
-   */
+  /** 移除已生成的蟑螂 */
   removeSpawned(): void {
-    if (this.spawnQueue.length > 0) {
-      this.spawnQueue.shift();
-    }
-    
-    // 如果队列为空，标记波次生成完成
-    if (this.spawnQueue.length === 0) {
-      this.waveSpawning = false;
-    }
+    if (this.spawnQueue.length > 0) this.spawnQueue.shift();
+    if (this.spawnQueue.length === 0) this.waveSpawning = false;
   }
 
-  /**
-   * 检查是否需要显示商店
-   * @returns {boolean} 是否需要显示商店
-   */
+  /** 检查波次是否完成 */
+  isWaveComplete(): boolean {
+    return !this.waveSpawning && this.spawnQueue.length === 0;
+  }
+
+  /** 检查是否需要显示商店 */
   shouldShowShop(): boolean {
-    // 在故事模式中，所有波次完成后显示商店
-    if (this.gameMode === GameMode.STORY) {
-      const totalWaves = this.getTotalWaves();
-      return this.wave > totalWaves;
+    if (this.cfg.gameMode === GameMode.STORY) {
+      return this.wave > this.getTotalWaves();
     }
-    
-    // 其他模式不显示商店
     return false;
   }
 
-  /**
-   * 获取当前波次名称
-   * @returns {string} 波次名称
-   */
+  /** 获取当前波次名称 */
   getWaveName(): string {
-    const config = this.getWaveConfig(this.wave);
-    return config.name || `波次 ${this.wave}`;
+    return this.getWaveConfig(this.wave).name || `波次 ${this.wave}`;
   }
 
   /**
-   * 计算波次清除后的天赋点奖励
-   * @param {SceneType} currentScene - 当前场景
-   * @returns {number} 天赋点奖励数量
+   * 渲染医院虫卵（静态方法）
+   * @param ctx Canvas 渲染上下文
+   * @param eggPods 虫卵数组
+   * @param eggPodImg 虫卵图片
+   * @param time 游戏时间
+   * @param disinfectionRewardAlpha 消毒奖励透明度（0~1）
+   * @param canvasWidth 画布宽度
+   * @param canvasHeight 画布高度
    */
-  calculateTalentReward(currentScene: SceneType): number {
-    const sceneConfig = SCENE_CONFIGS[currentScene];
-    const talentReward = Math.floor(100 * (sceneConfig?.rewardMultiplier || 1));
-    return talentReward;
-  }
+  static renderHospitalEggPods(
+    ctx: CanvasRenderingContext2D,
+    eggPods: { state: string; x: number; y: number; hp: number; maxHp: number; hatchTimer: number }[],
+    eggPodImg: HTMLImageElement | null,
+    time: number,
+    disinfectionRewardAlpha: number,
+    canvasWidth: number,
+    canvasHeight: number
+  ): void {
+    if (!eggPods.length) return;
 
-  /**
-   * 添加天赋点到游戏进度
-   * @param {GameProgress} progress - 游戏进度
-   * @param {number} points - 要添加的天赋点数量
-   */
-  addTalentPoints(progress: GameProgress, points: number): void {
-    progress.talentTree.points += points;
-  }
+    const img = eggPodImg;
+    const basePodW = 72;
+    const basePodH = 96;
+    const yMin = 361;
+    const yMax = 612;
 
-  /**
-   * 检查是否为完美波次（没有防线被突破）
-   * @param {number} breaches - 防线被突破次数
-   * @returns {boolean} 是否为完美波次
-   */
-  isPerfectWave(breaches: number): boolean {
-    return breaches === 0;
-  }
+    for (const pod of eggPods) {
+      if (pod.state !== 'intact') continue;
 
-  /**
-   * 记录完美波次
-   * @param {Function} onPerfectWave - 完美波次回调函数
-   */
-  recordPerfectWave(onPerfectWave?: () => void): void {
-    if (onPerfectWave) {
-      onPerfectWave();
+      const hpRatio = pod.hp / pod.maxHp;
+      const countdownRatio = pod.hatchTimer / 5;
+
+      const yRatio = Math.max(0, Math.min(1, (pod.y - yMin) / (yMax - yMin)));
+      const perspScale = 0.5 + yRatio * 0.5;
+      const podW = basePodW * perspScale;
+      const podH = basePodH * perspScale;
+
+      ctx.save();
+      ctx.translate(pod.x, pod.y);
+
+      ctx.globalAlpha = 0.8;
+      if (img) {
+        ctx.drawImage(img, -podW / 2, -podH / 2, podW, podH);
+      } else {
+        ctx.fillStyle = '#5a7a5a';
+        ctx.beginPath();
+        ctx.ellipse(0, 0, podW / 2, podH / 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+
+      const barW = 60 * perspScale;
+      const barH = 6 * perspScale;
+      const barY = -podH / 2 - 10 * perspScale;
+      ctx.fillStyle = '#333';
+      ctx.fillRect(-barW / 2, barY, barW, barH);
+      ctx.fillStyle = hpRatio > 0.5 ? '#22c55e' : (hpRatio > 0.25 ? '#f59e0b' : '#ef4444');
+      ctx.fillRect(-barW / 2, barY, barW * hpRatio, barH);
+
+      const secondsLeft = Math.ceil(pod.hatchTimer);
+      ctx.fillStyle = countdownRatio > 0.3 ? '#fbbf24' : '#ef4444';
+      ctx.font = 'bold 14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.shadowColor = 'rgba(0,0,0,0.8)';
+      ctx.shadowBlur = 4;
+      ctx.fillText(`${secondsLeft}s`, 0, barY - 10);
+      ctx.shadowBlur = 0;
+
+      if (pod.hatchTimer <= 3) {
+        const pulse = Math.sin(time * 6) * 0.3 + 0.5;
+        ctx.strokeStyle = `rgba(255, 150, 0, ${pulse})`;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([3, 5]);
+        ctx.lineDashOffset = -time * 10;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, podW / 2 + 8 * perspScale, podH / 2 + 8 * perspScale, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      ctx.restore();
+    }
+
+    if (disinfectionRewardAlpha > 0) {
+      ctx.save();
+      ctx.fillStyle = `rgba(34, 213, 94, ${disinfectionRewardAlpha * 0.3})`;
+      ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+      ctx.restore();
     }
   }
 }

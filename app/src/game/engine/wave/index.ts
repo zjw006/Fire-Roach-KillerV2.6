@@ -4,7 +4,6 @@
  */
 
 export { WaveManager } from './WaveManager';
-export { WaveGenerator } from './WaveGenerator';
 
 /**
  * 波次系统工具函数

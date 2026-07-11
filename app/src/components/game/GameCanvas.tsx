@@ -374,6 +374,10 @@ export const GameCanvas: React.FC = () => {
       engineRef.current.gameMode = mode;
       engineRef.current.currentScene = scene;
       engineRef.current.audio.setMuted(audioMuted);
+      // 必须在 start() 之前切换 BGM，因为 start() 内部会触发 startLevelBGM() 播放
+      if (mode === GameMode.STORY) {
+        engineRef.current.audio.switchBGMForScene(scene, diff);
+      }
       engineRef.current.start(mode, scene, false, selectedItems, menuShopMoney);
       // Sync React state immediately (player/economy are created in start/resetGame)
       setPlayer({ ...engineRef.current.player });
@@ -388,12 +392,6 @@ export const GameCanvas: React.FC = () => {
         engineRef.current.progress.shopUpgrades = nextSceneUpgradesRef.current;
         nextSceneUpgradesRef.current = [];
       }
-      // 根据用户需求：不要默认的背景音乐，只在战斗开始后播放关卡音乐
-      // 所以这里不调用任何音频播放方法，关卡音乐会在战斗开始时由引擎自动播放
-      if (mode === GameMode.STORY) {
-        engineRef.current.audio.switchBGMForScene(scene, diff);
-      }
-      // 非故事模式也不播放音乐，等待战斗开始
     }
   }, [audioMuted, menuShopMoney]);
 
@@ -527,30 +525,25 @@ export const GameCanvas: React.FC = () => {
   //   prevPowerBoostRef.current = powerBoostTimer;
   // }, [powerBoostTimer]);
 
-  /** 重新开始当前关卡：停止所有音频 → 引擎重启 → 同步消耗品状态 */
+  /** 重新开始当前关卡：停止所有音频 → 切换BGM → 引擎重启 → 同步消耗品状态 */
   const handleRestart = useCallback(() => {
     setBossDefeated(false);
     engineRef.current?.audio.stopBGM();
     engineRef.current?.audio.stopVictoryBGM();
     engineRef.current?.audio.stopGameOverBGM();
     engineRef.current?.restart();
-    // Sync React state with engine's consumable inventory (preserved across restarts)
-    setTimeout(() => {
-      const engine = engineRef.current;
-      if (!engine) return;
-      setCarriedConsumables({ ...engine.consumableInventory });
-      setEmergencyCoolCount(engine.emergencyCoolInventory);
-    }, 100);
-    // 根据用户需求：不要默认的背景音乐，只在战斗开始后播放关卡音乐
-    // 所以游戏重启后也不播放音乐，等待战斗开始
+    // 必须在 restart() 的 stop() 之后、start() 之前切换 BGM（start() 内部会触发 startLevelBGM()）
     const engine = engineRef.current;
     if (engine && engine.gameMode === GameMode.STORY) {
-      setTimeout(() => {
-        engine.audio.switchBGMForScene(engine.currentScene, engine.difficulty);
-        // 不调用startBGM()，等待战斗开始
-      }, 100);
+      engine.audio.switchBGMForScene(engine.currentScene, engine.difficulty);
     }
-    // 非故事模式也不播放音乐，等待战斗开始
+    // Sync React state with engine's consumable inventory (preserved across restarts)
+    setTimeout(() => {
+      const engine2 = engineRef.current;
+      if (!engine2) return;
+      setCarriedConsumables({ ...engine2.consumableInventory });
+      setEmergencyCoolCount(engine2.emergencyCoolInventory);
+    }, 100);
   }, []);
 
   // Continue to next wave after shopping
@@ -926,6 +919,18 @@ export const GameCanvas: React.FC = () => {
     <div className="relative w-screen h-screen bg-black flex items-center justify-center overflow-hidden select-none">
       {/* ═══ 游戏容器：Canvas + HUD ═══ */}
       <div id="game-container" className="relative w-full h-full flex items-center justify-center">
+      {/* ═══ 游戏画布（始终存在，独立于 UI 层）═══ */}
+      <canvas
+        ref={canvasRef}
+        className="block cursor-crosshair touch-none"
+        style={{ touchAction: 'none' }}
+        onMouseDown={handleCanvasMouseDown}
+        onTouchStart={handleCanvasTouchStart}
+        onContextMenu={(e) => e.preventDefault()}
+      />
+
+      {/* ═══ UI 叠加层容器（所有条件渲染的 UI 组件，独立于 Canvas）═══ */}
+      <div className="absolute inset-0">
       {/* ═══ 视觉特效层 ═══ */}
       {/* Power Boost 边框光效 */}
       {powerBoostTimer > 0 && (
@@ -956,16 +961,6 @@ export const GameCanvas: React.FC = () => {
           }}
         />
       )}
-
-      {/* ═══ 游戏画布 ═══ */}
-      <canvas
-        ref={canvasRef}
-        className="block cursor-crosshair touch-none"
-        style={{ touchAction: 'none' }}
-        onMouseDown={handleCanvasMouseDown}
-        onTouchStart={handleCanvasTouchStart}
-        onContextMenu={(e) => e.preventDefault()}
-      />
 
       {/* ═══ 波次前倒计时覆盖层 ═══ */}
       {gameState === GameState.COUNTDOWN && (
@@ -1328,6 +1323,7 @@ export const GameCanvas: React.FC = () => {
           onComplete={handleRecycleComplete}
         />
       )}
+    </div>
     </div>
     </div>
   );
