@@ -127,6 +127,27 @@ export const GameCanvas: React.FC = () => {
   const [endlessBestTime, setEndlessBestTime] = useState(0);
   const [endlessNewRecordVisible, setEndlessNewRecordVisible] = useState(false);
 
+  // ── 画布边界（用于游戏内覆盖层定位）──
+  const [canvasBounds, setCanvasBounds] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+
+  // ── 监听画布尺寸/位置变化，同步到 canvasBounds ──
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const updateBounds = () => {
+      const rect = canvas.getBoundingClientRect();
+      setCanvasBounds({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
+    };
+    updateBounds();
+    const observer = new ResizeObserver(updateBounds);
+    observer.observe(canvas);
+    window.addEventListener('resize', updateBounds);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateBounds);
+    };
+  }, []);
+
   // ── 引擎初始化 & 回调注册（仅挂载时执行一次）──
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -929,8 +950,17 @@ export const GameCanvas: React.FC = () => {
         onContextMenu={(e) => e.preventDefault()}
       />
 
-      {/* ═══ UI 叠加层容器（所有条件渲染的 UI 组件，独立于 Canvas）═══ */}
-      <div className="absolute inset-0">
+      {/* ═══ 游戏内覆盖层（动态匹配画布位置和尺寸）═══ */}
+      {canvasBounds && (
+      <div
+        className="absolute z-10"
+        style={{
+          left: canvasBounds.left,
+          top: canvasBounds.top,
+          width: canvasBounds.width,
+          height: canvasBounds.height,
+        }}
+      >
       {/* ═══ 视觉特效层 ═══ */}
       {/* Power Boost 边框光效 */}
       {powerBoostTimer > 0 && (
@@ -966,6 +996,106 @@ export const GameCanvas: React.FC = () => {
       {gameState === GameState.COUNTDOWN && (
         <CountdownOverlay phase={countdownPhase} timer={countdownTimer} />
       )}
+
+      {/* ═══ 厨房第一波操作引导遮罩 ═══ */}
+      {tutorialPauseSpawn && (
+        <GameplayTutorialOverlay
+          canvasBounds={canvasBounds}
+          audio={engineRef.current?.audio}
+          onComplete={() => {
+            engineRef.current?.resumeSpawnAfterTutorial();
+          }}
+          onSkip={() => {
+            engineRef.current?.resumeSpawnAfterTutorial();
+          }}
+        />
+      )}
+
+      {/* ═══ 游戏 HUD（战斗中显示）═══ */}
+      {(gameState === GameState.PLAYING || gameState === GameState.ITEM_DROP) && player && economy && (
+        <GameHUD
+          player={player}
+          economy={economy}
+          wave={wave}
+          defenseHp={defenseHp}
+          maxDefenseHp={maxDefenseHp}
+          onPause={handlePause}
+          onReload={handleReload}
+          onEmergencyCool={handleEmergencyCool}
+          difficulty={difficulty}
+          gameMode={gameMode}
+          currentWeapon={currentWeapon}
+          onSwitchWeapon={handleSwitchWeapon}
+          onCycleWeapon={handleCycleWeapon}
+          progress={progress}
+          isAiming={isAiming}
+          onStartAim={(weapon) => engineRef.current?.startAiming(weapon)}
+          onThrow={() => engineRef.current?.throwAimedWeapon()}
+          onCancelAim={() => engineRef.current?.cancelAiming()}
+          inventory={inventory}
+          selectedItemIndex={selectedItemIndex}
+          isPlacingItem={isPlacingItem}
+          onSelectItem={(idx) => engineRef.current?.selectItem(idx)}
+          currentScene={currentScene}
+          tripleFlameActive={tripleFlameActive}
+          tripleFlameTimer={tripleFlameTimer}
+          tripleFlameDuration={15}
+          bossState={bossState}
+          carriedConsumables={carriedConsumables}
+          buffFlashTimers={buffFlashTimers}
+          onUseConsumable={handleUseConsumable}
+          consumableCooldowns={consumableCooldowns}
+          globalConsumableCooldown={globalConsumableCooldown}
+          combatStartTimer={combatStartTimer}
+          itemCooldowns={itemCooldowns}
+          shieldTimer={engineRef.current?.player?.shieldTimer || 0}
+          emergencyCoolInventory={emergencyCoolCount}
+          audio={engineRef.current?.audio}
+        />
+      )}
+
+      {/* ═══ 无尽模式计时器（右上角）═══ */}
+      {gameMode === GameMode.ENDLESS && gameState === GameState.PLAYING && (
+        <div className="absolute top-[200px] right-3 z-30 flex flex-col items-end gap-1 pointer-events-none">
+          {/* Current timer */}
+          <div className="bg-black/50 backdrop-blur-sm rounded-lg px-3 py-1.5 border border-orange-500/30">
+            <div className="text-[10px] text-orange-300/70 uppercase tracking-wider">本次坚持</div>
+            <div className="text-xl font-black text-orange-400 font-mono leading-tight">
+              {Math.floor(endlessTimer / 60)}:{String(Math.floor(endlessTimer % 60)).padStart(2, '0')}
+              <span className="text-sm">.{String(Math.floor((endlessTimer % 1) * 10))}</span>
+            </div>
+          </div>
+
+          {/* Best time (hidden when new record) */}
+          {endlessBestTime > 0 && !endlessNewRecordVisible && (
+            <div className="bg-black/40 backdrop-blur-sm rounded-lg px-3 py-1 border border-yellow-500/20">
+              <div className="flex items-center gap-1.5">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#eab308" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                <div className="text-[10px] text-yellow-400/60 uppercase tracking-wider">历史最高</div>
+              </div>
+              <div className="text-sm font-bold text-yellow-400/80 font-mono">
+                {Math.floor(endlessBestTime / 60)}:{String(Math.floor(endlessBestTime % 60)).padStart(2, '0')}
+              </div>
+            </div>
+          )}
+
+          {/* New Record notification */}
+          {endlessNewRecordVisible && (
+            <div className="bg-gradient-to-r from-yellow-900/80 to-orange-900/80 backdrop-blur-sm rounded-lg px-4 py-2 border border-yellow-400/50 animate-pulse">
+              <div className="flex items-center gap-2">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="#fbbf24" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                <span className="text-sm font-black text-yellow-300">你创造了新纪录!</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+      </div>
+      )}
+
+      {/* ═══ 全屏 UI 叠加层（菜单、暂停、结算等，独立于画布）═══ */}
+      {/* 无可见内容时 pointer-events-none，让事件穿透到游戏内 HUD */}
+      <div className={`absolute inset-0 z-20 ${(showTitleScreen || showMenuShop || showTalentTree || showAchievements || showEncyclopedia || showSceneSelect || showComic || showDialog || showPreparation || showRecycleAnim || gameState === GameState.MENU || gameState === GameState.PAUSED || gameState === GameState.GAME_OVER || gameState === GameState.WAVE_CLEAR || gameState === GameState.ITEM_REVEAL) ? '' : 'pointer-events-none'}`}>
 
       {/* ═══ 标题画面（首次进入）═══ */}
       {showTitleScreen && (
@@ -1100,99 +1230,6 @@ export const GameCanvas: React.FC = () => {
           }}
           audio={engineRef.current?.audio}
         />
-      )}
-
-      {/* ═══ 厨房第一波操作引导遮罩 ═══ */}
-      {tutorialPauseSpawn && (
-        <GameplayTutorialOverlay
-          audio={engineRef.current?.audio}
-          onComplete={() => {
-            engineRef.current?.resumeSpawnAfterTutorial();
-          }}
-          onSkip={() => {
-            engineRef.current?.resumeSpawnAfterTutorial();
-          }}
-        />
-      )}
-
-      {/* ═══ 游戏 HUD（战斗中显示）═══ */}
-      {(gameState === GameState.PLAYING || gameState === GameState.ITEM_DROP) && player && economy && (
-        <GameHUD
-          player={player}
-          economy={economy}
-          wave={wave}
-          defenseHp={defenseHp}
-          maxDefenseHp={maxDefenseHp}
-          onPause={handlePause}
-          onReload={handleReload}
-          onEmergencyCool={handleEmergencyCool}
-          difficulty={difficulty}
-          gameMode={gameMode}
-          currentWeapon={currentWeapon}
-          onSwitchWeapon={handleSwitchWeapon}
-          onCycleWeapon={handleCycleWeapon}
-          progress={progress}
-          isAiming={isAiming}
-          onStartAim={(weapon) => engineRef.current?.startAiming(weapon)}
-          onThrow={() => engineRef.current?.throwAimedWeapon()}
-          onCancelAim={() => engineRef.current?.cancelAiming()}
-          inventory={inventory}
-          selectedItemIndex={selectedItemIndex}
-          isPlacingItem={isPlacingItem}
-          onSelectItem={(idx) => engineRef.current?.selectItem(idx)}
-          currentScene={currentScene}
-          tripleFlameActive={tripleFlameActive}
-          tripleFlameTimer={tripleFlameTimer}
-          tripleFlameDuration={15}
-          bossState={bossState}
-          carriedConsumables={carriedConsumables}
-          buffFlashTimers={buffFlashTimers}
-          onUseConsumable={handleUseConsumable}
-          consumableCooldowns={consumableCooldowns}
-          globalConsumableCooldown={globalConsumableCooldown}
-          combatStartTimer={combatStartTimer}
-          itemCooldowns={itemCooldowns}
-          shieldTimer={engineRef.current?.player?.shieldTimer || 0}
-          emergencyCoolInventory={emergencyCoolCount}
-          audio={engineRef.current?.audio}
-        />
-      )}
-
-      {/* ═══ 无尽模式计时器（右上角）═══ */}
-      {gameMode === GameMode.ENDLESS && gameState === GameState.PLAYING && (
-        <div className="absolute top-[200px] right-3 z-30 flex flex-col items-end gap-1 pointer-events-none">
-          {/* Current timer */}
-          <div className="bg-black/50 backdrop-blur-sm rounded-lg px-3 py-1.5 border border-orange-500/30">
-            <div className="text-[10px] text-orange-300/70 uppercase tracking-wider">本次坚持</div>
-            <div className="text-xl font-black text-orange-400 font-mono leading-tight">
-              {Math.floor(endlessTimer / 60)}:{String(Math.floor(endlessTimer % 60)).padStart(2, '0')}
-              <span className="text-sm">.{String(Math.floor((endlessTimer % 1) * 10))}</span>
-            </div>
-          </div>
-
-          {/* Best time (hidden when new record) */}
-          {endlessBestTime > 0 && !endlessNewRecordVisible && (
-            <div className="bg-black/40 backdrop-blur-sm rounded-lg px-3 py-1 border border-yellow-500/20">
-              <div className="flex items-center gap-1.5">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#eab308" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-                <div className="text-[10px] text-yellow-400/60 uppercase tracking-wider">历史最高</div>
-              </div>
-              <div className="text-sm font-bold text-yellow-400/80 font-mono">
-                {Math.floor(endlessBestTime / 60)}:{String(Math.floor(endlessBestTime % 60)).padStart(2, '0')}
-              </div>
-            </div>
-          )}
-
-          {/* New Record notification */}
-          {endlessNewRecordVisible && (
-            <div className="bg-gradient-to-r from-yellow-900/80 to-orange-900/80 backdrop-blur-sm rounded-lg px-4 py-2 border border-yellow-400/50 animate-pulse">
-              <div className="flex items-center gap-2">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="#fbbf24" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-                <span className="text-sm font-black text-yellow-300">你创造了新纪录!</span>
-              </div>
-            </div>
-          )}
-        </div>
       )}
 
       {/* ═══ 暂停界面 ═══ */}

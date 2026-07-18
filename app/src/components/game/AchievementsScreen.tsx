@@ -61,13 +61,13 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ progress
 
   return (
     <div className="absolute inset-0 overflow-y-auto">
-      {/* Background image - rooftop with lightning */}
+      {/* Background image - rooftop with lightning (fixed to viewport) */}
       <div
-        className="absolute inset-0 bg-cover bg-center"
+        className="fixed inset-0 bg-cover bg-center"
         style={{ backgroundImage: 'url(/assets/achieve_bg.jpg)' }}
       />
-      {/* Dark overlay for readability */}
-      <div className="absolute inset-0 bg-black/70" />
+      {/* Dark overlay for readability (fixed to viewport) */}
+      <div className="fixed inset-0 bg-black/70" />
 
       <div className="relative z-10 w-full max-w-md mx-auto px-4 py-6 min-h-screen">
         {/* Header */}

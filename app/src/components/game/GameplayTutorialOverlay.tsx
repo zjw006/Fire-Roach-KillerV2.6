@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { ArrowRight, SkipForward, Flame, Target, ShoppingCart, Package, Gauge, Fuel, Shield } from 'lucide-react';
 import type { AudioManager } from '@/game/audio';
 
@@ -26,7 +26,7 @@ interface TutorialStep {
   dialogPosition?: 'top' | 'center-upper' | 'center' | 'bottom' | 'above-highlight' | 'above-highlight-bottom' | 'below-highlight';
 }
 
-/** 10步新手引导步骤定义 */
+/** 10步新手引导步骤定义（高亮区域百分比基于画布坐标系，0-1） */
 const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 'welcome',
@@ -40,7 +40,7 @@ const TUTORIAL_STEPS: TutorialStep[] = [
     title: '火枪控制区',
     icon: <Flame size={20} className="text-orange-400" />,
     zhangshuText: '这是你的火焰喷射器控制区！按住屏幕左右平移来调整火焰方向。火焰是你的主要武器，记住控制好喷射角度！',
-    highlightArea: { x: 0.080, y: 0.750, width: 0.841, height: 0.173 },
+    highlightArea: { x: 0.00, y: 0.75, width: 1.00, height: 0.2 },
     dialogPosition: 'above-highlight-bottom',
   },
   {
@@ -48,7 +48,7 @@ const TUTORIAL_STEPS: TutorialStep[] = [
     title: '战斗区域',
     icon: <Target size={20} className="text-red-400" />,
     zhangshuText: '蟑螂会从这里向你冲来！看到远处的地面线了吗？蟑螂从那里生成，沿着路径前进。你的目标就是在它们到达防线前消灭它们！',
-    highlightArea: { x: 0.050, y: 0.120, width: 0.900, height: 0.580 },
+    highlightArea: { x: 0.00, y: 0.12, width: 1.00, height: 0.72 },
     dialogPosition: 'center',
   },
   {
@@ -56,7 +56,7 @@ const TUTORIAL_STEPS: TutorialStep[] = [
     title: '防线介绍',
     icon: <Shield size={20} className="text-red-500" />,
     zhangshuText: '注意看画面下方这条红线！这就是你的防线。蟑螂冲到这里就会开始啃食防线，防线被攻破你就输了！一定要在它们到达前用火焰消灭掉！',
-    highlightArea: { x: 0.000, y: 0.751, width: 1.000, height: 0.068 },
+    highlightArea: { x: 0.00, y: 0.82, width: 1.00, height: 0.07 },
     dialogPosition: 'above-highlight-bottom',
   },
   {
@@ -64,7 +64,7 @@ const TUTORIAL_STEPS: TutorialStep[] = [
     title: '防线血条',
     icon: <Shield size={20} className="text-blue-400" />,
     zhangshuText: '顶部的蓝色条是防线血量！蟑螂攻击会扣血，血量降到0游戏就失败了！关卡中可以拾取修理包修复，也可以去补给站购买防线修复道具。保护好防线！',
-    highlightArea: { x: 0.213, y: 0.091, width: 0.570, height: 0.058 },
+    highlightArea: { x: 0.32, y: 0.07, width: 0.34, height: 0.03 },
     dialogPosition: 'below-highlight',
   },
   {
@@ -72,7 +72,7 @@ const TUTORIAL_STEPS: TutorialStep[] = [
     title: '热力条',
     icon: <Gauge size={20} className="text-yellow-400" />,
     zhangshuText: '左边的热力条！持续喷火会积累热量，变红就是警告，满了就会过热熄火！松开手指让它冷却，或者使用紧急冷却道具。',
-    highlightArea: { x: 0.017, y: 0.338, width: 0.081, height: 0.247 },
+    highlightArea: { x: 0.02, y: 0.45, width: 0.05, height: 0.25 },
     dialogPosition: 'below-highlight',
   },
   {
@@ -80,7 +80,7 @@ const TUTORIAL_STEPS: TutorialStep[] = [
     title: '燃气条',
     icon: <Fuel size={20} className="text-amber-400" />,
     zhangshuText: '左上角的燃气条！喷火消耗燃气，燃气耗尽就无法喷火。记得去补给站买气罐，或者在战场上拾取燃气包！',
-    highlightArea: { x: 0.046, y: 0.023, width: 0.283, height: 0.065 },
+    highlightArea: { x: 0.14, y: 0.02, width: 0.35, height: 0.025 },
     dialogPosition: 'below-highlight',
   },
   {
@@ -88,7 +88,7 @@ const TUTORIAL_STEPS: TutorialStep[] = [
     title: '拾取道具区',
     icon: <ShoppingCart size={20} className="text-cyan-400" />,
     zhangshuText: '右下角是你战场上拾取的道具！比如这个粘性陷阱，点击就能放置。战场上还会掉落燃气包等道具，记得捡！',
-    highlightArea: { x: 0.861, y: 0.588, width: 0.139, height: 0.238 },
+    highlightArea: { x: 0.88, y: 0.65, width: 0.1, height: 0.24 },
     dialogPosition: 'center-upper',
   },
   {
@@ -96,7 +96,7 @@ const TUTORIAL_STEPS: TutorialStep[] = [
     title: '武器与道具栏',
     icon: <Package size={20} className="text-green-400" />,
     zhangshuText: '底部是你的武器和道具操作区！左边切换火焰模式，右边使用拾取道具。点击图标即可发动效果！',
-    highlightArea: { x: 0.000, y: 0.829, width: 1.000, height: 0.083 },
+    highlightArea: { x: 0.00, y: 0.89, width: 0.95, height: 0.06 },
     dialogPosition: 'above-highlight-bottom',
   },
   {
@@ -112,9 +112,11 @@ interface GameplayTutorialOverlayProps {
   audio?: AudioManager;
   onComplete?: () => void;
   onSkip?: () => void;
+  /** 画布边界（用于将高亮区域映射到画布坐标系） */
+  canvasBounds?: { left: number; top: number; width: number; height: number } | null;
 }
 
-export const GameplayTutorialOverlay: React.FC<GameplayTutorialOverlayProps> = ({ audio, onComplete, onSkip }) => {
+export const GameplayTutorialOverlay: React.FC<GameplayTutorialOverlayProps> = ({ audio, onComplete, onSkip, canvasBounds }) => {
   /** 检查 localStorage 判断是否需要展示引导 */
   const [showTutorial, setShowTutorial] = useState(() => {
     try {
@@ -125,15 +127,10 @@ export const GameplayTutorialOverlay: React.FC<GameplayTutorialOverlayProps> = (
   });
   /** 当前步骤索引 */
   const [step, setStep] = useState(0);
-  /** 窗口尺寸，用于响应式高亮定位 */
-  const [windowSize, setWindowSize] = useState({ width: window.innerWidth, height: window.innerHeight });
-
-  /** 监听窗口尺寸变化 */
-  useEffect(() => {
-    const handleResize = () => setWindowSize({ width: window.innerWidth, height: window.innerHeight });
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  /** 容器尺寸（画布或窗口），用于响应式高亮定位 */
+  const containerSize = canvasBounds 
+    ? { width: canvasBounds.width, height: canvasBounds.height }
+    : { width: window.innerWidth, height: window.innerHeight };
 
   /** 下一步：前进到下一步或完成引导 */
   const handleNext = useCallback(() => {
@@ -161,14 +158,14 @@ export const GameplayTutorialOverlay: React.FC<GameplayTutorialOverlayProps> = (
   const isLast = step === TUTORIAL_STEPS.length - 1;
   const highlight = current.highlightArea;
 
-  /** 将百分比高亮区域转换为像素坐标 */
+  /** 将百分比高亮区域转换为像素坐标（相对于容器） */
   const getPixelRect = () => {
     if (!highlight) return null;
     return {
-      left: highlight.x * windowSize.width,
-      top: highlight.y * windowSize.height,
-      width: highlight.width * windowSize.width,
-      height: highlight.height * windowSize.height,
+      left: highlight.x * containerSize.width,
+      top: highlight.y * containerSize.height,
+      width: highlight.width * containerSize.width,
+      height: highlight.height * containerSize.height,
     };
   };
 
@@ -191,7 +188,7 @@ export const GameplayTutorialOverlay: React.FC<GameplayTutorialOverlayProps> = (
   const dialogPos = getDialogPosition();
 
   return (
-    <div className="fixed inset-0 z-[200] pointer-events-none">
+    <div className="absolute inset-0 z-[200] pointer-events-none">
       {/* 4-piece mask spotlight */}
       {/** 四片遮罩实现聚光灯效果：上、下、左、右四块暗色遮罩围出高亮区域 */}
       {pixelRect && (
@@ -242,11 +239,11 @@ export const GameplayTutorialOverlay: React.FC<GameplayTutorialOverlayProps> = (
       <div className="absolute left-0 right-0 px-4 pointer-events-none transition-all duration-300"
         style={{
           ...(dialogPos === 'above-highlight' && pixelRect
-            ? { top: `${((pixelRect.top - padding - 20) / windowSize.height) * 100}%` }
+            ? { top: `${((pixelRect.top - padding - 20) / containerSize.height) * 100}%` }
             : dialogPos === 'above-highlight-bottom' && pixelRect
-            ? { top: `${((pixelRect.top - 20) / windowSize.height) * 100}%`, transform: 'translateY(-100%)' }
+            ? { top: `${((pixelRect.top - 20) / containerSize.height) * 100}%`, transform: 'translateY(-100%)' }
             : dialogPos === 'below-highlight' && pixelRect
-            ? { top: `${((pixelRect.top + pixelRect.height + padding + 20) / windowSize.height) * 100}%` }
+            ? { top: `${((pixelRect.top + pixelRect.height + padding + 20) / containerSize.height) * 100}%` }
             : dialogPos === 'bottom' ? { bottom: '16px', top: 'auto' }
             : dialogPos === 'center' ? { top: '34%' }
             : dialogPos === 'center-upper' ? { top: '20%' }

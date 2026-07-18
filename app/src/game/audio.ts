@@ -68,19 +68,16 @@ export class AudioManager {
    * @returns 配置好的音频元素
    */
   private createAudioElement(src: string, volume: number = 1.0): HTMLAudioElement {
-    const audio = new Audio();
+    const audio = new Audio(); // 先不设 src，等 preload 配置好再设
+    audio.preload = 'auto';
     audio.volume = volume;
-    audio.muted = true; // Start muted to avoid auto-play restrictions
-    audio.preload = 'none'; // 延迟加载，等用户交互后再加载，避免浏览器拦截
-    
-    // 保存 src 到 data 属性，等用户交互后设置
-    audio.dataset.src = src;
-    
+    audio.muted = true; // 初始静音，避免自动播放限制
     // 添加错误处理
     audio.addEventListener('error', (e) => {
       console.warn(`Audio load error for ${src}:`, e);
     });
-    
+    // 最后设置 src 触发加载
+    audio.src = src;
     return audio;
   }
   
@@ -164,6 +161,15 @@ export class AudioManager {
     const unmuteAudio = () => {
       console.log('User interaction detected, unmuting audio elements');
       
+      // 如果用户已通过 UI 开启静音，则不要取消音频元素的静音状态
+      if (this.isMuted) {
+        console.log('Audio is muted by user, skipping unmute');
+        document.removeEventListener('click', unmuteAudio);
+        document.removeEventListener('touchstart', unmuteAudio);
+        document.removeEventListener('keydown', unmuteAudio);
+        return;
+      }
+      
       // Unmute all audio elements
       if (this.bgm) {
         console.log('Unmuting BGM, previous muted state:', this.bgm.muted);
@@ -200,21 +206,6 @@ export class AudioManager {
       }
       
       console.log('Audio elements unmuted');
-      
-      // 用户交互后，设置 src 并触发所有音频文件的实际加载
-      const allAudioElements = [
-        this.bgm, this.fireSfx, this.killSfx, this.swatterSfx,
-        this.reloadSfx, this.clickSfx, this.gameOverBgm, this.victoryBgm
-      ];
-      allAudioElements.forEach(audio => {
-        if (audio && audio.dataset.src) {
-          const timestamp = Date.now();
-          const src = audio.dataset.src;
-          const urlWithCacheBust = src.includes('?') ? `${src}&t=${timestamp}` : `${src}?t=${timestamp}`;
-          audio.src = urlWithCacheBust;
-          audio.load(); // 触发实际加载
-        }
-      });
       
       // Remove event listeners after first interaction
       document.removeEventListener('click', unmuteAudio);
@@ -368,6 +359,7 @@ export class AudioManager {
     
     if (this.bgm && !this.isMuted && !this.bgm.muted) {
       this.bgm.play().catch((error) => {
+        if (error.name === 'AbortError') return; // 正常竞态：pause打断了play
         console.error('Failed to resume BGM:', error);
       });
     } else {
@@ -459,15 +451,17 @@ export class AudioManager {
       // 移除旧元素的 src 以释放资源，不调用 load() 避免触发 error 事件
       this.bgm.removeAttribute('src');
     }
-    // 创建新的 BGM 元素，直接设置 src 并取消静音（用户已交互过）
-    this.bgm = new Audio(path);
+    // 创建新的 BGM 元素，先配 preload 再设 src（用户已交互过）
+    this.bgm = new Audio();
+    this.bgm.preload = 'auto';
     this.bgm.volume = 0.6;
     this.bgm.loop = true;
-    this.bgm.muted = false;
+    this.bgm.muted = this.isMuted; // 尊重当前静音状态
     // 添加错误处理
     this.bgm.addEventListener('error', (e) => {
       console.warn(`BGM load error for ${path}:`, e);
     });
+    this.bgm.src = path;
     console.log('BGM switched to:', path, 'ready to play');
   }
   
@@ -511,38 +505,38 @@ export class AudioManager {
     switch (sceneType) {
       case 'kitchen':
         return {
-          easy: '/assets/bgm_kitchen_easy.mp3?v=7',
-          hard: '/assets/bgm_kitchen_hard.mp3?v=4',
+          easy: '/assets/bgm_kitchen_easy.mp3',
+          hard: '/assets/bgm_kitchen_hard.mp3',
         };
       case 'sewer':
         return {
-          easy: '/assets/bgm_sewer_easy.mp3?v=2',
-          hard: '/assets/bgm_sewer_hard.mp3?v=1',
+          easy: '/assets/bgm_sewer_easy.mp3',
+          hard: '/assets/bgm_sewer_hard.mp3',
         };
       case 'dump':
         return {
-          easy: '/assets/bgm_dump_easy.mp3?v=1',
-          hard: '/assets/bgm_dump_hard.mp3?v=1',
+          easy: '/assets/bgm_dump_easy.mp3',
+          hard: '/assets/bgm_dump_hard.mp3',
         };
       case 'basement':
         return {
-          easy: '/assets/bgm_basement_easy.mp3?v=1',
-          hard: '/assets/bgm_basement_hard.mp3?v=1',
+          easy: '/assets/bgm_basement_easy.mp3',
+          hard: '/assets/bgm_basement_hard.mp3',
         };
       case 'rooftop':
         return {
-          easy: '/assets/bgm_rooftop_easy.mp3?v=1',
-          hard: '/assets/bgm_rooftop_hard.mp3?v=1',
+          easy: '/assets/bgm_rooftop_easy.mp3',
+          hard: '/assets/bgm_rooftop_hard.mp3',
         };
       case 'street':
         return {
-          easy: '/assets/bgm_street_easy.mp3?v=1',
-          hard: '/assets/bgm_street_hard.mp3?v=1',
+          easy: '/assets/bgm_street_easy.mp3',
+          hard: '/assets/bgm_street_hard.mp3',
         };
       case 'hospital':
         return {
-          easy: '/assets/bgm_hospital.mp3?v=1',
-          hard: '/assets/bgm_hospital.mp3?v=1',
+          easy: '/assets/bgm_hospital.mp3',
+          hard: '/assets/bgm_hospital.mp3',
         };
       default:
         return null; // 该场景无自定义 BGM

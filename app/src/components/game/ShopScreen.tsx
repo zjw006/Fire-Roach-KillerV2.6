@@ -148,8 +148,13 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
   };
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center bg-black/80 backdrop-blur-sm">
-      <div className="bg-stone-900/90 rounded-2xl p-4 max-w-full w-full mx-2 border border-stone-700 max-h-[85vh] flex flex-col">
+    <div className="absolute inset-0 flex items-center justify-center">
+      {/* Fixed background image */}
+      <div className="fixed inset-0 bg-cover bg-center" style={{ backgroundImage: 'url(/assets/achieve_bg.jpg)' }} />
+      {/* Dark overlay */}
+      <div className="fixed inset-0 bg-black/70" />
+
+      <div className="relative z-10 bg-stone-900/90 rounded-2xl p-4 border border-stone-700 flex flex-col max-h-[90vh] w-full max-w-md">
         {/* ═══ 顶部标题栏 ═══ */}
         <div className="flex items-center justify-between mb-3 shrink-0">
           {isMenuShop ? (

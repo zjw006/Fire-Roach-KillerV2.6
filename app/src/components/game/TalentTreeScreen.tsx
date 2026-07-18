@@ -187,11 +187,17 @@ export const TalentTreeScreen: React.FC<TalentTreeScreenProps> = ({ progress, ta
     : null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex flex-col" style={{ backgroundColor: '#000000' }}>
+    <div className="fixed inset-0 z-[100] flex flex-col">
+      {/* Fixed background image */}
+      <div className="fixed inset-0 bg-cover bg-center" style={{ backgroundImage: 'url(/assets/achieve_bg.jpg)' }} />
+      {/* Dark overlay */}
+      <div className="fixed inset-0 bg-black/70" />
+
       {/* ═══ 界面 1：天赋列表 ═══ */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* 顶部标题栏 */}
-        <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b border-stone-800">
+      <div className="relative z-10 flex-1 flex flex-col overflow-hidden">
+        {/* 顶部标题栏 — 约束在 max-w-md 内，与下方内容对齐 */}
+        <div className="shrink-0 border-b border-stone-800">
+          <div className="max-w-md mx-auto px-4 py-3 flex items-center justify-between">
           <button
             onClick={() => { audio?.playClick(); onClose(); }}
             className="flex items-center gap-1 text-stone-400 hover:text-white transition-colors"
@@ -202,6 +208,7 @@ export const TalentTreeScreen: React.FC<TalentTreeScreenProps> = ({ progress, ta
           <div className="flex items-center gap-2">
             <Sparkles size={16} className="text-yellow-400" />
             <span className="text-yellow-400 font-bold">{talentPoints} 天赋点</span>
+          </div>
           </div>
         </div>
 

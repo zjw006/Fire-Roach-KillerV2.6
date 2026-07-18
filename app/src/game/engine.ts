@@ -1,29 +1,39 @@
-/**
- * @fileoverview 《烈焰除蟑》旧版游戏核心引擎（单文件巨型类）
+﻿/**
+ * @fileoverview 《烈焰除蟑》游戏核心引擎（模块化委托架构）
  *
  * ============================================================================
  * 引擎概述
  * ============================================================================
- * 本文件是《烈焰除蟑》(Fire Roach Killer) 游戏的主引擎，采用**单文件巨型类**架构，
- * 将所有游戏逻辑集中在一个约 10,000 行的 GameEngine 类中。
+ * 本文件是《烈焰除蟑》(Fire Roach Killer) 游戏的主引擎，约 4,000 行。
  *
- * 该引擎负责以下全部核心功能：
- *   1. 游戏状态管理 —— 驱动 MENU → PLAYING → WAVE_CLEAR → SHOP → ... 的状态机
- *   2. 实体管理 —— 创建/更新/销毁 蟑螂、粒子、掉落物、投射物等
- *   3. 敌人 AI —— 移动、闪避、愤怒、飞行、自爆、治疗、分裂等行为
- *   4. 碰撞检测 —— 火焰/武器与蟑螂的碰撞检测，支持三连火焰多枪口
- *   5. 波次系统 —— 配置驱动的波次生成、3-2-1 倒计时、自动推进
- *   6. Boss 战斗 —— 多阶段 Boss 战、弱点系统、召唤机制、蜕皮
- *   7. 武器系统 —— 火焰喷射器、粘板、燃烧瓶、散弹、雷达、杀虫剂、风扇、电蚊拍
- *   8. 消耗品系统 —— 商店购买、库存管理、自动使用、冷却系统
- *   9. 粒子系统 —— 12 种粒子类型，动态性能自适应
- *  10. 渲染系统 —— 25+ 个子渲染步骤的分层渲染管线
- *  11. 输入处理 —— 鼠标/触摸坐标转换、拖拽、瞄准
- *  12. 存档系统 —— localStorage 持久化，支持版本迁移
- *  13. 天赋系统 —— 15 个天赋节点，影响伤害/射程/燃气/防御等
- *  14. 成就系统 —— 15 个成就，实时检测解锁
- *  15. 天气系统 —— 雨天/浓雾/黑夜/闪电
- *  16. 音频系统 —— BGM、音效、循环音效管理
+ * 架构采用**模块化委托模式**：引擎本身负责状态管理、模块编排和副作用处理，
+ * 将具体业务逻辑委托给 27 个独立子系统模块。模块通过回调函数与引擎通信，
+ * 实现引擎 ↔ 模块的双向解耦。
+ *
+ * 已提取的 27 个模块按功能分组：
+ *   基础系统  (3): SaveSystem, EconomyManager, AchievementSystem
+ *   渲染系统  (7): ParticleSystem, ParticleSpawner, DropRenderer, RenderUtils,
+ *                  RoachRenderer, NurseRenderer, BackgroundRenderer
+ *   战斗系统 (12): CollisionSystem, WeaponSystem, StickySystem, FanSystem,
+ *                  TripleFlameSystem, RadarLaserSystem, SwatterSystem,
+ *                  AimingSystem, InsecticideSystem, ThrowableSystem,
+ *                  PoisonSystem, ConsumableSystem
+ *   大型系统  (2): BossBattleSystem, WaveManager
+ *   AI 系统  (1): RoachAISystem
+ *   天气系统  (1): WeatherSystem
+ *   存档系统  (1): SaveSystem（已集成）
+ *
+ * 引擎保留的核心职责：
+ *   1. 游戏状态机 —— MENU → PLAYING → WAVE_CLEAR → SHOP → ...
+ *   2. 模块编排 —— 在 update() / render() 中按顺序调用各模块
+ *   3. 副作用处理 —— 粒子、浮动文字、音效、振动、屏幕震动等
+ *   4. 实体容器 —— roaches[], particles[], fireZones[] 等共享数组
+ *   5. 输入处理 —— 鼠标/触摸坐标转换、拖拽、瞄准
+ *   6. 图片资源 —— ~50+ 张场景/蟑螂/武器图片的加载与管理
+ *   7. 音频系统 —— BGM、音效、循环音效管理
+ *   8. 天赋系统 —— 15 个天赋节点，影响伤害/射程/燃气/防御等
+ *   9. 存档流程 —— localStorage 持久化，版本迁移，进度同步
+ *  10. 生命周期 —— 启动、暂停、恢复、重置、重启
  *
  * ============================================================================
  * 调用链路
@@ -40,33 +50,35 @@
  *
  *   start(mode, scene, ...)
  *     → resetGame()         // 重置所有实体/状态
- *     → startWave()         // 开始第一波
+ *     → startWave() / initBossBattle()  // 开始波次或 Boss 战
  *     → gameLoop()          // 进入 requestAnimationFrame 主循环
  *
- * 【每帧更新链路】update() 按顺序调用：
- *   updateArmorShieldCache → updatePlayer → updateRoaches →
- *   updateConsumableEffects → checkAutoUseConsumables → updateBuffFlashTimers →
- *   updateParticles → updateFireZones → updateFireWalls →
- *   updateStickyBoards → updateStickyDrops → updateFloatingTexts →
- *   updateBossBattle/updateWave → updateScreenShake → updateSwatter →
- *   updateWeaponDrops → updateAiming → updateThrowables →
- *   updateTripleFlame → updateRadarLaser → updateInsecticideSpray →
- *   updateFan → updateWeather → checkCollisions → checkDefense →
- *   checkAchievements
+ * 【每帧更新链路】update() 按顺序调用（→ 表示委托给模块）：
+ *   updateArmorShieldCache → updatePlayer（引擎） →
+ *   roachAISystem.update() → consumableSystem.update() → updateParticles() →
+ *   updateFireWalls() → stickySystem.updateStickyBoards() →
+ *   stickySystem.updateStickyDrops() → bossSystem/updateWave() →
+ *   updateScreenShake() → swatterSystem.updateSwatter() →
+ *   weaponSystem.update() → aimingSystem.updateAiming() →
+ *   throwableSystem.update() → tripleFlameSystem.updateTripleFlame() →
+ *   radarLaserSystem.updateRadarLaser() → insecticideSystem.update() →
+ *   fanSystem.updateFan() → updateWeather() → checkCollisions() →
+ *   checkDefense() → checkAchievements()
  *
- * 【每帧渲染链路】render() 按顺序调用：
- *   renderBackground → renderMovementRange → renderWeatherBackground →
- *   renderFireZones → renderFireWalls → renderStickyBoards →
- *   renderStickyDrops → renderWeaponDrops → renderParticles →
- *   renderBaitMark → renderRoaches → renderBaitThrow →
- *   renderPlayer → renderFloatingTexts → renderSwatter →
- *   renderMuzzleFlash → renderThrowableAim → renderThrowables →
- *   renderItemPlacement → renderInsecticideSpray → renderFan →
- *   renderRadarLaser → renderWeatherForeground → renderBossUI →
- *   renderItemDropOnField
+ * 【每帧渲染链路】render() 按顺序调用（→ 表示委托给模块）：
+ *   BackgroundRenderer.renderBackground() → renderMovementRange() →
+ *   BackgroundRenderer.renderWeatherBackground() →
+ *   BackgroundRenderer.renderFireZones() →
+ *   BackgroundRenderer.renderFireWalls() → renderStickyBoards() →
+ *   renderStickyDrops() → renderWeaponDrops() → renderParticles() →
+ *   renderBaitMark() → RoachRenderer.renderRoaches() → renderBaitThrow() →
+ *   renderPlayer()（含 NurseRenderer.renderNurseHealVFX()） →
+ *   renderFloatingTexts() → renderSwatter() → renderMuzzleFlash() →
+ *   renderThrowableAim() → renderThrowables() → renderItemPlacement() →
+ *   renderInsecticideSpray() → renderFan() → renderRadarLaser() →
+ *   renderWeatherForeground() → renderBossUI() → renderItemDropOnField()
  *
  * 【外部调用接口】
- *   外部组件通过以下方法控制引擎：
  *   - GameCanvas: start(), stop(), pause(), resume(), restart()
  *   - 输入: setMousePos(), setMouseX(), handleScreenClick(), setFiring()
  *   - 武器: cycleFlameMode(), useSwatter(), startAiming(), throwAimedWeapon()
@@ -74,14 +86,24 @@
  *   - 回调: onStateChange, onEconomyUpdate, onWaveUpdate, onGameOver 等
  *
  * ============================================================================
- * 状态说明
+ * 模块通信机制：回调（Callbacks）
  * ============================================================================
- * 该引擎已被新的模块化引擎 (src/game/engine/index.ts) 替代。
- * 新引擎将本文件的 180+ 方法拆分到 12+ 个独立子系统模块中。
- * 本文件保留用于参考和回退。
+ * 模块通过构造函数接收回调函数，实现与引擎的解耦通信：
  *
- * @version 2.6
- * @see {@link ../engine/index.ts} 新版模块化引擎入口
+ *   引擎端（注入回调）:
+ *     this.xxxSystem = new XxxSystem({
+ *       onAddFloatingText: (x, y, text, color) => { this.addFloatingText(x, y, text, color); },
+ *       onPlaySound: (name) => { this.audio.play(name); },
+ *     });
+ *
+ *   模块端（调用回调）:
+ *     this.config.onAddFloatingText?.(x, y, '伤害!', '#ff4444');
+ *
+ * 常用回调：onAddFloatingText, onPlaySound, onVibrate, onScreenShake,
+ *          onAddParticle, onEconomyUpdate, onPlayerUpdate, onDefenseUpdate 等
+ *
+ * @version 2.8
+ * @see {@link ../engine/} 各子系统模块目录
  */
 
 import { GameState, RoachType, RoachState, SceneType, WeatherType, ParticleType, FlameMode, GameMode, SAVE_VERSION, type Roach, type Player, type Particle, type FireZone, type FireWall, type Economy, type WeaponDrop, type GameProgress, type WaveConfig, type ThrowableProjectile, type InventoryItem, type TripleFlameState, type BossBattleState, type RadarLaser, type StickyBoard, type StickyDrop, type FanState } from './types';
@@ -96,6 +118,9 @@ import { ParticleSystem } from './engine/particle/ParticleSystem';
 import { DropRenderer } from './engine/render/DropRenderer';
 import { RenderUtils } from './engine/render/RenderUtils';
 import { RoachRenderer } from './engine/render/RoachRenderer';
+import { NurseRenderer } from './engine/render/NurseRenderer';
+import { ParticleSpawner } from './engine/particle/ParticleSpawner';
+import { BackgroundRenderer } from './engine/render/BackgroundRenderer';
 import { CollisionSystem } from './engine/collision/CollisionSystem';
 import { WeaponSystem } from './engine/weapon/WeaponSystem';
 import { StickySystem } from './engine/sticky/StickySystem';
@@ -111,6 +136,7 @@ import { ConsumableSystem } from './engine/consumable/ConsumableSystem';
 import { BossBattleSystem } from './engine/boss/BossBattleSystem';
 import { WaveManager } from './engine/wave/WaveManager';
 import { WeatherSystem } from './engine/weather/WeatherSystem';
+import { RoachAISystem, getNextId, setNextId, getNextBossId, setNextBossId } from './engine/ai/RoachAISystem';
 
 // =============================================================================
 // 模块级：内部类型与全局变量
@@ -162,7 +188,7 @@ let nextBossId = 10000;
  * - 存档/进度: progress, talentMultipliers, scenesCleared
  * - 音频: audio (AudioManager 实例)
  * - 回调: onStateChange, onEconomyUpdate, onWaveUpdate, onGameOver 等 (~10 个)
- * - 医院专属: hospitalEggPods[], placedBombs[], deadTimedBombs[], hospitalStarRating
+ * - 医院专属: placedBombs[], deadTimedBombs[], hospitalStarRating
  *
  * ## 方法分组（按功能）
  * - 生命周期: constructor, resize, loadImages, start, stop, pause, resume, restart
@@ -178,7 +204,7 @@ let nextBossId = 10000;
  * - 渲染系统: render, renderBackground, renderRoaches, renderRoach, renderPlayer, renderFireZones, renderFireWalls, renderParticles, renderBossUI, renderFan, renderInsecticideSpray, renderRadarLaser, renderSwatter, renderMuzzleFlash, renderWeatherBackground, renderWeatherForeground, renderFloatingTexts, renderDefenseLine, renderBaitThrow, renderBaitMark, renderMovementRange, renderItemDropOnField
  * - 存档系统: loadProgress, saveProgress, recalcTalentMultipliers, checkAchievements, unlockNextScene
  * - 输入处理: setMousePos, setMouseX, handleScreenClick, setFiring, cycleFlameMode, handleItemDropClick
- * - 医院专属: spawnHospitalEggPods, updateHospitalEggPods, hatchHospitalEggPod, damageHospitalEggPod, triggerDisinfectionReward
+ * - 医院专属: (已移除虫卵系统)
  * - 辅助方法: getGroundBoundsAtY, getGroundCenter, getPerspectiveScale, getSceneConfig, isStuckByBoard, getDailySeed, canControlBoss
  *
  * @class GameEngine
@@ -190,7 +216,7 @@ export class GameEngine {
   state: GameState = GameState.MENU;
 
   width = 540;
-  height = 960; // Fixed 540x960 aspect ratio
+  height = 960; /** 固定 540x960 宽高比 */
   scale = 1;
 
   player: Player;
@@ -198,39 +224,37 @@ export class GameEngine {
   particles: Particle[] = [];
   fireZones: FireZone[] = [];
 
-  // Sticky board/drop system (delegated to StickySystem module)
-  // Fire walls (molotov creates horizontal flame walls)
+  /** 火焰墙数组（燃烧瓶创建的水平火焰墙） */
   fireWalls: FireWall[] = [];
 
-  // Fan system (delegated to FanSystem module)
-
-  // Endless mode timer
+  /** 风扇系统（委托给 FanSystem） */
+  /** 无限模式计时器 */
   endlessElapsedTime: number = 0;
   endlessBestTime: number = 0;
   endlessNewRecordShown: boolean = false;
   endlessNewRecordTimer: number = 0;
   floatingTexts: FloatingText[] = [];
 
-  // Post-battle item reveal
+  /** 战斗后道具揭示数据 */
   itemRevealData: { type: string; name: string; icon: string; desc: string }[] = [];
   onItemRevealComplete?: () => void;
-  // Player-selected items for the current level (from PreparationScreen)
+  /** 玩家为本关选择的道具（来自准备界面） */
   selectedItems: string[] = [];
-  // Carried consumables inventory (buy → carry → auto/manual use) - delegated to ConsumableSystem
-  // Auto-use settings for each consumable type - delegated to ConsumableSystem
-  // Emergency cool inventory (purchased from shop, free uses) - delegated to ConsumableSystem
-  // Buff flash timers for HUD display - delegated to ConsumableSystem
-  // Bait throw animation state - delegated to ConsumableSystem
-  // Bait target position - delegated to ConsumableSystem
-  // Power boost countdown tracking - delegated to ConsumableSystem
-  // Dynamic particle limit based on device performance
+  // 携带消耗品库存（购买 → 携带 → 自动/手动使用，委托给 ConsumableSystem）
+  // 各消耗品自动使用设置（委托给 ConsumableSystem）
+  // 紧急冷却库存（从商店购买，免费使用次数，委托给 ConsumableSystem）
+  // Buff 闪烁计时器（用于 HUD 显示，委托给 ConsumableSystem）
+  // 诱饵投掷动画状态（委托给 ConsumableSystem）
+  // 诱饵目标位置（委托给 ConsumableSystem）
+  // 力量加成倒计时追踪（委托给 ConsumableSystem）
+  /** 动态粒子上限（根据设备性能自适应调整） */
   _particleLimit: number = 300;
   _frameTimeSamples: number[] = [];
   _perfCheckFrames: number = 0;
   _isLowPerfDevice: boolean = false;
   onConsumableUpdate?: (inventory: Record<string, number>, buffTimers: Record<string, number>, cooldowns?: Record<string, number>, globalCooldown?: number, combatStartTimer?: number, itemCooldowns?: Record<string, number>) => void;
   onEmergencyCoolUpdate?: (count: number) => void;
-  // Post-battle item drop (on-field clickable drop)
+  /** 战斗后道具掉落（场景中可点击的掉落物） */
   itemDropOnField: { type: string; name: string; icon: string; x: number; y: number; targetY: number; bobPhase: number; collected: boolean; falling: boolean; fallSpeed: number } | null = null;
 
   get wave(): number { return this.waveManager!.wave; }
@@ -266,7 +290,7 @@ export class GameEngine {
 
   audio: AudioManager = new AudioManager();
 
-  // Swatter system (delegated to SwatterSystem module)
+  /** 电蚊拍系统（委托给 SwatterSystem） */
 
   time: number = 0;
   deltaTime: number = 0;
@@ -281,24 +305,16 @@ export class GameEngine {
   roachArmoredImg: HTMLImageElement | null = null;
   roachSplittingImg: HTMLImageElement | null = null;
   roachQueenImg: HTMLImageElement | null = null;
-  // Hospital exclusive roach images
+  /** 医院场景专属蟑螂图片 */
   roachNurseImg: HTMLImageElement | null = null;
-  // Nurse cast: 10-frame healing animation
+  /** 护士施法：10帧治疗动画 */
   nurseCastFrames: (HTMLImageElement | null)[] = [];
   roachMutantImg: HTMLImageElement | null = null;
-  // Mutant transformation: 7-frame sequence (200ms each, total 1.4s)
+  /** 变异变形：7帧序列动画（每帧200ms，共1.4秒） */
   mutantTransformFrames: (HTMLImageElement | null)[] = [];
-  mutantTransformFrame: number = 0; // 0-6
-  mutantTransformTimer: number = 0;
-  mutantTransformX: number = 0;
-  mutantTransformY: number = 0;
-  mutantTransformActive: boolean = false;
-  // Green slime burst effect (mutant spawn visual)
-  slimeBurstTimer: number = 0;
-  slimeBurstX: number = 0;
-  slimeBurstY: number = 0;
-  // Boss images (phase variants reserved for future use)
-  // Boss animation system - frame data managed by engine, shared with bossSystem
+  roachAISystem!: RoachAISystem;
+  /** Boss 图片资源（阶段变体预留给未来使用） */
+  /** Boss 动画系统（帧数据由引擎管理，与 bossSystem 共享） */
   bossAnimFrames: Map<string, HTMLImageElement[]> = new Map();
   get bossAnimState(): { action: string; frameIndex: number; timer: number } {
     return this.bossSystem!.bossAnimState;
@@ -306,7 +322,6 @@ export class GameEngine {
   set bossAnimState(v: { action: string; frameIndex: number; timer: number }) {
     this.bossSystem!.bossAnimState = v;
   }
-  eggPodImg: HTMLImageElement | null = null;
   bgImg: HTMLImageElement | null = null;
   bgKitchenHardImg: HTMLImageElement | null = null;
   bgKitchenEasyImg: HTMLImageElement | null = null;
@@ -325,13 +340,13 @@ export class GameEngine {
   bgStreetImg: HTMLImageElement | null = null;
   bgStreetEasyImg: HTMLImageElement | null = null;
   bgStreetHardImg: HTMLImageElement | null = null;
-  // Generic scene background image cache (keyed by sceneType)
+  /** 通用场景背景图缓存（按 sceneType 索引） */
   bgSceneImages: Record<string, HTMLImageElement> = {};
-  // Easy mode flag: true when difficulty is 'easy'
+  /** 简单模式标志（难度为 'easy' 时为 true） */
   isEasyMode: boolean = false;
   imagesLoaded: boolean = false;
 
-  // Drop item images cache
+  /** 掉落道具图片缓存 */
   _dropImages: Record<string, HTMLImageElement> | null = null;
 
   animationId: number = 0;
@@ -346,7 +361,7 @@ export class GameEngine {
   onBossUpdate?: (bossState: BossBattleState) => void;
   onWaveClear?: () => void;
 
-  // Boss battle state (delegated to BossBattleSystem)
+  /** Boss 战斗状态（委托给 BossBattleSystem） */
   get bossBattle(): BossBattleState {
     return this.bossSystem!.bossBattle;
   }
@@ -354,11 +369,11 @@ export class GameEngine {
     this.bossSystem!.bossBattle = v;
   }
 
-  // Talent & progression
+  /** 天赋与进度 */
   progress: GameProgress;
   talentMultipliers: Record<string, number> = {};
 
-  // Weather
+  /** 天气系统 */
   weatherParticles: Particle[] = [];
   lightningTimer: number = 0;
   lightningFlash: number = 0;
@@ -395,18 +410,18 @@ export class GameEngine {
   /** 波次系统模块（委托给 WaveManager） */
   private waveManager: WaveManager | null = null;
 
-  // Boss active (delegated to BossBattleSystem)
+  /** Boss 活跃数（委托给 BossBattleSystem） */
   get activeBosses(): number { return this.bossSystem!.activeBosses; }
   set activeBosses(v: number) { this.bossSystem!.activeBosses = v; }
 
-  // Defeat/restart guard: prevent gameDefeat() from being called multiple times
+  /** 失败/重新开始保护：防止 gameDefeat() 被多次调用 */
   defeatTriggered: boolean = false;
 
-  // Kitchen first-wave tutorial pause: blocks spawn until tutorial completes
+  /** 厨房第一波教程暂停：阻止生成直到教程完成 */
   get tutorialPauseSpawn(): boolean { return this.waveManager!.tutorialPauseSpawn; }
   set tutorialPauseSpawn(v: boolean) { this.waveManager!.tutorialPauseSpawn = v; }
 
-  // Pre-wave 3-2-1 countdown state
+  /** 波次前 3-2-1 倒计时状态 */
   get countdownTimer(): number { return this.waveManager!.countdownTimer; }
   set countdownTimer(v: number) { this.waveManager!.countdownTimer = v; }
   get countdownPhase(): number { return this.waveManager!.countdownPhase; }
@@ -414,27 +429,27 @@ export class GameEngine {
   get countdownWavePending(): boolean { return this.waveManager!.countdownWavePending; }
   set countdownWavePending(v: boolean) { this.waveManager!.countdownWavePending = v; }
 
-  // Inventory recycle snapshot: saved before clearing, used for UI animation at level end
+  /** 库存回收快照：清空前保存，用于关卡结束时的 UI 动画 */
   recycledInventory: { type: string; count: number }[] = [];
 
-  // Throwable aiming system (delegated to AimingSystem)
+  /** 投掷物瞄准系统（委托给 AimingSystem） */
   // isAiming/aimTargetX are getter/setter that delegate to aimingSystem
   get isAiming(): boolean { return this.aimingSystem?.getAimingState().isAiming ?? false; }
   get aimTargetX(): number { return this.aimingSystem?.getAimingState().aimTargetX ?? 0; }
   set aimTargetX(v: number) { this.aimingSystem?.setAimTarget(v, this.aimingSystem?.getAimingState().aimTargetY ?? 0); }
 
-  // Triple flame (delegated to TripleFlameSystem) for GameCanvas compatibility
+  /** 三重火焰（委托给 TripleFlameSystem，供 GameCanvas 兼容） */
   get tripleFlame(): { active: boolean; timer: number } { return this.tripleFlameSystem!.getState(); }
 
-  // Consumables (delegated to ConsumableSystem) for GameCanvas compatibility
+  /** 消耗品（委托给 ConsumableSystem，供 GameCanvas 兼容） */
   get consumableInventory(): Record<string, number> { return this.consumableSystem!.consumableInventory; }
   set consumableInventory(v: Record<string, number>) { this.consumableSystem!.consumableInventory = v; }
   get emergencyCoolInventory(): number { return this.consumableSystem!.emergencyCoolInventory; }
   set emergencyCoolInventory(v: number) { this.consumableSystem!.emergencyCoolInventory = v; }
 
-  // Throwable projectiles (delegated to ThrowableSystem module)
+  /** 投掷物投射物（委托给 ThrowableSystem 模块） */
 
-  // Weapon/item inventory (picked up weapon drops)
+  /** 武器/道具库存（拾取的道具掉落） */
   inventory: InventoryItem[] = [];
   selectedItemIndex: number = -1;
   itemPlaceState: 'idle' | 'pending_click' | 'placing' = 'idle';
@@ -442,51 +457,49 @@ export class GameEngine {
   itemPlaceCursorY: number = 0;
   itemEffectRadiusX: number = 100;
   itemEffectRadiusY: number = 50;
-  // Picked-up item cooldown system - delegated to ConsumableSystem
+  /** 拾取道具冷却系统（委托给 ConsumableSystem） */
 
-  // Triple flame system (delegated to TripleFlameSystem module)
+  /** 三重火焰系统（委托给 TripleFlameSystem 模块） */
 
-  // Kitchen hard mode background flag
+  /** 厨房困难模式背景标志 */
   useKitchenHardBg: boolean = false;
 
-  // Radar laser system (delegated to RadarLaserSystem module)
-  // Insecticide spray system (delegated to InsecticideSystem module)
+  /** 雷达激光系统（委托给 RadarLaserSystem 模块） */
+  /** 杀虫剂喷雾系统（委托给 InsecticideSystem 模块） */
 
-  // Daily challenge seed
+  /** 每日挑战种子 */
   dailySeed: number = 0;
 
-  // Scene cleared (for progression)
+  /** 已通关场景（用于进度追踪） */
   scenesCleared: Set<SceneType> = new Set();
 
-  // Show ground boundary lines (roach walkable area visualization)
+  /** 显示地面边界线（蟑螂可走区域可视化） */
   showMovementRange: boolean = false;
 
-  // Armor meat shield cache: periodically updated to avoid O(n²) per frame
-  armorShieldCache: Set<number> = new Set(); // roach IDs protected by nearby armored roaches
+  /** 装甲肉盾缓存：定期更新以避免每帧 O(n²) 检测 */
+  armorShieldCache: Set<number> = new Set(); /** 受附近装甲蟑螂保护的蟑螂 ID */
   armorShieldCacheTimer: number = 0;
 
-  // ===== HOSPITAL EXCLUSIVE: TIMED SUICIDE BOMB SYSTEM =====
+  // ===== 装甲肉盾缓存系统 =====
+
+  // ===== 医院专属：定时自爆炸弹系统 =====
   placedBombs: { id: number; x: number; y: number; timer: number }[] = [];
   bombImg: HTMLImageElement | null = null;
-  // Dead timed suicide roach bombs: when killed, leaves a 3s countdown bomb on the ground
+  /** 死去的定时自爆蟑螂炸弹：被击杀后在地面留下3秒倒计时炸弹 */
   deadTimedBombs: { id: number; x: number; y: number; timer: number; flashPhase: number }[] = [];
-  nextBombId: number = 1; // Incrementing ID for dead timed bombs
-  // Timed suicide roach staggered spawn: each roach spawns 8s apart for rhythm
+  nextBombId: number = 1; /** 死定时炸弹 ID 递增计数器 */
+  /** 定时自爆蟑螂交错生成：每只间隔8秒生成以保持节奏 */
   timedSuicideSpawnTimer: number = 0; // countdown until next timed suicide spawn
   timedSuicideSpawnRemaining: number = 0; // how many timed suicides still to spawn this wave
 
-  // ===== HOSPITAL EXCLUSIVE: EGG POOL SYSTEM =====
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  hospitalEggPods: any[] = [];
-  hospitalEggPodDestroyedCount: number = 0; // Consecutive destroyed count (3 → disinfection reward)
-  hospitalDisinfectionRewardTimer: number = 0; // Timer for showing disinfection reward text
-  // ===== HOSPITAL EXCLUSIVE: 3-STAR RATING SYSTEM =====
-  hospitalTotalEggPods: number = 0; // Total egg pods spawned this level
-  hospitalDestroyedEggPods: number = 0; // Total egg pods destroyed this level
-  hospitalBreaches: number = 0; // Defense breaches this level (for star rating)
+  // [已移除] 医院虫卵系统 — 死代码
+  // ===== 医院专属：三星评级系统 =====
+  hospitalTotalEggPods: number = 0; // 本关生成的虫卵总数
+  hospitalDestroyedEggPods: number = 0; // 本关摧毁的虫卵总数
+  hospitalBreaches: number = 0; // 本关防线突破次数（用于星级评定）
   hospitalStarRating: number = 0; // 0-3 stars
 
-  // Consumable cooldown system - delegated to ConsumableSystem
+  /** 消耗品冷却系统（委托给 ConsumableSystem） */
 
   // =============================================================================
   // 生命周期方法：构造函数、画布适配、资源加载
@@ -497,12 +510,15 @@ export class GameEngine {
    * @param {HTMLCanvasElement} canvas - 游戏画布元素
    */
   constructor(canvas: HTMLCanvasElement) {
+    // ===== 画布设置 =====
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d')!;
     this.resize();
+    // ===== 资源加载 =====
     this.loadImages();
-    this.progress = this.loadProgress(); // MUST be before createPlayer()
-    // Load previously detected particle limit from localStorage
+    // ===== 存档系统 =====
+    this.progress = this.loadProgress(); // 必须在 createPlayer() 之前加载
+    // 从 localStorage 恢复之前检测到的粒子上限
     const savedLimit = SaveSystem.loadParticleLimit();
     if (savedLimit !== 300) {
       this._particleLimit = savedLimit;
@@ -512,6 +528,7 @@ export class GameEngine {
     this.economy = this.createEconomy();
     this.endlessBestTime = this.loadEndlessBestTime();
     this.recalcTalentMultipliers();
+    // ===== 初始化各子系统模块 =====
     this.achievementSystem = new AchievementSystem({
       economyStats: {
         totalKills: 0,
@@ -543,7 +560,7 @@ export class GameEngine {
       difficulty: this.difficulty as 'easy' | 'hard',
       currentScene: this.currentScene,
       onAddFloatingText: (x, y, text, color) => { this.addFloatingText(x, y, text, color); },
-      onSpawnSpark: (x, y, count) => { this.spawnSparkParticles(x, y, count); },
+      onSpawnSpark: (x, y, count) => { ParticleSpawner.spawnSparkParticles(this.particles,x, y, count); },
       onPlayBreach: () => { this.audio.playBreach(); },
       onVibrateBreach: () => { Vibration.vibrateBreach(); },
       onVibrateGameOver: () => { Vibration.vibrateGameOver(); },
@@ -584,7 +601,7 @@ export class GameEngine {
       getDefenseLineY: () => this.defenseLineY(),
       onAddFloatingText: (x, y, text, color) => { this.addFloatingText(x, y, text, color); },
       onAddParticle: (p) => { this.particles.push(p); },
-      onSpawnSpark: (x, y, count) => { this.spawnSparkParticles(x, y, count); },
+      onSpawnSpark: (x, y, count) => { ParticleSpawner.spawnSparkParticles(this.particles,x, y, count); },
       onPlayStickySpray: () => { this.audio.playStickySpray(); },
       onVibrateItemUse: () => { Vibration.vibrateItemUse(); },
       onScreenShake: (amount) => { this.screenShake = amount; },
@@ -613,7 +630,7 @@ export class GameEngine {
       onPlayRadarActivate: () => { this.audio.playRadarActivate(); },
       onPlayRadarShot: () => { this.audio.playRadarShot(); },
       onVibrateItemUse: () => { Vibration.vibrateItemUse(); },
-      onSpawnSparkParticles: (x, y, count) => { this.spawnSparkParticles(x, y, count); },
+      onSpawnSparkParticles: (x, y, count) => { ParticleSpawner.spawnSparkParticles(this.particles,x, y, count); },
       onAddParticle: (p) => { this.particles.push(p); },
       onKillRoach: (roach, index) => { this.killRoach(roach, index); },
     });
@@ -623,8 +640,8 @@ export class GameEngine {
       talentCdReduction: this.talentMultipliers.swatterCdReduction || 0,
       onAddFloatingText: (x, y, text, color, duration?) => { this.addFloatingText(x, y, text, color, duration); },
       onPlaySwatter: () => { this.audio.playSwatter(); },
-      onSpawnSparkParticles: (x, y, count) => { this.spawnSparkParticles(x, y, count); },
-      onSpawnLightningParticles: (centerX, topY) => { this.spawnLightningParticles(centerX, topY); },
+      onSpawnSparkParticles: (x, y, count) => { ParticleSpawner.spawnSparkParticles(this.particles,x, y, count); },
+      onSpawnLightningParticles: (centerX, topY) => { ParticleSpawner.spawnLightningParticles(this.particles, centerX, topY, this.width, this.height); },
       onScreenShake: (amount) => { this.screenShake = amount; },
       onInventoryUpdate: (inventory) => { this.onInventoryUpdate?.(inventory); },
     });
@@ -645,8 +662,8 @@ export class GameEngine {
     this.throwableSystem = new ThrowableSystem({
       onAddFloatingText: (x, y, text, color) => { this.addFloatingText(x, y, text, color); },
       onAddFireZone: (fireZone) => { this.fireZones.push(fireZone); },
-      onSpawnSparkParticles: (x, y, count) => { this.spawnSparkParticles(x, y, count); },
-      onSpawnExplosionParticles: (x, y, count) => { this.spawnExplosionParticles(x, y, count); },
+      onSpawnSparkParticles: (x, y, count) => { ParticleSpawner.spawnSparkParticles(this.particles,x, y, count); },
+      onSpawnExplosionParticles: (x, y, count) => { ParticleSpawner.spawnExplosionParticles(this.particles,x, y, count); },
       onSpawnIceExplosion: (x, y, _radius) => {
         for (let i = 0; i < 20; i++) {
           const angle = Math.random() * Math.PI * 2;
@@ -672,7 +689,7 @@ export class GameEngine {
     this.consumableSystem = new ConsumableSystem({
       consumableDefs: CONSUMABLE_DEFS,
       onAddFloatingText: (x, y, text, color, duration?, fontSize?) => { this.addFloatingText(x, y, text, color, duration, fontSize); },
-      onSpawnSmokeParticles: (x, y, count) => { this.spawnSmokeParticles(x, y, count); },
+      onSpawnSmokeParticles: (x, y, count) => { ParticleSpawner.spawnSmokeParticles(this.particles,x, y, count); },
       onAddParticle: (p) => { this.particles.push(p); },
       onConsumableUpdate: (inv, buffTimers, cooldowns, globalCd, combatTimer, itemCds) => {
         this.onConsumableUpdate?.(inv, buffTimers, cooldowns, globalCd, combatTimer, itemCds);
@@ -700,6 +717,7 @@ export class GameEngine {
       getEconomy: () => this.economy,
       setEconomy: (e) => { this.economy = e; },
     });
+    // ===== 恢复持久化消耗品库存 =====
     // Restore persistent consumable inventory from progress
     if (this.progress.consumableInventory) {
       this.consumableSystem!.consumableInventory = { ...this.progress.consumableInventory };
@@ -707,6 +725,7 @@ export class GameEngine {
     if (this.progress.autoUseEnabled) {
       this.consumableSystem!.autoUseEnabled = { ...this.progress.autoUseEnabled };
     }
+    // ===== 初始化 BossBattleSystem =====
     // Initialize BossBattleSystem
     this.bossSystem = new BossBattleSystem(
       {
@@ -717,8 +736,8 @@ export class GameEngine {
       },
       {
         onAddFloatingText: (x, y, text, color) => { this.addFloatingText(x, y, text, color); },
-        onSpawnExplosionParticles: (x, y, count) => { this.spawnExplosionParticles(x, y, count); },
-        onSpawnShockwaveRing: (x, y, radius) => { this.spawnShockwaveRing(x, y, radius); },
+        onSpawnExplosionParticles: (x, y, count) => { ParticleSpawner.spawnExplosionParticles(this.particles,x, y, count); },
+        onSpawnShockwaveRing: (x, y, radius) => { ParticleSpawner.spawnShockwaveRing(this.particles,x, y, radius); },
         onScreenShake: (intensity) => { this.screenShake = intensity; },
         onBossUpdate: (bossState) => { this.onBossUpdate?.(bossState); },
         onGameVictory: () => { this.gameVictory(); },
@@ -744,7 +763,57 @@ export class GameEngine {
       this.bossAnimFrames,
     );
 
-    // Initialize WaveManager
+    // ===== 初始化 RoachAISystem（在 BossBattleSystem 之后，确保 this.bossSystem 可用） =====
+    this.roachAISystem = new RoachAISystem({
+      roaches: this.roaches,
+      particles: this.particles,
+      fireWalls: this.fireWalls,
+      player: this.player,
+      economy: this.economy,
+      progress: this.progress,
+      placedBombs: this.placedBombs,
+      deadTimedBombs: this.deadTimedBombs,
+      armorShieldCache: this.armorShieldCache,
+      stickySystem: this.stickySystem!,
+      bossSystem: this.bossSystem!,
+      consumableSystem: this.consumableSystem!,
+      audio: this.audio,
+      getDifficulty: () => this.difficulty,
+      getCurrentScene: () => this.currentScene,
+      getGameMode: () => this.gameMode,
+      getState: () => this.state,
+      getTime: () => this.time,
+      getDeltaTime: () => this.deltaTime,
+      getCanvasWidth: () => this.width,
+      getCanvasHeight: () => this.height,
+      getDefenseHp: () => this.defenseHp,
+      getMaxDefenseHp: () => this.maxDefenseHp,
+      getWave: () => this.wave,
+      getTalentMultipliers: () => this.talentMultipliers,
+      getDefenseLineY: () => this.defenseLineY(),
+      getGroundBoundsAtY: (y) => this.getGroundBoundsAtY(y),
+      getWaveConfig: (wave) => this.getWaveConfig(wave),
+      getSceneConfig: () => this.getSceneConfig(),
+      setState: (state) => { this.state = state; this.onStateChange?.(state); },
+      setScreenShake: (amount) => { this.screenShake = amount; },
+      setDefenseHp: (hp) => { this.defenseHp = hp; },
+      setEconomy: (e) => { this.economy = e; },
+      setHospitalBreaches: (count) => { this.hospitalBreaches = count; },
+      onAddFloatingText: (x, y, text, color, duration?) => { this.addFloatingText(x, y, text, color, duration); },
+      onSpawnRoach: (type, clusterId?) => this.spawnRoach(type, clusterId),
+      onApplyDamageToRoach: (r, damage) => { this.applyDamageToRoach(r, damage); },
+      onSaveProgress: () => { this.saveProgress(); },
+      onGameOver: (economy, wave) => { this.onGameOver?.(economy, wave); },
+      onStateChange: (state) => { this.onStateChange?.(state); },
+      onEconomyUpdate: (economy) => { this.onEconomyUpdate?.(economy); },
+      onDefenseUpdate: (hp, maxHp) => { this.onDefenseUpdate?.(hp, maxHp); },
+      onBossUpdate: (bossState) => { this.onBossUpdate?.(bossState); },
+      onGameVictory: () => { this.gameVictory(); },
+      onSellUnusedInventory: () => this.sellUnusedInventory(),
+      onUnlockNextScene: () => this.unlockNextScene(),
+    });
+
+    // ===== 初始化 WaveManager =====
     this.waveManager = new WaveManager(
       {
         width: this.width, height: this.height, difficulty: this.difficulty as string,
@@ -768,15 +837,17 @@ export class GameEngine {
         onSetTimedSuicideTimer: (timer) => { this.timedSuicideSpawnTimer = timer; },
       }
     );
+    // ===== 窗口自适应 =====
     window.addEventListener('resize', () => this.resize());
   }
 
-  /** 根据父容器调整画布大小与 DPR */
+  /** 根据 game-container 容器调整画布大小与 DPR */
   resize() {
-    const parent = this.canvas.parentElement;
-    if (!parent) return;
+    // 优先使用 #game-container（全屏容器），确保画布填满屏幕高度
+    const container = document.getElementById('game-container') || this.canvas.parentElement;
+    if (!container) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const rect = parent.getBoundingClientRect();
+    const rect = container.getBoundingClientRect();
     const targetAspect = 540 / 960;
     const parentAspect = rect.width / rect.height;
     let displayWidth = rect.width;
@@ -793,6 +864,8 @@ export class GameEngine {
     this.scale = this.canvas.width / 540;
     this.ctx.setTransform(this.scale, 0, 0, this.scale, 0, 0);
   }
+
+  // ===== 生命周期方法：加载、存档、创建 =====
 
   /** 异步加载所有游戏图片资源 */
   loadImages() {
@@ -813,25 +886,24 @@ export class GameEngine {
     load('/assets/roach_queen.png', (img) => this.roachQueenImg = img);
     // Hospital exclusive roach images
     load('/assets/roach_nurse.png', (img) => this.roachNurseImg = img);
-    // Load 10-frame nurse casting animation
+    // 加载 10 帧护士施法动画
     for (let i = 1; i <= 10; i++) {
       const frameIdx = i - 1;
       load(`/assets/nurse_cast_${i.toString().padStart(2, '0')}.png`, (img) => this.nurseCastFrames[frameIdx] = img);
     }
     load('/assets/roach_mutant.png', (img) => this.roachMutantImg = img);
-    // Load 7-frame transformation sequence
+    // 加载 7 帧变形序列
     for (let i = 1; i <= 7; i++) {
       const frameIdx = i - 1;
       load(`/assets/mutant_0${i}.png`, (img) => this.mutantTransformFrames[frameIdx] = img);
     }
     load('/assets/bomb.png', (img) => this.bombImg = img);
-    load('/assets/egg_pod.png', (img) => this.eggPodImg = img);
     // Boss animation frames - only load frames that exist on disk
     // Missing actions automatically fallback to 'idle' frames
     const actionsWithFrames: Record<string, number> = {
       idle: 7,   // 7 frames available
       hover: 3,  // 3 frames available
-      // All other actions fallback to idle frames
+      // 所有其他动作回退到 idle 帧
     };
     for (const [action, frameCount] of Object.entries(actionsWithFrames)) {
       this.bossAnimFrames.set(action, []);
@@ -843,12 +915,12 @@ export class GameEngine {
         });
       }
     }
-    // Set empty arrays for missing actions (will fallback to idle in rendering)
+    // 为缺失的动作设置空数组（渲染器将回退到 idle）
     const fallbackActions = ['walk','charge','summon','defend','hit','hurt','die','roar','mock','transform'];
     for (const action of fallbackActions) {
       this.bossAnimFrames.set(action, []); // empty - renderer will fallback to idle
     }
-    // Sticky board image loading is handled by DropRenderer module
+    // 粘板图片加载由 DropRenderer 模块处理
     load('/assets/bg_kitchen_hard.jpg?v=3', (img) => this.bgKitchenHardImg = img);
     load('/assets/bg_kitchen_easy.jpg?v=5', (img) => this.bgKitchenEasyImg = img);
     load('/assets/sewer_bg.jpg', (img) => this.bgSewerImg = img);
@@ -866,7 +938,7 @@ export class GameEngine {
     load('/assets/bg_street.jpg', (img) => this.bgStreetImg = img);
     load('/assets/bg_street_easy.jpg?v=6', (img) => this.bgStreetEasyImg = img);
     load('/assets/bg_street_hard.jpg?v=6', (img) => this.bgStreetHardImg = img);
-    // Load scene background images from SCENE_CONFIGS (for new scenes with bgImage)
+    // 加载场景背景图片（从 SCENE_CONFIGS 中配置的新场景）
     for (const [sceneType, config] of Object.entries(SCENE_CONFIGS)) {
       if (config.bgImage) {
         const img = new Image();
@@ -895,8 +967,8 @@ export class GameEngine {
     const ohMult = this.talentMultipliers.overheatMultiplier || 1;
     const coolMult = this.talentMultipliers.coolingMultiplier || 1;
     const rangeMult = this.talentMultipliers.fireRangeMultiplier || 1;
-    // Player base stats - ONLY talent tree multipliers, NO shop upgrade stacking
-    // Shop has been redesigned to one-time consumables (gas_refill, defense_repair, etc.)
+    // 玩家基础属性 — 仅天赋树加成，商店升级不叠加
+    // 商店已重新设计为一次性消耗品（燃气补充、防线修复等）
     const fireRange = 440 * rangeMult;
     const damageMultiplier = this.talentMultipliers.damageMultiplier || 1;
     const heatDecayRate = (isHard ? 1 : 1.5) * coolMult;
@@ -935,11 +1007,11 @@ export class GameEngine {
       damageReduction: this.talentMultipliers.defenseMultiplier ? 1 - (this.talentMultipliers.defenseMultiplier - 1) * 0.1 : 0,
       paralyzeTimer: 0,
       heatWarningTimer: 0,
-      // Consumable temporary effect timers
+      // 消耗品临时效果计时器
       powerBoostTimer: 0,
       shieldTimer: 0,
       baitTimer: 0,
-      // Legacy fields (no longer applied from shopUpgrades)
+      // 遗留字段（不再从商店升级中应用）
       flameSpreadMultiplier: 1,
       reloadTimeMultiplier: 1,
       // Required fields for Player interface
@@ -986,7 +1058,7 @@ export class GameEngine {
   /** 重新计算天赋倍数（委托给 EconomyManager 模块） */
   recalcTalentMultipliers() {
     this.talentMultipliers = EconomyManager.calculateTalentMultipliers(this.progress);
-    // Sync talent multipliers to WeaponSystem
+    // 同步天赋倍数到 WeaponSystem
     this.weaponSystem?.updateConfig({ talentMultipliers: this.talentMultipliers });
   }
 
@@ -1010,6 +1082,8 @@ export class GameEngine {
   // =============================================================================
   // 游戏流程控制：启动、暂停、恢复、停止、重新开始、商店接续
   // =============================================================================
+  // ===== 游戏流程控制 =====
+
   /**
    * 启动游戏
    * @param {GameMode} mode - 游戏模式
@@ -1024,22 +1098,22 @@ export class GameEngine {
     this.isEasyMode = this.difficulty === 'easy';
     this.useKitchenHardBg = (this.currentScene === SceneType.KITCHEN && this.difficulty === 'hard');
     // ===== CRITICAL: Reset boss battle state for ALL modes =====
-    // Prevents boss logic from leaking into normal modes after playing boss mode
+    // 防止 Boss 逻辑在非 Boss 模式后泄漏到普通模式
     this.bossSystem!.resetForNonBossMode();
 
-    // Cancel any existing loop before starting new one (prevents duplicate loops)
+    // 启动新循环前取消任何现有循环（防止重复循环）
     cancelAnimationFrame(this.animationId);
     this.state = GameState.PLAYING;
-    // Reset shop upgrades on fresh start (from menu), preserve when going to next scene
+    // 全新开始时重置商店升级（从菜单启动），转场景时保留
     if (!keepShopUpgrades) {
       this.progress.shopUpgrades = [];
     }
     this.resetGame(initialMoney);
-    // Set player-selected items for this level (AFTER resetGame to avoid being cleared)
+    // 设置本关玩家选择的道具（在 resetGame 之后，避免被清除）
     if (selectedItems && selectedItems.length > 0) {
       this.selectedItems = selectedItems;
     }
-    // Sync WeaponSystem config with current game settings
+    // 同步 WeaponSystem 配置到当前游戏设置
     this.weaponSystem?.updateConfig({
       difficulty: this.difficulty as 'easy' | 'hard',
       gameState: this.state,
@@ -1055,14 +1129,14 @@ export class GameEngine {
       this.startWave();
     }
     this.audio.resumeAudioContext();
-    // BGM is now started by GameCanvas after dialog/comic completes
+    // BGM 现在由 GameCanvas 在对话/漫画完成后启动
     this.lastTime = performance.now();
     this.gameLoop(this.lastTime);
     this.onStateChange?.(this.state);
   }
 
   /**
-   * 重置游戏状态（用于重新开始或首次启动）
+   * 重置游戏：清空所有实体和状态，为新一局做准备
    * @param {number} initialMoney - 初始金钱
    */
   resetGame(initialMoney?: number) {
@@ -1079,9 +1153,6 @@ export class GameEngine {
     this.selectedItems = []; // Clear player-selected items
     this.armorShieldCache.clear();
     this.armorShieldCacheTimer = 0;
-    this.hospitalEggPods = [];
-    this.hospitalEggPodDestroyedCount = 0;
-    this.hospitalDisinfectionRewardTimer = 0;
     this.hospitalTotalEggPods = 0;
     this.hospitalDestroyedEggPods = 0;
     this.hospitalBreaches = 0;
@@ -1090,13 +1161,21 @@ export class GameEngine {
     this.timedSuicideSpawnTimer = 0;
     this.timedSuicideSpawnRemaining = 0;
     this.consumableSystem?.reset();
-    // Reset performance check for new game session
+    this.roachAISystem?.reset();
+    // Sync new array references after resetGame() creates new arrays
+    this.roachAISystem?.updateConfig({
+      roaches: this.roaches,
+      particles: this.particles,
+      fireWalls: this.fireWalls,
+      armorShieldCache: this.armorShieldCache,
+    });
+    // 为新游戏会话重置性能检测
     this._perfCheckFrames = 0;
     this._frameTimeSamples = [];
     this.weatherParticles = [];
     this.wave = 0;
     this.waveManager!.reset();
-    // Sync WaveManager config with current scene after scene change
+    // 场景切换后同步 WaveManager 配置
     this.waveManager!.updateConfig({
       currentScene: this.currentScene,
       gameMode: this.gameMode,
@@ -1129,7 +1208,7 @@ export class GameEngine {
     this.endlessNewRecordShown = false;
     this.endlessNewRecordTimer = 0;
 
-    // Initialize boss battle if in BOSS mode
+    // 在 BOSS 模式下初始化 Boss 战斗
     if (this.gameMode === GameMode.BOSS) {
       this.bossSystem!.initBossBattle();
     }
@@ -1188,12 +1267,12 @@ export class GameEngine {
     setTimeout(() => this.start(this.gameMode, this.currentScene, false), 50);
   }
 
-  // Continue to next wave after shopping (called when player clicks "Continue" in shop)
+  /** 从商店继续到下一波（玩家在商店点击"继续"时调用） */
   continueFromShop() {
     this.state = GameState.PLAYING;
     this.waveManager!.reset();
     this.waveManager!.startWave();
-    // Resume game loop if it was stopped
+    // 如果游戏循环已停止，恢复它
     if (!this.animationId) {
       this.lastTime = performance.now();
       this.animationId = requestAnimationFrame(this.gameLoop);
@@ -1205,15 +1284,17 @@ export class GameEngine {
   // 主循环：gameLoop → update() → render() 驱动整个游戏运转
   // =============================================================================
 
+  // ===== 主循环 =====
+
   /**
-   * 游戏主循环（requestAnimationFrame 回调）
+   * 游戏主循环：通过 requestAnimationFrame 驱动 update + render
    * 每一帧执行：deltaTime 计算 → 性能自适应 → update() → render()
    * @param {number} now - 当前时间戳
    */
   gameLoop = (now: number) => {
     // 允许在 PLAYING、COUNTDOWN、ITEM_DROP、ITEM_REVEAL、WAVE_CLEAR 状态下运行循环
-    // COUNTDOWN: 3-2-1 pre-wave countdown (update() handles the timer)
-    // WAVE_CLEAR shows the shop screen (no game logic updates, just render)
+    // COUNTDOWN: 3-2-1 波次前倒计时（update() 处理计时器）
+    // WAVE_CLEAR 显示商店界面（无游戏逻辑更新，仅渲染）
     if (this.state !== GameState.PLAYING && this.state !== GameState.COUNTDOWN && this.state !== GameState.ITEM_DROP && this.state !== GameState.ITEM_REVEAL && this.state !== GameState.WAVE_CLEAR) return;
     this.deltaTime = Math.min((now - this.lastTime) / 1000, 0.05);
     this.lastTime = now;
@@ -1221,10 +1302,10 @@ export class GameEngine {
     // Dynamic particle limit: adjust based on frame time performance
     this._perfCheckFrames++;
     if (this._perfCheckFrames <= 120) {
-      // Collect frame time samples for first 120 frames (~2 seconds)
+      // 收集前120帧的帧时间样本（约2秒）
       this._frameTimeSamples.push(this.deltaTime);
     } else if (this._perfCheckFrames === 121) {
-      // Calculate average frame time and set particle limit
+      // 计算平均帧时间并设置粒子上限
       const avgFrameTime = this._frameTimeSamples.reduce((a, b) => a + b, 0) / this._frameTimeSamples.length;
       if (avgFrameTime > 0.033) {
         // < 30fps: low-end device, reduce to 150
@@ -1241,28 +1322,30 @@ export class GameEngine {
         // 50+ fps: high-end device, allow up to 400
         this._particleLimit = 400;
       }
-      // Persist detected limit for future sessions
+      // 持久化检测到的上限供未来会话使用
       SaveSystem.saveParticleLimit(this._particleLimit);
-      this._frameTimeSamples = []; // Free memory
+      this._frameTimeSamples = []; // 释放内存
     }
-    // Runtime adaptive: if frame time spikes, temporarily reduce limit
+    // 运行时自适应：如果帧时间激增，暂时降低上限
     if (this._perfCheckFrames > 121 && this.deltaTime > 0.04 && this._particleLimit > 150) {
       this._particleLimit = Math.max(150, this._particleLimit - 10);
     } else if (this._perfCheckFrames > 121 && this.deltaTime < 0.018 && this._particleLimit < 400 && !this._isLowPerfDevice) {
-      // Gradually restore limit if frame time is good
+      // 帧时间良好时逐渐恢复上限
       this._particleLimit = Math.min(400, this._particleLimit + 1);
     }
-    // Safety: catch any unexpected error to prevent game freeze and log to console
+    // 安全兜底：捕获意外错误防止游戏冻结
     try {
       this.update();
       this.render();
     } catch (e) {
       console.error('[GameEngine] Critical error in game loop:', e);
-      // Continue running - don't freeze the game
+      // 继续运行，不冻结游戏
     }
     this.animationId = requestAnimationFrame(this.gameLoop);
   };
 
+
+  // ===== Boss 战斗 =====
 
   /** 初始化 Boss 战斗状态与波次配置 */
   initBossBattle() {
@@ -1274,14 +1357,13 @@ export class GameEngine {
     this.roaches.push(boss);
   }
 
-  // Centralized BOSS death sequence - called from updateBossBattle OR directly
-  // when a late-updated system (radar laser, etc.) kills the boss
+  // 中央 BOSS 死亡序列：从 updateBossBattle 或后期更新的系统（如雷达激光）调用
   triggerBossDeathSequence() {
     this.bossSystem!.triggerBossDeathSequence();
   }
 
-  // Update the death sequence timers (animation -> corpse stay -> victory)
-  // Called every frame from updateBossBattle
+  // 更新死亡序列计时器（动画 → 尸体停留 → 胜利）
+  // 每帧从 updateBossBattle 调用
   updateBossDeathSequence() {
     this.bossSystem!.updateBossDeathSequence();
   }
@@ -1296,17 +1378,17 @@ export class GameEngine {
     }
   }
 
-  // ===== EGG POD SYSTEM (4-Wave Boss Mechanic) =====
-  // Wave count: 0=init → 1=wave1 → 2=wave2 → 3=wave3 → 4=wave4 → 5=victory
-  // Boss HP: 4(full) → 3(after w1) → 2(after w2) → 1(after w3) → 0(after w4)
+  // ===== 虫卵系统（4波 Boss 机制） =====
+  // 波次计数：0=初始化 → 1=第一波 → 2=第二波 → 3=第三波 → 4=第四波 → 5=胜利
+  // Boss HP：4（满血）→ 3（第一波后）→ 2（第二波后）→ 1（第三波后）→ 0（第四波后）
   updateEggPodSystem() {
     this.bossSystem!.updateEggPodSystem();
   }
 
-  // Boss summon casting animation - eggs fall from above after cast
+  // Boss 召唤施法动画：虫卵从上方掉落
   startBossSummonCast(wave: number) {
     this.bossSystem!.startBossSummonCast(wave);
-    // Create casting particles (dark energy gathering at boss position)
+    // 创建施法粒子（黑暗能量在 Boss 位置聚集）
     const boss = this.roaches.find(r => r.isBoss);
     const castX = boss ? boss.x : this.width / 2;
     const castY = boss ? boss.y : this.height * 0.25;
@@ -1329,8 +1411,8 @@ export class GameEngine {
   spawnEggWave(wave: number) {
     const bb = this.bossBattle;
 
-    // ===== WAVE CONFIGS: escalating difficulty with mixed types =====
-    // Counts are high because each wave has DOUBLE the egg pods
+    // ===== 波次配置：难度递增，混合类型 =====
+    // 每波有双倍虫卵，所以数量较高
     interface WavePodConfig { count: number; types: RoachType[]; name: string; }
     const waveConfigs: WavePodConfig[] = [
       // Wave 1: Mostly small + some large (30 pods)
@@ -1345,13 +1427,13 @@ export class GameEngine {
         types: [RoachType.LARGE, RoachType.LARGE, RoachType.FLYING, RoachType.SMALL, RoachType.SUICIDE],
         name: '大蟑螂卵',
       },
-      // Wave 3: Flying + armored + suicide (20 pods)
+      // 第三波：飞行 + 装甲 + 自爆（20个虫卵）
       {
         count: 20,
         types: [RoachType.FLYING, RoachType.FLYING, RoachType.ARMORED, RoachType.SUICIDE, RoachType.FLYING_SUICIDE],
         name: '飞行蟑螂卵',
       },
-      // Wave 4: All elite types (16 pods)
+      // 第四波：全精英类型（16个虫卵）
       {
         count: 16,
         types: [RoachType.ARMORED, RoachType.SUICIDE, RoachType.FLYING_SUICIDE, RoachType.QUEEN, RoachType.SPLITTING],
@@ -1362,14 +1444,14 @@ export class GameEngine {
     const config = waveConfigs[wave - 1];
     if (!config) return;
 
-    // Update phase name
+    // 更新阶段名称
     const phaseNames = ['虫卵入侵', '大蟑螂卵', '飞行蟑螂卵', '精英蟑螂卵'];
     bb.phaseName = phaseNames[wave - 1] || '';
     bb.phaseJustChanged = true;
     bb.phaseChangeTimer = 3;
     bb.phaseChangeText = `【第${wave}波: ${config.name}】`;
 
-    // Count type distribution for display
+    /** 统计各类型蟑螂数量用于显示 */
     const typeCounts: Record<string, number> = {};
     for (const t of config.types) {
       const name = ENEMY_DEFS[t]?.name || t;
@@ -1405,23 +1487,23 @@ export class GameEngine {
   //   // Egg pod system removed
   // }
 
-  // Swatter pickup (delegated to SwatterSystem module)
+  // 电蚊拍拾取（委托给 SwatterSystem 模块）
   spawnSwatterPickup(x: number, y: number) {
     this.swatterSystem!.spawnSwatterPickup(x, y, this.inventory, (inv) => { this.onInventoryUpdate?.(inv); });
   }
 
-  // ===== BOSS DIALOGUE & FLEE (Victory Sequence) =====
+  // ===== BOSS 对话与逃跑（胜利序列） =====
   startBossDialogue() {
     this.bossSystem!.startBossDialogue();
   }
 
-  // Complete the item reveal and move to wave clear
+  // 完成道具揭示，进入波次清除
   completeItemReveal() {
     // If there are more rewards, show the next one
     if (this.rewardIndex < this.itemRevealData.length - 1) {
       this.spawnNextRewardDrop(this.rewardIndex + 1);
     } else {
-      // All rewards shown, go to wave clear
+      // 所有奖励已显示，进入波次清除
       this.state = GameState.WAVE_CLEAR;
       this.onWaveClear?.();
     }
@@ -1440,11 +1522,11 @@ export class GameEngine {
       const price = INVENTORY_SELL_PRICES[item.type] || 0;
       total += price * item.count;
     }
-    // Gold is NOT added here — added in applyRecycledGold() after animation
+    // 金币不在此处添加（在 applyRecycledGold() 中处理）
     return total;
   }
 
-  // Called after the recycle animation completes — adds recycled gold to economy
+  /** 在回收动画完成后调用 — 将回收的金币添加到经济系统 */
   applyRecycledGold() {
     let total = 0;
     for (const item of this.recycledInventory) {
@@ -1458,7 +1540,7 @@ export class GameEngine {
     this.onEconomyUpdate?.(this.economy);
   }
 
-  // Called after the recycle animation completes — actually clears inventory
+  /** 在回收动画完成后调用 — 实际清空库存 */
   clearRecycledInventory() {
     this.inventory = [];
     this.recycledInventory = [];
@@ -1467,24 +1549,24 @@ export class GameEngine {
 
   /** 触发游戏胜利流程 */
   gameVictory() {
-    // Sell unused inventory items before victory screen
+    // 在胜利界面之前出售未使用的库存道具
     const sellTotal = this.sellUnusedInventory();
     if (sellTotal > 0) {
       this.addFloatingText(this.width / 2, this.height * 0.3, `道具回收 +¥${sellTotal}`, '#fbbf24');
     }
 
     this.screenShake = 8;
-    // Stop all weapons (disable firing)
+    // 停止所有武器（禁用射击）
     this.player.isFiring = false;
     this.player.isOverheated = false;
     this.player.heat = 0;
     this.player.heatWarningTimer = 0;
-    // Stop all weapons and continuous sound effects when battle ends
+    // 战斗结束时停止所有武器和连续音效
     this.audio.stopFire();
     this.audio.stopFanLoop();
     this.audio.stopFireWallBurn();
     this.audio.stopFlyingBuzzLoop();
-    // Play victory BGM (replacing scene BGM)
+    // 播放胜利 BGM（替换场景 BGM）
     this.audio.playVictoryBGM();
 
     // BOSS mode: no item drops - boss battle is distinct from story mode
@@ -1499,21 +1581,21 @@ export class GameEngine {
     const talentReward = Math.floor(100 * (sceneConfig?.rewardMultiplier || 1));
     this.addTalentPoints(talentReward);
     this.saveProgress();
-    // Show floating text for talent point reward
+    // 显示天赋点奖励浮动文字
     this.addFloatingText(this.width / 2, this.height * 0.35, `+${talentReward} 天赋点!`, '#fbbf24');
 
-    // ===== HOSPITAL EXCLUSIVE: 3-STAR RATING SYSTEM =====
+    // ===== 医院专属：三星评级系统 =====
     if (this.currentScene === SceneType.HOSPITAL) {
-      // Calculate star rating
-      // ⭐: Clear the level
-      // ⭐⭐: Clear + breaches <= 1
-      // ⭐⭐⭐: Clear + 0 breaches
-      let stars = 1; // Base: cleared the level
+      // 计算星级评定
+      // ⭐: 通关
+      // ⭐⭐: 通关 + 防线突破 <= 1
+      // ⭐⭐⭐: 通关 + 0次防线突破
+      let stars = 1; // 基础：通关
       if (this.hospitalBreaches <= 1) stars = 2;
       if (this.hospitalBreaches === 0) stars = 3;
       this.hospitalStarRating = stars;
 
-      // Show star rating floating text
+      // 显示星级评定浮动文字
       const starText = '⭐'.repeat(stars);
       const ratingTexts = ['', '通关!', '优秀!', '完美!'];
       this.addFloatingText(this.width / 2, this.height * 0.45, starText, '#fbbf24');
@@ -1523,9 +1605,9 @@ export class GameEngine {
       }
     }
 
-    // Story mode: normal item drop reward flow
+    // 剧情模式：正常道具掉落奖励流程
     const rewards = SCENE_REWARD_ITEMS[this.currentScene];
-    // Only reveal newly unlocked items (skip already unlocked ones)
+    // 只揭示新解锁的道具（跳过已解锁的）
     const newlyUnlocked: typeof rewards = [];
     for (const reward of rewards) {
       if (!this.progress.weaponsUnlocked?.includes(reward.type)) {
@@ -1544,7 +1626,7 @@ export class GameEngine {
     }
   }
 
-  // Spawn the Nth reward drop on the field
+  // 在场景中生成第 N 个奖励掉落
   rewardIndex = 0;
   spawnNextRewardDrop(index: number) {
     this.rewardIndex = index;
@@ -1578,7 +1660,7 @@ export class GameEngine {
     // After tutorial completes, start countdown before first wave
     if (this.startCountdown()) return;
 
-    // No countdown (e.g. non-first wave), spawn directly
+    // 没有倒计时（例如非第一波），直接生成
     this.doWaveSpawn();
   }
 
@@ -1614,36 +1696,32 @@ export class GameEngine {
     return this.bossSystem!.canControlBoss();
   }
 
-  // =============================================================================
-  // 主更新循环：每帧按固定顺序更新所有子系统
-  // 调用顺序：护甲缓存 → 玩家 → 蟑螂 AI → 消耗品 → 粒子 → 场景特效 →
-  //          Boss/波次 → 武器 → 碰撞 → 防线 → 成就
-  // =============================================================================
+  // ===== 主更新循环 =====
   /** 主游戏更新循环（每帧调用） */
   update() {
-    // ===== PRE-WAVE COUNTDOWN =====
-    // Handle 3-2-1 countdown before first wave; freeze all game logic
+    // ===== 波次前倒计时 =====
+    // 在第一波前处理 3-2-1 倒计时，冻结所有游戏逻辑
     if (this.state === GameState.COUNTDOWN) {
       this.countdownTimer -= this.deltaTime;
-      // Update displayed phase (3 → 2 → 1)
+      // 更新显示阶段（3 → 2 → 1）
       const newPhase = Math.ceil(this.countdownTimer);
       if (newPhase !== this.countdownPhase && newPhase >= 1) {
         this.countdownPhase = newPhase;
-        // Play tick sound on each number change
+        // 每个数字变化时播放滴答音效
         this.audio.playCountdownTick();
       }
-      // Still update visual effects during countdown (particles, screen shake)
+      // 倒计时期间仍更新视觉特效（粒子、屏幕震动）
       this.updateParticles();
       this.updateScreenShake();
-      // Countdown finished → start the wave
+      // 倒计时结束 → 开始波次
       if (this.countdownTimer <= 0) {
         this.doWaveSpawn();
       }
       return;
     }
 
-    // Skip all game logic during item drop / item reveal / wave clear sequences
-    // Just update visual effects (particles, floating texts, screen shake)
+    // 道具掉落/字幕/波次清除期间跳过所有游戏逻辑
+    // 只更新视觉特效（粒子、浮动文字、屏幕震动）
     if (this.state === GameState.ITEM_DROP || this.state === GameState.ITEM_REVEAL || this.state === GameState.WAVE_CLEAR) {
       this.updateParticles();
       this.updateScreenShake();
@@ -1654,13 +1732,13 @@ export class GameEngine {
       // Falling animation for the dropped item
       if (this.itemDropOnField && !this.itemDropOnField.collected && this.itemDropOnField.falling) {
         this.itemDropOnField.y += this.itemDropOnField.fallSpeed * this.deltaTime;
-        this.itemDropOnField.fallSpeed += 40 * this.deltaTime; // gravity acceleration
+        this.itemDropOnField.fallSpeed += 40 * this.deltaTime; // 落地动画：重力加速度
         if (this.itemDropOnField.y >= this.itemDropOnField.targetY) {
           this.itemDropOnField.y = this.itemDropOnField.targetY;
           this.itemDropOnField.falling = false;
         }
       }
-      // Bobbing animation after landing
+      // 落地后上下浮动动画
       if (this.itemDropOnField && !this.itemDropOnField.collected && !this.itemDropOnField.falling) {
         this.itemDropOnField.bobPhase += this.deltaTime * 3;
       }
@@ -1668,7 +1746,7 @@ export class GameEngine {
     }
     this.updateArmorShieldCache();
     this.updatePlayer();
-    this.updateRoaches();
+    this.roachAISystem!.update();
     this.consumableSystem!.update(this.deltaTime);
     this.consumableSystem!.checkAutoUseConsumables();
     this.updateParticles();
@@ -1701,10 +1779,9 @@ export class GameEngine {
     this.checkDefense();
     this.checkAchievements();
 
-    // ===== BOSS DEATH SAFETY NET =====
-    // All weapon systems have run. If boss is dead but death sequence hasn't
-    // triggered yet (because the killing blow came from a system that runs
-    // AFTER updateBossBattle), trigger it now.
+    // ===== BOSS 死亡安全网 =====
+    // 所有武器系统已运行完毕。如果 Boss 已死亡但死亡序列尚未触发
+    // （因为致命一击来自 updateBossBattle 之后运行的系统），现在触发它。
     this.bossSystem!.checkBossDeathSafetyNet();
 
     // Endless mode timer
@@ -1725,8 +1802,8 @@ export class GameEngine {
     }
 
     // Decrement green slime burst effect timer
-    if (this.slimeBurstTimer > 0) {
-      this.slimeBurstTimer -= this.deltaTime;
+    if (this.roachAISystem!.slimeBurstTimer > 0) {
+      this.roachAISystem!.slimeBurstTimer -= this.deltaTime;
     }
 
     this.onPlayerUpdate?.(this.player);
@@ -1771,18 +1848,18 @@ export class GameEngine {
     }
   }
 
-  // ========== 玩家与武器更新 ==========
-  /** 更新玩家状态、武器与输入 */
+  // ===== 玩家与武器更新 =====
+  /** 更新玩家：处理移动、射击、武器切换、过热等 */
   updatePlayer() {
     const p = this.player;
 
-    // ===== TUTORIAL PAUSE: block all player controls during tutorial =====
+    // ===== 教程暂停：教程期间阻止所有玩家控制 =====
     if (this.tutorialPauseSpawn) {
-      p.isFiring = false; // Force stop flamethrower
+      p.isFiring = false; // 强制停止火焰喷射器
       this.audio.stopFire();
       p.x = Math.max(10, Math.min(this.width - 10, this.mouseX));
       p.angle = -Math.PI / 2;
-      return; // Skip all firing and weapon logic
+      return; // 跳过所有射击和武器逻辑
     }
 
     // Update paralyze timer
@@ -1791,10 +1868,10 @@ export class GameEngine {
       if (p.paralyzeTimer < 0) p.paralyzeTimer = 0;
     }
 
-    // Movement: if paralyzed, cannot move + STOP flamethrower
+    // 移动：如果麻痹，无法移动 + 停止火焰喷射器
     if (p.paralyzeTimer > 0) {
-      p.isFiring = false; // Force stop flamethrower
-      // Paralyzed: show purple spark effects at defense line (visible position)
+      p.isFiring = false; // 强制停止火焰喷射器
+      // 麻痹状态：在防线位置显示紫色火花特效
       const defenseLineY = this.defenseLineY();
       if (Math.random() < 0.4) {
         this.particles.push({
@@ -1808,14 +1885,14 @@ export class GameEngine {
         });
       }
       p.angle = -Math.PI / 2;
-      // Skip all other player logic while paralyzed
+      // 麻痹时跳过所有其他玩家逻辑
       return;
     }
 
     p.x = Math.max(10, Math.min(this.width - 10, this.mouseX));
     p.angle = -Math.PI / 2;
 
-    // Check if temp weapon expired
+    // 检查临时武器是否过期
     if (p.isTempWeapon && p.weaponTimer > 0) {
       p.weaponTimer -= this.deltaTime;
       if (p.weaponTimer <= 0) {
@@ -1825,16 +1902,16 @@ export class GameEngine {
       }
     }
 
-    // ===== HEAT WARNING: trigger when approaching overheat =====
-    // heatGain*100 = 100/second, 3 seconds = 300 heat remaining
+    // ===== 过热警告：接近过热时触发 =====
+    // heatGain*100 = 100/秒，3秒 = 剩余300热量
     const warnThreshold = p.overheatThreshold - 300; // 1500 for default overheatThreshold=1800
     if (p.heat >= warnThreshold && p.heatWarningTimer <= 0 && !p.isOverheated) {
       p.heatWarningTimer = 3;
       this.addFloatingText(p.x, p.y - 60, '⚠️ 枪管冷却中!', '#fbbf24', 1500, 18);
     }
 
-    // Firing logic based on current weapon
-    // Block firing if paralyzed
+    // 射击逻辑：基于当前武器
+    // 如果麻痹，阻止射击
     if (p.paralyzeTimer > 0) {
       p.isFiring = false;
     }
@@ -1854,7 +1931,7 @@ export class GameEngine {
           this.updateFlamethrower(p);
           break;
         case 'sticky':
-          // Sticky board is a placement item, not a weapon - handled by selectItem/onItemRelease
+          // 粘板是放置道具，不是武器 - 由 selectItem/onItemRelease 处理
           break;
         case 'poison':
           this.updatePoisonSpray(p);
@@ -1897,7 +1974,7 @@ export class GameEngine {
       if (p.reloadTimer <= 0) {
         p.isReloading = false;
         p.gas = p.maxGas;
-        // Show "FIRE" text at screen center when reload complete
+        // 装弹完成，在屏幕中央显示"开火"文字
         this.addFloatingText(this.width / 2, this.height / 2, '>>> 开 火 <<<', '#22c55e', 2000, 28);
       }
     }
@@ -1908,13 +1985,13 @@ export class GameEngine {
   }
 
   updateFlamethrower(p: Player) {
-    const gasCost = this.deltaTime * (p.powerBoostTimer > 0 ? 2 : 1); // 2x gas consumption during power boost
+    const gasCost = this.deltaTime * (p.powerBoostTimer > 0 ? 2 : 1); // 力量加成期间 2 倍燃气消耗
     const heatGain = this.deltaTime * 1.0;
     const powerBoostMult = p.powerBoostTimer > 0 ? 2 : 1;
     const baseDamage = (this.difficulty === 'hard' ? 200 : 300) * this.deltaTime * p.damageMultiplier * powerBoostMult;
     const range = p.fireRange * 0.5;
     const spreadAngle = (Math.PI / 15) * p.flameSpreadMultiplier;
-    this.spawnConeFire(p.x, p.y, -Math.PI / 2, range, spreadAngle, baseDamage, 'fire');
+    ParticleSpawner.spawnConeFire(this.particles, this.fireZones, this.deltaTime,p.x, p.y, -Math.PI / 2, range, spreadAngle, baseDamage, 'fire');
     // Black smoke at flame tip during power boost (use dynamic particle limit)
     if (p.powerBoostTimer > 0 && this.particles.length < this._particleLimit - 10 && Math.random() < 0.4) {
       const tipY = p.y - 322 - range;
@@ -1941,7 +2018,7 @@ export class GameEngine {
       p.isOverheated = true;
       p.overheatTimer = 10;
       p.heatWarningTimer = 0; // Clear warning on actual overheat
-      this.spawnSmokeParticles(p.x, p.y, 30);
+      ParticleSpawner.spawnSmokeParticles(this.particles,p.x, p.y, 30);
       this.screenShake = 3;
     }
   }
@@ -1950,7 +2027,7 @@ export class GameEngine {
     const gasCost = this.deltaTime;
     const range = p.fireRange * 0.45;
     const baseDamage = 30 * this.deltaTime;
-    this.spawnConeFire(p.x, p.y, -Math.PI / 2, range, Math.PI / 6, baseDamage, 'poison');
+    ParticleSpawner.spawnConeFire(this.particles, this.fireZones, this.deltaTime,p.x, p.y, -Math.PI / 2, range, Math.PI / 6, baseDamage, 'poison');
     p.gas -= gasCost * p.gasCostMultiplier;
     if (p.gas < 0) p.gas = 0;
     p.heat += this.deltaTime * 80;
@@ -1968,7 +2045,7 @@ export class GameEngine {
     // Wide spread shotgun blast
     for (let i = 0; i < p.shotgunPellets; i++) {
       const spreadAngle = -Math.PI / 2 + (i - p.shotgunPellets / 2) * (Math.PI / 8);
-      this.spawnConeFire(p.x, p.y, spreadAngle, range, Math.PI / 12, baseDamage / p.shotgunPellets, 'fire');
+      ParticleSpawner.spawnConeFire(this.particles, this.fireZones, this.deltaTime,p.x, p.y, spreadAngle, range, Math.PI / 12, baseDamage / p.shotgunPellets, 'fire');
     }
     p.gas -= gasCost * p.gasCostMultiplier;
     if (p.gas < 0) p.gas = 0;
@@ -2022,7 +2099,7 @@ export class GameEngine {
         life: 5, maxLife: 5,
         type: 'fire',
       });
-      this.spawnExplosionParticles(toX, toY, 20);
+      ParticleSpawner.spawnExplosionParticles(this.particles,toX, toY, 20);
       this.screenShake = 8;
     }, travelTime * 1000);
   }
@@ -2036,7 +2113,7 @@ export class GameEngine {
     if (this.difficulty === 'hard') {
       this.economy.money = Math.max(0, this.economy.money - 5);
     }
-    this.spawnSmokeParticles(this.player.x, this.player.y, 15);
+    ParticleSpawner.spawnSmokeParticles(this.particles,this.player.x, this.player.y, 15);
     this.onEconomyUpdate?.(this.economy);
   }
 
@@ -2071,7 +2148,7 @@ export class GameEngine {
 
   // ========== THROWABLE SYSTEM (delegated to ThrowableSystem module) =========
 
-  // ========== 武器切换 ==========
+  // ===== 武器系统 =====
   /**
    * 切换当前武器
    * @param {string} weapon - 武器类型
@@ -2082,7 +2159,7 @@ export class GameEngine {
 
   // ========== WEAPON DROPS (delegated to WeaponSystem module) ==========
 
-  // ========== ITEM PLACEMENT SYSTEM ==========
+  // ===== 道具系统 =====
   // ========== TRIPLE FLAME SHOTGUN =========
   // ========== 三重火焰 (delegated to TripleFlameSystem module) =========
 
@@ -2340,7 +2417,7 @@ export class GameEngine {
 
     // Explosion particles along the wall
     for (let px = wallX1; px <= wallX2; px += 20) {
-      this.spawnExplosionParticles(px, wallY, 2);
+      ParticleSpawner.spawnExplosionParticles(this.particles,px, wallY, 2);
     }
     this.screenShake = 8;
 
@@ -2391,11 +2468,7 @@ export class GameEngine {
     return [centerX, centerY];
   }
 
-  // =============================================================================
-  // 敌人生成：根据类型和场景边界创建蟑螂实体
-  // 支持的蟑螂类型：small, large, flying, armored, splitting, suicide,
-  //                  flying_suicide, queen, nurse, mutant, timed_suicide
-  // =============================================================================
+  // ===== 蟑螂生成 =====
   /**
    * 生成单个蟑螂敌人
    * @param {RoachType} type - 蟑螂类型
@@ -2560,695 +2633,6 @@ export class GameEngine {
     return r;
   }
 
-  // =============================================================================
-  // 敌人 AI 更新：移动、闪避、愤怒、飞行、追踪、特殊行为
-  // 按顺序处理：状态效果 → 粘板检测 → 定时炸弹 → 移动 → 特殊行为 → 死亡
-  // =============================================================================
-  /** 更新所有蟑螂敌人的 AI、移动与状态 */
-  updateRoaches() {
-    // ===== MUTANT TRANSFORMATION FRAME UPDATE =====
-    // 7-frame animation: 200ms per frame, total 1.4s
-    // Frame 0-6: normal → swelling → cracks → swollen → pre-burst → burst → empty shell
-    if (this.mutantTransformActive) {
-      this.mutantTransformTimer -= this.deltaTime;
-      if (this.mutantTransformTimer <= 0) {
-        this.mutantTransformFrame++;
-        if (this.mutantTransformFrame >= 7) {
-          // Animation complete, spawn roaches
-          this.mutantTransformActive = false;
-          this.spawnEmbryoRoaches();
-        } else {
-          // Next frame - 200ms per frame for smooth animation
-          this.mutantTransformTimer = 0.2;
-        }
-      }
-    }
-
-    for (let i = this.roaches.length - 1; i >= 0; i--) {
-      const r = this.roaches[i];
-      // Safety: skip if element was removed by another operation during this frame
-      if (!r) continue;
-
-      // Decrement spawn immunity timer (mutant-spawned roaches)
-      if (r.spawnImmuneTimer && r.spawnImmuneTimer > 0) {
-        r.spawnImmuneTimer -= this.deltaTime;
-      }
-
-      // Decrement heal buff timer (nurse-healed roaches)
-      if (r.healBuffTimer && r.healBuffTimer > 0) {
-        r.healBuffTimer -= this.deltaTime;
-      }
-
-      if (r.state === RoachState.DEAD) {
-        r.deathTimer -= this.deltaTime;
-        // Flying roach (including flying suicide): fall down while disintegrating
-        if (r.type === RoachType.FLYING || r.type === RoachType.FLYING_SUICIDE) {
-          r.vy = 150; // Fall speed
-          r.y += r.vy * this.deltaTime;
-          r.vx = (Math.random() - 0.5) * 40; // Slight horizontal tumble
-          r.x += r.vx * this.deltaTime;
-          // Spin while falling
-          r.angle += this.deltaTime * 8;
-          // Remove if hit the ground
-          if (r.y >= this.defenseLineY()) {
-            r.y = this.defenseLineY();
-            r.deathTimer = 0; // Immediate remove on ground hit
-          }
-        }
-        if (r.deathTimer <= 0) {
-          // Don't remove MUTANT during transformation animation
-          if (r.type === RoachType.MUTANT && this.mutantTransformActive) {
-            r.deathTimer = 0.1; // Keep alive until animation finishes
-          } else {
-            this.roaches.splice(i, 1);
-          }
-        }
-        continue;
-      }
-
-      // Damage flash decay
-      if (r.damageFlash > 0) r.damageFlash -= this.deltaTime * 5;
-
-      // Status effects
-      this.updateStatusEffects(r);
-
-      // Stunned or board-stuck roaches stop moving but still take fire damage
-      const isImmobilized = r.isStunned || this.isStuckByBoard(r.id);
-      if (isImmobilized) {
-        r.vx = 0; r.vy = 0;
-        // Still process burn damage and status below, don't skip
-      }
-
-      // Enrage
-      if (!r.isEnraged && r.hp < r.maxHp * 0.2 && r.type !== RoachType.ARMORED) {
-        r.isEnraged = true;
-        r.speed = r.baseSpeed * 2;
-      }
-
-      // Panic timer
-      if (r.panicTimer > 0) r.panicTimer -= this.deltaTime;
-
-      let moveAngle: number;
-
-      if (r.panicTimer > 0) {
-        moveAngle = r.panicAngle + Math.sin(this.time * 15 + r.wobbleOffset) * 0.8;
-      } else {
-        const isFlying = r.type === RoachType.FLYING || r.type === RoachType.FLYING_SUICIDE;
-        // Increased lateral wander for flying roaches
-        const wanderAmplitude = isFlying ? 80 : 30;
-        const targetX = r.x + Math.sin(r.wobbleOffset + this.time * r.wobbleSpeed) * wanderAmplitude;
-        const dl = this.defenseLineY();
-        const roachSize = ENEMY_DEFS[r.type].size;
-        // Use roach bottom edge for defense line detection (visual consistency)
-        const roachBottom = r.y + roachSize * 0.4;
-        // CRITICAL FIX: if roach has passed defense line, keep moving down (don't pull back up)
-        const targetY = roachBottom >= dl ? dl + 200 : dl;
-        const dx = targetX - r.x;
-        const dy = targetY - r.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        moveAngle = dist > 1 ? Math.atan2(dy, dx) : r.angle;
-
-        // FORCE FIX: when roach is very close to defense line, ensure it crosses
-        // (prevents roaches from wandering horizontally near the defense line forever)
-        const distToDefense = dl - roachBottom;
-        if (distToDefense > 0 && distToDefense < 50) {
-          // Near defense line: boost downward velocity to ensure crossing
-          const minSin = 0.3 + (1 - distToDefense / 50) * 0.4; // 0.3 to 0.7
-          if (Math.sin(moveAngle) < minSin) {
-            moveAngle = Math.asin(Math.min(minSin, 0.99));
-          }
-        }
-
-        // Ground roaches: push away from edges near defense line
-        // Flying roaches: speed up and charge straight at defense when close
-        if (isFlying && distToDefense < 150) {
-          // Flying roaches accelerate toward defense line - no edge push
-          const chargeSpeed = 2.5 * (1 - distToDefense / 150); // up to 2.5x speed boost
-          r.speed = r.baseSpeed * (1 + chargeSpeed);
-        } else if (!isFlying) {
-          const margin = 80;
-          if (distToDefense < 120) {
-            const pushStrength = (1 - distToDefense / 120) * 150 * this.deltaTime;
-            if (r.x < margin) {
-              moveAngle += pushStrength * (margin - r.x) / margin;
-            } else if (r.x > this.width - margin) {
-              moveAngle -= pushStrength * (r.x - (this.width - margin)) / margin;
-            }
-          }
-        }
-      }
-
-      // BAIT CONSUMABLE: pull all roaches toward bait target while active
-      if (this.player.baitTimer > 0 && !isImmobilized && this.consumableSystem!.baitTarget.active) {
-        const baitDx = this.consumableSystem!.baitTarget.x - r.x;
-        const baitDy = this.consumableSystem!.baitTarget.y - r.y;
-        const baitDist = Math.sqrt(baitDx * baitDx + baitDy * baitDy);
-        if (baitDist > 10) {
-          const baitAngle = Math.atan2(baitDy, baitDx);
-          const pullStrength = 0.7;
-          const cosA = Math.cos(moveAngle);
-          const sinA = Math.sin(moveAngle);
-          const cosB = Math.cos(baitAngle);
-          const sinB = Math.sin(baitAngle);
-          moveAngle = Math.atan2(
-            sinA * (1 - pullStrength) + sinB * pullStrength,
-            cosA * (1 - pullStrength) + cosB * pullStrength
-          );
-          r.speed = r.baseSpeed * 1.3;
-        }
-      }
-
-      // Normal movement
-      // Apply fan slow effect
-      const fanMultiplier = r.fanSlowTimer > 0 ? (1 - r.fanSlowFactor) : 1;
-      const effectiveSpeed = r.speed * fanMultiplier;
-
-      // ===== HOSPITAL EXCLUSIVE: NURSE ROACH FOLLOW MOVEMENT =====
-      // Nurse roach follows the nearest non-nurse ally in both X and Y axes.
-      // If no other roaches exist, nurse stays in place.
-      if (r.type === RoachType.NURSE) {
-        // Find nearest non-nurse ally
-        let nearest: Roach | null = null;
-        let nearestDist = Infinity;
-        for (const other of this.roaches) {
-          if (other.id === r.id) continue;
-          if (other.state !== RoachState.ALIVE) continue;
-          if (other.type === RoachType.NURSE) continue; // Don't follow other nurses
-          const dx = other.x - r.x;
-          const dy = other.y - r.y;
-          const d = Math.sqrt(dx * dx + dy * dy);
-          if (d < nearestDist) {
-            nearestDist = d;
-            nearest = other;
-          }
-        }
-        if (nearest && nearestDist > 40) {
-          // Move toward nearest ally in both X and Y axes
-          const followAngle = Math.atan2(nearest.y - r.y, nearest.x - r.x);
-          const followSpeed = r.speed * 0.5; // Nurse moves at 50% speed when following
-          r.vx = Math.cos(followAngle) * followSpeed * 65;
-          // Follow Y axis: move toward nearest ally's Y position
-          r.vy = Math.sin(followAngle) * followSpeed * 65;
-        } else if (nearest && nearestDist <= 40) {
-          // Close enough to ally, stop moving
-          r.vx = 0;
-          r.vy = 0;
-        } else {
-          // No other roaches, stay in place
-          r.vx = 0;
-          r.vy = 0;
-        }
-      } else if (r.type === RoachType.MUTANT && r.transformTimer && r.transformTimer > 0) {
-        // During mutant transformation: completely freeze movement
-        r.vx = 0;
-        r.vy = 0;
-      } else if (r.type === RoachType.TIMED_SUICIDE && r.placeTimer && r.placeTimer > 0) {
-        // Timed suicide roach placing bomb: freeze movement
-        r.vx = 0;
-        r.vy = 0;
-      } else if (r.spawnImmuneTimer && r.spawnImmuneTimer > 0) {
-        // Mutant spawn: frozen in place during 1-second spawn immunity
-        r.vx = 0;
-        r.vy = 0;
-      } else {
-        r.vx = Math.cos(moveAngle) * effectiveSpeed * 65;
-        r.vy = Math.sin(moveAngle) * effectiveSpeed * 65;
-      }
-      // Minimum downward speed: ensure ground roaches always progress toward defense
-      // Prevents soft-lock from roaches with near-zero vy getting stuck
-      // NURSE roach excluded: nurse only moves laterally, never forward
-      // TIMED_SUICIDE excluded during bomb placement: must stay frozen at placement point
-      if (!isImmobilized && r.type !== RoachType.FLYING && r.type !== RoachType.FLYING_SUICIDE && r.type !== RoachType.NURSE && !(r.type === RoachType.TIMED_SUICIDE && r.placeTimer && r.placeTimer > 0) && r.vy < 10) {
-        r.vy = 10; // minimum 10px/s downward
-      }
-
-      // Suicide/Small/TimedSuicide: high-speed lateral dodge when hit by flame
-      if ((r.type === RoachType.SUICIDE || r.type === RoachType.SMALL) && r.dodgeTimer > 0) {
-        r.dodgeTimer -= this.deltaTime;
-        if (r.dodgeTimer <= 0) {
-          r.dodgeDir = 0;
-        } else {
-          // High-speed lateral dodge (sideways movement away from flame)
-          let dodgeSpeed: number;
-          if (r.isSplitChild) {
-            dodgeSpeed = 250; // Split child: fastest erratic dodge
-          } else if (r.type === RoachType.SMALL) {
-            dodgeSpeed = 180; // Normal small: fast nimble dodge
-          } else {
-            dodgeSpeed = 100; // Suicide/TimedSuicide: sustained dodge
-          }
-          const fanMult = r.fanSlowTimer > 0 ? (1 - r.fanSlowFactor) : 1;
-          dodgeSpeed *= fanMult;
-          r.vx = r.dodgeDir * dodgeSpeed;
-          // Fire wall blocks during dodge
-          for (const wall of this.fireWalls) {
-            if (r.x >= wall.x1 && r.x <= wall.x2) {
-              const wallTop = wall.y - wall.height * 0.5;
-              if (r.y > wallTop && r.y < wallTop + wall.height + 5 && r.vy > 0) {
-                r.y = wallTop;
-                r.vy = 0;
-              }
-            }
-          }
-          // Fan push during dodge
-          if (r.fanPushY < 0 && r.y >= this.height / 2 && r.armorHp <= 0) {
-            r.y += r.fanPushY * this.deltaTime;
-            r.y = Math.max(this.height / 2, r.y);
-          }
-          // Edge stop
-          const edgeMargin = 50;
-          if ((r.x <= edgeMargin && r.dodgeDir < 0) || (r.x >= this.width - edgeMargin && r.dodgeDir > 0)) {
-            r.dodgeDir = 0;
-            r.dodgeTimer = 0;
-          }
-        }
-      }
-
-      r.x += r.vx * this.deltaTime;
-      r.y += r.vy * this.deltaTime;
-      r.angle = moveAngle;
-
-      // Pull roaches back into screen if they're far outside (prevents soft-lock when all visible roaches are dead but some are stuck off-screen)
-      const margin = 100;
-      if (r.x < -margin) r.x += 80 * this.deltaTime;
-      if (r.x > this.width + margin) r.x -= 80 * this.deltaTime;
-      if (r.y < -margin) r.y += 80 * this.deltaTime;
-      // Y-direction bottom protection: force defense breach if roach falls too far below
-      if (r.y > this.height + margin * 2) {
-        r.y = this.defenseLineY() + 50; // teleport to defense line for immediate breach
-      }
-
-      // Fire wall blocks ground roaches (flying pass over)
-      if (r.type !== RoachType.FLYING && r.type !== RoachType.FLYING_SUICIDE) {
-        for (const wall of this.fireWalls) {
-          if (r.x >= wall.x1 && r.x <= wall.x2) {
-            const wallTop = wall.y - wall.height * 0.5;
-            // If roach is trying to cross the wall from above
-            if (r.y > wallTop && r.y < wallTop + wall.height + 5 && r.vy > 0) {
-              // Block movement - push back above the wall
-              r.y = wallTop;
-              r.vy = 0;
-            }
-          }
-        }
-      }
-
-      // Apply fan upward push (blow roaches backward)
-      // ARMOR BUFF: armored roaches are immune to fan pushback (but still slowed)
-      if (r.fanPushY < 0 && r.y >= this.height / 2 && r.armorHp <= 0) {
-        r.y += r.fanPushY * this.deltaTime;
-        r.y = Math.max(this.height / 2, r.y);
-      }
-
-      // Clamp x position: ground roaches stay within perspective trapezoid bounds,
-      // flying roaches use screen edge margins
-      if (r.type === RoachType.FLYING || r.type === RoachType.FLYING_SUICIDE) {
-        const roachSize = r.size ?? ENEMY_DEFS[r.type].size;
-        const edgeMargin = Math.max(40, roachSize * 0.8);
-        r.x = Math.max(edgeMargin, Math.min(this.width - edgeMargin, r.x));
-      } else {
-        // Perspective: left/right boundaries depend on current Y position
-        const [gLeft, gRight] = this.getGroundBoundsAtY(r.y);
-        r.x = Math.max(gLeft + 5, Math.min(gRight - 5, r.x));
-      }
-
-      // Wing animation
-      r.animTimer += this.deltaTime;
-      if (r.animTimer > 0.12) {
-        r.animTimer = 0;
-        r.animFrame = (r.animFrame + 1) % 4;
-      }
-
-      // Suicide / Flying Suicide roach: activate fuse when near defense
-      if (r.type === RoachType.SUICIDE || r.type === RoachType.FLYING_SUICIDE) {
-        // NOTE: Ground suicide roach no longer zigzags constantly.
-        // It only dodges sideways when hit by flame (see burn damage section above).
-        const distToDefense = this.defenseLineY() - r.y;
-        // Flying suicide triggers fuse closer to defense (80px) to ensure it reaches defense line before exploding
-        const fuseTriggerDist = (r.type === RoachType.FLYING_SUICIDE) ? 80 : 150;
-        if (distToDefense < fuseTriggerDist) {
-          // No speed boost - maintain base speed toward defense
-          r.isFused = true;
-          r.fuseTimer -= this.deltaTime;
-          // Fuse visual
-          if (Math.random() < 0.3) {
-            this.particles.push({
-              x: r.x + (Math.random() - 0.5) * 10,
-              y: r.y + (Math.random() - 0.5) * 10,
-              vx: 0, vy: -20,
-              life: 0.3, maxLife: 0.3,
-              size: 3, color: '#ff4400',
-              type: ParticleType.SPARK,
-            });
-          }
-          if (r.fuseTimer <= 0) {
-            this.suicideExplode(r, i);
-            continue;
-          }
-        }
-      }
-
-      // Queen: spawn minions (disabled for the Boss in boss battle)
-      if (r.type === RoachType.QUEEN && !(this.bossBattle.active && r.isBoss)) {
-        r.spawnTimer -= this.deltaTime;
-        if (r.spawnTimer <= 0) {
-          r.spawnTimer = BOSS_CONFIG.queen.spawnInterval;
-          for (let m = 0; m < BOSS_CONFIG.queen.minionCount; m++) {
-            this.spawnRoach(RoachType.SMALL);
-          }
-          this.addFloatingText(r.x, r.y - 50, '女王召唤了小蟑螂!', '#ff44aa');
-        }
-      }
-
-      // ===== HOSPITAL EXCLUSIVE: NURSE ROACH "ILLEGAL MEDICINE" AOE HEAL =====
-      // Three-phase state machine: idle → charging(0.3s) → spraying(1.2s) → dissipating(0.5s)
-      if (r.type === RoachType.NURSE && r.state === RoachState.ALIVE) {
-        const healRange = 360; // 6 tiles ~ 360px (doubled)
-
-        // --- STATE MACHINE UPDATE ---
-        switch (r.healPhase) {
-          case 'idle': {
-            // Countdown until next heal
-            r.healTimer! -= this.deltaTime;
-            if (r.healTimer! <= 0) {
-              // Check if there are wounded allies in range
-              let hasWounded = false;
-              for (const other of this.roaches) {
-                if (other.id === r.id) continue;
-                if (other.state !== RoachState.ALIVE) continue;
-                const d = Math.sqrt((other.x - r.x) ** 2 + (other.y - r.y) ** 2);
-                if (d < healRange && other.hp < other.maxHp) {
-                  hasWounded = true;
-                  break;
-                }
-              }
-              if (hasWounded) {
-                // Enter charging phase - play cast sound
-                r.healPhase = 'charging';
-                r.healPhaseTimer = 1.0; // Extended to 1 second for visibility
-                this.audio.playNurseCast();
-                // Casting indicator text
-                this.addFloatingText(r.x, r.y - 50, '【施法中】', '#4ade80', 1500);
-                this.addFloatingText(r.x, r.y - 60, '非法行医!', '#5a8a5a');
-              } else {
-                // No wounded allies, reset timer
-                r.healTimer! = 1;
-              }
-            }
-            break;
-          }
-
-          case 'charging': {
-            // Phase 1: Charge up (1.0s) - heal immediately on entry, visual builds up
-            // Execute the actual heal RIGHT NOW (not at end of charging)
-            let healedCount = 0;
-            for (const other of this.roaches) {
-              if (other.id === r.id) continue;
-              if (other.state !== RoachState.ALIVE) continue;
-              const d = Math.sqrt((other.x - r.x) ** 2 + (other.y - r.y) ** 2);
-              if (d < healRange && other.hp < other.maxHp) {
-                const healAmount = Math.floor(other.maxHp * 0.20); // 20% max HP
-                const actualHeal = Math.min(healAmount, other.maxHp - other.hp);
-                if (actualHeal > 0) {
-                  other.hp += actualHeal;
-                  other.healBuffTimer = 2.0; // Green tint + plus sign duration
-                  healedCount++;
-                  // Floating heal text
-                  this.addFloatingText(other.x, other.y - 30, `+${actualHeal}`, '#5a8a5a', 1200);
-                }
-              }
-            }
-            if (healedCount > 0) {
-              this.addFloatingText(r.x, r.y - 50, '治疗喷射!', '#5a8a5a');
-            }
-
-            // Charging visual timer
-            r.healPhaseTimer! -= this.deltaTime;
-            if (r.healPhaseTimer! <= 0) {
-              // Enter spraying phase (visual only)
-              r.healPhase = 'spraying';
-              r.healPhaseTimer = 2.0; // Visual duration
-            }
-            break;
-          }
-
-          case 'spraying': {
-            // Phase 2: Spray mist (2.0s) - visual only, heal already done
-            r.healPhaseTimer! -= this.deltaTime;
-            if (r.healPhaseTimer! <= 0) {
-              // Enter dissipating phase
-              r.healPhase = 'dissipating';
-              r.healPhaseTimer = 1.0; // Extended for visibility
-            }
-            break;
-          }
-
-          case 'dissipating': {
-            // Phase 3: Fade out (0.5s)
-            r.healPhaseTimer! -= this.deltaTime;
-            if (r.healPhaseTimer! <= 0) {
-              // Back to idle
-              r.healPhase = 'idle';
-              r.healTimer = 1; // 1s cooldown
-            }
-            break;
-          }
-        }
-
-        // Track heal target for movement
-        let bestTarget: Roach | null = null;
-        let bestHpRatio = 1.0;
-        for (const other of this.roaches) {
-          if (other.id === r.id) continue;
-          if (other.state !== RoachState.ALIVE) continue;
-          const d = Math.sqrt((other.x - r.x) ** 2 + (other.y - r.y) ** 2);
-          if (d < healRange && other.hp < other.maxHp) {
-            const hpRatio = other.hp / other.maxHp;
-            if (hpRatio < bestHpRatio) {
-              bestHpRatio = hpRatio;
-              bestTarget = other;
-            }
-          }
-        }
-        r.healTargetId = bestTarget ? bestTarget.id : null;
-      }
-
-      // ===== MUTANT ROACH: no longer triggers embryo rampage at HP<50%
-      // "Embryo Rampage" now triggers on death (in killRoach) instead
-
-      if (r.type === RoachType.SUICIDE && r.inFire && !this.isStuckByBoard(r.id)) {
-          if (r.dodgeDir === 0) {
-            // First hit: pick a random direction and start dodging
-            r.dodgeDir = Math.random() < 0.5 ? -1 : 1;
-          }
-          // Hit again: keep current direction, reset dodge duration
-          r.dodgeTimer = 1.2;
-        }
-        // ===== TIMED SUICIDE: "螂家爆破" DEFENSE BREACH SYSTEM =====
-        // Three-phase: warning → crouching → exploding + residue
-        if (r.type === RoachType.TIMED_SUICIDE && r.state === RoachState.ALIVE) {
-          const dl = this.defenseLineY();
-          const distToDefense = dl - r.y;
-
-          // Initialize phase if not set
-          if (!r.breachPhase) r.breachPhase = 'idle';
-
-          // Branch B: Flame killed - quiet death, no explosion
-          if (r.hp <= 0 && r.breachPhase !== 'idle') {
-            r.isFlameKilled = true;
-            r.state = RoachState.DEAD;
-            r.deathTimer = 1.0;
-            r.breachPhase = 'residue';
-            r.residueTimer = 2.0;
-            this.addFloatingText(r.x, r.y - 30, '炸弹没响...', '#666');
-            continue;
-          }
-
-          // Branch A: Sticky board frozen - pause everything
-          if (r.stuckTimer > 0 && r.breachPhase !== 'idle') {
-            r.isFrozen = true;
-            // Pause timers while frozen
-            continue;
-          } else {
-            r.isFrozen = false;
-          }
-
-          // Phase transition: idle → warning when within 200px of defense
-          if (r.breachPhase === 'idle' && distToDefense <= 200) {
-            r.breachPhase = 'warning';
-            r.breachPhaseTimer = 0.5; // Warning lasts until crouching
-            r.crackRadius = 0;
-          }
-
-          // State machine
-          switch (r.breachPhase) {
-            case 'warning': {
-              // Phase 1: Danger warning (0.5s before crouching)
-              // Speed reduced 50%
-              r.speed = r.baseSpeed * 0.5;
-              // Advance to crouching when closer
-              if (distToDefense <= 80) {
-                r.breachPhase = 'crouching';
-                r.breachPhaseTimer = 3.0; // 3s countdown
-                r.placeTimer = 3.0; // Countdown timer
-                r.hasPlacedBomb = true;
-                this.addFloatingText(r.x, r.y - 50, '螂家爆破!', '#8b2020');
-              }
-              break;
-            }
-
-            case 'crouching': {
-              // Phase 2: Crouch + final countdown
-              // Completely frozen
-              r.vx = 0;
-              r.vy = 0;
-              // Clear DoT (invincible during placement)
-              r.burnDamage = 0;
-              r.poisonTimer = 0;
-              r.inFire = false;
-              r.damageFlash = 0;
-
-              // Countdown
-              r.breachPhaseTimer! -= this.deltaTime;
-              r.placeTimer! -= this.deltaTime;
-
-              // Crack radius grows (0→60px over crouching duration)
-              r.crackRadius = Math.min(60, (3.0 - r.breachPhaseTimer!) / 3.0 * 60);
-
-              // Countdown floating text
-              const secs = Math.ceil(r.placeTimer!);
-              if (r.placeTimer! > 0 && Math.abs(r.placeTimer! - secs) < 0.05 && secs <= 3) {
-                this.addFloatingText(r.x, r.y - 35, `${secs}`, secs <= 1 ? '#8b2020' : '#a05030');
-              }
-
-              // Explode when countdown reaches 0
-              if (r.placeTimer! <= 0) {
-                r.breachPhase = 'exploding';
-                r.breachPhaseTimer = 0.4; // 0.4s explosion
-                this.triggerBreachExplosion(r);
-              }
-              break;
-            }
-
-            case 'exploding': {
-              // Phase 3: Explosion (0.4s screen shake)
-              r.breachPhaseTimer! -= this.deltaTime;
-              if (r.breachPhaseTimer! <= 0) {
-                r.breachPhase = 'residue';
-                r.residueTimer = 3.0; // 3s residue
-                r.state = RoachState.DEAD;
-                r.deathTimer = 3.0;
-              }
-              break;
-            }
-
-            case 'residue': {
-              // Phase 4: Residue fading
-              r.residueTimer! -= this.deltaTime;
-              if (r.residueTimer! <= 0) {
-                r.deathTimer = 0; // Remove
-              }
-              break;
-            }
-          }
-        }
-
-        // Legacy: handle old placed bombs (cleanup only)
-        if (r.type === RoachType.TIMED_SUICIDE && r.state === RoachState.ALIVE && !r.hasPlacedBomb && !(r.breachPhase && r.breachPhase !== 'idle')) {
-          const roachSize = ENEMY_DEFS[r.type].size;
-          const roachBottom = r.y + roachSize * 0.4;
-          const dl = this.defenseLineY();
-          const placeY = dl - 64;
-
-          if (roachBottom >= placeY) {
-            // Legacy fallback: old bomb placement
-            if (r.placeTimer === 0) {
-              r.placeTimer = 2.0;
-            }
-            r.vx = 0;
-            r.vy = 0;
-            r.burnDamage = 0;
-            r.poisonTimer = 0;
-            r.poisonDamage = 0;
-            r.inFire = false;
-            r.damageFlash = 0;
-            r.placeTimer! -= this.deltaTime;
-            if (r.placeTimer! <= 0) {
-              r.hasPlacedBomb = true;
-              this.placedBombs.push({
-                id: r.id, x: r.x, y: placeY, timer: 3,
-              });
-              this.addFloatingText(r.x, placeY - 30, '炸弹已安放!', '#ef4444');
-              for (let p = 0; p < 8; p++) {
-                const angle = (p / 8) * Math.PI * 2;
-                const speed = 30 + Math.random() * 40;
-                this.particles.push({
-                  x: r.x, y: r.y,
-                  vx: Math.cos(angle) * speed,
-                  vy: Math.sin(angle) * speed - 20,
-                  life: 0.5, maxLife: 0.5,
-                  size: 3 + Math.random() * 4,
-                  color: `rgba(200, 150, 50, 0.7)`,
-                  type: ParticleType.SPARK,
-                });
-              }
-              r.type = RoachType.LARGE;
-              r.size = ENEMY_DEFS[RoachType.LARGE].size;
-              r.speed = ENEMY_DEFS[RoachType.LARGE].speed;
-              r.baseSpeed = ENEMY_DEFS[RoachType.LARGE].speed;
-              this.addFloatingText(r.x, r.y - 45, '变身大蟑螂!', '#fbbf24');
-            }
-          }
-        }
-
-        // SMALL roach: quick nimble dodge when hit by flame
-        if (r.type === RoachType.SMALL && r.inFire && !this.isStuckByBoard(r.id)) {
-          if (r.dodgeDir === 0) {
-            // First hit: random direction
-            r.dodgeDir = Math.random() < 0.5 ? -1 : 1;
-          }
-          // Split child: shortest, most erratic dodge
-          // Normal small: short nimble dodge
-          if (r.isSplitChild) {
-            r.dodgeTimer = 0.2 + Math.random() * 0.2; // 0.2-0.4 seconds (very quick)
-          } else {
-            r.dodgeTimer = 0.4 + Math.random() * 0.3; // 0.4-0.7 seconds
-          }
-        }
-
-        // Apply burn damage and clear fire state (only when actually in fire)
-        if (r.inFire && r.burnDamage > 0) {
-          const dmg = r.burnDamage * this.deltaTime;
-          this.applyDamageToRoach(r, dmg);
-          r.burnDamage = 0;
-          if (Math.random() < 0.3) {
-            this.spawnSmokeParticles(r.x, r.y, 1);
-          }
-          r.inFire = false;
-        }
-
-      // Poison DoT (skip timed suicide roach during bomb placement)
-      if (r.poisonTimer > 0 && !(r.type === RoachType.TIMED_SUICIDE && r.placeTimer && r.placeTimer > 0)) {
-        r.hp -= r.poisonDamage * this.deltaTime;
-        r.poisonTimer -= this.deltaTime;
-        if (Math.random() < 0.2) {
-          this.particles.push({
-            x: r.x + (Math.random() - 0.5) * 15,
-            y: r.y + (Math.random() - 0.5) * 15,
-            vx: 0, vy: -10,
-            life: 0.5, maxLife: 0.5,
-            size: 4, color: '#a78bfa',
-            type: ParticleType.POISON_CLOUD,
-          });
-        }
-      }
-
-      if (r.hp <= 0) {
-        this.killRoach(r, i);
-      }
-    }
-  }
-
   updateStatusEffects(r: Roach) {
     // Stuck by board - static visual only, no per-frame particles
     // (roach is rendered with yellow tint by the stuck overlay in renderRoach)
@@ -3279,140 +2663,9 @@ export class GameEngine {
     this.collisionSystem!.applyDamageToRoach(r, damage, this.armorShieldCache);
   }
 
-
-  // ===== MUTANT ROACH: FORCE EMBRYO BURST ON DEATH =====
-  // Called from killRoach when mutant dies during embryo rampage
-  // Store spawn types for delayed embryo spawn after animation
-  private _embryoSpawnTypes: RoachType[] = [];
-
-  forceEmbryoBurst(r: Roach) {
-    // ===== 3-FRAME TRANSFORMATION ANIMATION =====
-    // Frame 0: normal (roach_mutant.png) - 350ms
-    // Frame 1: swollen (mutant_swollen.png) - 350ms
-    // Frame 2: burst (mutant_burst.png) - 350ms
-    // Then spawn roaches
-
-    // Determine spawn result ahead of time
-    const roll = Math.random();
-    if (roll < 0.5) {
-      this._embryoSpawnTypes = [RoachType.SMALL, RoachType.SMALL]; // 50%
-    } else if (roll < 0.8) {
-      this._embryoSpawnTypes = [RoachType.SMALL, RoachType.FLYING]; // 30%
-    } else {
-      this._embryoSpawnTypes = [RoachType.SMALL, RoachType.SUICIDE]; // 20%
-    }
-
-    // Start transformation sequence - 600ms per frame for visibility
-    this.mutantTransformActive = true;
-    this.mutantTransformFrame = 0;
-    this.mutantTransformTimer = 0.6; // 600ms per frame, total 1.8s
-    this.mutantTransformX = r.x;
-    this.mutantTransformY = r.y;
-
-    // Visual + audio feedback
-    this.screenShake = 12;
-    this.audio.playMutantTransform();
-    this.addFloatingText(r.x, r.y - 70, '【胚胎暴走】', '#ff0040', 2000);
-    this.particles.push({
-      x: r.x, y: r.y, vx: 0, vy: 0,
-      life: 0.4, maxLife: 0.4,
-      size: 120,
-      color: 'rgba(255, 0, 64, 0.5)',
-      type: ParticleType.EXPLOSION,
-    });
-  }
-
-  // Called after 3-frame animation completes
-  spawnEmbryoRoaches() {
-    const sx = this.mutantTransformX;
-    const sy = this.mutantTransformY;
-    let spawnedCount = 0;
-
-    for (let i = 0; i < this._embryoSpawnTypes.length; i++) {
-      const spawnType = this._embryoSpawnTypes[i];
-
-      const newRoach = this.spawnRoach(spawnType);
-      if (!newRoach) break;
-      spawnedCount++;
-
-      // Spawn at mutant death position (exact, no random offset)
-      newRoach.x = sx;
-      newRoach.y = sy;
-      // Use original HP (not reduced)
-      newRoach.hp = ENEMY_DEFS[spawnType].hp;
-      newRoach.maxHp = ENEMY_DEFS[spawnType].hp;
-      newRoach.slimeTimer = 2.0;
-      newRoach.wasMutantSpawn = true;
-      // 1-second spawn immunity: frozen in place + invincible
-      newRoach.spawnImmuneTimer = 1.0;
-
-      if (spawnType === RoachType.SUICIDE) {
-        newRoach.size = Math.floor(ENEMY_DEFS[spawnType].size * 0.6);
-        newRoach.hp = ENEMY_DEFS[spawnType].hp;
-        newRoach.maxHp = ENEMY_DEFS[spawnType].hp;
-        newRoach.fuseTimer = 3;
-      }
-
-      // ===== CRITICAL: Add spawned roach to game array =====
-      this.roaches.push(newRoach);
-
-      const typeName = spawnType === RoachType.SMALL ? '小蟑螂' : spawnType === RoachType.FLYING ? '飞行蟑螂' : '自爆蟑螂';
-      this.addFloatingText(newRoach.x, newRoach.y - 50, `【诞生】${typeName}!`, '#00ff80', 1500);
-    }
-
-    // Trigger green slime burst visual effect
-    this.slimeBurstTimer = 1.2;
-    this.slimeBurstX = sx;
-    this.slimeBurstY = sy;
-
-    this.addFloatingText(sx, sy - 40, `生成${spawnedCount}只!`, '#ff0040', 2000);
-  }
-
-  // ===== HOSPITAL EXCLUSIVE: MUTANT ROACH DEATH =====
   // Track death chain depth to prevent exponential recursion
   private _deathChainDepth: number = 0;
   private readonly MAX_DEATH_CHAIN_DEPTH = 3;
-
-  mutantDeathEffect(r: Roach) {
-    // Prevent exponential death chain: cap recursion depth
-    if (this._deathChainDepth >= this.MAX_DEATH_CHAIN_DEPTH) return;
-    this._deathChainDepth++;
-
-    try {
-      // 1. Corrosive acid splash: damage nearby roaches
-      const acidRadiusSq = 10000; // 100px radius (was 150), squared to avoid Math.sqrt
-      const acidRadius = 100;
-      let hitCount = 0;
-      for (const other of this.roaches) {
-        if (other.state !== RoachState.ALIVE || other.id === r.id) continue;
-        const dx = other.x - r.x;
-        const dy = other.y - r.y;
-        const distSq = dx * dx + dy * dy;
-        if (distSq < acidRadiusSq) {
-          const dist = Math.sqrt(distSq); // Only sqrt for damage falloff calc
-          const dmg = 10 * (1 - dist / acidRadius);
-          other.hp -= dmg;
-          other.burnDamage = dmg * 1.5;
-          other.inFire = true;
-          hitCount++;
-          // Defer kill to avoid recursive chain reaction in same frame
-          if (other.hp <= 0 && this._deathChainDepth < this.MAX_DEATH_CHAIN_DEPTH) {
-            this.killRoach(other, this.roaches.indexOf(other));
-          }
-        }
-      }
-
-      // 2. Show floating text
-      if (this._deathChainDepth <= 1) { // Only show text for primary death
-        this.addFloatingText(r.x, r.y - 40, '酸液飞溅!', '#84cc16');
-        if (hitCount > 0) {
-          this.addFloatingText(r.x, r.y - 55, `${hitCount}只受腐蚀`, '#a3e635');
-        }
-      }
-    } finally {
-      this._deathChainDepth--;
-    }
-  }
 
   suicideExplode(r: Roach, index: number) {
     // Remove the roach
@@ -3423,15 +2676,15 @@ export class GameEngine {
 
     // ===== Enhanced explosion effects (5 second duration) =====
     // Core explosion
-    this.spawnExplosionParticles(r.x, r.y, 50);
+    ParticleSpawner.spawnExplosionParticles(this.particles,r.x, r.y, 50);
     // Heavy smoke
-    this.spawnSmokeParticles(r.x, r.y, 40);
+    ParticleSpawner.spawnSmokeParticles(this.particles,r.x, r.y, 40);
     // Debris / body fragments
-    this.spawnDebrisParticles(r.x, r.y, 25);
+    ParticleSpawner.spawnDebrisParticles(this.particles,r.x, r.y, 25);
     // Sparks
-    this.spawnSparkParticles(r.x, r.y, 30);
+    ParticleSpawner.spawnSparkParticles(this.particles,r.x, r.y, 30);
     // Fire ring
-    this.spawnFireRingParticles(r.x, r.y, 20);
+    ParticleSpawner.spawnFireRingParticles(this.particles,r.x, r.y, 20);
     this.screenShake = 20;
 
     // Damage nearby roaches with visual feedback (no effect on BOSS)
@@ -3514,11 +2767,11 @@ export class GameEngine {
     const explodeRadius = 100;
 
     // Same explosion effects as suicideExplode
-    this.spawnExplosionParticles(r.x, r.y, 50);
-    this.spawnSmokeParticles(r.x, r.y, 40);
-    this.spawnDebrisParticles(r.x, r.y, 25);
-    this.spawnSparkParticles(r.x, r.y, 30);
-    this.spawnFireRingParticles(r.x, r.y, 20);
+    ParticleSpawner.spawnExplosionParticles(this.particles,r.x, r.y, 50);
+    ParticleSpawner.spawnSmokeParticles(this.particles,r.x, r.y, 40);
+    ParticleSpawner.spawnDebrisParticles(this.particles,r.x, r.y, 25);
+    ParticleSpawner.spawnSparkParticles(this.particles,r.x, r.y, 30);
+    ParticleSpawner.spawnFireRingParticles(this.particles,r.x, r.y, 20);
     this.screenShake = 20;
 
     // Damage nearby roaches
@@ -3562,93 +2815,25 @@ export class GameEngine {
     this.addFloatingText(r.x, r.y - 30, hitCount > 0 ? `死亡爆炸!(${hitCount}只受波及)` : '死亡爆炸!', '#ff4400');
   }
 
-  // Debris particles for suicide roach explosion (body fragments)
-  spawnDebrisParticles(x: number, y: number, count: number) {
-    for (let i = 0; i < count; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const speed = 40 + Math.random() * 120;
-      this.particles.push({
-        x: x + (Math.random() - 0.5) * 10,
-        y: y + (Math.random() - 0.5) * 10,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed - 50,
-        life: 3 + Math.random() * 2, // 3-5 seconds
-        maxLife: 3 + Math.random() * 2,
-        size: 4 + Math.random() * 10,
-        color: `hsl(${15 + Math.random() * 20}, 80%, ${30 + Math.random() * 20}%)`,
-        type: ParticleType.ASH,
-      });
-    }
-  }
-
-  // Fire ring particles that expand outward
-  spawnFireRingParticles(x: number, y: number, count: number) {
-    for (let i = 0; i < count; i++) {
-      const angle = (i / count) * Math.PI * 2;
-      const speed = 60 + Math.random() * 80;
-      this.particles.push({
-        x, y,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed - 20,
-        life: 1.5 + Math.random() * 1.5, // 1.5-3 seconds
-        maxLife: 1.5 + Math.random() * 1.5,
-        size: 8 + Math.random() * 16,
-        color: `hsl(${10 + Math.random() * 25}, 100%, 55%)`,
-        type: ParticleType.EXPLOSION,
-      });
-    }
-  }
-
-  // Shockwave ring: expands outward fast then fades - used for interrupt/collision impacts
-  spawnShockwaveRing(x: number, y: number, count: number) {
-    for (let i = 0; i < count; i++) {
-      const angle = (i / count) * Math.PI * 2;
-      const speed = 150 + Math.random() * 200;
-      this.particles.push({
-        x, y,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
-        life: 0.8 + Math.random() * 0.4,
-        maxLife: 0.8 + Math.random() * 0.4,
-        size: 12 + Math.random() * 20,
-        color: `rgba(255, ${200 + Math.random() * 55}, ${100 + Math.random() * 50}, 0.9)`,
-        type: ParticleType.EXPLOSION,
-      });
-    }
-    // Inner white core burst
-    for (let i = 0; i < 10; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const speed = 80 + Math.random() * 150;
-      this.particles.push({
-        x, y,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
-        life: 0.5 + Math.random() * 0.3,
-        maxLife: 0.5 + Math.random() * 0.3,
-        size: 6 + Math.random() * 12,
-        color: 'rgba(255, 255, 255, 0.95)',
-        type: ParticleType.SPARK,
-      });
-    }
-  }
+  // [REMOVED] spawnDebrisParticles, spawnFireRingParticles, spawnShockwaveRing — migrated to ParticleSpawner
 
 
 
-  // ===== TIMED SUICIDE: "螂家爆破" EXPLOSION TRIGGER =====
+  // ===== 定时自爆："螂家爆破" 爆炸触发 =====
   // Phase 3: Screen shake + debris barrage + defense damage
   triggerBreachExplosion(r: Roach) {
-    // Prevent exponential death chain
+    // 防止指数级死亡链
     if (this._deathChainDepth >= this.MAX_DEATH_CHAIN_DEPTH) return;
     this._deathChainDepth++;
 
     try {
       // ===== SAME-LEVEL EXPLOSION AS placedBombs =====
       // Layer 1: Core explosion particles (80)
-      this.spawnExplosionParticles(r.x, r.y, 80);
+      ParticleSpawner.spawnExplosionParticles(this.particles,r.x, r.y, 80);
       // Layer 2: Fire ring (30)
-      this.spawnFireRingParticles(r.x, r.y, 30);
+      ParticleSpawner.spawnFireRingParticles(this.particles,r.x, r.y, 30);
       // Layer 3: Smoke (40)
-      this.spawnSmokeParticles(r.x, r.y, 40);
+      ParticleSpawner.spawnSmokeParticles(this.particles,r.x, r.y, 40);
       // Layer 4: Fire flash overlay (3 layers)
       for (let fi = 0; fi < 3; fi++) {
         this.particles.push({
@@ -3681,7 +2866,7 @@ export class GameEngine {
       this.audio.playTimedBombExplode();
       Vibration.vibrateDamage();
 
-      // Damage nearby roaches within 196px (same as placedBombs)
+      // 伤害附近蟑螂（196px范围，与放置炸弹相同）
       for (const other of this.roaches) {
         if (other.state !== RoachState.ALIVE || other.id === r.id) continue;
         const d = Math.sqrt((other.x - r.x) ** 2 + (other.y - r.y) ** 2);
@@ -3728,23 +2913,23 @@ export class GameEngine {
       this.suicideDeathExplode(r);
     }
 
-    // ===== MUTANT ROACH DEATH: "Embryo Rampage" - spawn 2 roaches =====
+    // ===== 变异蟑螂死亡："胚胎暴走" - 生成 2 只蟑螂 =====
     if (r.type === RoachType.MUTANT) {
-      this.forceEmbryoBurst(r);
+      this.roachAISystem!.forceEmbryoBurst(r);
     }
 
     r.state = RoachState.DEAD;
-    // Extend death timer for MUTANT to allow 7-frame transformation animation to complete
-    // 7 frames × 200ms = 1.4s total + 0.6s buffer
+    // 延长 MUTANT 死亡计时器以允许 7 帧变形动画完成
+    // 7 帧 × 200ms = 1.4秒 + 0.6秒缓冲
     r.deathTimer = r.type === RoachType.MUTANT ? 2.0 : 0.6;
 
-    // Clean up sticky drop wrap on death (delegated to StickySystem)
+    // 清理死亡蟑螂的粘液弹包裹（委托给 StickySystem）
     this.stickySystem!.cleanupRoachDeath(r);
 
-    // Flying roach: play death sound, stop buzz loop if no more flying roaches alive
+    // 飞行蟑螂：播放死亡音效，如果没有活着的飞行蟑螂则停止嗡嗡声循环
     if (r.type === RoachType.FLYING || r.type === RoachType.FLYING_SUICIDE) {
       this.audio.playFlyingDeath();
-      // Check if any flying roaches are still alive
+      // 检查是否还有活着的飞行蟑螂
       const anyFlyingAlive = this.roaches.some(
         ro => (ro.type === RoachType.FLYING || ro.type === RoachType.FLYING_SUICIDE) && ro.state === RoachState.ALIVE
       );
@@ -3753,7 +2938,7 @@ export class GameEngine {
       }
     }
 
-    // Splitting roach: spawn 5 small roaches on first death
+    // 分裂蟑螂：首次死亡时生成 5 只小蟑螂
     if (r.type === RoachType.SPLITTING && !r.hasSplit) {
       r.hasSplit = true;
       r.deathTimer = 0.5;
@@ -3770,10 +2955,10 @@ export class GameEngine {
       this.addFloatingText(r.x, r.y - 30, '分裂x5!', '#ff8800');
     }
 
-    // Flying roach: disintegrate and fall on death
+    // 飞行蟑螂：死亡时解体并坠落
     if (r.type === RoachType.FLYING) {
       r.deathTimer = 2.0; // Longer for disintegration animation
-      // Wing debris particles (wing fragments fly off)
+      // 翅膀碎片粒子（翅膀碎片飞散）
       for (let w = 0; w < 8; w++) {
         const wingAngle = (w / 8) * Math.PI * 2;
         const wingSpeed = 60 + Math.random() * 100;
@@ -3805,11 +2990,11 @@ export class GameEngine {
           type: ParticleType.ASH,
         });
       }
-      // Feather/spark particles
-      this.spawnSparkParticles(r.x, r.y, 20);
+      // 羽毛/火花粒子
+      ParticleSpawner.spawnSparkParticles(this.particles,r.x, r.y, 20);
       this.addFloatingText(r.x, r.y - 20, '解体!', '#88ccff');
     }
-    // Suicide / Flying Suicide roach: enhanced explosion on death
+    // 自爆/飞行自爆蟑螂：死亡时增强爆炸
     if (r.type === RoachType.SUICIDE || r.type === RoachType.FLYING_SUICIDE) {
       const explodeRadius = 80;
       let hitCount = 0;
@@ -3827,12 +3012,12 @@ export class GameEngine {
           hitCount++;
         }
       }
-      // Enhanced death explosion effects (5 second debris)
-      this.spawnExplosionParticles(r.x, r.y, 35);
-      this.spawnSmokeParticles(r.x, r.y, 30);
-      this.spawnDebrisParticles(r.x, r.y, 20);
-      this.spawnFireRingParticles(r.x, r.y, 15);
-      this.spawnSparkParticles(r.x, r.y, 20);
+      // 增强死亡爆炸特效（5秒碎片）
+      ParticleSpawner.spawnExplosionParticles(this.particles,r.x, r.y, 35);
+      ParticleSpawner.spawnSmokeParticles(this.particles,r.x, r.y, 30);
+      ParticleSpawner.spawnDebrisParticles(this.particles,r.x, r.y, 20);
+      ParticleSpawner.spawnFireRingParticles(this.particles,r.x, r.y, 15);
+      ParticleSpawner.spawnSparkParticles(this.particles,r.x, r.y, 20);
       this.screenShake = 12;
       this.audio.playSuicideExplode();
       Vibration.vibrateSuicideExplode();
@@ -3841,9 +3026,9 @@ export class GameEngine {
 
     this.audio.playKill();
     Vibration.vibrateKill();
-    this.spawnAshParticles(r.x, r.y, r.type === RoachType.QUEEN ? 50 : (r.type === RoachType.LARGE ? 20 : 12));
-    this.spawnSparkParticles(r.x, r.y, r.type === RoachType.QUEEN ? 40 : (r.type === RoachType.LARGE ? 15 : 8));
-    this.spawnBloodParticles(r.x, r.y, r.type === RoachType.QUEEN ? 40 : (r.type === RoachType.LARGE ? 25 : 15));
+    ParticleSpawner.spawnAshParticles(this.particles,r.x, r.y, r.type === RoachType.QUEEN ? 50 : (r.type === RoachType.LARGE ? 20 : 12));
+    ParticleSpawner.spawnSparkParticles(this.particles,r.x, r.y, r.type === RoachType.QUEEN ? 40 : (r.type === RoachType.LARGE ? 15 : 8));
+    ParticleSpawner.spawnBloodParticles(this.particles,r.x, r.y, r.type === RoachType.QUEEN ? 40 : (r.type === RoachType.LARGE ? 25 : 15));
 
     const sceneMult = this.getSceneConfig().rewardMultiplier;
     const rewardMult = (this.talentMultipliers.rewardMultiplier || 1) * sceneMult;
@@ -3857,9 +3042,9 @@ export class GameEngine {
       case RoachType.ARMORED: this.economy.armoredKills++; break;
       case RoachType.SPLITTING: this.economy.splittingKills++; break;
       case RoachType.SUICIDE: this.economy.suicideKills++; break;
-      case RoachType.FLYING_SUICIDE: this.economy.suicideKills++; break; // Count as suicide kill
+      case RoachType.FLYING_SUICIDE: this.economy.suicideKills++; break; // 作为自杀击杀计数
       case RoachType.QUEEN: this.economy.queenKills++; break;
-      // Hospital exclusive roach kills (count toward total but no separate category needed)
+      // 医院专属蟑螂击杀（计入总数但不需要单独分类）
       case RoachType.NURSE: break;
       case RoachType.MUTANT: break;
     }
@@ -3873,8 +3058,8 @@ export class GameEngine {
       }
     }
 
-    // ===== MINION DEATH BACKLASH (Phase 1 core mechanic) =====
-    // When minions die during Phase 1, BOSS takes backlash damage
+    // ===== 小兵死亡反噬（第一阶段核心机制） =====
+    // 当小兵在第一阶段死亡时，BOSS 受到反噬伤害
     if (this.bossBattle.active && this.bossBattle.phase === 1 && !r.isBoss) {
       const boss = this.roaches.find(br => br.type === RoachType.QUEEN && br.state === RoachState.ALIVE && br.isBoss);
       if (boss && boss.hp > 0) {
@@ -3894,7 +3079,7 @@ export class GameEngine {
           // Visual feedback for backlash
           this.addFloatingText(boss.x + (Math.random() - 0.5) * 40, boss.y - 30, `反噬 -${backlashDmg}`, '#a855f7');
           boss.damageFlash = 1;
-          // Purple backlash particles
+          // 紫色反噬粒子
           for (let k = 0; k < 3; k++) {
             this.particles.push({
               x: boss.x + (Math.random() - 0.5) * 60,
@@ -3916,7 +3101,7 @@ export class GameEngine {
     this.addFloatingText(r.x, r.y - 20, `+¥${reward}`, '#4ade80');
     this.screenShake = r.isBoss ? 12 : (r.type === RoachType.LARGE ? 6 : 3);
 
-    // Boss death clears all remaining roaches
+    // Boss 死亡清除所有剩余蟑螂
     if (r.isBoss) {
       this.bossSystem!.activeBosses--;
       this.addFloatingText(this.width / 2, this.height / 2, 'BOSS 击败!', '#fbbf24');
@@ -3928,8 +3113,8 @@ export class GameEngine {
       }
     }
 
-    // ===== TIMED SUICIDE: dead body bomb =====
-    // When killed (not during bomb placement), leaves a 3s countdown bomb on the ground
+    // ===== 定时自爆：尸体炸弹 =====
+    // 被击杀时（非放置炸弹期间），在地面留下3秒倒计时炸弹
     if (r.type === RoachType.TIMED_SUICIDE && !r.hasPlacedBomb) {
       this.deadTimedBombs.push({
         id: this.nextBombId++,
@@ -3973,10 +3158,7 @@ export class GameEngine {
   }
 
 
-  // =============================================================================
-  // 碰撞检测：火焰/武器与蟑螂的碰撞，以及防线突破检测
-  // 支持：锥形火焰 × 三连火焰多枪口、燃烧瓶火墙、毒雾区域、雷达激光
-  // =============================================================================
+  // ===== 碰撞检测 =====
   /** 检测火焰、道具与蟑螂之间的碰撞 */
   /**
    * 委托给 CollisionSystem 模块 —— 火焰-蟑螂碰撞检测
@@ -4092,19 +3274,15 @@ export class GameEngine {
     }
   }
 
-  // =============================================================================
-  // 波次系统：管理波次推进、生成队列、3-2-1 倒计时
-  // 配置驱动：每个场景有独立的波次配置表
-  // 委托给 WaveManager
-  // =============================================================================
+  // ===== 波次系统 =====
   updateWave() {
-    // Skip wave logic during post-battle item sequences
+    // 跳过波次后道具序列期间的波次逻辑
     if (this.state === GameState.ITEM_DROP || this.state === GameState.ITEM_REVEAL) return;
 
     const result = this.waveManager!.update(this.deltaTime);
     if (result.skipRest) return;
 
-    // ===== TIMED SUICIDE: Staggered spawn (8s apart for rhythm) =====
+    // ===== 定时自爆：交错生成（每只间隔8秒以保持节奏） =====
     if (this.currentScene === SceneType.HOSPITAL && this.timedSuicideSpawnRemaining > 0) {
       this.timedSuicideSpawnTimer -= this.deltaTime;
       if (this.timedSuicideSpawnTimer <= 0) {
@@ -4119,7 +3297,7 @@ export class GameEngine {
       }
     }
 
-    // ===== TIMED SUICIDE: Update dead body bombs =====
+    // ===== 定时自爆：更新尸体炸弹 =====
     for (let i = this.deadTimedBombs.length - 1; i >= 0; i--) {
       const bomb = this.deadTimedBombs[i];
       bomb.timer -= this.deltaTime;
@@ -4197,8 +3375,8 @@ export class GameEngine {
             this.addFloatingText(bomb.x, this.defenseLineY() - 20, `尸体炸弹! -${defenseDmg}`, '#ef4444');
           }
         }
-        this.spawnExplosionParticles(bomb.x, bomb.y, 20);
-        this.spawnSmokeParticles(bomb.x, bomb.y, 10);
+        ParticleSpawner.spawnExplosionParticles(this.particles,bomb.x, bomb.y, 20);
+        ParticleSpawner.spawnSmokeParticles(this.particles,bomb.x, bomb.y, 10);
         this.addFloatingText(bomb.x, bomb.y - 40, '尸体炸弹爆炸!', '#ff4400');
         this.deadTimedBombs.splice(i, 1);
       }
@@ -4214,9 +3392,9 @@ export class GameEngine {
           this.addFloatingText(bomb.x, bomb.y - 20, `${secs}`, secs <= 1 ? '#ef4444' : '#fbbf24');
         }
         if (bomb.timer <= 0) {
-          this.spawnExplosionParticles(bomb.x, bomb.y, 80);
-          this.spawnFireRingParticles(bomb.x, bomb.y, 30);
-          this.spawnSmokeParticles(bomb.x, bomb.y, 40);
+          ParticleSpawner.spawnExplosionParticles(this.particles,bomb.x, bomb.y, 80);
+          ParticleSpawner.spawnFireRingParticles(this.particles,bomb.x, bomb.y, 30);
+          ParticleSpawner.spawnSmokeParticles(this.particles,bomb.x, bomb.y, 40);
           for (let fi = 0; fi < 3; fi++) {
             this.particles.push({
               x: bomb.x + (Math.random() - 0.5) * 30, 
@@ -4284,285 +3462,7 @@ export class GameEngine {
     this.waveManager!.doWaveSpawn();
   }
 
-  // ===== HOSPITAL EXCLUSIVE: SPAWN EGG POOLS =====
-  // [DISABLED] Egg pool spawning removed - mutant roaches now spawn normally
-  spawnHospitalEggPods(config: WaveConfig) {
-    return; // Disabled: no more egg pools in hospital scene
-    if (this.currentScene !== SceneType.HOSPITAL) return;
-    const eggPoolCount = config.eggPoolActiveCount || 0;
-    if (eggPoolCount <= 0) return;
-
-    // 4 fixed positions for hospital egg pools
-    const eggPoolPositions = [
-      { x: 251, y: 447 },
-      { x: 324, y: 455 },
-      { x: 145, y: 542 },
-      { x: 419, y: 554 },
-    ];
-
-    // Shuffle positions and pick eggPoolCount unique ones
-    const shuffled = [...eggPoolPositions].sort(() => Math.random() - 0.5);
-    const selected = shuffled.slice(0, Math.min(eggPoolCount, shuffled.length));
-
-    for (const pos of selected) {
-      this.hospitalTotalEggPods++;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const pod: any = { // [REMOVED] EggPod type removed
-        id: nextId++,
-        x: pos.x, // Exact user-specified position
-        y: pos.y,
-        hp: 360, // Doubled from 180
-        maxHp: 360,
-        state: 'intact',
-        hatchTimer: 5, // 5 seconds countdown
-        hatchType: RoachType.MUTANT, // Always hatches mutant roaches
-        wobbleOffset: Math.random() * Math.PI * 2,
-        immuneTimer: 3, // 3 seconds spawn immunity
-      };
-      this.hospitalEggPods.push(pod);
-    }
-
-    if (eggPoolCount > 0) {
-      this.addFloatingText(this.width / 2, this.height * 0.2, `虫卵孵化池出现!`, '#ef4444');
-    }
-  }
-
-  // Update hospital egg pods (countdown + hatching)
-  // [DISABLED] Egg pod system removed
-  updateHospitalEggPods() {
-    return; // Disabled
-    if (this.currentScene !== SceneType.HOSPITAL || this.hospitalEggPods.length === 0) return;
-
-    for (let i = this.hospitalEggPods.length - 1; i >= 0; i--) {
-      const pod = this.hospitalEggPods[i];
-
-      if (pod.state === 'intact') {
-        // Spawn immunity countdown
-        if (pod.immuneTimer && pod.immuneTimer > 0) {
-          pod.immuneTimer -= this.deltaTime;
-        }
-        // Hatch countdown
-        pod.hatchTimer -= this.deltaTime;
-        // Green particles floating upward from egg pod
-        if (Math.random() < 0.6) {
-          this.particles.push({
-            x: pod.x + (Math.random() - 0.5) * 30,
-            y: pod.y - 20,
-            vx: (Math.random() - 0.5) * 15,
-            vy: -25 - Math.random() * 20,
-            life: 1.0, maxLife: 1.0,
-            size: 3 + Math.random() * 5,
-            color: `rgba(${30 + Math.random() * 40}, ${180 + Math.random() * 60}, ${30 + Math.random() * 30}, 0.7)`,
-            type: ParticleType.POISON_CLOUD,
-          });
-        }
-
-        // Visual warning when close to hatching (last 3 seconds)
-        if (pod.hatchTimer <= 3 && pod.hatchTimer > 0) {
-          if (Math.random() < 0.4) {
-            this.spawnSparkParticles(pod.x, pod.y, 2);
-          }
-        }
-
-        // Hatch after countdown
-        if (pod.hatchTimer <= 0) {
-          pod.state = 'hatched';
-          this.hatchHospitalEggPod(pod);
-          this.hospitalEggPods.splice(i, 1);
-        }
-      }
-    }
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  hatchHospitalEggPod(pod: any) {
-    // Spawn 3 mutant roaches from the egg pod
-    // CRITICAL FIX: Respect the 40-roach performance cap
-    const MAX_ROACHES = 40;
-    const availableSlots = Math.max(0, MAX_ROACHES - this.roaches.length);
-    const spawnCount = Math.min(3, availableSlots);
-
-    if (spawnCount <= 0) {
-      // No room for new roaches - destroy the egg pod without spawning
-      this.spawnExplosionParticles(pod.x, pod.y, 8);
-      this.addFloatingText(pod.x, pod.y - 20, '虫卵销毁(数量上限)', '#9ca3b8');
-      return;
-    }
-
-    const isHard = this.difficulty === 'hard';
-    const def = ENEMY_DEFS[RoachType.MUTANT];
-    const hpMult = isHard ? 1.3 : 1.0;
-    // Ensure spawned roaches are within ground bounds
-    const [, farLY] = SCENE_GROUND_BOUNDS[this.currentScene];
-
-    for (let m = 0; m < spawnCount; m++) {
-      const angle = (m / 3) * Math.PI * 2;
-      const spawnX = pod.x + Math.cos(angle) * 40;
-      // Clamp spawn Y to be within ground bounds (not above far line)
-      const spawnY = Math.max(farLY + 15, pod.y + Math.sin(angle) * 25);
-
-      const roach: Roach = {
-        id: nextId++,
-        type: RoachType.MUTANT,
-        state: RoachState.ALIVE,
-        x: spawnX,
-        y: spawnY,
-        vx: 0, vy: 0,
-        angle: Math.PI / 2,
-        // Hatched roaches get 1.5x speed boost to reach combat faster
-        speed: def.speed * (1.2 + Math.random() * 0.6) * 1.5,
-        baseSpeed: def.speed * 1.5,
-        size: def.size,
-        hp: Math.floor(def.hp * hpMult),
-        maxHp: Math.floor(def.hp * hpMult),
-        armorHp: 0,
-        maxArmorHp: 0,
-        clusterId: undefined,
-        wobbleOffset: Math.random() * Math.PI * 2,
-        wobbleSpeed: 0.5 + Math.random() * 1,
-        isEnraged: false,
-        deathTimer: 0,
-        animFrame: 0,
-        animTimer: 0,
-        panicTimer: 0,
-        panicAngle: 0,
-        stunTimer: 0,
-        isStunned: false,
-        facingRight: Math.random() > 0.5,
-        altitude: 0,
-        wingPhase: 0,
-        hasSplit: false,
-        fuseTimer: 0,
-        isFused: false,
-        hasTransformed: false,
-        transformTimer: undefined,
-        spawnTimer: 0,
-        isBoss: false,
-        isCharging: false,
-        stuckTimer: 0,
-        poisonTimer: 0,
-        poisonDamage: 0,
-        burnDamage: 0,
-        inFire: false,
-        fanSlowTimer: 0,
-        fanSlowFactor: 0,
-        fanPushY: 0,
-        wrappedByDropId: null,
-        wrapTimer: 0,
-        damageFlash: 0,
-        dodgeDir: 0,
-        dodgeTimer: 0,
-        wasDodging: false,
-        isBurnBack: false,
-        burnBackTimer: 0,
-        isBlind: false,
-        blindTimer: 0,
-        isJammed: false,
-        jamTimer: 0,
-        homeX: spawnX,
-        homeY: spawnY,
-        returningHome: false,
-        chargeReturnDelay: 0,
-        reward: def.reward,
-        // Hospital exclusive fields (initialized for safety even though mutant doesn't use them)
-        healTimer: 0,
-        healTargetId: null,
-        asphyxiationTimer: 0,
-        explodeTimer: 0,
-        isCountingDown: false,
-        countdownPaused: false,
-        isSplitChild: false,
-      };
-      this.roaches.push(roach);
-    }
-
-    // Visual effects
-    this.spawnSparkParticles(pod.x, pod.y, 10);
-    this.spawnSmokeParticles(pod.x, pod.y, 15);
-    this.addFloatingText(pod.x, pod.y - 30, '虫卵孵化!', '#ef4444');
-    this.addFloatingText(pod.x, pod.y - 45, '3只变异蟑螂!', '#84cc16');
-    this.screenShake = 5;
-  }
-
-  // Damage a hospital egg pod (called from fire weapon or projectiles)
-  damageHospitalEggPod(podId: number, damage: number) {
-    const pod = this.hospitalEggPods.find(p => p.id === podId);
-    if (!pod || pod.state !== 'intact') return;
-
-    // Spawn immunity: no damage for first 3 seconds
-    if (pod.immuneTimer && pod.immuneTimer > 0) {
-      // Visual feedback: show shield block effect
-      if (Math.random() < 0.3) {
-        this.particles.push({
-          x: pod.x + (Math.random() - 0.5) * 20,
-          y: pod.y + (Math.random() - 0.5) * 20,
-          vx: 0, vy: -20,
-          life: 0.5, maxLife: 0.5,
-          size: 4, color: '#60a5fa',
-          type: ParticleType.SPARK,
-        });
-      }
-      return; // Immune, no damage
-    }
-
-    pod.hp -= damage;
-    this.spawnSparkParticles(pod.x, pod.y, 3);
-
-    if (pod.hp <= 0) {
-      // Egg destroyed!
-      pod.state = 'hatched'; // Mark as done
-      const idx = this.hospitalEggPods.indexOf(pod);
-      if (idx >= 0) this.hospitalEggPods.splice(idx, 1);
-
-      // Destroy effects
-      this.spawnExplosionParticles(pod.x, pod.y, 12);
-      this.spawnSmokeParticles(pod.x, pod.y, 10);
-      this.addFloatingText(pod.x, pod.y - 20, '虫卵摧毁!', '#22c55e');
-      this.screenShake = 4;
-
-      // Track destroys for star rating
-      this.hospitalDestroyedEggPods++;
-      // Track consecutive destroys
-      this.hospitalEggPodDestroyedCount++;
-      if (this.hospitalEggPodDestroyedCount >= 3) {
-        // Disinfection reward!
-        this.hospitalEggPodDestroyedCount = 0;
-        this.triggerDisinfectionReward(pod.x, pod.y);
-      }
-    }
-  }
-
-  // Disinfection reward: full gas refill + instant clear all enemy DoT effects
-  triggerDisinfectionReward(x: number, y: number) {
-    // Full gas refill
-    this.player.gas = this.player.maxGas;
-    // Clear all roach DoT effects
-    for (const r of this.roaches) {
-      if (r.state === RoachState.ALIVE) {
-        r.burnDamage = 0;
-        r.poisonTimer = 0;
-        r.poisonDamage = 0;
-      }
-    }
-    this.addFloatingText(this.width / 2, this.height * 0.3, '消毒奖励!', '#22d55e');
-    this.addFloatingText(this.width / 2, this.height * 0.3 + 25, '燃气全满 + 清除异常状态', '#4ade80');
-    // Green sparkle effect
-    for (let s = 0; s < 30; s++) {
-      const angle = (s / 30) * Math.PI * 2;
-      const speed = 50 + Math.random() * 80;
-      this.particles.push({
-        x, y,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed - 30,
-        life: 1.2, maxLife: 1.2,
-        size: 5 + Math.random() * 8,
-        color: `rgba(${50 + Math.random() * 50}, ${200 + Math.random() * 55}, ${50 + Math.random() * 30}, 0.9)`,
-        type: ParticleType.SPARK,
-      });
-    }
-    this.screenShake = 6;
-    this.hospitalDisinfectionRewardTimer = 2.0;
-  }
+  // [REMOVED] Hospital egg pod system — dead code (spawnHospitalEggPods, updateHospitalEggPods, hatchHospitalEggPod, damageHospitalEggPod, triggerDisinfectionReward)
 
   getWaveConfig(wave: number): WaveConfig {
     return this.waveManager!.getWaveConfig(wave);
@@ -4597,164 +3497,7 @@ export class GameEngine {
   //       rain, lightning, shield
   // 性能：前 120 帧采样帧率，动态调整粒子数量上限 (150-400)
   // =============================================================================
-  spawnConeFire(gx: number, gy: number, angle: number, range: number, _spread: number, baseDamage: number, type: 'fire' | 'ice' | 'poison' = 'fire') {
-    const count = Math.floor(3 + Math.random() * 3); // Reduced: 3-6 particles
-    const isIce = type === 'ice';
-    const isPoison = type === 'poison';
-
-    for (let i = 0; i < count; i++) {
-      const rDist = Math.random() * range;
-      const rAngle = angle + (Math.random() - 0.5) * 0.5;
-      const px = gx + Math.cos(rAngle) * rDist;
-      const py = gy + Math.sin(rAngle) * rDist;
-      const life = 0.06 + Math.random() * 0.08; // Shorter: 0.06-0.14s
-      const flowSpeed = 100 + Math.random() * 60;
-      let color = '';
-      let particleType: ParticleType;
-      let size = 0;
-
-      if (isIce) {
-        color = `rgba(${180 + Math.random() * 40}, ${220 + Math.random() * 20}, 255, ${0.5 + Math.random() * 0.5})`;
-        particleType = ParticleType.ICE;
-        size = 2 + Math.random() * 4;
-      } else if (isPoison) {
-        color = `rgba(${100 + Math.random() * 40}, ${220 + Math.random() * 30}, ${100 + Math.random() * 40}, ${0.4 + Math.random() * 0.4})`;
-        particleType = ParticleType.POISON_CLOUD;
-        size = 3 + Math.random() * 5;
-      } else {
-        const temp = Math.random();
-        if (temp < 0.5) {
-          color = `rgba(255, ${100 + Math.random() * 80}, ${Math.random() * 40}, ${0.7 + Math.random() * 0.3})`;
-          particleType = ParticleType.FIRE;
-          size = 2 + Math.random() * 5;
-        } else {
-          color = `rgba(255, ${200 + Math.random() * 55}, ${50 + Math.random() * 50}, ${0.5 + Math.random() * 0.5})`;
-          particleType = ParticleType.EMBER;
-          size = 1 + Math.random() * 3;
-        }
-      }
-
-      this.particles.push({
-        x: px, y: py,
-        vx: Math.cos(rAngle) * flowSpeed,
-        vy: Math.sin(rAngle) * flowSpeed,
-        life, maxLife: life,
-        size, color,
-        type: particleType,
-      });
-    }
-
-    // Single spark at gun muzzle
-    this.particles.push({
-      x: gx, y: gy,
-      vx: (Math.random() - 0.5) * 60,
-      vy: -60 - Math.random() * 40,
-      life: 0.08,
-      maxLife: 0.08,
-      size: 2 + Math.random() * 3,
-      color: '#fff',
-      type: ParticleType.SPARK,
-    });
-
-    // Add fire zone - larger radius and longer life for BOSS
-    this.fireZones.push({
-      x: gx + Math.cos(angle) * range / 2,
-      y: gy + Math.sin(angle) * range / 2,
-      radius: range * 0.8,  // 80% of range (was 50%) - larger coverage
-      damagePerSecond: baseDamage / this.deltaTime * 3,  // 3x damage for visibility
-      life: 0.5, maxLife: 0.5,  // 0.5s (was 0.12s) - longer lasting
-      type,
-    });
-    // Cap fire zones - trim from end (cheaper than splice from start)
-    if (this.fireZones.length > 25) {
-      this.fireZones.length = 25; // Truncate array
-    }
-  }
-
-  spawnSmokeParticles(x: number, y: number, count: number) {
-    for (let i = 0; i < count; i++) {
-      this.particles.push({
-        x: x + (Math.random() - 0.5) * 30,
-        y: y + (Math.random() - 0.5) * 30,
-        vx: (Math.random() - 0.5) * 40,
-        vy: -30 - Math.random() * 50,
-        life: 1 + Math.random() * 2, maxLife: 1 + Math.random() * 2,
-        size: 6 + Math.random() * 16,
-        color: `hsl(0, 0%, ${35 + Math.random() * 35}%)`,
-        type: ParticleType.SMOKE,
-      });
-    }
-  }
-
-  spawnAshParticles(x: number, y: number, count: number) {
-    for (let i = 0; i < count; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const speed = 30 + Math.random() * 80;
-      this.particles.push({
-        x, y,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed - 40,
-        life: 0.6 + Math.random() * 1.0, maxLife: 0.6 + Math.random() * 1.0,
-        size: 2 + Math.random() * 6,
-        color: `hsl(0, 0%, ${5 + Math.random() * 20}%)`,
-        type: ParticleType.ASH,
-      });
-    }
-  }
-
-  spawnBloodParticles(x: number, y: number, count: number) {
-    for (let i = 0; i < count; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const speed = 80 + Math.random() * 200;
-      this.particles.push({
-        x, y,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed + 40,
-        life: 0.5, maxLife: 0.5,
-        size: 4 + Math.random() * 10,
-        color: `rgba(${20 + Math.random() * 40}, ${120 + Math.random() * 60}, ${20 + Math.random() * 40}, ${0.5 + Math.random() * 0.5})`,
-        type: ParticleType.BLOOD,
-      });
-    }
-  }
-
-  /**
-   * 在指定位置生成火花粒子
-   * @param {number} x - X 坐标
-   * @param {number} y - Y 坐标
-   * @param {number} count - 粒子数量
-   */
-  spawnSparkParticles(x: number, y: number, count: number) {
-    for (let i = 0; i < count; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const speed = 60 + Math.random() * 120;
-      this.particles.push({
-        x, y,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
-        life: 0.2 + Math.random() * 0.4, maxLife: 0.2 + Math.random() * 0.4,
-        size: 1 + Math.random() * 3,
-        color: `hsl(${30 + Math.random() * 30}, 100%, 75%)`,
-        type: ParticleType.SPARK,
-      });
-    }
-  }
-
-  spawnExplosionParticles(x: number, y: number, count: number) {
-    for (let i = 0; i < count; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const speed = 50 + Math.random() * 150;
-      this.particles.push({
-        x, y,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed - 30,
-        life: 0.3 + Math.random() * 0.5, maxLife: 0.3 + Math.random() * 0.5,
-        size: 3 + Math.random() * 12,
-        color: `hsl(${10 + Math.random() * 30}, 100%, ${50 + Math.random() * 25}%)`,
-        type: ParticleType.EXPLOSION,
-      });
-    }
-  }
+  // [REMOVED] spawnConeFire, spawnSmokeParticles, spawnAshParticles, spawnBloodParticles, spawnSparkParticles, spawnExplosionParticles — migrated to ParticleSpawner
 
   /**
    * 添加浮动文字特效
@@ -4872,33 +3615,7 @@ export class GameEngine {
 
   // ========== SWATTER (delegated to SwatterSystem module) =========
 
-  spawnLightningParticles(centerX: number, topY: number) {
-    for (let i = 0; i < 20; i++) {
-      const x = centerX + (Math.random() - 0.5) * this.width * 0.8;
-      this.particles.push({
-        x, y: topY + Math.random() * 50,
-        vx: (Math.random() - 0.5) * 60,
-        vy: 100 + Math.random() * 200,
-        life: 0.4 + Math.random() * 0.4, maxLife: 0.4 + Math.random() * 0.4,
-        size: 3 + Math.random() * 6,
-        color: `rgba(150, 220, 255, ${0.6 + Math.random() * 0.4})`,
-        type: ParticleType.LIGHTNING,
-      });
-    }
-    for (let i = 0; i < 30; i++) {
-      const x = centerX + (Math.random() - 0.5) * this.width;
-      const y = Math.random() * this.height;
-      this.particles.push({
-        x, y,
-        vx: (Math.random() - 0.5) * 100,
-        vy: (Math.random() - 0.5) * 100,
-        life: 0.2 + Math.random() * 0.3, maxLife: 0.2 + Math.random() * 0.3,
-        size: 2 + Math.random() * 4,
-        color: `rgba(200, 240, 255, ${0.5 + Math.random() * 0.5})`,
-        type: ParticleType.LIGHTNING,
-      });
-    }
-  }
+  // [REMOVED] spawnLightningParticles — migrated to ParticleSpawner
 
 
   // =============================================================================
@@ -5093,11 +3810,13 @@ export class GameEngine {
     RenderUtils.renderMovementRange(ctx, this.currentScene, this.defenseLineY(), (y) => this.getGroundBoundsAtY(y));
   }
 
+  // ===== 渲染系统 =====
+
   // =============================================================================
   // 主渲染循环：25+ 个子渲染步骤的分层渲染管线
   // 渲染顺序：背景 → 天气背景 → 场景元素 → 实体 → 粒子 → UI 叠加层
   // =============================================================================
-  /** 主渲染循环（每帧调用） */
+  /** 每帧渲染：分层绘制所有游戏元素 */
   render() {
     const ctx = this.ctx;
     const w = this.width;
@@ -5106,24 +3825,49 @@ export class GameEngine {
     ctx.save();
     ctx.translate(this.screenShakeX, this.screenShakeY);
 
-    this.renderBackground(ctx, w, h);
-    // Show movement range overlay (semi-transparent visualization of player walkable area)
+    /** 背景渲染（委托给 BackgroundRenderer） */
+    BackgroundRenderer.renderBackground(ctx, w, h, {
+      currentScene: this.currentScene,
+      difficulty: this.difficulty,
+      sceneConfig: this.getSceneConfig(),
+      imagesLoaded: this.imagesLoaded,
+      bgSceneImages: this.bgSceneImages,
+      lightningFlash: this.lightningFlash,
+      bgKitchenHardImg: this.bgKitchenHardImg,
+      bgKitchenEasyImg: this.bgKitchenEasyImg,
+      bgImg: this.bgImg,
+      bgSewerHardImg: this.bgSewerHardImg,
+      bgSewerEasyImg: this.bgSewerEasyImg,
+      bgSewerImg: this.bgSewerImg,
+      bgDumpHardImg: this.bgDumpHardImg,
+      bgDumpEasyImg: this.bgDumpEasyImg,
+      bgDumpImg: this.bgDumpImg,
+      bgBasementHardImg: this.bgBasementHardImg,
+      bgBasementEasyImg: this.bgBasementEasyImg,
+      bgBasementImg: this.bgBasementImg,
+      bgRooftopHardImg: this.bgRooftopHardImg,
+      bgRooftopEasyImg: this.bgRooftopEasyImg,
+      bgRooftopImg: this.bgRooftopImg,
+      bgStreetHardImg: this.bgStreetHardImg,
+      bgStreetEasyImg: this.bgStreetEasyImg,
+      bgStreetImg: this.bgStreetImg,
+    });
+    /** 显示移动范围叠加层（玩家可走区域的半透明可视化） */
     if (this.showMovementRange) {
       this.renderMovementRange(ctx);
     }
-    this.renderWeatherBackground(ctx, w, h);
-    this.renderFireZones(ctx);
-    this.renderFireWalls(ctx);
+    BackgroundRenderer.renderWeatherBackground(ctx, w, h, this.lightningFlash);
+    BackgroundRenderer.renderFireZones(ctx, {
+      player: this.player,
+      tripleFlameState: this.tripleFlameSystem!.getState(),
+      time: this.time,
+    });
+    BackgroundRenderer.renderFireWalls(ctx, this.fireWalls, this.time);
     this.renderStickyBoards();
     this.renderStickyDrops(ctx);
     this.renderWeaponDrops(ctx);
     this.renderParticles(ctx);
     this.renderBaitMark(ctx);
-    // ===== HOSPITAL EXCLUSIVE: Render hospital egg pods BEFORE roaches =====
-    // [DISABLED] Egg pod system removed
-    // if (this.currentScene === SceneType.HOSPITAL && this.hospitalEggPods.length > 0) {
-    //   this.renderHospitalEggPods(ctx);
-    // }
     // Render placed bombs with fire glow + countdown zoom effect
     if (this.placedBombs.length > 0) {
       const bombSize = 64;
@@ -5238,10 +3982,10 @@ export class GameEngine {
     this.renderRoaches(ctx);
 
     // ===== MUTANT SPAWN: Green slime burst visual =====
-    if (this.slimeBurstTimer > 0) {
-      const progress = 1 - this.slimeBurstTimer / 1.2; // 0→1 over 1.2s
-      const sx = this.slimeBurstX;
-      const sy = this.slimeBurstY;
+    if (this.roachAISystem!.slimeBurstTimer > 0) {
+      const progress = 1 - this.roachAISystem!.slimeBurstTimer / 1.2; // 0→1 over 1.2s
+      const sx = this.roachAISystem!.slimeBurstX;
+      const sy = this.roachAISystem!.slimeBurstY;
       const alpha = Math.max(0, 1 - progress * 0.8);
 
       ctx.save();
@@ -5449,7 +4193,7 @@ export class GameEngine {
     if (Math.abs(clickX - itemX) < hitSize && Math.abs(clickY - itemY) < hitSize) {
       this.itemDropOnField.collected = true;
       // Play collect effect
-      this.spawnSparkParticles(itemX, itemY, 15);
+      ParticleSpawner.spawnSparkParticles(this.particles,itemX, itemY, 15);
       this.audio.playDialogSwitch();
       // Brief delay then transition to ITEM_REVEAL
       setTimeout(() => {
@@ -5479,97 +4223,6 @@ export class GameEngine {
     // [REMOVED] Egg pod system removed
   }
 
-  // ===== HOSPITAL EXCLUSIVE: RENDER HOSPITAL EGG PODS =====
-  renderHospitalEggPods(ctx: CanvasRenderingContext2D) {
-    if (!this.hospitalEggPods.length) return;
-
-    const img = this.eggPodImg;
-    const basePodW = 72;   // Halved from 144
-    const basePodH = 96;   // Halved from 192
-
-    // Perspective range: yMin=361 (farthest) → scale 0.5, yMax=612 (nearest) → scale 1.0
-    const yMin = 361;
-    const yMax = 612;
-
-    for (const pod of this.hospitalEggPods) {
-      if (pod.state !== 'intact') continue;
-
-      const hpRatio = pod.hp / pod.maxHp;
-      const countdownRatio = pod.hatchTimer / 5; // 5 seconds total
-
-      // Perspective scale: farther (smaller y) = smaller, nearer (larger y) = larger
-      const yRatio = Math.max(0, Math.min(1, (pod.y - yMin) / (yMax - yMin)));
-      const perspScale = 0.5 + yRatio * 0.5; // 0.5 ~ 1.0
-      const podW = basePodW * perspScale;
-      const podH = basePodH * perspScale;
-
-      ctx.save();
-      ctx.translate(pod.x, pod.y);
-
-      // Fixed orientation: no wobble animation
-
-      // Draw egg pod image at 80% opacity
-      ctx.globalAlpha = 0.8;
-      if (img) {
-        ctx.drawImage(img, -podW / 2, -podH / 2, podW, podH);
-      } else {
-        ctx.fillStyle = '#5a7a5a';
-        ctx.beginPath();
-        ctx.ellipse(0, 0, podW / 2, podH / 2, 0, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      // Restore full opacity for UI overlays
-      ctx.globalAlpha = 1;
-
-      // HP bar (shows damage taken) - scaled with perspective
-      const barW = 60 * perspScale;
-      const barH = 6 * perspScale;
-      const barY = -podH / 2 - 10 * perspScale;
-      ctx.fillStyle = '#333';
-      ctx.fillRect(-barW / 2, barY, barW, barH);
-      ctx.fillStyle = hpRatio > 0.5 ? '#22c55e' : (hpRatio > 0.25 ? '#f59e0b' : '#ef4444');
-      ctx.fillRect(-barW / 2, barY, barW * hpRatio, barH);
-
-      // Countdown text
-      const secondsLeft = Math.ceil(pod.hatchTimer);
-      ctx.fillStyle = countdownRatio > 0.3 ? '#fbbf24' : '#ef4444';
-      ctx.font = 'bold 14px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.shadowColor = 'rgba(0,0,0,0.8)';
-      ctx.shadowBlur = 4;
-      ctx.fillText(`${secondsLeft}s`, 0, barY - 10);
-      ctx.shadowBlur = 0;
-
-      // Pulsing glow when close to hatching (last 3 seconds) - simplified, no shadowBlur
-      if (pod.hatchTimer <= 3) {
-        const pulse = Math.sin(this.time * 6) * 0.3 + 0.5;
-        ctx.strokeStyle = `rgba(255, 150, 0, ${pulse})`;
-        ctx.lineWidth = 2;
-        ctx.setLineDash([3, 5]);
-        ctx.lineDashOffset = -this.time * 10;
-        ctx.beginPath();
-        ctx.ellipse(0, 0, podW / 2 + 8 * perspScale, podH / 2 + 8 * perspScale, 0, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.setLineDash([]);
-      }
-
-      ctx.restore();
-    }
-
-    // Disinfection reward text
-    if (this.hospitalDisinfectionRewardTimer > 0) {
-      this.hospitalDisinfectionRewardTimer -= this.deltaTime;
-      const alpha = Math.min(1, this.hospitalDisinfectionRewardTimer);
-      ctx.save();
-      ctx.fillStyle = `rgba(34, 213, 94, ${alpha * 0.3})`;
-      ctx.fillRect(0, 0, this.width, this.height);
-      ctx.restore();
-    }
-  }
-
-  // ===== HOSPITAL EXCLUSIVE: RENDER PLACED BOMBS =====
-
   // ========== INSECTICIDE SPRAY RENDERING (delegated to RenderUtils static method) =========
 
   // ========== RADAR LASER RENDERING =========
@@ -5578,220 +4231,9 @@ export class GameEngine {
     RenderUtils.renderRadarLaser(ctx, this.radarLaserSystem!.getState(), this.roaches, this.player.x, this.player.y, this.time);
   }
 
-  /**
-   * 渲染场景背景
-   * @param {CanvasRenderingContext2D} ctx - 画布上下文
-   * @param {number} w - 画布宽度
-   * @param {number} h - 画布高度
-   */
-  renderBackground(ctx: CanvasRenderingContext2D, w: number, h: number) {
-    const scene = this.getSceneConfig();
-    const diff = this.difficulty;
-    const currScene = this.currentScene;
-    const isHard = diff === 'hard';
-    const isEasy = diff === 'easy';
-
-    // ===== GENERIC bgImage support for new scenes =====
-    if (scene.bgImage && this.bgSceneImages[currScene]) {
-      const bgImg = this.bgSceneImages[currScene];
-      if (bgImg.complete && bgImg.naturalWidth > 0) {
-        // Cover-fit the background image
-        const imgRatio = bgImg.naturalWidth / bgImg.naturalHeight;
-        const canvasRatio = w / h;
-        let drawW: number, drawH: number, drawX: number, drawY: number;
-        if (imgRatio > canvasRatio) {
-          drawH = h;
-          drawW = h * imgRatio;
-          drawX = (w - drawW) / 2;
-          drawY = 0;
-        } else {
-          drawW = w;
-          drawH = w / imgRatio;
-          drawX = 0;
-          drawY = (h - drawH) / 2;
-        }
-        ctx.globalAlpha = 0.8;
-        ctx.drawImage(bgImg, drawX, drawY, drawW, drawH);
-        ctx.globalAlpha = 1;
-        return;
-      }
-    }
-
-    // ===== KITCHEN =====
-    if (currScene === SceneType.KITCHEN && isHard && this.bgKitchenHardImg && this.imagesLoaded) {
-      ctx.drawImage(this.bgKitchenHardImg, 0, 0, w, h);
-    } else if (currScene === SceneType.KITCHEN && isEasy && this.bgKitchenEasyImg && this.imagesLoaded) {
-      ctx.drawImage(this.bgKitchenEasyImg, 0, 0, w, h);
-    } else if (currScene === SceneType.KITCHEN && this.bgImg && this.imagesLoaded) {
-      ctx.drawImage(this.bgImg, 0, 0, w, h);
-    // ===== SEWER =====
-    } else if (currScene === SceneType.SEWER && isHard && this.bgSewerHardImg && this.imagesLoaded) {
-      ctx.drawImage(this.bgSewerHardImg, 0, 0, w, h);
-    } else if (currScene === SceneType.SEWER && isEasy && this.bgSewerEasyImg && this.imagesLoaded) {
-      ctx.drawImage(this.bgSewerEasyImg, 0, 0, w, h);
-    } else if (currScene === SceneType.SEWER && this.bgSewerImg && this.imagesLoaded) {
-      ctx.drawImage(this.bgSewerImg, 0, 0, w, h);
-    // ===== DUMP =====
-    } else if (currScene === SceneType.DUMP && isHard && this.bgDumpHardImg && this.imagesLoaded) {
-      ctx.drawImage(this.bgDumpHardImg, 0, 0, w, h);
-    } else if (currScene === SceneType.DUMP && isEasy && this.bgDumpEasyImg && this.imagesLoaded) {
-      ctx.drawImage(this.bgDumpEasyImg, 0, 0, w, h);
-    } else if (currScene === SceneType.DUMP && this.bgDumpImg && this.imagesLoaded) {
-      ctx.drawImage(this.bgDumpImg, 0, 0, w, h);
-    // ===== BASEMENT =====
-    } else if (currScene === SceneType.BASEMENT && isHard && this.bgBasementHardImg && this.imagesLoaded) {
-      ctx.drawImage(this.bgBasementHardImg, 0, 0, w, h);
-    } else if (currScene === SceneType.BASEMENT && isEasy && this.bgBasementEasyImg && this.imagesLoaded) {
-      ctx.drawImage(this.bgBasementEasyImg, 0, 0, w, h);
-    } else if (currScene === SceneType.BASEMENT && this.bgBasementImg && this.imagesLoaded) {
-      ctx.drawImage(this.bgBasementImg, 0, 0, w, h);
-    // ===== ROOFTOP =====
-    } else if (currScene === SceneType.ROOFTOP && isHard && this.bgRooftopHardImg && this.imagesLoaded) {
-      ctx.drawImage(this.bgRooftopHardImg, 0, 0, w, h);
-    } else if (currScene === SceneType.ROOFTOP && isEasy && this.bgRooftopEasyImg && this.imagesLoaded) {
-      ctx.drawImage(this.bgRooftopEasyImg, 0, 0, w, h);
-    } else if (currScene === SceneType.ROOFTOP && this.bgRooftopImg && this.imagesLoaded) {
-      ctx.drawImage(this.bgRooftopImg, 0, 0, w, h);
-    // ===== STREET =====
-    } else if (currScene === SceneType.STREET && isHard && this.bgStreetHardImg && this.imagesLoaded) {
-      ctx.drawImage(this.bgStreetHardImg, 0, 0, w, h);
-    } else if (currScene === SceneType.STREET && isEasy && this.bgStreetEasyImg && this.imagesLoaded) {
-      ctx.drawImage(this.bgStreetEasyImg, 0, 0, w, h);
-    } else if (currScene === SceneType.STREET && this.bgStreetImg && this.imagesLoaded) {
-      ctx.drawImage(this.bgStreetImg, 0, 0, w, h);
-    } else {
-      // Scene-specific background
-      ctx.fillStyle = scene.bgColor;
-      ctx.fillRect(0, 0, w, h);
-      const tileSize = 48;
-      for (let x = 0; x < w; x += tileSize) {
-        for (let y = 0; y < h; y += tileSize) {
-          const isEven = ((x / tileSize) + (y / tileSize)) % 2 === 0;
-          ctx.fillStyle = isEven ? scene.tileColors[0] : scene.tileColors[1];
-          ctx.fillRect(x + 1, y + 1, tileSize - 2, tileSize - 2);
-        }
-      }
-    }
-
-    // Night overlay
-    const scene2 = this.getSceneConfig();
-    if (scene2.weather === WeatherType.NIGHT) {
-      const nightAlpha = 0.4 + (this.lightningFlash > 0 ? 0.2 : 0);
-      ctx.fillStyle = `rgba(0, 0, 20, ${nightAlpha})`;
-      ctx.fillRect(0, 0, w, h);
-    }
-
-    const grad = ctx.createRadialGradient(w / 2, h / 2, h * 0.4, w / 2, h / 2, h * 0.8);
-    grad.addColorStop(0, 'rgba(0,0,0,0)');
-    grad.addColorStop(1, 'rgba(0,0,0,0.5)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, w, h);
-
-  }
-
-  renderWeatherBackground(ctx: CanvasRenderingContext2D, w: number, h: number) {
-    WeatherSystem.renderWeatherBackground(ctx, w, h, this.lightningFlash);
-  }
-
   renderDefenseLine(ctx: CanvasRenderingContext2D, w: number) {
     const scene = this.getSceneConfig();
     RenderUtils.renderDefenseLine(ctx, w, this.defenseLineY(), scene.defenseLineColor, this.time, this.player.shieldTimer);
-  }
-
-  renderFireZones(ctx: CanvasRenderingContext2D) {
-    const p = this.player;
-    if (!p.isFiring || p.isOverheated || p.isReloading || p.gas <= 0) return;
-    if (p.currentWeapon === 'molotov') return;
-
-    const maxRange = p.fireRange * 0.5;
-    const nozzleY = p.y - 322;
-    const endY = nozzleY - maxRange;
-
-    // Gun positions
-    const gunXs: number[] = [p.x];
-    if (this.tripleFlameSystem!.getState().active) {
-      gunXs.push(p.x - this.tripleFlameSystem!.getState().sideOffset);
-      gunXs.push(p.x + this.tripleFlameSystem!.getState().sideOffset);
-    }
-
-    ctx.save();
-    ctx.globalCompositeOperation = 'screen';
-
-    // Render flame for each gun
-    for (let gi = 0; gi < gunXs.length; gi++) {
-      const gunX = gunXs[gi];
-      const isSideGun = gi > 0;
-      const flameScale = isSideGun ? 0.6 : 1.0;
-      const nozzleYOffset = isSideGun ? 50 : 0; // Only flame effect moves down 50px, gun body stays
-      const gunNozzleY = nozzleY + nozzleYOffset;
-      const gunEndY = endY + nozzleYOffset;
-
-      const segments = 50;
-      for (let i = 0; i < segments; i++) {
-        const t0 = i / segments;
-        const t1 = (i + 1) / segments;
-        const y0 = gunNozzleY + (gunEndY - gunNozzleY) * t0;
-        const y1 = gunNozzleY + (gunEndY - gunNozzleY) * t1;
-
-        const baseWidth = 32 * flameScale;
-        const w0 = baseWidth * (1 - t0 * 0.94) + Math.sin(t0 * Math.PI * 6 + this.time * 30 + gi) * 5;
-        const w1 = baseWidth * (1 - t1 * 0.94) + Math.sin(t1 * Math.PI * 6 + this.time * 30 + gi) * 5;
-
-        const c0 = this.getFlameColor(t0, p.currentWeapon);
-        const c1 = this.getFlameColor(t1, p.currentWeapon);
-
-        ctx.beginPath();
-        ctx.moveTo(gunX - w0, y0);
-        ctx.lineTo(gunX - w1, y1);
-        ctx.lineTo(gunX + w1, y1);
-        ctx.lineTo(gunX + w0, y0);
-        ctx.closePath();
-
-        const grad = ctx.createLinearGradient(gunX, y0, gunX, y1);
-        grad.addColorStop(0, c0);
-        grad.addColorStop(1, c1);
-        ctx.fillStyle = grad;
-        ctx.fill();
-      }
-
-      // Core glow per gun
-      let coreColor = '160, 210, 255';
-      if (p.currentWeapon === 'sticky') coreColor = '250, 200, 50';
-      else if (p.currentWeapon === 'poison') coreColor = '200, 160, 255';
-
-      const glowSize = 36 * flameScale;
-      const coreGrad = ctx.createRadialGradient(gunX, gunNozzleY, 0, gunX, gunNozzleY, glowSize);
-      coreGrad.addColorStop(0, `rgba(${coreColor}, 0.9)`);
-      coreGrad.addColorStop(0.3, `rgba(${coreColor}, 0.5)`);
-      coreGrad.addColorStop(0.6, `rgba(${coreColor}, 0.3)`);
-      coreGrad.addColorStop(1, 'rgba(255, 0, 0, 0)');
-      ctx.fillStyle = coreGrad;
-      ctx.beginPath();
-      ctx.arc(gunX, gunNozzleY, glowSize, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Power Boost: air disturbance ripples around gun nozzle
-      if (this.player.powerBoostTimer > 0) {
-        const boostAlpha = Math.min(1, this.player.powerBoostTimer / 0.5) * 0.25;
-        for (let ri = 0; ri < 3; ri++) {
-          const ripplePhase = (this.time * 4 + ri * 2.1) % 3;
-          const rippleRadius = 30 + ripplePhase * 25;
-          const rippleAlpha = boostAlpha * (1 - ripplePhase / 3);
-          ctx.strokeStyle = `rgba(255, 255, 255, ${rippleAlpha})`;
-          ctx.lineWidth = 1.5;
-          ctx.beginPath();
-          ctx.arc(gunX, gunNozzleY, rippleRadius * flameScale, 0, Math.PI * 2);
-          ctx.stroke();
-        }
-      }
-    }
-
-    ctx.restore();
-  }
-
-  /** 渲染火焰墙（委托给 ParticleSystem 静态方法） */
-  renderFireWalls(ctx: CanvasRenderingContext2D) {
-    ParticleSystem.renderFireWalls(ctx, this.fireWalls, this.time);
   }
 
   renderStickyBoards() {
@@ -5802,43 +4244,6 @@ export class GameEngine {
   /** 渲染粘性弹丸（委托给 DropRenderer 静态方法） */
   renderStickyDrops(ctx: CanvasRenderingContext2D) {
     DropRenderer.renderStickyDrops(ctx, this.stickySystem!.stickyDrops, this.roaches, this.time, this.deltaTime);
-  }
-
-  getFlameColor(t: number, weapon: string = 'flamethrower'): string {
-    let r: number, g: number, b: number;
-
-    if (weapon === 'sticky') {
-      // Yellow to orange (sticky board)
-      r = Math.floor(250);
-      g = Math.floor(200 + t * 55);
-      b = Math.floor(50 + t * 50);
-    } else if (weapon === 'poison') {
-      // Purple to green
-      r = Math.floor(150 - t * 100);
-      g = Math.floor(100 + t * 100);
-      b = Math.floor(200 - t * 50);
-    } else if (weapon === 'shotgun') {
-      // Orange to yellow
-      r = 255;
-      g = Math.floor(150 + t * 105);
-      b = Math.floor(50 + t * 100);
-    } else {
-      // Default: blue to red
-      if (t < 0.5) {
-        const s = t * 2;
-        r = Math.floor(60 + s * 140);
-        g = Math.floor(140 - s * 80);
-        b = Math.floor(255 - s * 100);
-      } else {
-        const s = (t - 0.5) * 2;
-        r = Math.floor(200 + s * 55);
-        g = Math.floor(60 - s * 60);
-        b = Math.floor(155 - s * 155);
-      }
-    }
-
-    const a = 0.75 * (1 - t) * (1 - t);
-    return `rgba(${r}, ${g}, ${b}, ${a})`;
   }
 
   /** 渲染武器掉落物（委托给 DropRenderer 静态方法） */
@@ -5887,214 +4292,19 @@ export class GameEngine {
       roachFlyingSuicideImg: this.roachFlyingSuicideImg, roachQueenImg: this.roachQueenImg,
       nurseCastFrames: this.nurseCastFrames, mutantTransformFrames: this.mutantTransformFrames,
       imagesLoaded: this.imagesLoaded, time: this.time, deltaTime: this.deltaTime,
-      mutantTransformActive: this.mutantTransformActive, mutantTransformFrame: this.mutantTransformFrame,
+      mutantTransformActive: this.roachAISystem!.mutantTransformActive, mutantTransformFrame: this.roachAISystem!.mutantTransformFrame,
       bossBattle: this.bossBattle, bossAnimState: this.bossAnimState, bossAnimFrames: this.bossAnimFrames,
       onAddParticle: (p) => { this.particles.push(p); },
-      onSpawnShockwaveRing: (x, y, count) => { this.spawnShockwaveRing(x, y, count); },
+      onSpawnShockwaveRing: (x, y, count) => { ParticleSpawner.spawnShockwaveRing(this.particles,x, y, count); },
       isStuckByBoard: (id) => this.isStuckByBoard(id),
     }, ctx, this.roaches);
   }
 
   /** 渲染玩家与武器 */
   renderPlayer(ctx: CanvasRenderingContext2D) {
-    // Three-phase visual: charging → spraying → dissipating
-    ctx.save();
-    for (const r of this.roaches) {
-      if (r.type !== RoachType.NURSE || r.state !== RoachState.ALIVE) continue;
-      if (!r.healPhase || r.healPhase === 'idle') continue;
+    // Nurse healing VFX (delegated to NurseRenderer static method)
+    NurseRenderer.renderNurseHealVFX(ctx, this.roaches, this.time);
 
-      const healRange = 360;
-      const progress = r.healPhaseTimer || 0;
-
-      switch (r.healPhase) {
-        case 'charging': {
-          // Phase 1: Charge (1.0s) - expanding range circle at feet
-          const chargeProgress = 1 - progress / 1.0;
-          const alpha = 0.15 + chargeProgress * 0.35;
-          const footY = r.y + 12;
-          const expandScale = chargeProgress; // 0 -> 1 as charge completes
-
-          // 1. Expanding outer ring (grows from center to full range)
-          const ringR = healRange * 0.9 * expandScale;
-          const ringRY = healRange * 0.32 * expandScale;
-
-          // Glow that expands with the ring
-          if (ringR > 5) {
-            const glowGrad = ctx.createRadialGradient(r.x, footY, ringR * 0.3, r.x, footY, ringR * 1.2);
-            glowGrad.addColorStop(0, `rgba(100, 240, 150, 0)`);
-            glowGrad.addColorStop(0.85, `rgba(100, 240, 150, ${alpha * 0.2})`);
-            glowGrad.addColorStop(1, `rgba(140, 255, 190, ${alpha * 0.4})`);
-            ctx.fillStyle = glowGrad;
-            ctx.beginPath();
-            ctx.ellipse(r.x, footY, ringR * 1.2, ringRY * 1.2, 0, 0, Math.PI * 2);
-            ctx.fill();
-
-            // Solid ring boundary
-            ctx.strokeStyle = `rgba(120, 255, 170, ${alpha * 0.7})`;
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.ellipse(r.x, footY, ringR, ringRY, 0, 0, Math.PI * 2);
-            ctx.stroke();
-
-            // Inner fill
-            ctx.fillStyle = `rgba(100, 230, 150, ${alpha * 0.1})`;
-            ctx.beginPath();
-            ctx.ellipse(r.x, footY, ringR * 0.85, ringRY * 0.85, 0, 0, Math.PI * 2);
-            ctx.fill();
-          }
-
-          // 2. Center pulse dot (nurse position)
-          const dotPulse = 1 + Math.sin(this.time * 8) * 0.3;
-          ctx.fillStyle = `rgba(140, 255, 190, ${alpha * 0.6})`;
-          ctx.beginPath();
-          ctx.arc(r.x, footY, 4 * dotPulse * expandScale, 0, Math.PI * 2);
-          ctx.fill();
-
-          // 3. ECG-like pulse line on the ground
-          ctx.strokeStyle = `rgba(100, 230, 150, ${alpha * 0.5})`;
-          ctx.lineWidth = 1.5;
-          ctx.beginPath();
-          for (let ex = -60; ex <= 60; ex += 2) {
-            const ecgY = footY - 20 + Math.sin(ex * 0.3 + this.time * 12) * (ex % 20 < 5 ? 12 : 3);
-            if (ex === -60) ctx.moveTo(r.x + ex, ecgY);
-            else ctx.lineTo(r.x + ex, ecgY);
-          }
-          ctx.stroke();
-          break;
-        }
-
-        case 'spraying': {
-          // Phase 2: Spray (1.2s) - watercolor mist blobs
-          const sprayProgress = 1 - progress / 1.2;
-          // 4 diagonal mist sprays (4 directions)
-          const mistDirs = [Math.PI * 0.25, Math.PI * 0.75, Math.PI * 1.25, Math.PI * 1.75];
-          for (let mi = 0; mi < mistDirs.length; mi++) {
-            const baseAngle = mistDirs[mi];
-            const spread = healRange * sprayProgress;
-            // 3 watercolor blobs per direction
-            for (let bi = 0; bi < 3; bi++) {
-              const blobDist = (bi + 1) * spread * 0.35;
-              const blobAngle = baseAngle + Math.sin(this.time * 2 + bi + mi) * 0.15;
-              const bx = r.x + Math.cos(blobAngle) * blobDist;
-              const by = r.y + Math.sin(blobAngle) * blobDist * 0.5;
-              const blobSize = (25 + bi * 12) * (1 - sprayProgress * 0.3);
-              const blobAlpha = 0.25 * (1 - sprayProgress * 0.5) * (1 - bi * 0.15);
-              // Soft watercolor radial gradient
-              const grad = ctx.createRadialGradient(bx, by, 0, bx, by, blobSize);
-              grad.addColorStop(0, `rgba(100, 148, 100, ${blobAlpha})`);
-              grad.addColorStop(0.5, `rgba(90, 138, 90, ${blobAlpha * 0.5})`);
-              grad.addColorStop(1, `rgba(80, 120, 80, 0)`);
-              ctx.fillStyle = grad;
-              ctx.beginPath();
-              // Irregular blob shape
-              for (let a = 0; a <= Math.PI * 2; a += 0.3) {
-                const br = blobSize * (0.7 + Math.sin(a * 3 + this.time + bi) * 0.3);
-                if (a === 0) ctx.moveTo(bx + Math.cos(a) * br, by + Math.sin(a) * br * 0.6);
-                else ctx.lineTo(bx + Math.cos(a) * br, by + Math.sin(a) * br * 0.6);
-              }
-              ctx.closePath();
-              ctx.fill();
-            }
-          }
-          // ===== HEAL RANGE CIRCLE: clear green ring at nurse's feet =====
-          const footY = r.y + 12; // slightly below center = feet position
-          const pulse = 1 + Math.sin(this.time * 4) * 0.06;
-          const ringAlpha = 0.5 * pulse;
-
-          // 1. Outer glow (radial gradient)
-          const glowGrad = ctx.createRadialGradient(r.x, footY, healRange * 0.5, r.x, footY, healRange * 1.1);
-          glowGrad.addColorStop(0, `rgba(80, 220, 120, 0)`);
-          glowGrad.addColorStop(0.8, `rgba(80, 220, 120, ${ringAlpha * 0.15})`);
-          glowGrad.addColorStop(1, `rgba(120, 255, 170, ${ringAlpha * 0.35})`);
-          ctx.fillStyle = glowGrad;
-          ctx.beginPath();
-          ctx.ellipse(r.x, footY, healRange * 1.1, healRange * 0.4, 0, 0, Math.PI * 2);
-          ctx.fill();
-
-          // 2. Inner fill (semi-transparent green)
-          ctx.fillStyle = `rgba(90, 210, 130, ${ringAlpha * 0.12})`;
-          ctx.beginPath();
-          ctx.ellipse(r.x, footY, healRange * 0.9, healRange * 0.32, 0, 0, Math.PI * 2);
-          ctx.fill();
-
-          // 3. Main ring boundary (bright green solid line)
-          ctx.strokeStyle = `rgba(100, 245, 150, ${ringAlpha * 0.85})`;
-          ctx.lineWidth = 2.5;
-          ctx.beginPath();
-          ctx.ellipse(r.x, footY, healRange * 0.9, healRange * 0.32, 0, 0, Math.PI * 2);
-          ctx.stroke();
-
-          // 4. Inner ring (dashed feel)
-          ctx.strokeStyle = `rgba(130, 255, 180, ${ringAlpha * 0.4})`;
-          ctx.lineWidth = 1.5;
-          ctx.setLineDash([8, 10]);
-          ctx.beginPath();
-          ctx.ellipse(r.x, footY, healRange * 0.55, healRange * 0.2, 0, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.setLineDash([]);
-
-          // 5. Rotating tick marks on the outer ring edge
-          const tickCount = 12;
-          const tickRot = this.time * 1.8;
-          for (let ti = 0; ti < tickCount; ti++) {
-            const a = tickRot + (ti / tickCount) * Math.PI * 2;
-            const tx = r.x + Math.cos(a) * healRange * 0.9;
-            const ty = footY + Math.sin(a) * healRange * 0.32;
-            const tickLen = 5 + (ti % 3 === 0 ? 4 : 0); // every 3rd tick is longer
-            const nx = -Math.sin(a); // normal vector
-            const ny = Math.cos(a);
-            ctx.strokeStyle = `rgba(160, 255, 200, ${ringAlpha * 0.7})`;
-            ctx.lineWidth = ti % 3 === 0 ? 2.5 : 1.5;
-            ctx.beginPath();
-            ctx.moveTo(tx + nx * tickLen * 0.5, ty + ny * tickLen * 0.5);
-            ctx.lineTo(tx - nx * tickLen * 0.5, ty - ny * tickLen * 0.5);
-            ctx.stroke();
-          }
-
-          // 6. Crosshair lines (vertical + horizontal) to mark center
-          ctx.strokeStyle = `rgba(140, 255, 180, ${ringAlpha * 0.25})`;
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.moveTo(r.x, footY - healRange * 0.32);
-          ctx.lineTo(r.x, footY + healRange * 0.32);
-          ctx.moveTo(r.x - healRange * 0.9, footY);
-          ctx.lineTo(r.x + healRange * 0.9, footY);
-          ctx.stroke();
-          break;
-        }
-
-        case 'dissipating': {
-          // Phase 3: Dissipate (1.0s) - fading ring at feet
-          const dissProgress = progress / 1.0; // 1 -> 0 as it fades
-          const fadeAlpha = dissProgress;
-          const footY = r.y + 12;
-
-          // Fading ring boundary
-          ctx.strokeStyle = `rgba(100, 245, 150, ${fadeAlpha * 0.5})`;
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.ellipse(r.x, footY, healRange * 0.9 * fadeAlpha, healRange * 0.32 * fadeAlpha, 0, 0, Math.PI * 2);
-          ctx.stroke();
-
-          // Fading inner glow
-          const glowGrad = ctx.createRadialGradient(r.x, footY, 0, r.x, footY, healRange * fadeAlpha);
-          glowGrad.addColorStop(0, `rgba(90, 220, 130, ${fadeAlpha * 0.08})`);
-          glowGrad.addColorStop(1, `rgba(90, 220, 130, 0)`);
-          ctx.fillStyle = glowGrad;
-          ctx.beginPath();
-          ctx.ellipse(r.x, footY, healRange * fadeAlpha, healRange * 0.35 * fadeAlpha, 0, 0, Math.PI * 2);
-          ctx.fill();
-
-          // Shrinking center dot
-          ctx.fillStyle = `rgba(140, 255, 190, ${fadeAlpha * 0.4})`;
-          ctx.beginPath();
-          ctx.arc(r.x, footY, 3 * fadeAlpha, 0, Math.PI * 2);
-          ctx.fill();
-          break;
-        }
-      }
-    }
-    ctx.restore();
     const p = this.player;
     const py = p.y;
     const s = 4;

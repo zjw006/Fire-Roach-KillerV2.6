@@ -122,8 +122,10 @@ export const EncyclopediaScreen: React.FC<EncyclopediaScreenProps> = ({ progress
 
   return (
     <div className="absolute inset-0 overflow-y-auto">
-      {/* Dark background */}
-      <div className="absolute inset-0 bg-gradient-to-b from-[#0a0a1a] via-[#0d0d1f] to-[#0a0a1a]" />
+      {/* Fixed background image */}
+      <div className="fixed inset-0 bg-cover bg-center" style={{ backgroundImage: 'url(/assets/achieve_bg.jpg)' }} />
+      {/* Dark overlay */}
+      <div className="fixed inset-0 bg-black/70" />
 
       <div className="relative z-10 w-full max-w-md mx-auto px-4 py-6 min-h-screen">
         {/* Header */}
