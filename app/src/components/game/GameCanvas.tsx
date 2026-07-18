@@ -43,6 +43,7 @@ function getOrCreatePlayerId(): string {
 export const GameCanvas: React.FC = () => {
   // ── 引用与持久化标识 ──
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const gameContainerRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<any | null>(null);
   const nextSceneUpgradesRef = useRef<string[]>([]);
   // const nextSceneConsumablesRef = useRef<Record<string, number>>({});
@@ -771,8 +772,8 @@ export const GameCanvas: React.FC = () => {
     };
     const handleGlobalTouchMove = (e: TouchEvent) => {
       const engine = engineRef.current;
-      // Prevent scroll only when touching the canvas (game area)
-      if (e.target === canvasRef.current) {
+      // 阻止 game-container 内所有 touchmove 的默认行为（防止 iOS Safari 橡皮筋回弹）
+      if (gameContainerRef.current?.contains(e.target as Node)) {
         e.preventDefault();
       }
       const touch = e.touches[0];
@@ -794,7 +795,7 @@ export const GameCanvas: React.FC = () => {
     };
     const handleGlobalTouchStart = (e: TouchEvent) => {
       const engine = engineRef.current;
-      // Prevent default only when touching canvas (allow UI buttons to generate click events)
+      // 仅对 canvas 元素阻止默认行为（保留 UI 按钮的 click 事件）
       if (e.target === canvasRef.current) {
         e.preventDefault();
       }
@@ -941,7 +942,7 @@ export const GameCanvas: React.FC = () => {
   return (
     <div className="relative w-screen h-dvh bg-black flex items-center justify-center overflow-hidden select-none">
       {/* ═══ 游戏容器：Canvas + HUD ═══ */}
-      <div id="game-container" className="relative w-full h-full flex items-center justify-center">
+      <div id="game-container" ref={gameContainerRef} className="relative w-full h-full flex items-center justify-center">
       {/* ═══ 游戏画布（始终存在，独立于 UI 层）═══ */}
       <canvas
         ref={canvasRef}

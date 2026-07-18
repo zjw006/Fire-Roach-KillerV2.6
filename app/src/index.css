@@ -71,6 +71,8 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* 防止 iOS Safari 橡皮筋效果（页面整体回弹） */
+    overscroll-behavior: none;
   }
 }
 

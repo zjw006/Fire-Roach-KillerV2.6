@@ -715,7 +715,11 @@ export class GameEngine {
       getParticleLimit: () => this._particleLimit,
       getParticleCount: () => this.particles.length,
       getEconomy: () => this.economy,
-      setEconomy: (e) => { this.economy = e; },
+      setEconomy: (e) => {
+        this.economy = e;
+        // 同步到 RoachAISystem，防止击杀奖励加到旧 economy 对象上
+        this.roachAISystem?.updateConfig({ economy: e });
+      },
     });
     // ===== 恢复持久化消耗品库存 =====
     // Restore persistent consumable inventory from progress
@@ -1167,6 +1171,7 @@ export class GameEngine {
       particles: this.particles,
       fireWalls: this.fireWalls,
       armorShieldCache: this.armorShieldCache,
+      economy: this.economy, // 必须同步 economy 引用，否则击杀奖励加到旧对象上
     });
     // 为新游戏会话重置性能检测
     this._perfCheckFrames = 0;
