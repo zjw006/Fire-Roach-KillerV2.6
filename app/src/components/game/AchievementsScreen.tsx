@@ -60,7 +60,7 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ progress
   const progressPercent = total > 0 ? (unlocked / total) * 100 : 0;
 
   return (
-    <div className="absolute inset-0 overflow-y-auto">
+    <div className="absolute inset-0 flex flex-col">
       {/* Background image - rooftop with lightning (fixed to viewport) */}
       <div
         className="fixed inset-0 bg-cover bg-center"
@@ -69,54 +69,57 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ progress
       {/* Dark overlay for readability (fixed to viewport) */}
       <div className="fixed inset-0 bg-black/70" />
 
-      <div className="relative z-10 w-full max-w-md mx-auto px-4 py-6 min-h-screen">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <button
-            onClick={() => { audio?.playClick(); onClose(); }}
-            className="flex items-center gap-1 text-stone-400 hover:text-white transition-colors"
-          >
-            <ArrowLeft size={18} />
-            <span className="text-sm">返回</span>
-          </button>
-          <div className="flex items-center gap-2">
-            <Trophy size={16} className="text-yellow-400" />
-            <span className="text-yellow-400 font-bold">{unlocked}/{total}</span>
+      <div className="relative z-10 w-full max-w-md mx-auto px-4 flex flex-col h-screen">
+        {/* Fixed header section: 返回、成就数量、标题、进度条、页签 */}
+        <div className="pt-6 shrink-0">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-4">
+            <button
+              onClick={() => { audio?.playClick(); onClose(); }}
+              className="flex items-center gap-1 text-stone-400 hover:text-white transition-colors"
+            >
+              <ArrowLeft size={18} />
+              <span className="text-sm">返回</span>
+            </button>
+            <div className="flex items-center gap-2">
+              <Trophy size={16} className="text-yellow-400" />
+              <span className="text-yellow-400 font-bold">{unlocked}/{total}</span>
+            </div>
+          </div>
+
+          <h2 className="text-2xl font-bold text-white text-center mb-2">成就系统</h2>
+
+          {/* Progress bar */}
+          <div className="bg-stone-800 rounded-full h-2.5 mb-1 overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-yellow-500 via-orange-500 to-red-500 rounded-full transition-all duration-500"
+              style={{ width: `${progressPercent}%` }}
+            />
+          </div>
+          <div className="text-center text-xs text-stone-500 mb-4">
+            完成度 {progressPercent.toFixed(1)}%
+          </div>
+
+          {/* Filter tabs */}
+          <div className="flex gap-1 mb-3 bg-stone-900/60 rounded-xl p-1">
+            {(['all', 'unlocked', 'locked'] as const).map((f) => (
+              <button
+                key={f}
+                onClick={() => { audio?.playClick(); setFilter(f); }}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  filter === f
+                    ? 'bg-stone-700 text-white'
+                    : 'text-stone-500 hover:text-stone-300'
+                }`}
+              >
+                {f === 'all' ? '全部' : f === 'unlocked' ? '已解锁' : '未解锁'}
+              </button>
+            ))}
           </div>
         </div>
 
-        <h2 className="text-2xl font-bold text-white text-center mb-2">成就系统</h2>
-
-        {/* Progress bar */}
-        <div className="bg-stone-800 rounded-full h-2.5 mb-1 overflow-hidden">
-          <div
-            className="h-full bg-gradient-to-r from-yellow-500 via-orange-500 to-red-500 rounded-full transition-all duration-500"
-            style={{ width: `${progressPercent}%` }}
-          />
-        </div>
-        <div className="text-center text-xs text-stone-500 mb-4">
-          完成度 {progressPercent.toFixed(1)}%
-        </div>
-
-        {/* Filter tabs */}
-        <div className="flex gap-1 mb-3 bg-stone-900/60 rounded-xl p-1">
-          {(['all', 'unlocked', 'locked'] as const).map((f) => (
-            <button
-              key={f}
-              onClick={() => { audio?.playClick(); setFilter(f); }}
-              className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                filter === f
-                  ? 'bg-stone-700 text-white'
-                  : 'text-stone-500 hover:text-stone-300'
-              }`}
-            >
-              {f === 'all' ? '全部' : f === 'unlocked' ? '已解锁' : '未解锁'}
-            </button>
-          ))}
-        </div>
-
-        {/* 成就列表：按筛选条件展示，每项包含图标、名称、描述、奖励和状态 */}
-        <div className="space-y-2">
+        {/* 可滚动的成就列表：按筛选条件展示，每项包含图标、名称、描述、奖励和状态 */}
+        <div className="space-y-2 overflow-y-auto flex-1 border border-stone-700/40 rounded-xl p-3 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-stone-700/50 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-stone-600/60">
           {displayList.map((ach) => {
             const category = getCategory(ach.id);
             return (

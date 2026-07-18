@@ -195,7 +195,7 @@ export const TalentTreeScreen: React.FC<TalentTreeScreenProps> = ({ progress, ta
 
       {/* ═══ 界面 1：天赋列表 ═══ */}
       <div className="relative z-10 flex-1 flex flex-col overflow-hidden">
-        {/* 顶部标题栏 — 约束在 max-w-md 内，与下方内容对齐 */}
+        {/* 固定顶部区域：返回、天赋点、标题 */}
         <div className="shrink-0 border-b border-stone-800">
           <div className="max-w-md mx-auto px-4 py-3 flex items-center justify-between">
           <button
@@ -210,12 +210,12 @@ export const TalentTreeScreen: React.FC<TalentTreeScreenProps> = ({ progress, ta
             <span className="text-yellow-400 font-bold">{talentPoints} 天赋点</span>
           </div>
           </div>
+          <h2 className="text-2xl font-bold text-white text-center pb-3">天赋树</h2>
         </div>
 
         {/* 可滚动天赋分类网格 */}
         <div className="flex-1 overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}>
           <div className="max-w-md mx-auto px-4 py-4 space-y-3">
-            <h2 className="text-2xl font-bold text-white text-center mb-4">天赋树</h2>
 
             {CATEGORIES.map(cat => (
               <div key={cat.id} className={`bg-stone-900/80 rounded-xl p-3 border ${cat.borderColor}`}>
@@ -343,14 +343,14 @@ export const TalentTreeScreen: React.FC<TalentTreeScreenProps> = ({ progress, ta
       {/* ═══ 界面 2：天赋详情弹窗 ═══ */}
       {selectedTalent && (
         <div
-          className="fixed inset-0 z-[110] flex items-end justify-center"
+          className="fixed inset-0 z-[110] flex items-center justify-center p-4"
           onClick={(e) => { if (e.target === e.currentTarget) setSelectedTalentId(null); }}
         >
           {/* Backdrop */}
           <div className="absolute inset-0 bg-black/70" onClick={() => { audio?.playClick(); setSelectedTalentId(null); }} />
 
           {/* Detail Panel */}
-          <div className={`relative w-full max-w-md mx-auto bg-stone-900 rounded-t-2xl border-t border-x border-stone-600 shadow-2xl transition-transform duration-300 ${flashTalent ? 'scale-[1.02]' : 'scale-100'}`}>
+          <div className={`relative w-full max-w-sm bg-stone-900 rounded-2xl border border-stone-600 shadow-2xl transition-transform duration-300 ${flashTalent ? 'scale-[1.02]' : 'scale-100'}`}>
             {/* Drag handle */}
             <div className="flex justify-center pt-2 pb-1">
               <div className="w-10 h-1 rounded-full bg-stone-600" />

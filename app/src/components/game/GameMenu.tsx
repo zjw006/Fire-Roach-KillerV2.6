@@ -8,8 +8,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   Flame, Volume2, VolumeX, Swords, Trophy,
-  Skull, Sparkles, Map, Award, Bug,
-  ShoppingBag, RotateCcw, AlertTriangle, Trash2, Lock,
+  Skull, Map, RotateCcw, AlertTriangle, Trash2, Lock,
 } from 'lucide-react';
 import { GameMode, SceneType, type GameProgress } from '@/game/types';
 import { SCENE_CONFIGS, SCENE_ORDER } from '@/game/data';
@@ -56,7 +55,6 @@ export const GameMenu: React.FC<GameMenuProps> = ({
   const gameModes = [
     { id: GameMode.STORY, name: '剧情模式', icon: <Swords size={24} />, desc: '10波标准关卡', disabled: false },
     { id: GameMode.ENDLESS, name: '无尽模式', icon: <Skull size={24} />, desc: '无限波次挑战', disabled: true },
-    { id: GameMode.DAILY, name: '每日挑战', icon: <Trophy size={24} />, desc: '每日随机种子', disabled: true },
     // BOSS mode temporarily disabled
     // { id: GameMode.BOSS, name: 'BOSS战', icon: <Shield size={24} />, desc: '挑战螂老大' },
   ];
@@ -95,12 +93,12 @@ export const GameMenu: React.FC<GameMenuProps> = ({
           {/* Talent tree button */}
           <button
             onClick={() => { audio?.playClick(); onOpenTalentTree(); }}
-            className="mb-3 w-full bg-yellow-900/60 border border-yellow-600/40 rounded-lg px-3 py-1.5 flex items-center justify-center gap-2 hover:bg-yellow-800/60 transition-all hover:scale-105"
+            className="mb-3 w-full relative transition-all hover:scale-105 active:scale-95"
           >
-            <Sparkles size={14} className="text-yellow-400" />
-            <span className="text-yellow-300 text-sm font-bold">天赋树</span>
+            <img src="/assets/UI/btn_talent_tree.png" alt="" className="w-full h-auto" draggable={false} />
+            <span className="absolute inset-0 flex items-center justify-center text-yellow-300 text-sm font-bold [text-shadow:1px_1px_0_#000,-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000]">天赋树</span>
             {talentPoints > 0 && (
-              <span className="ml-1 text-yellow-400 text-xs">({talentPoints})</span>
+              <span className="absolute top-1 right-2 bg-red-600 text-white text-[10px] font-bold rounded-full px-2 py-0.5 border border-stone-900">{talentPoints}</span>
             )}
           </button>
 
@@ -113,47 +111,23 @@ export const GameMenu: React.FC<GameMenuProps> = ({
               </h2>
               <p className="text-stone-400 text-sm mb-6">剧情模式 — 选择你的挑战</p>
 
-              {/* Easy — wasteland riveted metal */}
+              {/* Easy */}
               <button
                 onClick={() => { audio?.playClick(); setStoryDifficulty('easy'); setStoryStep('scenes'); }}
-                className="relative w-full py-4 text-amber-100 font-bold text-xl font-mono tracking-wider hover:text-white transition-all hover:scale-105 active:scale-95 mb-3"
-                style={{
-                  background: 'linear-gradient(180deg, #3d3020 0%, #2a2218 100%)',
-                  border: '2px solid #5a4a30',
-                  borderRadius: '3px',
-                  boxShadow: 'inset 0 1px 0 rgba(255,200,100,0.1), 0 3px 8px rgba(0,0,0,0.4)',
-                  textShadow: '0 1px 3px rgba(0,0,0,0.8)',
-                }}
+                className="relative w-full transition-all hover:scale-105 active:scale-95 mb-3"
               >
-                <div className="absolute -top-1 -left-1 w-2 h-2 rounded-full" style={{ background: 'radial-gradient(circle at 30% 30%, #6b5b4a, #3d3020)', boxShadow: '0 0 0 1px rgba(0,0,0,0.5)' }} />
-                <div className="absolute -top-1 -right-1 w-2 h-2 rounded-full" style={{ background: 'radial-gradient(circle at 30% 30%, #6b5b4a, #3d3020)', boxShadow: '0 0 0 1px rgba(0,0,0,0.5)' }} />
-                <div className="absolute -bottom-1 -left-1 w-2 h-2 rounded-full" style={{ background: 'radial-gradient(circle at 30% 30%, #6b5b4a, #3d3020)', boxShadow: '0 0 0 1px rgba(0,0,0,0.5)' }} />
-                <div className="absolute -bottom-1 -right-1 w-2 h-2 rounded-full" style={{ background: 'radial-gradient(circle at 30% 30%, #6b5b4a, #3d3020)', boxShadow: '0 0 0 1px rgba(0,0,0,0.5)' }} />
-                <Swords size={20} className="inline mr-2" />
-                简单
+                <img src="/assets/UI/btn_easy.png" alt="" className="w-full h-auto" draggable={false} />
+                <span className="absolute inset-0 flex items-center justify-center text-amber-100 font-bold text-lg font-mono tracking-wider [text-shadow:1px_1px_0_#000,-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000] pl-[5%]">简单</span>
               </button>
-              <div className="text-[10px] font-mono text-center mb-5" style={{ color: 'rgba(201,169,110,0.35)' }}>防线80HP · 中等难度 · 正常奖励</div>
 
-              {/* Hard — wasteland ember plate */}
+              {/* Hard */}
               <button
                 onClick={() => { audio?.playClick(); setStoryDifficulty('hard'); setStoryStep('scenes'); }}
-                className="relative w-full py-4 text-amber-100 font-bold text-xl font-mono tracking-wider hover:text-white transition-all hover:scale-105 active:scale-95 mb-3"
-                style={{
-                  background: 'linear-gradient(180deg, #5a1a00 0%, #3d1000 100%)',
-                  border: '2px solid #6b3020',
-                  borderRadius: '3px',
-                  boxShadow: 'inset 0 1px 0 rgba(255,150,60,0.2), 0 3px 8px rgba(0,0,0,0.4)',
-                  textShadow: '0 1px 3px rgba(0,0,0,0.8)',
-                }}
+                className="relative w-full transition-all hover:scale-105 active:scale-95 mb-3"
               >
-                <div className="absolute -top-1 -left-1 w-2 h-2 rounded-full" style={{ background: 'radial-gradient(circle at 30% 30%, #6b5b4a, #3d3020)', boxShadow: '0 0 0 1px rgba(0,0,0,0.5)' }} />
-                <div className="absolute -top-1 -right-1 w-2 h-2 rounded-full" style={{ background: 'radial-gradient(circle at 30% 30%, #6b5b4a, #3d3020)', boxShadow: '0 0 0 1px rgba(0,0,0,0.5)' }} />
-                <div className="absolute -bottom-1 -left-1 w-2 h-2 rounded-full" style={{ background: 'radial-gradient(circle at 30% 30%, #6b5b4a, #3d3020)', boxShadow: '0 0 0 1px rgba(0,0,0,0.5)' }} />
-                <div className="absolute -bottom-1 -right-1 w-2 h-2 rounded-full" style={{ background: 'radial-gradient(circle at 30% 30%, #6b5b4a, #3d3020)', boxShadow: '0 0 0 1px rgba(0,0,0,0.5)' }} />
-                <Flame size={20} className="inline mr-2" />
-                困难
+                <img src="/assets/UI/btn_hard.png" alt="" className="w-full h-auto" draggable={false} />
+                <span className="absolute inset-0 flex items-center justify-center text-amber-100 font-bold text-lg font-mono tracking-wider [text-shadow:1px_1px_0_#000,-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000] pl-[5%]">困难</span>
               </button>
-              <div className="text-[10px] font-mono text-center" style={{ color: 'rgba(201,169,110,0.35)' }}>防线80HP · 极限挑战 · 更高奖励</div>
 
               <button onClick={() => { audio?.playClick(); setShowModes(false); setSelectedMode(null); setStoryStep('difficulty'); setStoryDifficulty(null); }} className="text-stone-400 hover:text-white text-sm font-mono transition-colors tracking-wider mt-6">
                 [ 返回 ]
@@ -220,12 +194,12 @@ export const GameMenu: React.FC<GameMenuProps> = ({
       <div className="absolute inset-0 bg-cover bg-center transition-opacity duration-700" style={{ backgroundImage: 'url(/assets/menu_bg.jpg)', opacity: bgLoaded ? 1 : 0 }} />
       <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/50 to-black/80" />
 
-      <div className="relative z-10 text-center max-w-sm w-full mx-4 flex flex-col items-center">
+      <div className="relative z-10 text-center max-w-sm w-full mx-4 flex flex-col items-center pb-28">
 
         {/* ═══ 音频开关按钮（右上角）═══ */}
         <button
           onClick={() => { audio?.playClick(); onToggleMute(); }}
-          className="fixed top-3 right-3 z-50 p-2 rounded-full bg-black/40 text-stone-400 hover:text-amber-300 hover:bg-black/60 transition-all"
+          className="absolute top-3 right-0 p-2 rounded-full bg-black/40 text-stone-400 hover:text-amber-300 hover:bg-black/60 transition-all"
           title={audioMuted ? '开启音效' : '静音'}
         >
           {audioMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
@@ -262,19 +236,23 @@ export const GameMenu: React.FC<GameMenuProps> = ({
         {/* ═══ 天赋树入口按钮 ═══ */}
         <button
           onClick={() => { audio?.playClick(); onOpenTalentTree(); }}
-          className="mb-3 w-full bg-yellow-900/60 border border-yellow-600/40 rounded-lg px-3 py-1.5 flex items-center gap-2 hover:bg-yellow-800/60 transition-all hover:scale-105"
+          className="mb-3 w-full transition-all hover:scale-105 active:scale-95 relative hidden"
         >
-          <Sparkles size={14} className="text-yellow-400" />
-          <span className="text-yellow-300 text-sm font-bold">天赋树</span>
+          <img src="/assets/UI/btn_talent_tree.png" alt="天赋树" className="w-full h-auto" draggable={false} />
           {talentPoints > 0 && (
-            <span className="ml-1 text-yellow-400 text-xs">({talentPoints})</span>
+            <span className="absolute top-1 right-2 bg-red-600 text-white text-[10px] font-bold rounded-full px-2 py-0.5 border border-stone-900">{talentPoints}</span>
           )}
         </button>
 
-        {/* ═══ 游戏模式卡片（废土铆钉金属板风格）═══ */}
+        {/* ═══ 游戏模式卡片（图片资源）═══ */}
         {!showModes ? (
           <div className="w-full grid grid-cols-2 gap-3 mb-4">
-            {gameModes.map((mode) => (
+            {gameModes.map((mode) => {
+              const modeImages: Record<string, string> = {
+                [GameMode.STORY]: '/assets/UI/btn_story.png',
+                [GameMode.ENDLESS]: '/assets/UI/btn_endless.png',
+              };
+              return (
               <button
                 key={mode.id}
                 disabled={mode.disabled}
@@ -292,28 +270,13 @@ export const GameMenu: React.FC<GameMenuProps> = ({
                     onStart('easy', mode.id, scene);
                   }
                 }}
-                className={`relative flex flex-col items-center gap-2 p-4 font-bold transition-all ${mode.disabled ? 'text-stone-600 cursor-not-allowed opacity-60' : 'text-amber-100/80 hover:text-amber-100 hover:scale-105 active:scale-95'}`}
-                style={{
-                  background: 'linear-gradient(180deg, #2a2218 0%, #1a1410 100%)',
-                  border: '2px solid #3d3020',
-                  borderRadius: '4px',
-                  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05), 0 3px 8px rgba(0,0,0,0.4)',
-                }}
+                className={`relative transition-all ${mode.disabled ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105 active:scale-95'}`}
               >
-                {/* Rivets */}
-                <div className="absolute -top-1 -left-1 w-2 h-2 rounded-full" style={{ background: 'radial-gradient(circle at 30% 30%, #6b5b4a, #3d3020)', boxShadow: '0 0 0 1px rgba(0,0,0,0.5)' }} />
-                <div className="absolute -top-1 -right-1 w-2 h-2 rounded-full" style={{ background: 'radial-gradient(circle at 30% 30%, #6b5b4a, #3d3020)', boxShadow: '0 0 0 1px rgba(0,0,0,0.5)' }} />
-                <div className="absolute -bottom-1 -left-1 w-2 h-2 rounded-full" style={{ background: 'radial-gradient(circle at 30% 30%, #6b5b4a, #3d3020)', boxShadow: '0 0 0 1px rgba(0,0,0,0.5)' }} />
-                <div className="absolute -bottom-1 -right-1 w-2 h-2 rounded-full" style={{ background: 'radial-gradient(circle at 30% 30%, #6b5b4a, #3d3020)', boxShadow: '0 0 0 1px rgba(0,0,0,0.5)' }} />
-                <div className="w-12 h-12 rounded-sm flex items-center justify-center" style={{ background: 'rgba(201,169,110,0.1)', border: '1px solid rgba(201,169,110,0.2)' }}>
-                  {mode.icon}
-                </div>
-                <div className="text-center">
-                  <div className="text-sm font-mono tracking-wider">{mode.name}</div>
-                  <div className="text-[9px] font-mono" style={{ color: 'rgba(201,169,110,0.4)' }}>{mode.desc}</div>
-                </div>
+                <img src={modeImages[mode.id]} alt="" className="w-full h-auto" draggable={false} />
+                <span className="absolute inset-0 flex items-center justify-center text-amber-100/80 text-sm font-mono tracking-wider font-bold [text-shadow:1px_1px_0_#000,-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000] pt-[30%]">{mode.name}</span>
               </button>
-            ))}
+            );
+            })}
           </div>
         ) : (
           /* ═══ 无尽 / Boss 模式：场景 + 难度选择 ═══ */
@@ -354,151 +317,100 @@ export const GameMenu: React.FC<GameMenuProps> = ({
             )}
 
             <div className="text-center text-white font-bold text-lg mb-3">选择难度</div>
-            {/* Easy — wasteland metal plate */}
+            {/* Easy */}
             <button
               onClick={() => {
                 audio?.playClick();
                 const scene = selectedScene || SceneType.STREET;
                 onStart('easy', selectedMode || GameMode.ENDLESS, scene);
               }}
-              className="relative w-full flex items-center justify-center gap-2 text-amber-100 font-bold text-lg py-3.5 font-mono tracking-wider hover:text-white transition-all hover:scale-105"
-              style={{
-                background: 'linear-gradient(180deg, #3d3020 0%, #2a2218 100%)',
-                border: '2px solid #5a4a30',
-                borderRadius: '3px',
-                boxShadow: 'inset 0 1px 0 rgba(255,200,100,0.1), 0 3px 8px rgba(0,0,0,0.4)',
-                textShadow: '0 1px 3px rgba(0,0,0,0.8)',
-              }}
+              className="relative w-full transition-all hover:scale-105 active:scale-95"
             >
-              <div className="absolute -top-1 -left-1 w-2 h-2 rounded-full" style={{ background: 'radial-gradient(circle at 30% 30%, #6b5b4a, #3d3020)', boxShadow: '0 0 0 1px rgba(0,0,0,0.5)' }} />
-              <div className="absolute -top-1 -right-1 w-2 h-2 rounded-full" style={{ background: 'radial-gradient(circle at 30% 30%, #6b5b4a, #3d3020)', boxShadow: '0 0 0 1px rgba(0,0,0,0.5)' }} />
-              <div className="absolute -bottom-1 -left-1 w-2 h-2 rounded-full" style={{ background: 'radial-gradient(circle at 30% 30%, #6b5b4a, #3d3020)', boxShadow: '0 0 0 1px rgba(0,0,0,0.5)' }} />
-              <div className="absolute -bottom-1 -right-1 w-2 h-2 rounded-full" style={{ background: 'radial-gradient(circle at 30% 30%, #6b5b4a, #3d3020)', boxShadow: '0 0 0 1px rgba(0,0,0,0.5)' }} />
-              <Swords size={20} />
-              简单模式
+              <img src="/assets/UI/btn_easy.png" alt="" className="w-full h-auto" draggable={false} />
+              <span className="absolute inset-0 flex items-center justify-center text-amber-100 font-bold text-lg font-mono tracking-wider [text-shadow:1px_1px_0_#000,-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000] pl-[5%]">简单模式</span>
             </button>
-            <div className="text-[10px] font-mono text-center" style={{ color: 'rgba(201,169,110,0.35)' }}>防线80HP · 中等难度</div>
 
-            {/* Hard — wasteland ember plate */}
+            {/* Hard */}
             <button
               onClick={() => {
                 audio?.playClick();
                 const scene = selectedScene || SceneType.STREET;
                 onStart('hard', selectedMode || GameMode.ENDLESS, scene);
               }}
-              className="relative w-full flex items-center justify-center gap-2 text-amber-100 font-bold text-lg py-3.5 font-mono tracking-wider hover:text-white transition-all hover:scale-105"
-              style={{
-                background: 'linear-gradient(180deg, #5a1a00 0%, #3d1000 100%)',
-                border: '2px solid #6b3020',
-                borderRadius: '3px',
-                boxShadow: 'inset 0 1px 0 rgba(255,150,60,0.2), 0 3px 8px rgba(0,0,0,0.4)',
-                textShadow: '0 1px 3px rgba(0,0,0,0.8)',
-              }}
+              className="relative w-full transition-all hover:scale-105 active:scale-95"
             >
-              <div className="absolute -top-1 -left-1 w-2 h-2 rounded-full" style={{ background: 'radial-gradient(circle at 30% 30%, #6b5b4a, #3d3020)', boxShadow: '0 0 0 1px rgba(0,0,0,0.5)' }} />
-              <div className="absolute -top-1 -right-1 w-2 h-2 rounded-full" style={{ background: 'radial-gradient(circle at 30% 30%, #6b5b4a, #3d3020)', boxShadow: '0 0 0 1px rgba(0,0,0,0.5)' }} />
-              <div className="absolute -bottom-1 -left-1 w-2 h-2 rounded-full" style={{ background: 'radial-gradient(circle at 30% 30%, #6b5b4a, #3d3020)', boxShadow: '0 0 0 1px rgba(0,0,0,0.5)' }} />
-              <div className="absolute -bottom-1 -right-1 w-2 h-2 rounded-full" style={{ background: 'radial-gradient(circle at 30% 30%, #6b5b4a, #3d3020)', boxShadow: '0 0 0 1px rgba(0,0,0,0.5)' }} />
-              <Flame size={20} />
-              困难模式
+              <img src="/assets/UI/btn_hard.png" alt="" className="w-full h-auto" draggable={false} />
+              <span className="absolute inset-0 flex items-center justify-center text-amber-100 font-bold text-lg font-mono tracking-wider [text-shadow:1px_1px_0_#000,-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000] pl-[5%]">困难模式</span>
             </button>
-            <div className="text-[10px] text-stone-400 text-center">防线80HP · 极限挑战</div>
 
             <button onClick={() => { audio?.playClick(); setShowModes(false); setSelectedMode(null); }} className="text-stone-400 hover:text-white text-sm transition-colors mt-1">
               返回模式选择
             </button>
           </div>
         )}
+      </div>
 
-        {/* ═══ 底部功能按钮：道具商店 → 天赋 → 成就 → 图鉴 ═══ */}
-        <div className="w-full grid grid-cols-4 gap-2 mb-3">
-          {/* 1. 道具商店 */}
-          <button
-            onClick={() => { audio?.playClick(); onOpenShop(); }}
-            className="relative flex flex-col items-center gap-1.5 py-3 text-amber-200/60 hover:text-amber-200 transition-all"
-            style={{
-              background: 'linear-gradient(180deg, #2a2218 0%, #1a1410 100%)',
-              border: '1px solid #3d3020',
-              borderRadius: '3px',
-              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04), 0 2px 4px rgba(0,0,0,0.3)',
-            }}
-          >
-            <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full" style={{ background: 'radial-gradient(circle at 30% 30%, #5a4d3a, #2a2218)', boxShadow: '0 0 0 1px rgba(0,0,0,0.5)' }} />
-            <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full" style={{ background: 'radial-gradient(circle at 30% 30%, #5a4d3a, #2a2218)', boxShadow: '0 0 0 1px rgba(0,0,0,0.5)' }} />
-            <ShoppingBag size={16} />
-            <span className="text-[9px] font-mono tracking-wider">道具商店</span>
-          </button>
+      {/* ═══ 固定底部栏：功能按钮 + 重置 ═══ */}
+      <div className="absolute bottom-0 left-0 right-0 z-10" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.8) 60%, transparent 100%)' }}>
+        <div className="max-w-sm mx-auto px-4 pt-4 pb-3">
+          {/* 底部功能按钮：道具商店 → 天赋 → 成就 → 图鉴 */}
+          <div className="w-full grid grid-cols-4 gap-2 mb-2">
+            {/* 1. 道具商店 */}
+            <button
+              onClick={() => { audio?.playClick(); onOpenShop(); }}
+              className="relative transition-all hover:scale-105 active:scale-95"
+            >
+              <img src="/assets/UI/btn_shop.png" alt="" className="w-full h-auto" draggable={false} />
+              <span className="absolute inset-0 flex items-center justify-center text-amber-200/80 text-[9px] font-mono tracking-wider [text-shadow:1px_1px_0_#000,-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000] pt-[25%]">道具商店</span>
+            </button>
 
-          {/* 2. 天赋 */}
-          <button
-            onClick={onOpenTalentTree}
-            className="relative flex flex-col items-center gap-1.5 py-3 text-amber-200/60 hover:text-amber-200 transition-all"
-            style={{
-              background: 'linear-gradient(180deg, #2a2218 0%, #1a1410 100%)',
-              border: '1px solid #3d3020',
-              borderRadius: '3px',
-              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04), 0 2px 4px rgba(0,0,0,0.3)',
-            }}
-          >
-            <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full" style={{ background: 'radial-gradient(circle at 30% 30%, #5a4d3a, #2a2218)', boxShadow: '0 0 0 1px rgba(0,0,0,0.5)' }} />
-            <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full" style={{ background: 'radial-gradient(circle at 30% 30%, #5a4d3a, #2a2218)', boxShadow: '0 0 0 1px rgba(0,0,0,0.5)' }} />
-            <Sparkles size={16} />
-            <span className="text-[9px] font-mono tracking-wider">天赋</span>
-            {talentPoints > 0 && (
-              <span className="absolute -top-1.5 -right-1 bg-red-600 text-white text-[8px] font-bold rounded-full w-4 h-4 flex items-center justify-center border border-stone-900">{talentPoints}</span>
-            )}
-          </button>
+            {/* 2. 天赋 */}
+            <button
+              onClick={onOpenTalentTree}
+              className="relative transition-all hover:scale-105 active:scale-95"
+            >
+              <img src="/assets/UI/btn_talent.png" alt="" className="w-full h-auto" draggable={false} />
+              <span className="absolute inset-0 flex items-center justify-center text-amber-200/80 text-[9px] font-mono tracking-wider [text-shadow:1px_1px_0_#000,-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000] pt-[25%]">天赋</span>
+              {talentPoints > 0 && (
+                <span className="absolute -top-1.5 -right-1 bg-red-600 text-white text-[8px] font-bold rounded-full w-4 h-4 flex items-center justify-center border border-stone-900">{talentPoints}</span>
+              )}
+            </button>
 
-          {/* 3. 成就 */}
-          <button
-            onClick={() => { audio?.playClick(); onOpenAchievements(); }}
-            className="relative flex flex-col items-center gap-1.5 py-3 text-amber-200/60 hover:text-amber-200 transition-all"
-            style={{
-              background: 'linear-gradient(180deg, #2a2218 0%, #1a1410 100%)',
-              border: '1px solid #3d3020',
-              borderRadius: '3px',
-              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04), 0 2px 4px rgba(0,0,0,0.3)',
-            }}
-          >
-            <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full" style={{ background: 'radial-gradient(circle at 30% 30%, #5a4d3a, #2a2218)', boxShadow: '0 0 0 1px rgba(0,0,0,0.5)' }} />
-            <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full" style={{ background: 'radial-gradient(circle at 30% 30%, #5a4d3a, #2a2218)', boxShadow: '0 0 0 1px rgba(0,0,0,0.5)' }} />
-            <Award size={16} />
-            <span className="text-[9px] font-mono tracking-wider">成就</span>
-          </button>
+            {/* 3. 成就 */}
+            <button
+              onClick={() => { audio?.playClick(); onOpenAchievements(); }}
+              className="relative transition-all hover:scale-105 active:scale-95"
+            >
+              <img src="/assets/UI/btn_achievement.png" alt="" className="w-full h-auto" draggable={false} />
+              <span className="absolute inset-0 flex items-center justify-center text-amber-200/80 text-[9px] font-mono tracking-wider [text-shadow:1px_1px_0_#000,-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000] pt-[25%]">成就</span>
+            </button>
 
-          {/* 4. 图鉴 */}
-          <button
-            onClick={() => { audio?.playClick(); onOpenEncyclopedia(); }}
-            className="relative flex flex-col items-center gap-1.5 py-3 text-amber-200/60 hover:text-amber-200 transition-all"
-            style={{
-              background: 'linear-gradient(180deg, #2a2218 0%, #1a1410 100%)',
-              border: '1px solid #3d3020',
-              borderRadius: '3px',
-              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04), 0 2px 4px rgba(0,0,0,0.3)',
-            }}
-          >
-            <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full" style={{ background: 'radial-gradient(circle at 30% 30%, #5a4d3a, #2a2218)', boxShadow: '0 0 0 1px rgba(0,0,0,0.5)' }} />
-            <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full" style={{ background: 'radial-gradient(circle at 30% 30%, #5a4d3a, #2a2218)', boxShadow: '0 0 0 1px rgba(0,0,0,0.5)' }} />
-            <Bug size={16} />
-            <span className="text-[9px] font-mono tracking-wider">图鉴</span>
-          </button>
+            {/* 4. 图鉴 */}
+            <button
+              onClick={() => { audio?.playClick(); onOpenEncyclopedia(); }}
+              className="relative transition-all hover:scale-105 active:scale-95"
+            >
+              <img src="/assets/UI/btn_encyclopedia.png" alt="" className="w-full h-auto" draggable={false} />
+              <span className="absolute inset-0 flex items-center justify-center text-amber-200/80 text-[9px] font-mono tracking-wider [text-shadow:1px_1px_0_#000,-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000] pt-[25%]">图鉴</span>
+            </button>
+          </div>
 
+          {/* 重置进度按钮 */}
+          <div className="w-full flex justify-start">
+            <button
+              onClick={() => { audio?.playClick(); setShowResetConfirm(true); }}
+              className="flex items-center gap-1.5 text-stone-500 hover:text-red-400 transition-colors py-1.5 px-2 rounded hover:bg-stone-800/50"
+              title="重置游戏进度"
+            >
+              <RotateCcw size={12} />
+              <span className="text-[10px] font-mono tracking-wider">重置</span>
+            </button>
+          </div>
         </div>
+      </div>
 
-        {/* ═══ 重置进度按钮 ═══ */}
-        <div className="w-full flex justify-start mt-2">
-          <button
-            onClick={() => { audio?.playClick(); setShowResetConfirm(true); }}
-            className="flex items-center gap-1.5 text-stone-500 hover:text-red-400 transition-colors py-1.5 px-2 rounded hover:bg-stone-800/50"
-            title="重置游戏进度"
-          >
-            <RotateCcw size={12} />
-            <span className="text-[10px] font-mono tracking-wider">重置</span>
-          </button>
-        </div>
-
-        {/* ═══ 重置确认对话框 ═══ */}
-        {showResetConfirm && (
+      {/* ═══ 重置确认对话框 ═══ */}
+      {showResetConfirm && (
           <div
             className="fixed inset-0 z-50 flex items-center justify-center"
             style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}
@@ -535,7 +447,6 @@ export const GameMenu: React.FC<GameMenuProps> = ({
             </div>
           </div>
         )}
-      </div>
     </div>
   );
 };

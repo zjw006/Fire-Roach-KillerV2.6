@@ -121,102 +121,108 @@ export const EncyclopediaScreen: React.FC<EncyclopediaScreenProps> = ({ progress
   const totalCount = entries.length;
 
   return (
-    <div className="absolute inset-0 overflow-y-auto">
+    <div className="absolute inset-0 flex flex-col">
       {/* Fixed background image */}
       <div className="fixed inset-0 bg-cover bg-center" style={{ backgroundImage: 'url(/assets/achieve_bg.jpg)' }} />
       {/* Dark overlay */}
       <div className="fixed inset-0 bg-black/70" />
 
-      <div className="relative z-10 w-full max-w-md mx-auto px-4 py-6 min-h-screen">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <button
-            onClick={() => { audio?.playClick(); onClose(); }}
-            className="flex items-center gap-1 text-stone-400 hover:text-white transition-colors"
-          >
-            <ArrowLeft size={18} />
-            <span className="text-sm">返回</span>
-          </button>
-          <div className="flex items-center gap-2">
-            <Bug size={16} className="text-orange-400" />
-            <span className="text-orange-400 font-bold">{unlockedCount}/{totalCount}</span>
+      <div className="relative z-10 w-full max-w-md mx-auto px-4 flex flex-col h-screen">
+        {/* Fixed header section: 返回、图鉴数量、标题、累计击杀 */}
+        <div className="pt-6 shrink-0">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-4">
+            <button
+              onClick={() => { audio?.playClick(); onClose(); }}
+              className="flex items-center gap-1 text-stone-400 hover:text-white transition-colors"
+            >
+              <ArrowLeft size={18} />
+              <span className="text-sm">返回</span>
+            </button>
+            <div className="flex items-center gap-2">
+              <Bug size={16} className="text-orange-400" />
+              <span className="text-orange-400 font-bold">{unlockedCount}/{totalCount}</span>
+            </div>
+          </div>
+
+          {/* Title */}
+          <div className="text-center mb-4">
+            <h2 className="text-2xl font-bold text-white mb-1 flex items-center justify-center gap-2">
+              <Flame size={24} className="text-orange-500" />
+              蟑螂图鉴
+              <Flame size={24} className="text-orange-500" />
+            </h2>
+            <div className="text-sm text-stone-500">
+              累计击杀 <span className="text-red-400 font-bold">{totalKills}</span> 只蟑螂
+            </div>
           </div>
         </div>
 
-        {/* Title */}
-        <div className="text-center mb-4">
-          <h2 className="text-2xl font-bold text-white mb-1 flex items-center justify-center gap-2">
-            <Flame size={24} className="text-orange-500" />
-            蟑螂图鉴
-            <Flame size={24} className="text-orange-500" />
-          </h2>
-          <div className="text-sm text-stone-500">
-            累计击杀 <span className="text-red-400 font-bold">{totalKills}</span> 只蟑螂
+        {/* 可滚动的图鉴内容：2列网格 + 底部提示 */}
+        <div className="overflow-y-auto flex-1 border border-stone-700/40 rounded-xl p-3 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-stone-700/50 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-stone-600/60">
+          {/* 蟑螂图鉴网格：2列布局，已解锁显示图标和击杀数，未解锁显示问号 */}
+          <div className="grid grid-cols-2 gap-3 mb-6">
+            {entries.map((entry) => {
+              const isUnlocked = entry.unlocked;
+              return (
+                <button
+                  key={entry.id}
+                  onClick={() => { audio?.playClick(); isUnlocked && setSelectedRoach(entry); }}
+                  className={`relative rounded-xl border p-3 text-left transition-all duration-200 ${
+                    isUnlocked
+                      ? `${ROACH_BG_COLORS[entry.type]} hover:scale-105 hover:shadow-lg ${ROACH_GLOW_COLORS[entry.type]} active:scale-95`
+                      : 'bg-stone-950/40 border-stone-800 opacity-50 cursor-not-allowed'
+                  }`}
+                >
+                  {/* Image area */}
+                  <div className="flex items-center justify-center mb-2">
+                    {isUnlocked ? (
+                      <div className={`w-16 h-16 rounded-xl bg-gradient-to-br ${ROACH_COLORS[entry.type]} flex items-center justify-center shadow-lg`}>
+                        <img
+                          src={entry.image}
+                          alt={entry.name}
+                          className="w-14 h-14 object-contain drop-shadow-md"
+                          draggable={false}
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <div className="w-16 h-16 rounded-xl bg-stone-800 flex items-center justify-center">
+                        <Lock size={24} className="text-stone-600" />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Info */}
+                  <div className="text-center">
+                    <div className={`font-bold text-sm mb-1 ${isUnlocked ? ROACH_TEXT_COLORS[entry.type] : 'text-stone-600'}`}>
+                      {isUnlocked ? entry.name : '???'}
+                    </div>
+                    {isUnlocked && (
+                      <div className="flex items-center justify-center gap-1.5 text-xs text-stone-500">
+                        <Skull size={10} className="text-red-500" />
+                        <span>击杀 {entry.killCount || 0}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* New badge */}
+                  {isUnlocked && (entry.killCount || 0) > 0 && (entry.killCount || 0) < 5 && (
+                    <div className="absolute -top-1 -right-1 bg-red-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">
+                      NEW
+                    </div>
+                  )}
+                </button>
+              );
+            })}
           </div>
-        </div>
 
-        {/* 蟑螂图鉴网格：2列布局，已解锁显示图标和击杀数，未解锁显示问号 */}
-        <div className="grid grid-cols-2 gap-3 mb-6">
-          {entries.map((entry) => {
-            const isUnlocked = entry.unlocked;
-            return (
-              <button
-                key={entry.id}
-                onClick={() => { audio?.playClick(); isUnlocked && setSelectedRoach(entry); }}
-                className={`relative rounded-xl border p-3 text-left transition-all duration-200 ${
-                  isUnlocked
-                    ? `${ROACH_BG_COLORS[entry.type]} hover:scale-105 hover:shadow-lg ${ROACH_GLOW_COLORS[entry.type]} active:scale-95`
-                    : 'bg-stone-950/40 border-stone-800 opacity-50 cursor-not-allowed'
-                }`}
-              >
-                {/* Image area */}
-                <div className="flex items-center justify-center mb-2">
-                  {isUnlocked ? (
-                    <div className={`w-16 h-16 rounded-xl bg-gradient-to-br ${ROACH_COLORS[entry.type]} flex items-center justify-center shadow-lg`}>
-                      <img
-                        src={entry.image}
-                        alt={entry.name}
-                        className="w-14 h-14 object-contain drop-shadow-md"
-                        draggable={false}
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).style.display = 'none';
-                        }}
-                      />
-                    </div>
-                  ) : (
-                    <div className="w-16 h-16 rounded-xl bg-stone-800 flex items-center justify-center">
-                      <Lock size={24} className="text-stone-600" />
-                    </div>
-                  )}
-                </div>
-
-                {/* Info */}
-                <div className="text-center">
-                  <div className={`font-bold text-sm mb-1 ${isUnlocked ? ROACH_TEXT_COLORS[entry.type] : 'text-stone-600'}`}>
-                    {isUnlocked ? entry.name : '???'}
-                  </div>
-                  {isUnlocked && (
-                    <div className="flex items-center justify-center gap-1.5 text-xs text-stone-500">
-                      <Skull size={10} className="text-red-500" />
-                      <span>击杀 {entry.killCount || 0}</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* New badge */}
-                {isUnlocked && (entry.killCount || 0) > 0 && (entry.killCount || 0) < 5 && (
-                  <div className="absolute -top-1 -right-1 bg-red-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">
-                    NEW
-                  </div>
-                )}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Bottom hint */}
-        <div className="text-center text-xs text-stone-600 mb-4">
-          点击已解锁的蟑螂查看详细信息
+          {/* Bottom hint */}
+          <div className="text-center text-xs text-stone-600 mb-4">
+            点击已解锁的蟑螂查看详细信息
+          </div>
         </div>
       </div>
 
