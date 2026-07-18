@@ -63,6 +63,8 @@ interface GameHUDProps {
   consumableCooldowns?: Record<string, number>;
   combatStartTimer?: number;
   audio?: AudioManager;
+  /** 教程高亮元素注册回调（用于 DOM 精确定位） */
+  onRegisterTutorialElement?: (id: string, el: HTMLElement | null) => void;
 }
 
 /** 武器图标 / 名称 / 快捷键映射 */
@@ -175,11 +177,18 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   consumableCooldowns = {},
   globalConsumableCooldown = 0,
   combatStartTimer = 0,
-  itemCooldowns = {}}) => {
+  itemCooldowns = {},
+  onRegisterTutorialElement,
+}) => {
   const gasPercent = (player.gas / player.maxGas) * 100;
   const heatPercent = (player.heat / player.overheatThreshold) * 100;
   const defensePercent = (defenseHp / maxDefenseHp) * 100;
   const reloadCost = difficulty === 'hard' ? '¥5' : '免费';
+
+  /** 教程元素注册辅助函数 */
+  const registerRef = (id: string) => (el: HTMLElement | null) => {
+    onRegisterTutorialElement?.(id, el);
+  };
 
   const totalWaves = gameMode === GameMode.ENDLESS ? '∞' : (SCENE_WAVE_CONFIGS[currentScene as keyof typeof SCENE_WAVE_CONFIGS]?.length || 10);
 
@@ -200,7 +209,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       <div className="absolute top-0 left-0 right-0 p-2 flex justify-center">
         <div className="w-full max-w-[380px] flex items-center gap-1">
           {/* Gas bar */}
-          <div className="bg-black/50 backdrop-blur-sm rounded-lg px-2 py-1 flex flex-col gap-0.5 flex-1 min-w-0 relative">
+          <div ref={registerRef('gasBar')} className="bg-black/50 backdrop-blur-sm rounded-lg px-2 py-1 flex flex-col gap-0.5 flex-1 min-w-0 relative">
           <div className="flex justify-between text-[10px] text-stone-300 leading-tight">
             <span className="flex items-center gap-1"><Droplets size={10} /> 燃气</span>
             <span>{Math.ceil(player.gas)}S</span>
@@ -246,7 +255,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       </div>{/* /top bar outer */}
 
       {/* ═══ 防线血量条（含 Buff 图标）═══ */}
-      <div className="absolute top-[58px] left-1/2 -translate-x-1/2 w-48">
+      <div ref={registerRef('defenseBar')} className="absolute top-[9%] left-1/2 -translate-x-1/2 w-48 pointer-events-none">
         <div className="flex items-center gap-1">
           <div className="bg-black/50 backdrop-blur-sm rounded-lg px-2 py-1 flex-1">
             <div className="flex justify-between text-[10px] text-stone-300 mb-0.5">
@@ -270,7 +279,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       </div>
 
       {/* ═══ 底部武器选择器 + 携带消耗品 ═══ */}
-      <div className="absolute bottom-[58px] left-1/2 -translate-x-1/2 pointer-events-auto">
+      <div ref={registerRef('weaponSelector')} className="absolute bottom-[6.04%] left-1/2 -translate-x-1/2 pointer-events-auto">
         <div className="bg-black/60 backdrop-blur-sm rounded-xl px-2 py-1.5 flex items-center gap-1">
           {allWeapons.map((w) => {
             const def = WEAPON_ICONS[w];
@@ -353,7 +362,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       </div>
 
       {/* ═══ 左侧热量条 + 紧急冷却按钮 ═══ */}
-      <div className="absolute bottom-[320px] left-2 pointer-events-auto">
+      <div ref={registerRef('heatBar')} className="absolute bottom-[33.33%] left-2 pointer-events-auto">
         <div className="bg-black/50 backdrop-blur-sm rounded-lg px-1.5 py-2 flex flex-col items-center gap-1 relative">
           {/* Emergency cool buff icon - above heat bar */}
           {buffFlashTimers['emergency_cool'] > 0 && coolDef && (
@@ -383,7 +392,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       </div>
 
       {/* ═══ 右侧：三喷火枪状态 + 掉落道具库存 ═══ */}
-      <div className="absolute bottom-[120px] right-2 flex flex-col items-center gap-1.5">
+      <div ref={registerRef('inventoryItems')} className="absolute bottom-[12.5%] right-2 flex flex-col items-center gap-1.5 min-w-[56px] min-h-[56px]">
         {/* Triple flame status */}
         {tripleFlameActive && (
           <div className={`rounded-lg px-2 py-1 mb-1 border ${tripleFlameTimer <= 5 ? 'bg-red-900/80 border-red-500 animate-pulse' : 'bg-yellow-900/70 border-yellow-500/50'}`}>
@@ -449,7 +458,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
       {/* ═══ 放置道具提示（等待点击屏幕）═══ */}
       {isPlacingItem && selectedItemIndex >= 0 && (
-        <div className="absolute bottom-[120px] left-1/2 -translate-x-1/2 pointer-events-none">
+        <div className="absolute bottom-[12.5%] left-1/2 -translate-x-1/2 pointer-events-none">
           <div className="bg-yellow-900/80 border border-yellow-500/50 rounded-lg px-3 py-1.5 text-center">
             <div className="text-yellow-300 text-xs font-bold">
               点击屏幕放置位置

@@ -69,7 +69,7 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ progress
       {/* Dark overlay for readability (fixed to viewport) */}
       <div className="fixed inset-0 bg-black/70" />
 
-      <div className="relative z-10 w-full max-w-md mx-auto px-4 flex flex-col h-screen">
+      <div className="relative z-10 w-full max-w-md mx-auto px-4 flex flex-col h-dvh">
         {/* Fixed header section: 返回、成就数量、标题、进度条、页签 */}
         <div className="pt-6 shrink-0">
           {/* Header */}

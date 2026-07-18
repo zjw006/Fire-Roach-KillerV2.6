@@ -86,14 +86,14 @@ export const GameMenu: React.FC<GameMenuProps> = ({
   {/* ═══ 剧情模式 → 难度选择 / 关卡选择 ═══ */}
   if (showModes && selectedMode === GameMode.STORY) {
     return (
-      <div className="absolute inset-0 flex items-center justify-center overflow-y-auto py-4">
+      <div className="absolute inset-0 flex items-center justify-center overflow-y-auto py-4 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-stone-700/50 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-stone-600/60">
         <div className="absolute inset-0 bg-cover bg-center transition-opacity duration-700" style={{ backgroundImage: 'url(/assets/menu_bg.jpg)', opacity: bgLoaded ? 1 : 0 }} />
         <div className="absolute inset-0 bg-black/70" />
         <div className="relative z-10 text-center max-w-sm w-full mx-4 my-auto">
           {/* Talent tree button */}
           <button
             onClick={() => { audio?.playClick(); onOpenTalentTree(); }}
-            className="mb-3 w-full relative transition-all hover:scale-105 active:scale-95"
+            className="mb-3 w-full relative transition-all hover:scale-105 active:scale-95 hidden"
           >
             <img src="/assets/UI/btn_talent_tree.png" alt="" className="w-full h-auto" draggable={false} />
             <span className="absolute inset-0 flex items-center justify-center text-yellow-300 text-sm font-bold [text-shadow:1px_1px_0_#000,-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000]">天赋树</span>
@@ -194,12 +194,12 @@ export const GameMenu: React.FC<GameMenuProps> = ({
       <div className="absolute inset-0 bg-cover bg-center transition-opacity duration-700" style={{ backgroundImage: 'url(/assets/menu_bg.jpg)', opacity: bgLoaded ? 1 : 0 }} />
       <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/50 to-black/80" />
 
-      <div className="relative z-10 text-center max-w-sm w-full mx-4 flex flex-col items-center pb-28">
+      <div className="relative z-10 text-center max-w-sm w-full mx-4 flex flex-col items-center pb-28 mt-[30px]">
 
         {/* ═══ 音频开关按钮（右上角）═══ */}
         <button
           onClick={() => { audio?.playClick(); onToggleMute(); }}
-          className="absolute top-3 right-0 p-2 rounded-full bg-black/40 text-stone-400 hover:text-amber-300 hover:bg-black/60 transition-all"
+          className="absolute top-[-38px] right-0 p-2 rounded-full bg-black/40 text-stone-400 hover:text-amber-300 hover:bg-black/60 transition-all"
           title={audioMuted ? '开启音效' : '静音'}
         >
           {audioMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}

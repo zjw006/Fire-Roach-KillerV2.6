@@ -49,6 +49,8 @@ export const GameCanvas: React.FC = () => {
   // const nextSceneEmergencyCoolRef = useRef<number>(0);
   // const menuShopInventoryRef = useRef<Record<string, number>>({});
   const playerIdRef = useRef<string>(getOrCreatePlayerId());
+  /** 教程高亮用 HUD 元素 DOM 引用（用于 getBoundingClientRect 精确定位） */
+  const tutorialHudRefs = useRef<Record<string, HTMLElement | null>>({});
 
   // ── 云端存档（tRPC）──
   const saveMutation = trpc.player.save.useMutation();
@@ -937,7 +939,7 @@ export const GameCanvas: React.FC = () => {
   const handleCanvasTouchStart = useCallback((_e: React.TouchEvent) => {}, []);
 
   return (
-    <div className="relative w-screen h-screen bg-black flex items-center justify-center overflow-hidden select-none">
+    <div className="relative w-screen h-dvh bg-black flex items-center justify-center overflow-hidden select-none">
       {/* ═══ 游戏容器：Canvas + HUD ═══ */}
       <div id="game-container" className="relative w-full h-full flex items-center justify-center">
       {/* ═══ 游戏画布（始终存在，独立于 UI 层）═══ */}
@@ -953,8 +955,8 @@ export const GameCanvas: React.FC = () => {
       {/* ═══ 游戏内覆盖层（动态匹配画布位置和尺寸）═══ */}
       {canvasBounds && (
       <div
-        className="absolute z-10"
-        style={{
+	        className="fixed z-10"
+	        style={{
           left: canvasBounds.left,
           top: canvasBounds.top,
           width: canvasBounds.width,
@@ -1001,6 +1003,7 @@ export const GameCanvas: React.FC = () => {
       {tutorialPauseSpawn && (
         <GameplayTutorialOverlay
           canvasBounds={canvasBounds}
+          hudRefs={tutorialHudRefs}
           audio={engineRef.current?.audio}
           onComplete={() => {
             engineRef.current?.resumeSpawnAfterTutorial();
@@ -1051,6 +1054,7 @@ export const GameCanvas: React.FC = () => {
           shieldTimer={engineRef.current?.player?.shieldTimer || 0}
           emergencyCoolInventory={emergencyCoolCount}
           audio={engineRef.current?.audio}
+          onRegisterTutorialElement={(id, el) => { tutorialHudRefs.current[id] = el; }}
         />
       )}
 
@@ -1101,6 +1105,10 @@ export const GameCanvas: React.FC = () => {
       {showTitleScreen && (
         <TitleScreen
           onStart={() => {
+            // 尝试进入全屏（需用户手势，静默失败不阻塞流程）
+            if (document.documentElement.requestFullscreen) {
+              document.documentElement.requestFullscreen().catch(() => {});
+            }
             setShowTitleScreen(false);
             // 根据用户需求：不要默认的背景音乐，只在战斗开始后播放关卡音乐
             // 所以标题屏幕进入主菜单时不播放任何音乐

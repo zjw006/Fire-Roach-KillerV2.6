@@ -41,7 +41,7 @@ export const SceneSelectScreen: React.FC<SceneSelectScreenProps> = ({ progress, 
 
   /** 场景列表：按 SCENE_ORDER 顺序渲染，已解锁可点击选择，未解锁显示解锁条件 */
   return (
-    <div ref={containerRef} className="absolute inset-0 flex items-start justify-center bg-black/90 backdrop-blur-sm overflow-y-auto">
+    <div ref={containerRef} className="absolute inset-0 flex items-start justify-center bg-black/90 backdrop-blur-sm overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-stone-700/50 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-stone-600/60">
       <div className="w-full max-w-md mx-4 py-6">
         {/* Header */}
         <div className="flex items-center justify-between mb-4">

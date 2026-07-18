@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @fileoverview 《烈焰除蟑》游戏核心引擎（模块化委托架构）
  *
  * ============================================================================
@@ -848,15 +848,14 @@ export class GameEngine {
     if (!container) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const rect = container.getBoundingClientRect();
-    const targetAspect = 540 / 960;
-    const parentAspect = rect.width / rect.height;
     let displayWidth = rect.width;
     let displayHeight = rect.height;
-    if (parentAspect > targetAspect) {
-      displayWidth = rect.height * targetAspect;
-    } else {
-      displayHeight = rect.width / targetAspect;
-    }
+    // Contain 模式：画布等比缩放，始终完整显示在容器内，不裁剪任何内容
+    const scaleX = rect.width / 540;
+    const scaleY = rect.height / 960;
+    const scale = Math.min(scaleX, scaleY);
+    displayWidth = 540 * scale;
+    displayHeight = 960 * scale;
     this.canvas.style.width = `${displayWidth}px`;
     this.canvas.style.height = `${displayHeight}px`;
     this.canvas.width = Math.floor(displayWidth * dpr);
