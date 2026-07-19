@@ -9,6 +9,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { SkipForward } from 'lucide-react';
 import type { DialogConfig, DialogLine, SceneType } from '@/game/types';
 import { AudioManager } from '@/game/audio';
+import { TEXT_CONFIG } from '@/game/data';
 
 /** 根据场景类型和难度获取对应的背景图片 */
 // Get the correct background image for a scene + difficulty
@@ -258,7 +259,7 @@ export const DialogScreen: React.FC<DialogScreenProps> = ({ config, difficulty, 
           className="flex items-center gap-1.5 bg-black/40 hover:bg-black/60 backdrop-blur-sm rounded-lg px-3 py-1.5 text-stone-400 hover:text-white transition-all border border-stone-700/50"
         >
           <SkipForward size={14} />
-          <span className="text-xs">跳过</span>
+          <span className="text-xs">{TEXT_CONFIG.ui.dialog.skip}</span>
         </button>
       </div>
 
@@ -301,7 +302,7 @@ export const DialogScreen: React.FC<DialogScreenProps> = ({ config, difficulty, 
       {/* Click hint */}
       <div className="relative z-10 text-center pb-3 pt-1">
         <span className="text-[10px] text-stone-500">
-          {isTyping ? '点击跳过打字' : isComplete ? '即将开始...' : '点击继续'}
+          {isTyping ? TEXT_CONFIG.ui.dialog.clickToSkip : isComplete ? TEXT_CONFIG.ui.dialog.starting : TEXT_CONFIG.ui.dialog.clickToContinue}
         </span>
       </div>
     </div>

@@ -11,7 +11,7 @@
 import React from 'react';
 import type { Player, Economy, GameProgress, BossBattleState, SceneType } from '@/game/types';
 import { GameMode } from '@/game/types';
-import { SCENE_WAVE_CONFIGS, CONSUMABLE_DEFS } from '@/game/data';
+import { SCENE_WAVE_CONFIGS, CONSUMABLE_DEFS, TEXT_CONFIG } from '@/game/data';
 import { Pause, Droplets, Gauge, Target, Flame, ChevronRight } from 'lucide-react';
 import type { AudioManager } from '@/game/audio';
 
@@ -69,8 +69,8 @@ interface GameHUDProps {
 
 /** 武器图标 / 名称 / 快捷键映射 */
 const WEAPON_ICONS: Record<string, { icon: React.ReactNode; name: string; color: string; key: string }> = {
-  flamethrower: { icon: <Flame size={14} />, name: '火焰', color: 'text-orange-400', key: '1' },
-  shotgun: { icon: <Target size={14} />, name: '散弹', color: 'text-yellow-400', key: '2' },
+  flamethrower: { icon: <Flame size={14} />, name: TEXT_CONFIG.weapons.flamethrower, color: 'text-orange-400', key: '1' },
+  shotgun: { icon: <Target size={14} />, name: TEXT_CONFIG.weapons.shotgun, color: 'text-yellow-400', key: '2' },
 };
 
 /** 掉落道具图片映射 */
@@ -86,13 +86,13 @@ const ITEM_IMAGES: Record<string, string> = {
 
 /** 掉落道具中文名称映射 */
 const ITEM_NAMES: Record<string, string> = {
-  sticky: '蟑螂贴板',
-  poison: '杀虫剂',
-  molotov: '燃烧瓶',
-  shotgun: '散弹模式',
-  radar: '雷达激光',
-  fan: '强力风扇',
-  swatter: '电蚊拍',
+  sticky: TEXT_CONFIG.items.sticky,
+  poison: TEXT_CONFIG.items.poison,
+  molotov: TEXT_CONFIG.items.molotov,
+  shotgun: TEXT_CONFIG.items.shotgun,
+  radar: TEXT_CONFIG.items.radar,
+  fan: TEXT_CONFIG.items.fan,
+  swatter: TEXT_CONFIG.items.swatter,
 };
 
 /** Buff 图标子组件：缩略版（约 12×12），带闪烁动画 */
@@ -183,7 +183,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   const gasPercent = (player.gas / player.maxGas) * 100;
   const heatPercent = (player.heat / player.overheatThreshold) * 100;
   const defensePercent = (defenseHp / maxDefenseHp) * 100;
-  const reloadCost = difficulty === 'hard' ? '¥5' : '免费';
+  const reloadCost = difficulty === 'hard' ? TEXT_CONFIG.ui.hud.reloadCost : TEXT_CONFIG.ui.hud.reloadFree;
 
   /** 教程元素注册辅助函数 */
   const registerRef = (id: string) => (el: HTMLElement | null) => {
@@ -211,7 +211,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           {/* Gas bar */}
           <div ref={registerRef('gasBar')} className="bg-black/50 backdrop-blur-sm rounded-lg px-2 py-1 flex flex-col gap-0.5 flex-1 min-w-0 relative">
           <div className="flex justify-between text-[10px] text-stone-300 leading-tight">
-            <span className="flex items-center gap-1"><Droplets size={10} /> 燃气</span>
+            <span className="flex items-center gap-1"><Droplets size={10} /> {TEXT_CONFIG.ui.hud.gas}</span>
             <span>{Math.ceil(player.gas)}S</span>
           </div>
           <div className="w-full h-2 bg-stone-700 rounded-full overflow-hidden">
@@ -225,26 +225,26 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           )}
           {player.gas < 20 && !player.isReloading && (
             <button onClick={() => { onReload(); }} className="pointer-events-auto text-[9px] bg-amber-600 hover:bg-amber-500 text-white rounded px-1 py-0.5 transition-colors">
-              换罐 ({reloadCost})
+              {TEXT_CONFIG.ui.hud.reload} ({reloadCost})
             </button>
           )}
           {player.isReloading && (
-            <div className="text-[9px] text-yellow-400 animate-pulse">换罐中...{Math.ceil(player.reloadTimer)}s</div>
+            <div className="text-[9px] text-yellow-400 animate-pulse">{TEXT_CONFIG.ui.hud.reloading(Math.ceil(player.reloadTimer))}</div>
           )}
         </div>
 
         {/* Wave/Money/Kills cluster */}
         <div className="flex gap-1.5 items-center">
           <div className="bg-black/50 backdrop-blur-sm rounded-lg px-2 py-1 text-white text-center min-w-[42px]">
-            <div className="text-[9px] text-stone-400">波次</div>
+            <div className="text-[9px] text-stone-400">{TEXT_CONFIG.ui.hud.wave}</div>
             <div className="text-base font-black text-yellow-400 leading-tight">{wave}/{totalWaves}</div>
           </div>
           <div className="bg-black/50 backdrop-blur-sm rounded-lg px-2 py-1 text-white text-center min-w-[52px]">
-            <div className="text-[9px] text-stone-400">资金</div>
+            <div className="text-[9px] text-stone-400">{TEXT_CONFIG.ui.hud.money}</div>
             <div className="text-base font-black text-amber-400 leading-tight">¥{economy.money}</div>
           </div>
           <div className="bg-black/50 backdrop-blur-sm rounded-lg px-2 py-1 text-white text-center min-w-[36px]">
-            <div className="text-[9px] text-stone-400">击杀</div>
+            <div className="text-[9px] text-stone-400">{TEXT_CONFIG.ui.hud.kills}</div>
             <div className="text-lg font-black text-red-500 leading-tight">{economy.totalKills}</div>
           </div>
           <button onClick={() => { onPause(); }} className="pointer-events-auto bg-black/50 hover:bg-black/70 backdrop-blur-sm rounded-lg p-1.5 text-white transition-colors ml-0.5">
@@ -259,7 +259,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         <div className="flex items-center gap-1">
           <div className="bg-black/50 backdrop-blur-sm rounded-lg px-2 py-1 flex-1">
             <div className="flex justify-between text-[10px] text-stone-300 mb-0.5">
-              <span>防线</span>
+              <span>{TEXT_CONFIG.ui.hud.defense}</span>
               <span>{defenseHp}/{maxDefenseHp}</span>
             </div>
             <div className="w-full h-1.5 bg-stone-700/50 rounded-full overflow-hidden">
@@ -279,7 +279,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       </div>
 
       {/* ═══ 底部武器选择器 + 携带消耗品 ═══ */}
-      <div ref={registerRef('weaponSelector')} className="absolute bottom-[6.04%] left-1/2 -translate-x-1/2 pointer-events-auto">
+      <div ref={registerRef('weaponSelector')} className="absolute bottom-[2%] left-1/2 -translate-x-1/2 pointer-events-auto">
         <div className="bg-black/60 backdrop-blur-sm rounded-xl px-2 py-1.5 flex items-center gap-1">
           {allWeapons.map((w) => {
             const def = WEAPON_ICONS[w];
@@ -385,7 +385,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                   : 'bg-stone-700 text-stone-500 cursor-not-allowed'
               }`}
             >
-              {emergencyCoolInventory > 0 ? `紧急冷却 (${emergencyCoolInventory}次)` : '冷却已用完'}
+              {emergencyCoolInventory > 0 ? TEXT_CONFIG.ui.hud.emergencyCool(emergencyCoolInventory) : TEXT_CONFIG.ui.hud.coolExhausted}
             </button>
           )}
         </div>
@@ -397,7 +397,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         {tripleFlameActive && (
           <div className={`rounded-lg px-2 py-1 mb-1 border ${tripleFlameTimer <= 5 ? 'bg-red-900/80 border-red-500 animate-pulse' : 'bg-yellow-900/70 border-yellow-500/50'}`}>
             <div className={`text-[9px] font-bold text-center ${tripleFlameTimer <= 5 ? 'text-red-300' : 'text-yellow-400'}`}>
-              三喷火枪
+              {TEXT_CONFIG.ui.hud.tripleFlamethrower}
             </div>
             <div className="w-12 h-1.5 bg-stone-700 rounded-full overflow-hidden mt-0.5">
               <div
@@ -429,7 +429,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                       ? 'border-stone-400 ring-2 ring-stone-400/60 bg-white/20'
                       : 'border-stone-600 bg-white/10 backdrop-blur-sm'
                   } ${isPlacingItem && selectedItemIndex !== idx ? 'opacity-40' : ''} ${isInCooldown ? 'opacity-50 cursor-not-allowed border-stone-700 bg-black/40' : 'hover:scale-110 hover:border-stone-400 hover:bg-white/20'}`}
-                  title={isInCooldown ? `${ITEM_NAMES[item.type]} 冷却中...` : ITEM_NAMES[item.type]}
+                  title={isInCooldown ? TEXT_CONFIG.ui.hud.itemCooldown(ITEM_NAMES[item.type]) : ITEM_NAMES[item.type]}
                 >
                   <img
                     src={ITEM_IMAGES[item.type]}
@@ -461,9 +461,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         <div className="absolute bottom-[12.5%] left-1/2 -translate-x-1/2 pointer-events-none">
           <div className="bg-yellow-900/80 border border-yellow-500/50 rounded-lg px-3 py-1.5 text-center">
             <div className="text-yellow-300 text-xs font-bold">
-              点击屏幕放置位置
+              {TEXT_CONFIG.ui.hud.placeItem}
             </div>
-            <div className="text-yellow-400/70 text-[10px]">点击图标取消</div>
+            <div className="text-yellow-400/70 text-[10px]">{TEXT_CONFIG.ui.hud.cancelPlace}</div>
           </div>
         </div>
       )}
@@ -472,7 +472,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       {player.isOverheated && (
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
           <div className="bg-red-900/80 backdrop-blur-sm rounded-lg px-4 py-2 text-center animate-pulse">
-            <div className="text-red-400 font-bold text-lg">过热警告!</div>
+            <div className="text-red-400 font-bold text-lg">{TEXT_CONFIG.ui.hud.overheating}</div>
             <div className="text-red-300 text-sm">{Math.ceil(player.overheatTimer)}s</div>
           </div>
         </div>

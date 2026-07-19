@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { RoachType, type EncyclopediaEntry, type GameProgress } from '@/game/types';
 import type { AudioManager } from '@/game/audio';
+import { TEXT_CONFIG } from '@/game/data';
 
 
 interface EncyclopediaScreenProps {
@@ -137,7 +138,7 @@ export const EncyclopediaScreen: React.FC<EncyclopediaScreenProps> = ({ progress
               className="flex items-center gap-1 text-stone-400 hover:text-white transition-colors"
             >
               <ArrowLeft size={18} />
-              <span className="text-sm">返回</span>
+              <span className="text-sm">{TEXT_CONFIG.ui.encyclopedia.back}</span>
             </button>
             <div className="flex items-center gap-2">
               <Bug size={16} className="text-orange-400" />
@@ -149,11 +150,11 @@ export const EncyclopediaScreen: React.FC<EncyclopediaScreenProps> = ({ progress
           <div className="text-center mb-4">
             <h2 className="text-2xl font-bold text-white mb-1 flex items-center justify-center gap-2">
               <Flame size={24} className="text-orange-500" />
-              蟑螂图鉴
+              {TEXT_CONFIG.ui.encyclopedia.title}
               <Flame size={24} className="text-orange-500" />
             </h2>
             <div className="text-sm text-stone-500">
-              累计击杀 <span className="text-red-400 font-bold">{totalKills}</span> 只蟑螂
+              {TEXT_CONFIG.ui.encyclopedia.totalKillsPrefix}<span className="text-red-400 font-bold">{totalKills}</span>{TEXT_CONFIG.ui.encyclopedia.totalKillsSuffix}
             </div>
           </div>
         </div>
@@ -203,7 +204,7 @@ export const EncyclopediaScreen: React.FC<EncyclopediaScreenProps> = ({ progress
                     {isUnlocked && (
                       <div className="flex items-center justify-center gap-1.5 text-xs text-stone-500">
                         <Skull size={10} className="text-red-500" />
-                        <span>击杀 {entry.killCount || 0}</span>
+                        <span>{TEXT_CONFIG.ui.encyclopedia.killedSimple(entry.killCount || 0)}</span>
                       </div>
                     )}
                   </div>
@@ -221,7 +222,7 @@ export const EncyclopediaScreen: React.FC<EncyclopediaScreenProps> = ({ progress
 
           {/* Bottom hint */}
           <div className="text-center text-xs text-stone-600 mb-4">
-            点击已解锁的蟑螂查看详细信息
+            {TEXT_CONFIG.ui.encyclopedia.hint}
           </div>
         </div>
       </div>
@@ -265,7 +266,7 @@ export const EncyclopediaScreen: React.FC<EncyclopediaScreenProps> = ({ progress
                 </div>
                 <div className="flex items-center gap-1 text-xs text-red-400 mt-1">
                   <Skull size={12} />
-                  <span className="font-bold">已击杀 {selectedRoach.killCount || 0} 只</span>
+                  <span className="font-bold">{TEXT_CONFIG.ui.encyclopedia.killed(selectedRoach.killCount || 0)}</span>
                 </div>
               </div>
             </div>
@@ -275,7 +276,7 @@ export const EncyclopediaScreen: React.FC<EncyclopediaScreenProps> = ({ progress
               <div className="bg-black/30 rounded-xl p-2.5">
                 <div className="flex items-center gap-1.5 text-xs text-stone-500 mb-1">
                   <Heart size={12} className="text-red-500" />
-                  <span>生命值</span>
+                  <span>{TEXT_CONFIG.ui.encyclopedia.hp}</span>
                 </div>
                 <div className="flex gap-0.5">
                   {Array.from({ length: 5 }).map((_, i) => (
@@ -295,7 +296,7 @@ export const EncyclopediaScreen: React.FC<EncyclopediaScreenProps> = ({ progress
               <div className="bg-black/30 rounded-xl p-2.5">
                 <div className="flex items-center gap-1.5 text-xs text-stone-500 mb-1">
                   <Zap size={12} className="text-yellow-500" />
-                  <span>速度</span>
+                  <span>{TEXT_CONFIG.ui.encyclopedia.speed}</span>
                 </div>
                 <div className="flex gap-0.5">
                   {Array.from({ length: 5 }).map((_, i) => (
@@ -317,7 +318,7 @@ export const EncyclopediaScreen: React.FC<EncyclopediaScreenProps> = ({ progress
             <div className="bg-black/30 rounded-xl p-3 mb-3">
               <div className="flex items-center gap-1.5 text-xs text-stone-500 mb-1.5">
                 <Star size={12} className="text-amber-400" />
-                <span>特殊能力</span>
+                <span>{TEXT_CONFIG.ui.encyclopedia.specialAbility}</span>
               </div>
               <div className="text-sm text-stone-300 font-medium">
                 {selectedRoach.special}
@@ -328,7 +329,7 @@ export const EncyclopediaScreen: React.FC<EncyclopediaScreenProps> = ({ progress
             <div className="bg-black/30 rounded-xl p-3 mb-3">
               <div className="text-xs text-stone-500 mb-1.5 flex items-center gap-1.5">
                 <Bug size={12} className="text-orange-400" />
-                <span>描述</span>
+                <span>{TEXT_CONFIG.ui.encyclopedia.description}</span>
               </div>
               <div className="text-sm text-stone-300 leading-relaxed">
                 {selectedRoach.description}
@@ -339,7 +340,7 @@ export const EncyclopediaScreen: React.FC<EncyclopediaScreenProps> = ({ progress
             <div className="bg-gradient-to-r from-yellow-950/30 to-orange-950/30 border border-yellow-700/20 rounded-xl p-3">
               <div className="text-xs text-yellow-500 mb-1.5 flex items-center gap-1.5">
                 <Sparkles size={12} />
-                <span>趣味冷知识</span>
+                <span>{TEXT_CONFIG.ui.encyclopedia.funFact}</span>
               </div>
               <div className="text-sm text-yellow-200/70 italic leading-relaxed">
                 "{selectedRoach.funFact}"
@@ -351,7 +352,7 @@ export const EncyclopediaScreen: React.FC<EncyclopediaScreenProps> = ({ progress
               onClick={() => { audio?.playClick(); setSelectedRoach(null); }}
               className={`w-full mt-4 py-2.5 rounded-xl font-bold text-sm transition-all hover:opacity-90 active:scale-95 bg-gradient-to-r ${ROACH_COLORS[selectedRoach.type]} text-white`}
             >
-              关闭
+              {TEXT_CONFIG.ui.encyclopedia.close}
             </button>
           </div>
         </div>

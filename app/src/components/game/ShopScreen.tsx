@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @fileoverview 补给站 / 商店界面组件。
  * 支持两种模式：
  * - 菜单商店（isMenuShop）：从主菜单入口进入，使用持久化的 menuShopMoney 购买道具
@@ -9,7 +9,7 @@ import React, { useState, useMemo, useRef } from 'react';
 import {
   ArrowRight, ArrowLeft, Home, Sparkles, Flame, Shield,
 } from 'lucide-react';
-import { CONSUMABLE_DEFS } from '@/game/data';
+import { CONSUMABLE_DEFS, TEXT_CONFIG } from '@/game/data';
 import type { Economy, SceneType } from '@/game/types';
 import type { AudioManager } from '@/game/audio';
 import { ShopTutorialOverlay } from './ShopTutorialOverlay';
@@ -140,7 +140,7 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
                 : 'bg-stone-700 text-stone-500 cursor-not-allowed'
             }`}
           >
-            {canAfford ? '购买' : '资金不足'}
+            {canAfford ? TEXT_CONFIG.ui.shop.buy : TEXT_CONFIG.ui.shop.insufficient}
           </button>
         </div>
       </div>
@@ -163,41 +163,41 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
               className="flex items-center gap-1 text-stone-400 hover:text-white transition-colors"
             >
               <ArrowLeft size={18} />
-              <span className="text-sm">返回</span>
+              <span className="text-sm">{TEXT_CONFIG.ui.menu.back}</span>
             </button>
           ) : (
             <div /> // spacer
           )}
-          <h2 className="text-3xl font-bold text-yellow-400">补给站</h2>
+          <h2 className="text-3xl font-bold text-yellow-400">{TEXT_CONFIG.ui.shop.title}</h2>
           <div /> {/* right spacer for balance */}
         </div>
         <p className="text-stone-400 text-sm text-center mb-3 shrink-0">
-          购买一次性消耗品，为下一关做准备
-          {difficulty === 'hard' && <span className="text-red-400 ml-2">[困难模式]</span>}
+          {TEXT_CONFIG.ui.shop.desc}
+          {difficulty === 'hard' && <span className="text-red-400 ml-2">{TEXT_CONFIG.ui.shop.hardMode}</span>}
         </p>
 
         {/* ═══ 统计信息栏（资金 / 天赋点 / 击杀）═══ */}
         {isMenuShop ? (
           <div className="text-center mb-3 shrink-0">
-            <div className="text-stone-400 text-xs">当前资金</div>
+            <div className="text-stone-400 text-xs">{TEXT_CONFIG.ui.shop.currentMoney}</div>
             <div className="text-xl font-bold text-amber-400 shop-money">&yen;{localMoney}</div>
           </div>
         ) : (
           <div className="bg-black/50 rounded-xl px-4 py-2 mb-3 flex items-center justify-between shrink-0">
             <div className="text-center">
-              <div className="text-stone-400 text-xs">当前资金</div>
+              <div className="text-stone-400 text-xs">{TEXT_CONFIG.ui.shop.currentMoney}</div>
               <div className="text-xl font-bold text-amber-400 shop-money">&yen;{localMoney}</div>
             </div>
             {talentPoints !== undefined && (
               <div className="text-center">
-                <div className="text-stone-400 text-xs">天赋点</div>
+                <div className="text-stone-400 text-xs">{TEXT_CONFIG.ui.shop.talentPoints}</div>
                 <div className="text-xl font-bold text-yellow-400 flex items-center gap-1">
                   <Sparkles size={14} /> {talentPoints}
                 </div>
               </div>
             )}
             <div className="text-center">
-              <div className="text-stone-400 text-xs">总击杀</div>
+              <div className="text-stone-400 text-xs">{TEXT_CONFIG.ui.shop.totalKills}</div>
               <div className="text-xl font-bold text-red-400">{economy.totalKills}</div>
             </div>
           </div>
@@ -209,7 +209,7 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
           <div className="mb-3">
             <div className="flex items-center gap-2 mb-2">
               <Flame size={16} className="text-orange-400" />
-              <h3 className="text-orange-400 text-sm font-bold">火枪相关</h3>
+              <h3 className="text-orange-400 text-sm font-bold">{TEXT_CONFIG.ui.shop.flameCategory}</h3>
               <div className="flex-1 h-px bg-orange-900/50" />
             </div>
             <div className="flex flex-col gap-2">
@@ -221,7 +221,7 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
           <div className="mb-3">
             <div className="flex items-center gap-2 mb-2">
               <Shield size={16} className="text-cyan-400" />
-              <h3 className="text-cyan-400 text-sm font-bold">辅助道具</h3>
+              <h3 className="text-cyan-400 text-sm font-bold">{TEXT_CONFIG.ui.shop.supportCategory}</h3>
               <div className="flex-1 h-px bg-cyan-900/50" />
             </div>
             <div className="flex flex-col gap-2">
@@ -234,15 +234,15 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
             <div className="bg-gradient-to-r from-yellow-900/60 to-orange-900/60 border border-yellow-500/40 rounded-xl p-3 mb-3 flex items-center gap-3 animate-pulse">
               <Sparkles size={24} className="text-yellow-400 shrink-0" />
               <div className="flex-1">
-                <div className="text-yellow-300 text-sm font-bold">获得天赋点！</div>
-                <div className="text-yellow-400/70 text-xs">通关奖励，可用于永久强化角色能力</div>
+                <div className="text-yellow-300 text-sm font-bold">{TEXT_CONFIG.ui.shop.talentUnlocked}</div>
+                <div className="text-yellow-400/70 text-xs">{TEXT_CONFIG.ui.shop.talentDesc}</div>
               </div>
               <button
                 onClick={() => { audio?.playClick(); onOpenTalentTree?.(); }}
                 className="shrink-0 bg-yellow-600 hover:bg-yellow-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1"
               >
                 <Sparkles size={12} />
-                去加点
+                {TEXT_CONFIG.ui.shop.goAddPoints}
               </button>
             </div>
           )}
@@ -250,7 +250,7 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
 
         {/* ═══ 底部固定：已拥有道具展示 ═══ */}
         <div ref={ownedRef} className="shrink-0 bg-stone-900/95 border border-stone-600 rounded-xl p-3 -mx-1">
-          <div className="text-stone-400 text-xs mb-2 text-center font-bold">已拥有道具</div>
+          <div className="text-stone-400 text-xs mb-2 text-center font-bold">{TEXT_CONFIG.ui.shop.ownedItems}</div>
           <div className="flex items-center justify-center gap-2 flex-wrap">
             {visibleConsumables.map((item) => {
               const count = item.id === 'emergency_cool' ? ownedEmergencyCool : (ownedConsumables[item.id] || 0);
@@ -271,7 +271,7 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
               const count = item.id === 'emergency_cool' ? ownedEmergencyCool : (ownedConsumables[item.id] || 0);
               return count <= 0;
             }) && (
-              <div className="text-stone-600 text-xs">暂无道具</div>
+              <div className="text-stone-600 text-xs">{TEXT_CONFIG.ui.shop.noItems}</div>
             )}
           </div>
         </div>
@@ -284,7 +284,7 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
                 onClick={() => { audio?.playClick(); onNextScene?.(); }}
                 className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-white font-bold py-3 px-6 rounded-xl transition-all hover:scale-105 shadow-lg shadow-amber-900/40"
               >
-                进入下一关：{nextSceneName}
+                {TEXT_CONFIG.ui.shop.nextLevel(nextSceneName || '')}
                 <ArrowRight size={20} />
               </button>
             ) : (
@@ -292,7 +292,7 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
                 onClick={() => { audio?.playClick(); onContinue(); }}
                 className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-amber-600 to-amber-600 hover:from-amber-500 hover:to-amber-500 text-white font-bold py-3 px-6 rounded-xl transition-all hover:scale-105"
               >
-                再来一局
+                {TEXT_CONFIG.ui.shop.playAgain}
                 <ArrowRight size={20} />
               </button>
             )
@@ -303,7 +303,7 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
               className="w-full flex items-center justify-center gap-2 bg-stone-700 hover:bg-stone-600 text-white font-bold py-3 px-6 rounded-xl transition-all hover:scale-105"
             >
               <Home size={20} />
-              返回主菜单
+              {TEXT_CONFIG.ui.shop.backToMenu}
             </button>
           )}
         </div>

@@ -332,7 +332,10 @@ export const GameCanvas: React.FC = () => {
       } catch { /* ignore network errors */ }
     };
     engine.onBossUpdate = (bb: BossBattleState) => setBossState({ ...bb });
-    engine.onInventoryUpdate = (inv: InventoryItem[]) => setInventory([...inv]);
+    engine.onInventoryUpdate = (inv: InventoryItem[]) => {
+      console.log('[GameCanvas onInventoryUpdate] inventory length:', inv.length, 'items:', inv.map(i => `${i.type}:${i.count}`).join(', '));
+      setInventory([...inv]);
+    };
 
     setProgress(engine.progress);
     setTalentPoints(engine.progress.talentTree.points);
@@ -351,6 +354,7 @@ export const GameCanvas: React.FC = () => {
         setCurrentWeapon(engine.player.currentWeapon);
         setIsAiming(engine.isAiming);
         setInventory([...engine.inventory]);
+        // console.log('[DEBUG poll] inventory from engine:', engine.inventory.map((i: any) => `${i.type}:${i.count}`).join(','));
         setSelectedItemIndex(engine.selectedItemIndex);
         setIsPlacingItem(engine.itemPlaceState !== 'idle');
         setTripleFlameActive(engine.tripleFlame.active);
@@ -632,6 +636,13 @@ export const GameCanvas: React.FC = () => {
   const handleQuit = useCallback(() => {
     engineRef.current?.audio.stopBGM();
     engineRef.current?.saveProgress();
+    // Sync current economy.money to menuShopMoney before quitting
+    // (needed when quitting from pause menu during gameplay, since onWaveClear/onGameOver haven't fired)
+    const engine = engineRef.current;
+    if (engine) {
+      setMenuShopMoney(engine.economy.money);
+      try { localStorage.setItem('roach_blaster_menu_money', String(engine.economy.money)); } catch { /* ignore */ }
+    }
     engineRef.current?.stop();
     setShowTalentTree(false);
     setShowAchievements(false);
@@ -772,8 +783,9 @@ export const GameCanvas: React.FC = () => {
     };
     const handleGlobalTouchMove = (e: TouchEvent) => {
       const engine = engineRef.current;
-      // 阻止 game-container 内所有 touchmove 的默认行为（防止 iOS Safari 橡皮筋回弹）
-      if (gameContainerRef.current?.contains(e.target as Node)) {
+      // 仅对 canvas 元素阻止 touchmove 默认行为（防止 iOS Safari 橡皮筋回弹）
+      // UI 覆盖层（商店、天赋、成就、图鉴等）内的滚动行为不受影响
+      if (e.target === canvasRef.current) {
         e.preventDefault();
       }
       const touch = e.touches[0];

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @fileoverview Boss战斗系统模块
  * @description 负责管理游戏中Boss战斗的所有逻辑，包括Boss状态管理、阶段切换、虫卵系统、死亡序列等
  */
@@ -13,6 +13,8 @@ import {
   SceneType
 } from '../../types';
 import { BOSS_ANIMATIONS } from '../../bossAnimation';
+import { TEXT_CONFIG } from '../../data';
+import { BALANCE_CONFIG } from '../../data';
 
 // ===== 全局Boss ID计数器 =====
 let nextBossId = 10000;
@@ -159,18 +161,18 @@ export class BossBattleSystem {
       summonAnimTimer: 0,
       summonCastTimer: 0,
       shedCount: 0,
-      maxShed: 3,
+      maxShed: BALANCE_CONFIG.boss.maxShed,
       isShedding: false,
       shedAnimTimer: 0,
       shedShells: [],
-      leftEyeHp: 800,
-      leftEyeMaxHp: 800,
+      leftEyeHp: BALANCE_CONFIG.boss.eyeHp,
+      leftEyeMaxHp: BALANCE_CONFIG.boss.eyeHp,
       leftEyeDestroyed: false,
-      rightEyeHp: 800,
-      rightEyeMaxHp: 800,
+      rightEyeHp: BALANCE_CONFIG.boss.eyeHp,
+      rightEyeMaxHp: BALANCE_CONFIG.boss.eyeHp,
       rightEyeDestroyed: false,
-      bellyHp: 1500,
-      bellyMaxHp: 1500,
+      bellyHp: BALANCE_CONFIG.boss.bellyHp,
+      bellyMaxHp: BALANCE_CONFIG.boss.bellyHp,
       bellyExposed: false,
       activeWeakPoint: '',
       showInterruptHint: false,
@@ -198,8 +200,8 @@ export class BossBattleSystem {
       bossMaxHp: 0,
       phase: 1,
       phaseName: '',
-      timeLimit: 180,
-      timeRemaining: 180,
+      timeLimit: BALANCE_CONFIG.boss.timeLimit,
+      timeRemaining: BALANCE_CONFIG.boss.timeLimit,
       currentWave: 0,
       waveCleared: false,
       waveSpawnTimer: 0,
@@ -230,18 +232,18 @@ export class BossBattleSystem {
       summonAnimTimer: 0,
       summonCastTimer: 0,
       shedCount: 0,
-      maxShed: 3,
+      maxShed: BALANCE_CONFIG.boss.maxShed,
       isShedding: false,
       shedAnimTimer: 0,
       shedShells: [],
-      leftEyeHp: 800,
-      leftEyeMaxHp: 800,
+      leftEyeHp: BALANCE_CONFIG.boss.eyeHp,
+      leftEyeMaxHp: BALANCE_CONFIG.boss.eyeHp,
       leftEyeDestroyed: false,
-      rightEyeHp: 800,
-      rightEyeMaxHp: 800,
+      rightEyeHp: BALANCE_CONFIG.boss.eyeHp,
+      rightEyeMaxHp: BALANCE_CONFIG.boss.eyeHp,
       rightEyeDestroyed: false,
-      bellyHp: 1500,
-      bellyMaxHp: 1500,
+      bellyHp: BALANCE_CONFIG.boss.bellyHp,
+      bellyMaxHp: BALANCE_CONFIG.boss.bellyHp,
       bellyExposed: false,
       activeWeakPoint: '',
       showInterruptHint: false,
@@ -254,7 +256,7 @@ export class BossBattleSystem {
   /** 生成Boss实体 */
   spawnBoss(): Roach {
     const isHard = this.cfg.difficulty === 'hard';
-    const bossHp = 10000;
+    const bossHp = BALANCE_CONFIG.boss.baseHp;
     const boss: Roach = {
       id: nextBossId++,
       x: this.cfg.width / 2,
@@ -265,14 +267,14 @@ export class BossBattleSystem {
       hp: bossHp,
       maxHp: bossHp,
       state: RoachState.ALIVE,
-      speed: 0.6,
-      baseSpeed: 0.6,
+      speed: BALANCE_CONFIG.boss.speed,
+      baseSpeed: BALANCE_CONFIG.boss.speed,
       burnDamage: 0,
       inFire: false,
       clusterId: undefined,
       angle: Math.PI / 2,
       wobbleOffset: Math.random() * Math.PI * 2,
-      wobbleSpeed: 0.5 + Math.random() * 1,
+      wobbleSpeed: BALANCE_CONFIG.boss.wobbleSpeed + Math.random() * BALANCE_CONFIG.boss.wobbleSpeedRandom,
       isEnraged: false,
       deathTimer: 0,
       animFrame: 0,
@@ -332,7 +334,7 @@ export class BossBattleSystem {
       bossHp: 4,
       bossMaxHp: 4,
       phase: 1,
-      phaseName: '第一波:虫卵',
+      phaseName: TEXT_CONFIG.combat.bossPhase1,
       timeLimit: 180,
       timeRemaining: 180,
       currentWave: 0,
@@ -365,18 +367,18 @@ export class BossBattleSystem {
       summonAnimTimer: 0,
       summonCastTimer: 0,
       shedCount: 0,
-      maxShed: 3,
+      maxShed: BALANCE_CONFIG.boss.maxShed,
       isShedding: false,
       shedAnimTimer: 0,
       shedShells: [],
-      leftEyeHp: 800,
-      leftEyeMaxHp: 800,
+      leftEyeHp: BALANCE_CONFIG.boss.eyeHp,
+      leftEyeMaxHp: BALANCE_CONFIG.boss.eyeHp,
       leftEyeDestroyed: false,
-      rightEyeHp: 800,
-      rightEyeMaxHp: 800,
+      rightEyeHp: BALANCE_CONFIG.boss.eyeHp,
+      rightEyeMaxHp: BALANCE_CONFIG.boss.eyeHp,
       rightEyeDestroyed: false,
-      bellyHp: 1500,
-      bellyMaxHp: 1500,
+      bellyHp: BALANCE_CONFIG.boss.bellyHp,
+      bellyMaxHp: BALANCE_CONFIG.boss.bellyHp,
       bellyExposed: false,
       activeWeakPoint: '',
       showInterruptHint: false,
@@ -387,11 +389,11 @@ export class BossBattleSystem {
     this.cb.onPushRoach(boss);
 
     this.bossBattle.phaseJustChanged = true;
-    this.bossBattle.phaseChangeTimer = 6;
-    this.bossBattle.phaseChangeText = '【螂老大来袭】';
-    this.bossBattle.phaseChangeSub = '消灭虫卵和蟑螂!保卫防线!';
-    this.cb.onAddFloatingText(this.cfg.width / 2, this.cfg.height / 3, '螂老大出现了!', '#ef4444');
-    this.cb.onAddFloatingText(this.cfg.width / 2, this.cfg.height / 3 + 30, '它正在产卵!消灭虫卵!', '#fbbf24');
+    this.bossBattle.phaseChangeTimer = BALANCE_CONFIG.boss.phaseChangeTimer;
+    this.bossBattle.phaseChangeText = TEXT_CONFIG.combat.bossAppearTitle;
+    this.bossBattle.phaseChangeSub = TEXT_CONFIG.combat.bossDefendLine;
+    this.cb.onAddFloatingText(this.cfg.width / 2, this.cfg.height / 3, TEXT_CONFIG.combat.bossAppear, '#ef4444');
+    this.cb.onAddFloatingText(this.cfg.width / 2, this.cfg.height / 3 + 30, TEXT_CONFIG.combat.bossSpawnEggs, '#fbbf24');
     this.cb.onScreenShake(12);
   }
 
@@ -415,13 +417,13 @@ export class BossBattleSystem {
 
     // 开始死亡动画序列
     bb.bossKilled = true;
-    bb.deathAnimTimer = 1.75; // 7帧 at 4fps = 1.75s
+    bb.deathAnimTimer = BALANCE_CONFIG.boss.deathAnimTimer; // 7帧 at 4fps
     this.bossAnimState.action = 'die';
     this.bossAnimState.frameIndex = 0;
     this.bossAnimState.timer = 0;
 
     // 死亡效果
-    this.cb.onAddFloatingText(this.cfg.width / 2, this.cfg.height / 3, '螂老大被消灭了!', '#ef4444');
+    this.cb.onAddFloatingText(this.cfg.width / 2, this.cfg.height / 3, TEXT_CONFIG.combat.bossDefeatedText, '#ef4444');
     this.cb.onSpawnExplosionParticles(boss.x, boss.y, 60);
     this.cb.onSpawnShockwaveRing(boss.x, boss.y, 50);
     this.cb.onScreenShake(25);
@@ -450,8 +452,8 @@ export class BossBattleSystem {
 
     // 死亡动画结束 → 开始尸体停留
     if (bb.deathAnimTimer <= 0 && bb.corpseStayTimer <= 0 && this.cfg.state === GameState.PLAYING) {
-      bb.corpseStayTimer = 2.0;
-      this.cb.onAddFloatingText(this.cfg.width / 2, this.cfg.height / 2, '胜利!', '#22c55e');
+      bb.corpseStayTimer = BALANCE_CONFIG.boss.corpseStayTimer;
+      this.cb.onAddFloatingText(this.cfg.width / 2, this.cfg.height / 2, TEXT_CONFIG.combat.victory, '#22c55e');
     }
 
     // 尸体停留倒计时
@@ -662,11 +664,11 @@ export class BossBattleSystem {
 
     const waveNames = ['', '虫卵入侵', '大蟑螂卵', '飞行蟑螂卵', '精英蟑螂卵'];
     bb.phaseChangeText = `【第${wave}波: ${waveNames[wave]}】`;
-    bb.phaseChangeSub = 'BOSS正在召唤虫卵...';
+    bb.phaseChangeSub = TEXT_CONFIG.combat.bossSummoning;
     bb.phaseJustChanged = true;
     bb.phaseChangeTimer = 3;
 
-    this.cb.onAddFloatingText(castX, castY - 60, '召唤虫卵!', '#a855f7');
+    this.cb.onAddFloatingText(castX, castY - 60, TEXT_CONFIG.combat.bossSummon, '#a855f7');
   }
 
   // ========== Boss 对话与逃跑 ==========
@@ -677,7 +679,7 @@ export class BossBattleSystem {
     const boss = this.cb.onGetRoaches().find(r => r.type === RoachType.QUEEN);
     if (!boss) return;
 
-    bb.bossDialogue = '不...不可能!我的虫卵大军...';
+    bb.bossDialogue = TEXT_CONFIG.combat.bossDialogueShort;
     bb.dialogueTimer = 3;
     bb.dialogueIndex = 0;
 
@@ -697,7 +699,7 @@ export class BossBattleSystem {
       if (!bb.active) return;
       bb.bossFleeing = true;
       bb.bossFleeTimer = 5;
-      this.cb.onAddFloatingText(boss.x, boss.y - 80, '螂老大飞走了...', '#9ca3af');
+      this.cb.onAddFloatingText(boss.x, boss.y - 80, TEXT_CONFIG.combat.bossFlee, '#9ca3af');
     }, 9000);
   }
 
@@ -780,11 +782,11 @@ export class BossBattleSystem {
     }
 
     // 波次进度文字
-    let waveDisplay = '准备中';
+    let waveDisplay = TEXT_CONFIG.combat.preparing;
     if (bb.currentWave >= 1 && bb.currentWave <= 4) {
       waveDisplay = `第${bb.currentWave}/4波`;
     } else if (bb.currentWave >= 5) {
-      waveDisplay = 'BOSS逃跑中';
+      waveDisplay = TEXT_CONFIG.combat.bossFleeing;
     }
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 11px sans-serif';

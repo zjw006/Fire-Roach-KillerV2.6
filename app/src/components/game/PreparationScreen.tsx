@@ -7,6 +7,7 @@
 import React, { useState } from 'react';
 import { Check, ArrowRight, Bug, Wind, Flame, Droplets, Target, Zap, ScanLine } from 'lucide-react';
 import type { AudioManager } from '@/game/audio';
+import { TEXT_CONFIG } from '@/game/data';
 
 
 interface PreparationScreenProps {
@@ -29,9 +30,9 @@ const ALL_ITEMS = [
 ];
 
 const CATEGORY_LABELS: Record<string, string> = {
-  control: '控制',
-  aoe: '范围',
-  burst: '爆发',
+  control: TEXT_CONFIG.ui.preparation.categories.control,
+  aoe: TEXT_CONFIG.ui.preparation.categories.aoe,
+  burst: TEXT_CONFIG.ui.preparation.categories.burst,
 };
 
 const CATEGORY_COLORS: Record<string, string> = {

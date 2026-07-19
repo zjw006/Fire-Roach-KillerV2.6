@@ -4,7 +4,7 @@
  */
 
 import { RoachState, type Roach, type InventoryItem } from '../../types';
-import { WEAPON_DROP_DEFS } from '../../data';
+import { WEAPON_DROP_DEFS, BALANCE_CONFIG, TEXT_CONFIG } from '../../data';
 
 /**
  * 电蚊拍系统配置接口
@@ -49,7 +49,7 @@ export class SwatterSystem {
   // ========== 状态 ==========
   swatterReady: boolean = true;
   swatterCooldown: number = 0;
-  swatterCooldownMax: number = 60;
+  swatterCooldownMax: number = BALANCE_CONFIG.swatter.cooldownMax;
   swatterAnimTimer: number = 0;
   swatterActive: boolean = false;
   swatterSwingX: number = 0;
@@ -74,7 +74,7 @@ export class SwatterSystem {
       if (this.swatterCooldown <= 0) {
         this.swatterReady = true;
         this.swatterCooldown = 0;
-        this.config.onAddFloatingText?.(playerX, playerY - 50, '⚡ 电蚊拍就绪!', '#4ade80');
+        this.config.onAddFloatingText?.(playerX, playerY - 50, TEXT_CONFIG.combat.swatterReady, '#4ade80');
       }
     }
   }
@@ -97,25 +97,25 @@ export class SwatterSystem {
 
     // 检查全局道具冷却
     if (result.globalConsumableCooldown > 0) {
-      this.config.onAddFloatingText?.(playerX, playerY - 40, `道具冷却中... (${result.globalConsumableCooldown.toFixed(1)}s)`, '#94a3b8', 800);
+      this.config.onAddFloatingText?.(playerX, playerY - 40, TEXT_CONFIG.combat.globalCooldown(result.globalConsumableCooldown.toFixed(1)), '#94a3b8', 800);
       return result;
     }
     if ((result.itemCooldowns['swatter'] || 0) > 0) {
-      this.config.onAddFloatingText?.(playerX, playerY - 40, `电蚊拍冷却中... (${result.itemCooldowns['swatter'].toFixed(1)}s)`, '#94a3b8', 800);
+      this.config.onAddFloatingText?.(playerX, playerY - 40, TEXT_CONFIG.combat.swatterCooldown(result.itemCooldowns['swatter'].toFixed(1)), '#94a3b8', 800);
       return result;
     }
 
     // 检查物品栏
     const swatterIdx = result.inventory.findIndex((item: InventoryItem) => item.type === 'swatter');
     if (swatterIdx < 0 || result.inventory[swatterIdx].count <= 0) {
-      this.config.onAddFloatingText?.(playerX, playerY - 50, '没有电蚊拍!', '#9ca3af');
+      this.config.onAddFloatingText?.(playerX, playerY - 50, TEXT_CONFIG.combat.swatterNoItem, '#9ca3af');
       return result;
     }
 
     // 消耗
     result.inventory[swatterIdx] = { ...result.inventory[swatterIdx], count: result.inventory[swatterIdx].count - 1 };
     if (result.inventory[swatterIdx].count <= 0) {
-      result.inventory.splice(swatterIdx, 1);
+      result.inventory = result.inventory.filter((_, i) => i !== swatterIdx);
     }
 
     // 设置冷却
@@ -123,12 +123,12 @@ export class SwatterSystem {
     if (def && def.cooldown > 0) {
       result.itemCooldowns['swatter'] = def.cooldown;
     }
-    result.globalConsumableCooldown = 1;
+    result.globalConsumableCooldown = BALANCE_CONFIG.consumable.globalCooldown;
     result.success = true;
 
     // 动画
     this.swatterActive = true;
-    this.swatterAnimTimer = 0.6;
+    this.swatterAnimTimer = BALANCE_CONFIG.swatter.animTimer;
     this.swatterSwingX = playerX;
     this.config.onPlaySwatter?.();
 
@@ -146,25 +146,25 @@ export class SwatterSystem {
         r.armorHp = 0;
         armorBreakCount++;
         this.config.onSpawnSparkParticles?.(r.x, r.y, 5);
-        this.config.onAddFloatingText?.(r.x, r.y - 30, '破甲!', '#fbbf24');
+        this.config.onAddFloatingText?.(r.x, r.y - 30, TEXT_CONFIG.combat.armorBreak, '#fbbf24');
       }
 
-      // 麻痹减速 5秒
-      r.speed = r.baseSpeed * 0.2;
+      // 麻痹减速
+      r.speed = r.baseSpeed * BALANCE_CONFIG.swatter.stunSpeedRatio;
       r.isStunned = true;
-      r.stunTimer = 5;
+      r.stunTimer = BALANCE_CONFIG.swatter.stunDuration;
     }
 
-    this.config.onScreenShake?.(12);
+    this.config.onScreenShake?.(BALANCE_CONFIG.screenShake.swatter);
     this.config.onSpawnLightningParticles?.(this.config.canvasWidth / 2, 0);
 
     if (hitCount > 0) {
       const msg = armorBreakCount > 0
-        ? `⚡电蚊拍全屏!命中${hitCount}只!破甲${armorBreakCount}!`
-        : `⚡电蚊拍全屏!命中${hitCount}只!麻痹!`;
+        ? TEXT_CONFIG.combat.swatterHit(hitCount, armorBreakCount)
+        : TEXT_CONFIG.combat.swatterHitParalyze(hitCount);
       this.config.onAddFloatingText?.(this.config.canvasWidth / 2, this.config.canvasHeight / 3, msg, '#4ade80');
     } else {
-      this.config.onAddFloatingText?.(this.config.canvasWidth / 2, this.config.canvasHeight / 3, '⚡电蚊拍!未命中', '#9ca3af');
+      this.config.onAddFloatingText?.(this.config.canvasWidth / 2, this.config.canvasHeight / 3, TEXT_CONFIG.combat.swatterMiss, '#9ca3af');
     }
 
     return result;
@@ -179,13 +179,13 @@ export class SwatterSystem {
   ): void {
     const existing = inventory.find((item: InventoryItem) => item.type === 'swatter');
     if (existing) {
-      if (existing.count < 3) {
+      if (existing.count < BALANCE_CONFIG.swatter.maxInventory) {
         existing.count++;
-        this.config.onAddFloatingText?.(x, y - 40, '获得电蚊拍!', '#4ade80');
+        this.config.onAddFloatingText?.(x, y - 40, TEXT_CONFIG.combat.swatterPickup, '#4ade80');
       }
     } else {
       inventory.push({ type: 'swatter', count: 1 });
-      this.config.onAddFloatingText?.(x, y - 40, '获得电蚊拍!', '#4ade80');
+      this.config.onAddFloatingText?.(x, y - 40, TEXT_CONFIG.combat.swatterPickup, '#4ade80');
     }
     onInventoryUpdate(inventory);
   }
@@ -193,7 +193,7 @@ export class SwatterSystem {
   reset(): void {
     this.swatterReady = true;
     this.swatterCooldown = 0;
-    this.swatterCooldownMax = 60;
+    this.swatterCooldownMax = BALANCE_CONFIG.swatter.cooldownMax;
     this.swatterAnimTimer = 0;
     this.swatterActive = false;
     this.swatterSwingX = 0;

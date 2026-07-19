@@ -1,10 +1,11 @@
-/**
+﻿/**
  * @fileoverview 消耗品系统模块
  * @description 负责管理游戏中所有消耗品的逻辑，包括购买、库存、自动使用、冷却系统、效果应用等
  */
 
 import { GameState, ParticleType } from '../../types';
 import type { Player, Particle, ConsumableDef } from '../../types';
+import { BALANCE_CONFIG, TEXT_CONFIG } from '../../data';
 
 /**
  * 消耗品系统配置接口
@@ -98,7 +99,7 @@ export class ConsumableSystem {
   reset(): void {
     this.consumableCooldowns = {};
     this.globalConsumableCooldown = 0;
-    this.combatStartTimer = 1;
+    this.combatStartTimer = BALANCE_CONFIG.consumable.combatStartDelay;
     this.baitTarget = { x: 0, y: 0, active: false };
     this._lastPowerBoostCountdown = -1;
     this.itemCooldowns = {};
@@ -161,17 +162,17 @@ export class ConsumableSystem {
     switch (id) {
       case 'gas_refill': {
         player.gas = player.maxGas;
-        this.buffFlashTimers['gas_refill'] = 2;
-        this.config.onAddFloatingText(player.x, player.y - 40, '燃气已回满!', '#fbbf24', 1500);
+        this.buffFlashTimers['gas_refill'] = BALANCE_CONFIG.consumable.buffFlashDuration;
+        this.config.onAddFloatingText(player.x, player.y - 40, TEXT_CONFIG.combat.gasRefill, '#fbbf24', 1500);
         break;
       }
       case 'defense_repair': {
         const maxDefenseHp = this.config.getMaxDefenseHp();
-        const healAmount = Math.floor(maxDefenseHp * 0.2);
+        const healAmount = Math.floor(maxDefenseHp * BALANCE_CONFIG.defense.repairPercent);
         const oldHp = this.config.getDefenseHp();
         const newHp = Math.min(maxDefenseHp, oldHp + healAmount);
         const actualHeal = newHp - oldHp;
-        this.buffFlashTimers['defense_repair'] = 2;
+        this.buffFlashTimers['defense_repair'] = BALANCE_CONFIG.consumable.buffFlashDuration;
         if (actualHeal > 0) {
           this.config.onAddFloatingText(this.config.getCanvasWidth() / 2, this.config.getDefenseLineY() - 30, `防线修复 +${actualHeal}`, '#4ade80', 1500);
         }
@@ -185,19 +186,19 @@ export class ConsumableSystem {
         break;
       }
       case 'power_boost': {
-        player.powerBoostTimer = 8;
-        this.config.onAddFloatingText(this.config.getCanvasWidth() / 2, this.config.getCanvasHeight() / 2, '>>> 火力全开 8秒 <<<', '#ef4444', 2000, 32);
+        player.powerBoostTimer = BALANCE_CONFIG.consumable.powerBoostDuration;
+        this.config.onAddFloatingText(this.config.getCanvasWidth() / 2, this.config.getCanvasHeight() / 2, TEXT_CONFIG.combat.powerBoost(BALANCE_CONFIG.consumable.powerBoostDuration), '#ef4444', 2000, 32);
         break;
       }
       case 'shield': {
-        player.shieldTimer = 5;
+        player.shieldTimer = BALANCE_CONFIG.consumable.shieldDuration;
         player.shieldActive = true;
-        this.buffFlashTimers['shield'] = 5;
-        this.config.onAddFloatingText(this.config.getCanvasWidth() / 2, this.config.getCanvasHeight() / 2 - 50, '>>> 防线护盾 5秒 <<<', '#06b6d4', 2000);
+        this.buffFlashTimers['shield'] = BALANCE_CONFIG.consumable.shieldDuration;
+        this.config.onAddFloatingText(this.config.getCanvasWidth() / 2, this.config.getCanvasHeight() / 2 - 50, TEXT_CONFIG.combat.shieldActive(BALANCE_CONFIG.consumable.shieldDuration), '#06b6d4', 2000);
         break;
       }
       case 'bait': {
-        player.baitTimer = 3;
+        player.baitTimer = BALANCE_CONFIG.consumable.baitDuration;
         const [targetX, targetY] = this.config.getGroundCenter();
         this.baitTarget = { x: targetX, y: targetY, active: true };
         this.baitThrowAnim = {
@@ -206,9 +207,9 @@ export class ConsumableSystem {
           y: player.y - 50,
           targetX,
           targetY,
-          timer: 0.8,
+          timer: BALANCE_CONFIG.consumable.baitThrowAnimDuration,
         };
-        this.config.onAddFloatingText(targetX, targetY - 40, '>>> 蟑螂诱饵已投放 <<<', '#fbbf24', 2000);
+        this.config.onAddFloatingText(targetX, targetY - 40, TEXT_CONFIG.combat.baitPlaced, '#fbbf24', 2000);
         break;
       }
     }
@@ -218,7 +219,7 @@ export class ConsumableSystem {
       if (def?.cooldown) {
         this.consumableCooldowns[id] = def.cooldown;
       }
-      this.globalConsumableCooldown = 1;
+      this.globalConsumableCooldown = BALANCE_CONFIG.consumable.globalCooldown;
     }
 
     this.notifyConsumableUpdate();
@@ -313,7 +314,7 @@ export class ConsumableSystem {
       if (player.powerBoostTimer <= 0) {
         player.powerBoostTimer = 0;
         this._lastPowerBoostCountdown = -1;
-        this.config.onAddFloatingText(this.config.getCanvasWidth() / 2, this.config.getCanvasHeight() / 2, '火力全开 结束', '#f87171', 1500, 32);
+        this.config.onAddFloatingText(this.config.getCanvasWidth() / 2, this.config.getCanvasHeight() / 2, TEXT_CONFIG.combat.powerBoostEnd, '#f87171', 1500, 32);
       }
     }
 
@@ -324,7 +325,7 @@ export class ConsumableSystem {
         player.shieldTimer = 0;
         player.shieldActive = false;
         delete this.buffFlashTimers['shield'];
-        this.config.onAddFloatingText(this.config.getCanvasWidth() / 2, this.config.getCanvasHeight() / 2 - 50, '防线护盾 消失', '#22d3ee', 1500);
+        this.config.onAddFloatingText(this.config.getCanvasWidth() / 2, this.config.getCanvasHeight() / 2 - 50, TEXT_CONFIG.combat.shieldEnd, '#22d3ee', 1500);
       }
     }
 
@@ -349,7 +350,7 @@ export class ConsumableSystem {
       if (player.baitTimer <= 0) {
         player.baitTimer = 0;
         this.baitTarget.active = false;
-        this.config.onAddFloatingText(this.baitTarget.x, this.baitTarget.y - 40, '诱饵效果 消失', '#fbbf24', 1500);
+        this.config.onAddFloatingText(this.baitTarget.x, this.baitTarget.y - 40, TEXT_CONFIG.combat.baitEnd, '#fbbf24', 1500);
       }
     }
   }
@@ -402,7 +403,7 @@ export class ConsumableSystem {
     // 诱饵投掷动画
     if (this.baitThrowAnim.active) {
       this.baitThrowAnim.timer -= dt;
-      const progress = 1 - this.baitThrowAnim.timer / 0.8;
+      const progress = 1 - this.baitThrowAnim.timer / BALANCE_CONFIG.consumable.baitThrowAnimDuration;
       if (progress < 1) {
         this.baitThrowAnim.x += (this.baitThrowAnim.targetX - this.baitThrowAnim.x) * 0.15;
         const height = 150 * Math.sin(progress * Math.PI);

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @fileoverview 投掷物系统模块
  * @description 负责管理游戏中所有投掷物的逻辑，包括飞行轨迹、碰撞检测、落地效果等
  */
@@ -11,6 +11,7 @@ import {
   RoachState,
   ParticleType,
 } from '../../types';
+import { BALANCE_CONFIG, TEXT_CONFIG } from '../../data';
 
 /**
  * 投掷物系统配置接口
@@ -113,32 +114,32 @@ export class ThrowableSystem {
     switch (t.type) {
       case 'sticky': {
         // 粘性区域：困住范围内的蟑螂（对Boss无效）
-        const radius = 80;
+        const radius = BALANCE_CONFIG.throwable.sticky.radius;
         for (const r of roaches) {
           if (r.state !== RoachState.ALIVE || r.isBoss) continue;
           if (r.type === RoachType.TIMED_SUICIDE && r.placeTimer && r.placeTimer > 0) continue;
           const dx = r.x - t.x;
           const dy = r.y - t.y;
           if (Math.sqrt(dx * dx + dy * dy) < radius) {
-            r.stuckTimer = 5;
-            r.speed = r.baseSpeed * 0.2;
-            r.hp -= 2;
+            r.stuckTimer = BALANCE_CONFIG.throwable.sticky.stuckTimer;
+            r.speed = r.baseSpeed * BALANCE_CONFIG.throwable.sticky.speedRatio;
+            r.hp -= BALANCE_CONFIG.throwable.sticky.damage;
           }
         }
         // 持续冰区域
         this.config.onAddFireZone?.({
           x: t.x, y: t.y, radius,
-          damagePerSecond: 30,
-          life: 4, maxLife: 4,
+          damagePerSecond: BALANCE_CONFIG.throwable.sticky.fireZoneDps,
+          life: BALANCE_CONFIG.throwable.sticky.fireZoneLife, maxLife: BALANCE_CONFIG.throwable.sticky.fireZoneLife,
           type: 'ice',
         });
         this.config.onSpawnIceExplosion?.(t.x, t.y, radius);
-        this.config.onAddFloatingText?.(t.x, t.y - 20, '冰冻!', '#facc15');
+        this.config.onAddFloatingText?.(t.x, t.y - 20, TEXT_CONFIG.combat.stickyLand, '#facc15');
         break;
       }
       case 'poison': {
         // 毒雾云：持续伤害（对Boss无效）
-        const radius = 90;
+        const radius = BALANCE_CONFIG.throwable.poison.radius;
         for (const r of roaches) {
           if (r.state !== RoachState.ALIVE || r.isBoss) continue;
           if (r.type === RoachType.TIMED_SUICIDE && r.placeTimer && r.placeTimer > 0) continue;
@@ -150,15 +151,15 @@ export class ThrowableSystem {
               this.config.onAddFloatingText?.(r.x, r.y - 15, '护甲免疫!', '#60a5fa');
               continue;
             }
-            r.poisonTimer = 6;
-            r.poisonDamage = 2;
-            r.hp -= 1;
+            r.poisonTimer = BALANCE_CONFIG.throwable.poison.poisonTimer;
+            r.poisonDamage = BALANCE_CONFIG.throwable.poison.poisonDamage;
+            r.hp -= BALANCE_CONFIG.throwable.poison.initialDamage;
           }
         }
         this.config.onAddFireZone?.({
           x: t.x, y: t.y, radius,
-          damagePerSecond: 25,
-          life: 6, maxLife: 6,
+          damagePerSecond: BALANCE_CONFIG.throwable.poison.fireZoneDps,
+          life: BALANCE_CONFIG.throwable.poison.fireZoneLife, maxLife: BALANCE_CONFIG.throwable.poison.fireZoneLife,
           type: 'poison',
         });
         this.config.onSpawnPoisonExplosion?.(t.x, t.y, radius);
@@ -167,7 +168,7 @@ export class ThrowableSystem {
       }
       case 'molotov': {
         // 火焰爆炸（对Boss无效）
-        const radius = 70;
+        const radius = BALANCE_CONFIG.throwable.molotov.radius;
         for (const r of roaches) {
           if (r.state !== RoachState.ALIVE || r.isBoss) continue;
           if (r.type === RoachType.TIMED_SUICIDE && r.placeTimer && r.placeTimer > 0) continue;
@@ -180,26 +181,26 @@ export class ThrowableSystem {
               this.config.onAddFloatingText?.(r.x, r.y - 15, '护甲免疫!', '#60a5fa');
               continue;
             }
-            const dmg = 8 * (1 - dist / radius);
+            const dmg = BALANCE_CONFIG.throwable.molotov.baseDamage * (1 - dist / radius);
             r.hp -= dmg;
-            r.burnDamage = dmg * 2;
+            r.burnDamage = dmg * BALANCE_CONFIG.throwable.molotov.burnDamageMultiplier;
           }
         }
         this.config.onAddFireZone?.({
           x: t.x, y: t.y, radius,
-          damagePerSecond: 60,
-          life: 5, maxLife: 5,
+          damagePerSecond: BALANCE_CONFIG.throwable.molotov.fireZoneDps,
+          life: BALANCE_CONFIG.throwable.molotov.fireZoneLife, maxLife: BALANCE_CONFIG.throwable.molotov.fireZoneLife,
           type: 'fire',
         });
-        this.config.onSpawnExplosionParticles?.(t.x, t.y, 25);
-        this.config.onScreenShake?.(8);
-        this.config.onAddFloatingText?.(t.x, t.y - 20, '燃烧!', '#f87171');
+        this.config.onSpawnExplosionParticles?.(t.x, t.y, BALANCE_CONFIG.throwable.explosionParticleCount);
+        this.config.onScreenShake?.(BALANCE_CONFIG.screenShake.biggerExplosion);
+        this.config.onAddFloatingText?.(t.x, t.y - 20, TEXT_CONFIG.combat.molotovLand, '#f87171');
         break;
       }
     }
 
     // 通用火花粒子
-    this.config.onSpawnSparkParticles?.(t.x, t.y, 10);
+    this.config.onSpawnSparkParticles?.(t.x, t.y, BALANCE_CONFIG.throwable.sparkCount);
   }
 
   // ========== 静态渲染 ==========

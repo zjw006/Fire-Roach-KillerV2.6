@@ -11,7 +11,7 @@ import {
   Skull, Map, RotateCcw, AlertTriangle, Trash2, Lock,
 } from 'lucide-react';
 import { GameMode, SceneType, type GameProgress } from '@/game/types';
-import { SCENE_CONFIGS, SCENE_ORDER } from '@/game/data';
+import { SCENE_CONFIGS, SCENE_ORDER, TEXT_CONFIG } from '@/game/data';
 import { resetSeenComics } from '@/game/comicData';
 import type { AudioManager } from '@/game/audio';
 
@@ -53,8 +53,8 @@ export const GameMenu: React.FC<GameMenuProps> = ({
 
   /** 游戏模式列表（部分模式暂未开放） */
   const gameModes = [
-    { id: GameMode.STORY, name: '剧情模式', icon: <Swords size={24} />, desc: '10波标准关卡', disabled: false },
-    { id: GameMode.ENDLESS, name: '无尽模式', icon: <Skull size={24} />, desc: '无限波次挑战', disabled: true },
+    { id: GameMode.STORY, name: TEXT_CONFIG.ui.menu.storyMode, icon: <Swords size={24} />, desc: TEXT_CONFIG.ui.menu.storyDesc, disabled: false },
+    { id: GameMode.ENDLESS, name: TEXT_CONFIG.ui.menu.endlessMode, icon: <Skull size={24} />, desc: TEXT_CONFIG.ui.menu.endlessDesc, disabled: true },
     // BOSS mode temporarily disabled
     // { id: GameMode.BOSS, name: 'BOSS战', icon: <Shield size={24} />, desc: '挑战螂老大' },
   ];
@@ -96,7 +96,7 @@ export const GameMenu: React.FC<GameMenuProps> = ({
             className="mb-3 w-full relative transition-all hover:scale-105 active:scale-95 hidden"
           >
             <img src="/assets/UI/btn_talent_tree.png" alt="" className="w-full h-auto" draggable={false} />
-            <span className="absolute inset-0 flex items-center justify-center text-yellow-300 text-sm font-bold [text-shadow:1px_1px_0_#000,-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000]">天赋树</span>
+            <span className="absolute inset-0 flex items-center justify-center text-yellow-300 text-sm font-bold [text-shadow:1px_1px_0_#000,-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000]">{TEXT_CONFIG.ui.menu.talent}</span>
             {talentPoints > 0 && (
               <span className="absolute top-1 right-2 bg-red-600 text-white text-[10px] font-bold rounded-full px-2 py-0.5 border border-stone-900">{talentPoints}</span>
             )}
@@ -107,9 +107,9 @@ export const GameMenu: React.FC<GameMenuProps> = ({
               {/* 步骤 1：难度选择 */}
               <h2 className="text-2xl font-bold text-white mb-2 flex items-center justify-center gap-2">
                 <Swords size={20} className="text-amber-400" />
-                选择难度
+                {TEXT_CONFIG.ui.menu.selectDifficulty}
               </h2>
-              <p className="text-stone-400 text-sm mb-6">剧情模式 — 选择你的挑战</p>
+              <p className="text-stone-400 text-sm mb-6">{TEXT_CONFIG.ui.menu.storyMode} — 选择你的挑战</p>
 
               {/* Easy */}
               <button
@@ -117,7 +117,7 @@ export const GameMenu: React.FC<GameMenuProps> = ({
                 className="relative w-full transition-all hover:scale-105 active:scale-95 mb-3"
               >
                 <img src="/assets/UI/btn_easy.png" alt="" className="w-full h-auto" draggable={false} />
-                <span className="absolute inset-0 flex items-center justify-center text-amber-100 font-bold text-lg font-mono tracking-wider [text-shadow:1px_1px_0_#000,-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000] pl-[5%]">简单</span>
+                <span className="absolute inset-0 flex items-center justify-center text-amber-100 font-bold text-lg font-mono tracking-wider [text-shadow:1px_1px_0_#000,-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000] pl-[5%]">{TEXT_CONFIG.ui.menu.easyShort}</span>
               </button>
 
               {/* Hard */}
@@ -126,11 +126,11 @@ export const GameMenu: React.FC<GameMenuProps> = ({
                 className="relative w-full transition-all hover:scale-105 active:scale-95 mb-3"
               >
                 <img src="/assets/UI/btn_hard.png" alt="" className="w-full h-auto" draggable={false} />
-                <span className="absolute inset-0 flex items-center justify-center text-amber-100 font-bold text-lg font-mono tracking-wider [text-shadow:1px_1px_0_#000,-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000] pl-[5%]">困难</span>
+                <span className="absolute inset-0 flex items-center justify-center text-amber-100 font-bold text-lg font-mono tracking-wider [text-shadow:1px_1px_0_#000,-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000] pl-[5%]">{TEXT_CONFIG.ui.menu.hardShort}</span>
               </button>
 
               <button onClick={() => { audio?.playClick(); setShowModes(false); setSelectedMode(null); setStoryStep('difficulty'); setStoryDifficulty(null); }} className="text-stone-400 hover:text-white text-sm font-mono transition-colors tracking-wider mt-6">
-                [ 返回 ]
+                [ {TEXT_CONFIG.ui.menu.back} ]
               </button>
             </>
           ) : (
@@ -138,10 +138,10 @@ export const GameMenu: React.FC<GameMenuProps> = ({
               {/* 步骤 2：关卡选择 */}
               <h2 className="text-2xl font-bold text-white mb-2 flex items-center justify-center gap-2">
                 <Map size={20} className="text-amber-400" />
-                选择关卡
+                {TEXT_CONFIG.ui.menu.selectScene}
               </h2>
               <p className="text-stone-400 text-sm mb-4">
-                {storyDifficulty === 'easy' ? '简单模式' : '困难模式'} — 选择一个场景
+                {storyDifficulty === 'easy' ? TEXT_CONFIG.ui.menu.easy : TEXT_CONFIG.ui.menu.hard} — 选择一个场景
               </p>
               {/* Draggable scene list */}
               <div className="w-full mb-4" style={{ maxHeight: '55vh', overflowY: 'auto', touchAction: 'pan-y', WebkitOverflowScrolling: 'touch' }}>
@@ -169,9 +169,9 @@ export const GameMenu: React.FC<GameMenuProps> = ({
                             </div>
                           </div>
                           {isUnlocked ? (
-                            <span className="text-[10px] text-yellow-400 font-bold ml-2">x{scene.rewardMultiplier}奖励</span>
+                            <span className="text-[10px] text-yellow-400 font-bold ml-2">{TEXT_CONFIG.ui.menu.rewardMultiplier(scene.rewardMultiplier)}</span>
                           ) : (
-                            <span className="text-[10px] text-stone-600 ml-2">锁定</span>
+                            <span className="text-[10px] text-stone-600 ml-2">{TEXT_CONFIG.ui.menu.locked}</span>
                           )}
                         </div>
                       </button>
@@ -180,7 +180,7 @@ export const GameMenu: React.FC<GameMenuProps> = ({
                 </div>
               </div>
               <button onClick={() => { audio?.playClick(); setStoryStep('difficulty'); }} className="text-stone-400 hover:text-white text-sm font-mono transition-colors tracking-wider">
-                [ 返回难度选择 ]
+                {TEXT_CONFIG.ui.menu.backToDifficulty}
               </button>
             </>
           )}
@@ -200,7 +200,7 @@ export const GameMenu: React.FC<GameMenuProps> = ({
         <button
           onClick={() => { audio?.playClick(); onToggleMute(); }}
           className="absolute top-[-38px] right-0 p-2 rounded-full bg-black/40 text-stone-400 hover:text-amber-300 hover:bg-black/60 transition-all"
-          title={audioMuted ? '开启音效' : '静音'}
+          title={audioMuted ? TEXT_CONFIG.ui.menu.unmute : TEXT_CONFIG.ui.menu.mute}
         >
           {audioMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
         </button>
@@ -216,7 +216,7 @@ export const GameMenu: React.FC<GameMenuProps> = ({
                 textShadow: '0 0 20px rgba(201,169,110,0.3), 0 2px 4px rgba(0,0,0,0.8), 0 4px 12px rgba(0,0,0,0.6)',
               }}
             >
-              烈焰除蟑
+              {TEXT_CONFIG.ui.menu.title}
             </h1>
             <Flame size={28} style={{ color: '#8B4513', filter: 'drop-shadow(0 0 6px rgba(255,100,30,0.4))' }} />
           </div>
@@ -224,7 +224,7 @@ export const GameMenu: React.FC<GameMenuProps> = ({
             className="text-base font-bold tracking-[0.5em] font-mono"
             style={{ color: 'rgba(201, 169, 110, 0.5)' }}
           >
-            火线守卫
+            {TEXT_CONFIG.ui.menu.subtitle}
           </h2>
         </div>
 
@@ -284,7 +284,7 @@ export const GameMenu: React.FC<GameMenuProps> = ({
             {/* Scene selection for endless mode */}
             {selectedMode === GameMode.ENDLESS && (
               <div className="w-full space-y-2 mb-3">
-                <div className="text-center text-white font-bold text-lg mb-2">选择场景</div>
+                <div className="text-center text-white font-bold text-lg mb-2">{TEXT_CONFIG.ui.menu.selectScene}</div>
                 <div className="grid grid-cols-3 gap-2">
                   {[
                     { type: SceneType.KITCHEN, icon: '🍳', label: '恐怖厨房' },
@@ -316,7 +316,7 @@ export const GameMenu: React.FC<GameMenuProps> = ({
               </div>
             )}
 
-            <div className="text-center text-white font-bold text-lg mb-3">选择难度</div>
+            <div className="text-center text-white font-bold text-lg mb-3">{TEXT_CONFIG.ui.menu.selectDifficulty}</div>
             {/* Easy */}
             <button
               onClick={() => {
@@ -327,7 +327,7 @@ export const GameMenu: React.FC<GameMenuProps> = ({
               className="relative w-full transition-all hover:scale-105 active:scale-95"
             >
               <img src="/assets/UI/btn_easy.png" alt="" className="w-full h-auto" draggable={false} />
-              <span className="absolute inset-0 flex items-center justify-center text-amber-100 font-bold text-lg font-mono tracking-wider [text-shadow:1px_1px_0_#000,-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000] pl-[5%]">简单模式</span>
+              <span className="absolute inset-0 flex items-center justify-center text-amber-100 font-bold text-lg font-mono tracking-wider [text-shadow:1px_1px_0_#000,-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000] pl-[5%]">{TEXT_CONFIG.ui.menu.easy}</span>
             </button>
 
             {/* Hard */}
@@ -340,11 +340,11 @@ export const GameMenu: React.FC<GameMenuProps> = ({
               className="relative w-full transition-all hover:scale-105 active:scale-95"
             >
               <img src="/assets/UI/btn_hard.png" alt="" className="w-full h-auto" draggable={false} />
-              <span className="absolute inset-0 flex items-center justify-center text-amber-100 font-bold text-lg font-mono tracking-wider [text-shadow:1px_1px_0_#000,-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000] pl-[5%]">困难模式</span>
+              <span className="absolute inset-0 flex items-center justify-center text-amber-100 font-bold text-lg font-mono tracking-wider [text-shadow:1px_1px_0_#000,-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000] pl-[5%]">{TEXT_CONFIG.ui.menu.hard}</span>
             </button>
 
             <button onClick={() => { audio?.playClick(); setShowModes(false); setSelectedMode(null); }} className="text-stone-400 hover:text-white text-sm transition-colors mt-1">
-              返回模式选择
+              {TEXT_CONFIG.ui.menu.backToMode}
             </button>
           </div>
         )}
@@ -361,7 +361,7 @@ export const GameMenu: React.FC<GameMenuProps> = ({
               className="relative transition-all hover:scale-105 active:scale-95"
             >
               <img src="/assets/UI/btn_shop.png" alt="" className="w-full h-auto" draggable={false} />
-              <span className="absolute inset-0 flex items-center justify-center text-amber-200/80 text-[9px] font-mono tracking-wider [text-shadow:1px_1px_0_#000,-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000] pt-[25%]">道具商店</span>
+              <span className="absolute inset-0 flex items-center justify-center text-amber-200/80 text-[9px] font-mono tracking-wider [text-shadow:1px_1px_0_#000,-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000] pt-[25%]">{TEXT_CONFIG.ui.menu.shop}</span>
             </button>
 
             {/* 2. 天赋 */}
@@ -370,7 +370,7 @@ export const GameMenu: React.FC<GameMenuProps> = ({
               className="relative transition-all hover:scale-105 active:scale-95"
             >
               <img src="/assets/UI/btn_talent.png" alt="" className="w-full h-auto" draggable={false} />
-              <span className="absolute inset-0 flex items-center justify-center text-amber-200/80 text-[9px] font-mono tracking-wider [text-shadow:1px_1px_0_#000,-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000] pt-[25%]">天赋</span>
+              <span className="absolute inset-0 flex items-center justify-center text-amber-200/80 text-[9px] font-mono tracking-wider [text-shadow:1px_1px_0_#000,-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000] pt-[25%]">{TEXT_CONFIG.ui.menu.talent}</span>
               {talentPoints > 0 && (
                 <span className="absolute -top-1.5 -right-1 bg-red-600 text-white text-[8px] font-bold rounded-full w-4 h-4 flex items-center justify-center border border-stone-900">{talentPoints}</span>
               )}
@@ -382,7 +382,7 @@ export const GameMenu: React.FC<GameMenuProps> = ({
               className="relative transition-all hover:scale-105 active:scale-95"
             >
               <img src="/assets/UI/btn_achievement.png" alt="" className="w-full h-auto" draggable={false} />
-              <span className="absolute inset-0 flex items-center justify-center text-amber-200/80 text-[9px] font-mono tracking-wider [text-shadow:1px_1px_0_#000,-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000] pt-[25%]">成就</span>
+              <span className="absolute inset-0 flex items-center justify-center text-amber-200/80 text-[9px] font-mono tracking-wider [text-shadow:1px_1px_0_#000,-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000] pt-[25%]">{TEXT_CONFIG.ui.menu.achievements}</span>
             </button>
 
             {/* 4. 图鉴 */}
@@ -391,7 +391,7 @@ export const GameMenu: React.FC<GameMenuProps> = ({
               className="relative transition-all hover:scale-105 active:scale-95"
             >
               <img src="/assets/UI/btn_encyclopedia.png" alt="" className="w-full h-auto" draggable={false} />
-              <span className="absolute inset-0 flex items-center justify-center text-amber-200/80 text-[9px] font-mono tracking-wider [text-shadow:1px_1px_0_#000,-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000] pt-[25%]">图鉴</span>
+              <span className="absolute inset-0 flex items-center justify-center text-amber-200/80 text-[9px] font-mono tracking-wider [text-shadow:1px_1px_0_#000,-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000] pt-[25%]">{TEXT_CONFIG.ui.menu.encyclopedia}</span>
             </button>
           </div>
 
@@ -403,7 +403,7 @@ export const GameMenu: React.FC<GameMenuProps> = ({
               title="重置游戏进度"
             >
               <RotateCcw size={12} />
-              <span className="text-[10px] font-mono tracking-wider">重置</span>
+              <span className="text-[10px] font-mono tracking-wider">{TEXT_CONFIG.ui.menu.reset}</span>
             </button>
           </div>
         </div>
@@ -422,26 +422,26 @@ export const GameMenu: React.FC<GameMenuProps> = ({
                   <AlertTriangle size={20} className="text-red-400" />
                 </div>
                 <div>
-                  <h3 className="text-white font-bold text-lg">重置进度</h3>
-                  <p className="text-stone-400 text-xs">此操作不可恢复</p>
+                  <h3 className="text-white font-bold text-lg">{TEXT_CONFIG.ui.menu.resetTitle}</h3>
+                  <p className="text-stone-400 text-xs">{TEXT_CONFIG.ui.menu.resetDesc}</p>
                 </div>
               </div>
               <p className="text-stone-300 text-sm mb-6 leading-relaxed">
-                确定要删除所有游戏存档吗？包括天赋点、关卡解锁进度、成就和设置都将被清除。
+                {TEXT_CONFIG.ui.menu.resetConfirm}
               </p>
               <div className="flex gap-3">
                 <button
                   onClick={() => { audio?.playClick(); setShowResetConfirm(false); }}
                   className="flex-1 py-2.5 rounded-lg bg-stone-800 text-stone-300 font-bold text-sm hover:bg-stone-700 transition-all active:scale-95"
                 >
-                  取消
+                  {TEXT_CONFIG.ui.menu.cancel}
                 </button>
                 <button
                   onClick={() => { audio?.playClick(); handleReset(); }}
                   className="flex-1 py-2.5 rounded-lg bg-red-900/80 text-red-200 font-bold text-sm hover:bg-red-800 transition-all active:scale-95 flex items-center justify-center gap-1.5"
                 >
                   <Trash2 size={14} />
-                  确认删除
+                  {TEXT_CONFIG.ui.menu.confirmDelete}
                 </button>
               </div>
             </div>

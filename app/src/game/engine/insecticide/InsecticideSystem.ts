@@ -6,6 +6,7 @@
 import { RoachState, RoachType, ParticleType } from '../../types';
 import type { Particle, Roach } from '../../types';
 import { type InsecticideSprayState } from '../render/RenderUtils';
+import { TEXT_CONFIG } from '../../data';
 
 /**
  * 杀虫剂系统配置接口
@@ -72,8 +73,8 @@ export class InsecticideSystem {
     this.spray.damageTimer = 0;
     this.config.onPlaySound?.('insecticide_spray');
     this.config.onVibrate?.();
-    this.config.onAddFloatingText?.(canvasWidth / 2, canvasHeight / 2 - 60, '双侧毒气喷射!', '#4ade80');
-    this.config.onAddFloatingText?.(canvasWidth / 2, canvasHeight / 2 - 40, '两侧横向毒雾3秒', '#86efac');
+    this.config.onAddFloatingText?.(canvasWidth / 2, canvasHeight / 2 - 60, TEXT_CONFIG.combat.insecticideActivate, '#4ade80');
+    this.config.onAddFloatingText?.(canvasWidth / 2, canvasHeight / 2 - 40, TEXT_CONFIG.combat.insecticideDesc, '#86efac');
     this.config.onScreenShake?.(4);
   }
 
@@ -103,7 +104,7 @@ export class InsecticideSystem {
     // 倒计时警告
     const prevTimer = this.spray.timer + deltaTime;
     if (prevTimer > 1 && this.spray.timer <= 1) {
-      this.config.onAddFloatingText?.(canvasWidth / 2, canvasHeight / 2 - 80, '毒气喷射即将结束!', '#f87171');
+      this.config.onAddFloatingText?.(canvasWidth / 2, canvasHeight / 2 - 80, TEXT_CONFIG.combat.insecticideClosing, '#f87171');
     }
 
     // 过期处理
@@ -111,7 +112,7 @@ export class InsecticideSystem {
       this.spray.active = false;
       this.spray.timer = 0;
       particlesToAdd.push(...this.spawnFadeOutParticles(canvasWidth, canvasHeight));
-      this.config.onAddFloatingText?.(canvasWidth / 2, canvasHeight / 2 - 50, '毒气喷射结束', '#9ca3af');
+      this.config.onAddFloatingText?.(canvasWidth / 2, canvasHeight / 2 - 50, TEXT_CONFIG.combat.insecticideEnd, '#9ca3af');
       return particlesToAdd;
     }
 
@@ -301,7 +302,7 @@ export class InsecticideSystem {
     }
 
     if (hitCount > 0) {
-      this.config.onAddFloatingText?.(w / 2, cy - 80, `毒气命中${hitCount}只!`, '#4ade80');
+      this.config.onAddFloatingText?.(w / 2, cy - 80, TEXT_CONFIG.combat.insecticideHit(hitCount), '#4ade80');
     }
 
     return particles;

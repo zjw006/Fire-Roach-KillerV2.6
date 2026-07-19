@@ -10,7 +10,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Lock, Check, Sparkles, Flame, Target, Gauge, Wind, Shield, Zap, DollarSign, Snowflake, Skull, Bomb, Wrench, Package, X, ChevronUp, ChevronRight } from 'lucide-react';
 import type { GameProgress } from '@/game/types';
-import { TALENT_DEFS } from '@/game/data';
+import { TALENT_DEFS, TEXT_CONFIG } from '@/game/data';
 import type { AudioManager } from '@/game/audio';
 
 
@@ -46,7 +46,7 @@ const TALENT_ICONS: Record<string, React.ReactNode> = {
 const CATEGORIES = [
   {
     id: 'combat',
-    title: '战斗强化',
+    title: TEXT_CONFIG.ui.talentTree.categories.combat,
     icon: <Flame size={14} />,
     color: 'text-orange-400',
     borderColor: 'border-stone-700',
@@ -54,7 +54,7 @@ const CATEGORIES = [
   },
   {
     id: 'survival',
-    title: '生存强化',
+    title: TEXT_CONFIG.ui.talentTree.categories.survival,
     icon: <Shield size={14} />,
     color: 'text-amber-400',
     borderColor: 'border-stone-700',
@@ -62,7 +62,7 @@ const CATEGORIES = [
   },
   {
     id: 'utility',
-    title: '辅助强化',
+    title: TEXT_CONFIG.ui.talentTree.categories.utility,
     icon: <Zap size={14} />,
     color: 'text-amber-400',
     borderColor: 'border-stone-700',
@@ -70,7 +70,7 @@ const CATEGORIES = [
   },
   {
     id: 'item',
-    title: '道具专精',
+    title: TEXT_CONFIG.ui.talentTree.categories.item,
     icon: <Package size={14} />,
     color: 'text-orange-400',
     borderColor: 'border-orange-600/50',

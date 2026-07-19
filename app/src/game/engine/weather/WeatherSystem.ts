@@ -1,10 +1,11 @@
-/**
+﻿/**
  * @fileoverview 天气系统模块
  * @description 负责管理游戏中的天气效果，包括雨、雾、夜晚闪电等
  */
 
 import { ParticleType, WeatherType } from '../../types';
 import type { Particle } from '../../types';
+import { BALANCE_CONFIG, TEXT_CONFIG } from '../../data';
 
 /**
  * 天气系统配置接口
@@ -144,14 +145,14 @@ export class WeatherSystem {
   private updateNight(): void {
     this.lightningTimer -= this.config.deltaTime;
     if (this.lightningTimer <= 0) {
-      this.lightningTimer = 5 + Math.random() * 10;
+      this.lightningTimer = BALANCE_CONFIG.lightning.timerMin + Math.random() * BALANCE_CONFIG.lightning.timerRandMax;
       if (Math.random() < 0.3) {
-        this.lightningFlash = 0.3;
+        this.lightningFlash = BALANCE_CONFIG.lightning.flashDuration;
         if (this.config.onAddFloatingText) {
           this.config.onAddFloatingText(
             this.config.canvasWidth / 2,
             this.config.canvasHeight / 2 - 100,
-            '⚡ 闪电 ⚡',
+            TEXT_CONFIG.combat.lightning,
             '#fbbf24'
           );
         }
@@ -186,14 +187,14 @@ export class WeatherSystem {
     this.reset();
   }
 
-  triggerLightning(duration: number = 0.3): void {
+  triggerLightning(duration: number = BALANCE_CONFIG.lightning.flashDuration): void {
     this.lightningFlash = duration;
-    this.lightningTimer = 5 + Math.random() * 10;
+    this.lightningTimer = BALANCE_CONFIG.lightning.timerMin + Math.random() * BALANCE_CONFIG.lightning.timerRandMax;
     if (this.config.onAddFloatingText) {
       this.config.onAddFloatingText(
         this.config.canvasWidth / 2,
         this.config.canvasHeight / 2 - 100,
-        '⚡ 闪电 ⚡',
+        TEXT_CONFIG.combat.lightning,
         '#fbbf24'
       );
     }

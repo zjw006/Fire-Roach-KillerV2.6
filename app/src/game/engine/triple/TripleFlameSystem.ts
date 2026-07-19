@@ -4,6 +4,7 @@
  */
 
 import type { TripleFlameState } from '../../types';
+import { TEXT_CONFIG } from '../../data';
 
 /**
  * 三重火焰系统配置接口
@@ -64,7 +65,7 @@ export class TripleFlameSystem {
     this.config.onVibrateItemUse?.();
     this.config.onAddFloatingText?.(
       this.config.canvasWidth / 2, this.config.canvasHeight / 2 - 60,
-      '三喷火枪模式! 持续10秒', '#fbbf24'
+      TEXT_CONFIG.combat.tripleFlameActivate, '#fbbf24'
     );
   }
 
@@ -78,7 +79,7 @@ export class TripleFlameSystem {
     if (prevTimer > 5 && this.tripleFlame.timer <= 5) {
       this.config.onAddFloatingText?.(
         this.config.canvasWidth / 2, this.config.canvasHeight / 2 - 80,
-        '⚠ 三喷火枪即将消失! 5秒 ⚠', '#ef4444'
+        TEXT_CONFIG.combat.tripleFlameWarning, '#ef4444'
       );
     }
 
@@ -97,7 +98,7 @@ export class TripleFlameSystem {
       this.tripleFlame.timer = 0;
       this.config.onAddFloatingText?.(
         this.config.canvasWidth / 2, this.config.canvasHeight / 2 - 50,
-        '三喷火枪模式结束', '#9ca3af'
+        TEXT_CONFIG.combat.tripleFlameEnd, '#9ca3af'
       );
     }
   }

@@ -109,7 +109,7 @@
 import { GameState, RoachType, RoachState, SceneType, WeatherType, ParticleType, FlameMode, GameMode, SAVE_VERSION, type Roach, type Player, type Particle, type FireZone, type FireWall, type Economy, type WeaponDrop, type GameProgress, type WaveConfig, type ThrowableProjectile, type InventoryItem, type TripleFlameState, type BossBattleState, type RadarLaser, type StickyBoard, type StickyDrop, type FanState } from './types';
 import * as Vibration from './vibration';
 import { AudioManager } from './audio';
-import { SCENE_CONFIGS, ENEMY_DEFS, TALENT_DEFS, WEAPON_DROP_DEFS, INVENTORY_SELL_PRICES, BOSS_CONFIG, SCENE_WAVE_CONFIGS, SCENE_ITEM_UNLOCKS, SCENE_ROACH_TYPES, SCENE_UNLOCK_CHAIN, SCENE_REWARD_ITEMS, SCENE_GROUND_BOUNDS, createDefaultProgress, ENCYCLOPEDIA_DEFS, CONSUMABLE_DEFS } from './data';
+import { SCENE_CONFIGS, ENEMY_DEFS, TALENT_DEFS, WEAPON_DROP_DEFS, INVENTORY_SELL_PRICES, BOSS_CONFIG, SCENE_WAVE_CONFIGS, SCENE_ITEM_UNLOCKS, SCENE_ROACH_TYPES, SCENE_UNLOCK_CHAIN, SCENE_REWARD_ITEMS, SCENE_GROUND_BOUNDS, createDefaultProgress, ENCYCLOPEDIA_DEFS, CONSUMABLE_DEFS, BALANCE_CONFIG } from './data';
 import { BOSS_ANIMATIONS } from './bossAnimation';
 import { SaveSystem } from './engine/save/SaveSystem';
 import { EconomyManager } from './engine/economy/EconomyManager';
@@ -581,15 +581,17 @@ export class GameEngine {
         const existing = this.inventory.find(item => item.type === itemType);
         if (existing) {
           existing.count += pickupCount;
+          console.log('[DEBUG pickup]', itemType, 'existing count +=', pickupCount, 'new count=', existing.count, 'inventory=', this.inventory.map(i => `${i.type}:${i.count}`).join(','));
         } else {
           this.inventory.push({ type: itemType, count: pickupCount });
+          console.log('[DEBUG pickup]', itemType, 'NEW item count=', pickupCount, 'inventory=', this.inventory.map(i => `${i.type}:${i.count}`).join(','));
         }
         // 浮动文字和屏幕震动
         const def = WEAPON_DROP_DEFS[drop.type];
         if (def) {
           this.addFloatingText(this.player.x, this.player.y - 80, `拾取: ${def.name}!${bonusText}`, '#4ade80');
         }
-        this.screenShake = 2;
+        this.screenShake = BALANCE_CONFIG.screenShake.weaponHit;
       },
       onSwitchWeapon: (weapon, weaponName) => {
         this.addFloatingText(this.player.x, this.player.y - 60, `切换到: ${weaponName}`, '#facc15');
@@ -972,11 +974,11 @@ export class GameEngine {
     const rangeMult = this.talentMultipliers.fireRangeMultiplier || 1;
     // 玩家基础属性 — 仅天赋树加成，商店升级不叠加
     // 商店已重新设计为一次性消耗品（燃气补充、防线修复等）
-    const fireRange = 440 * rangeMult;
+    const fireRange = BALANCE_CONFIG.player.baseFireRange * rangeMult;
     const damageMultiplier = this.talentMultipliers.damageMultiplier || 1;
-    const heatDecayRate = (isHard ? 1 : 1.5) * coolMult;
-    const overheatThreshold = 1800 * ohMult;
-    const maxGas = 100 * gasMult;
+    const heatDecayRate = (isHard ? BALANCE_CONFIG.player.heatDecayRate.hard : BALANCE_CONFIG.player.heatDecayRate.easy) * coolMult;
+    const overheatThreshold = BALANCE_CONFIG.player.baseOverheatThreshold * ohMult;
+    const maxGas = BALANCE_CONFIG.player.baseGasCapacity * gasMult;
     const reloadTimeMultiplier = 1;
     return {
       x: this.playerBaseX(),
@@ -992,7 +994,7 @@ export class GameEngine {
       isOverheated: false,
       isReloading: false,
       reloadTimer: 0,
-      maxReloadTime: (isHard ? 15 : 8) * reloadTimeMultiplier,
+      maxReloadTime: (isHard ? BALANCE_CONFIG.player.maxReloadTime.hard : BALANCE_CONFIG.player.maxReloadTime.easy) * reloadTimeMultiplier,
       coolingTimer: 0,
       fireRange,
       damageMultiplier,
@@ -1003,7 +1005,7 @@ export class GameEngine {
       weaponAmmo: { flamethrower: Infinity },
       weaponTimer: 0,
       isTempWeapon: false,
-      shotgunPellets: 5,
+      shotgunPellets: BALANCE_CONFIG.player.shotgunPellets,
       molotovCount: 0,
       shieldActive: false,
       shieldHp: 0,
@@ -1161,6 +1163,7 @@ export class GameEngine {
     this.hospitalBreaches = 0;
     this.hospitalStarRating = 0;
     this.placedBombs = [];
+    this.deadTimedBombs = [];
     this.timedSuicideSpawnTimer = 0;
     this.timedSuicideSpawnRemaining = 0;
     this.consumableSystem?.reset();
@@ -1171,7 +1174,10 @@ export class GameEngine {
       particles: this.particles,
       fireWalls: this.fireWalls,
       armorShieldCache: this.armorShieldCache,
+      placedBombs: this.placedBombs,      // 必须同步 placedBombs 引用，否则医院关卡的炸弹安放不可见
+      deadTimedBombs: this.deadTimedBombs, // 必须同步 deadTimedBombs 引用，否则定时自爆蟑螂的尸体炸弹不可见
       economy: this.economy, // 必须同步 economy 引用，否则击杀奖励加到旧对象上
+      player: this.player,  // 必须同步 player 引用，否则 baitTimer/shieldTimer 等从旧对象读取
     });
     // 为新游戏会话重置性能检测
     this._perfCheckFrames = 0;
@@ -1199,7 +1205,7 @@ export class GameEngine {
     this.swatterSystem?.reset();
     this.insecticideSystem?.reset();
     const defMult = this.talentMultipliers.defenseMultiplier || 1;
-    this.defenseHp = 80 * defMult;
+    this.defenseHp = BALANCE_CONFIG.defense.baseHp * defMult;
     this.maxDefenseHp = this.defenseHp;
     this.time = 0;
     this.screenShake = 0;
@@ -1312,19 +1318,19 @@ export class GameEngine {
       // 计算平均帧时间并设置粒子上限
       const avgFrameTime = this._frameTimeSamples.reduce((a, b) => a + b, 0) / this._frameTimeSamples.length;
       if (avgFrameTime > 0.033) {
-        // < 30fps: low-end device, reduce to 150
-        this._particleLimit = 150;
+        // < 30fps: low-end device
+        this._particleLimit = BALANCE_CONFIG.performance.particleLimit.low;
         this._isLowPerfDevice = true;
       } else if (avgFrameTime > 0.025) {
-        // < 40fps: mid-low device, reduce to 200
-        this._particleLimit = 200;
+        // < 40fps: mid-low device
+        this._particleLimit = BALANCE_CONFIG.performance.particleLimit.medium;
         this._isLowPerfDevice = true;
       } else if (avgFrameTime > 0.02) {
-        // < 50fps: mid device, use 250
-        this._particleLimit = 250;
+        // < 50fps: mid device
+        this._particleLimit = BALANCE_CONFIG.performance.particleLimit.high;
       } else {
-        // 50+ fps: high-end device, allow up to 400
-        this._particleLimit = 400;
+        // 50+ fps: high-end device
+        this._particleLimit = BALANCE_CONFIG.performance.particleLimit.desktop;
       }
       // 持久化检测到的上限供未来会话使用
       SaveSystem.saveParticleLimit(this._particleLimit);
@@ -1477,7 +1483,7 @@ export class GameEngine {
 
     this.addFloatingText(this.width / 2, this.height / 3, `第${wave}波虫卵释放!`, '#ef4444');
     this.addFloatingText(this.width / 2, this.height / 3 + 25, `${config.count}个虫卵即将孵化`, '#fbbf24');
-    this.screenShake = 6;
+    this.screenShake = BALANCE_CONFIG.screenShake.largeExplosion;
   }
 
   updateEggPods() {
@@ -1559,7 +1565,7 @@ export class GameEngine {
       this.addFloatingText(this.width / 2, this.height * 0.3, `道具回收 +¥${sellTotal}`, '#fbbf24');
     }
 
-    this.screenShake = 8;
+    this.screenShake = BALANCE_CONFIG.screenShake.biggerExplosion;
     // 停止所有武器（禁用射击）
     this.player.isFiring = false;
     this.player.isOverheated = false;
@@ -1677,7 +1683,7 @@ export class GameEngine {
     this.economy.money = 0;
     this.state = GameState.GAME_OVER;
     this.addFloatingText(this.width / 2, this.height / 2, '防线被攻破! 战斗失败!', '#ef4444');
-    this.screenShake = 12;
+    this.screenShake = BALANCE_CONFIG.screenShake.bossDeath;
     this.audio.stopBGM();
     this.audio.stopFire();
     this.audio.stopFanLoop();
@@ -1794,10 +1800,10 @@ export class GameEngine {
       // Check new record
       if (this.endlessBestTime > 0 && this.endlessElapsedTime > this.endlessBestTime && !this.endlessNewRecordShown) {
         this.endlessNewRecordShown = true;
-        this.endlessNewRecordTimer = 3; // 3 seconds
+        this.endlessNewRecordTimer = BALANCE_CONFIG.endless.newRecordTimer; // 3 seconds
         this.addFloatingText(this.width * 0.75, 60, '你创造了新纪录!', '#fbbf24');
         this.addFloatingText(this.width * 0.75, 80, '历史最高时长已刷新!', '#fde047');
-        this.screenShake = 6;
+        this.screenShake = BALANCE_CONFIG.screenShake.largeExplosion;
         Vibration.vibrateNewRecord();
       }
       if (this.endlessNewRecordTimer > 0) {
@@ -1823,7 +1829,7 @@ export class GameEngine {
   updateArmorShieldCache() {
     this.armorShieldCacheTimer -= this.deltaTime;
     if (this.armorShieldCacheTimer > 0) return;
-    this.armorShieldCacheTimer = 0.3; // update every 0.3 seconds
+    this.armorShieldCacheTimer = BALANCE_CONFIG.player.armorShieldCacheInterval; // update every 0.3 seconds
 
     this.armorShieldCache.clear();
     const PROTECTION_RADIUS = 240;
@@ -2023,7 +2029,7 @@ export class GameEngine {
       p.overheatTimer = 10;
       p.heatWarningTimer = 0; // Clear warning on actual overheat
       ParticleSpawner.spawnSmokeParticles(this.particles,p.x, p.y, 30);
-      this.screenShake = 3;
+      this.screenShake = BALANCE_CONFIG.screenShake.smallExplosion;
     }
   }
 
@@ -2074,7 +2080,7 @@ export class GameEngine {
     const targetX = p.x + (Math.random() - 0.5) * 200;
     const targetY = this.height * 0.4 + Math.random() * 200;
     this.spawnMolotovProjectile(p.x, p.y, targetX, targetY);
-    this.screenShake = 5;
+    this.screenShake = BALANCE_CONFIG.screenShake.mediumExplosion;
   }
 
   spawnMolotovProjectile(fromX: number, fromY: number, toX: number, toY: number) {
@@ -2104,7 +2110,7 @@ export class GameEngine {
         type: 'fire',
       });
       ParticleSpawner.spawnExplosionParticles(this.particles,toX, toY, 20);
-      this.screenShake = 8;
+      this.screenShake = BALANCE_CONFIG.screenShake.biggerExplosion;
     }, travelTime * 1000);
   }
 
@@ -2179,6 +2185,7 @@ export class GameEngine {
     if (this.inventory[index].count <= 0) return;
 
     const item = this.inventory[index];
+    console.log('[selectItem] item:', item.type, 'count:', item.count, 'index:', index, 'inventory length:', this.inventory.length);
 
     // Check picked-up item cooldown (shares globalConsumableCooldown with shop consumables)
     if (this.consumableSystem!.globalConsumableCooldown > 0) {
@@ -2202,12 +2209,16 @@ export class GameEngine {
 
     // Shotgun is instant-use (activates triple flame), not placement
     if (item.type === 'shotgun') {
+      console.log('[DEBUG shotgun] BEFORE: count=', item.count, 'inventoryLen=', this.inventory.length, 'inventory=', this.inventory.map(i => `${i.type}:${i.count}`).join(','));
       item.count--;
+      console.log('[DEBUG shotgun] AFTER decrement: count=', item.count, 'willFilter=', item.count <= 0);
       this.tripleFlameSystem!.activateTripleFlame();
       startItemCooldown('shotgun');
       if (item.count <= 0) {
-        this.inventory.splice(index, 1);
+        this.inventory = this.inventory.filter((_, i) => i !== index);
+        console.log('[DEBUG shotgun] FILTERED, new inventoryLen=', this.inventory.length, 'inventory=', this.inventory.map(i => `${i.type}:${i.count}`).join(','));
       }
+      console.log('[DEBUG shotgun] calling onInventoryUpdate, inventoryLen=', this.inventory.length);
       this.onInventoryUpdate?.(this.inventory);
       return;
     }
@@ -2218,7 +2229,7 @@ export class GameEngine {
       this.radarLaserSystem!.activateRadarLaser();
       startItemCooldown('radar');
       if (item.count <= 0) {
-        this.inventory.splice(index, 1);
+        this.inventory = this.inventory.filter((_, i) => i !== index);
       }
       this.onInventoryUpdate?.(this.inventory);
       return;
@@ -2226,12 +2237,16 @@ export class GameEngine {
 
     // Insecticide spray is instant-use (auto-spray from bottom center), not placement
     if (item.type === 'poison') {
+      console.log('[DEBUG poison] BEFORE: count=', item.count, 'inventoryLen=', this.inventory.length, 'inventory=', this.inventory.map(i => `${i.type}:${i.count}`).join(','));
       item.count--;
+      console.log('[DEBUG poison] AFTER decrement: count=', item.count, 'willFilter=', item.count <= 0);
       this.insecticideSystem!.activate(this.width, this.height);
       startItemCooldown('poison');
       if (item.count <= 0) {
-        this.inventory.splice(index, 1);
+        this.inventory = this.inventory.filter((_, i) => i !== index);
+        console.log('[DEBUG poison] FILTERED, new inventoryLen=', this.inventory.length, 'inventory=', this.inventory.map(i => `${i.type}:${i.count}`).join(','));
       }
+      console.log('[DEBUG poison] calling onInventoryUpdate, inventoryLen=', this.inventory.length);
       this.onInventoryUpdate?.(this.inventory);
       return;
     }
@@ -2242,7 +2257,7 @@ export class GameEngine {
       this.stickySystem!.activateStickySpray();
       startItemCooldown('sticky');
       if (item.count <= 0) {
-        this.inventory.splice(index, 1);
+        this.inventory = this.inventory.filter((_, i) => i !== index);
       }
       this.onInventoryUpdate?.(this.inventory);
       return;
@@ -2254,7 +2269,7 @@ export class GameEngine {
       this.activateMolotovFireWall();
       startItemCooldown('molotov');
       if (item.count <= 0) {
-        this.inventory.splice(index, 1);
+        this.inventory = this.inventory.filter((_, i) => i !== index);
       }
       this.onInventoryUpdate?.(this.inventory);
       return;
@@ -2262,12 +2277,16 @@ export class GameEngine {
 
     // Fan is instant-use (activates wind slow on all roaches), not placement
     if (item.type === 'fan') {
+      console.log('[DEBUG fan] BEFORE: count=', item.count, 'inventoryLen=', this.inventory.length, 'inventory=', this.inventory.map(i => `${i.type}:${i.count}`).join(','));
       item.count--;
+      console.log('[DEBUG fan] AFTER decrement: count=', item.count, 'willFilter=', item.count <= 0);
       this.fanSystem!.activateFan();
       startItemCooldown('fan');
       if (item.count <= 0) {
-        this.inventory.splice(index, 1);
+        this.inventory = this.inventory.filter((_, i) => i !== index);
+        console.log('[DEBUG fan] FILTERED, new inventoryLen=', this.inventory.length, 'inventory=', this.inventory.map(i => `${i.type}:${i.count}`).join(','));
       }
+      console.log('[DEBUG fan] calling onInventoryUpdate, inventoryLen=', this.inventory.length);
       this.onInventoryUpdate?.(this.inventory);
       return;
     }
@@ -2286,6 +2305,7 @@ export class GameEngine {
       this.inventory = result.inventory;
       this.consumableSystem!.itemCooldowns = result.itemCooldowns;
       this.consumableSystem!.globalConsumableCooldown = result.globalConsumableCooldown;
+      this.onInventoryUpdate?.(this.inventory);
       return;
     }
 
@@ -2335,11 +2355,12 @@ export class GameEngine {
 
     // Remove item if count reaches 0
     if (item.count <= 0) {
-      this.inventory.splice(this.selectedItemIndex, 1);
+      this.inventory = this.inventory.filter((_, i) => i !== this.selectedItemIndex);
     }
 
     this.itemPlaceState = 'idle';
     this.selectedItemIndex = -1;
+    this.onInventoryUpdate?.(this.inventory);
   }
 
   // ========== STICKY BOARD (delegated to StickySystem module) ==========
@@ -2423,7 +2444,7 @@ export class GameEngine {
     for (let px = wallX1; px <= wallX2; px += 20) {
       ParticleSpawner.spawnExplosionParticles(this.particles,px, wallY, 2);
     }
-    this.screenShake = 8;
+    this.screenShake = BALANCE_CONFIG.screenShake.biggerExplosion;
 
     const label = target ? `火焰墙!(${hitCount > 0 ? hitCount + '只' : ''})` : '火焰墙!';
     this.addFloatingText((wallX1 + wallX2) / 2, wallY - 20, label, '#f87171');
@@ -2630,7 +2651,7 @@ export class GameEngine {
       r.armorHp = 12; // Fixed armor value instead of shield
       r.maxArmorHp = 12;
       r.hasPlacedBomb = false;
-      r.placeTimer = 0;
+      r.placeTimer = 0; // Initialize placement timer
     }
     this.roaches.push(r);
     if (type === RoachType.QUEEN) this.bossSystem!.activeBosses++;
@@ -2689,7 +2710,7 @@ export class GameEngine {
     ParticleSpawner.spawnSparkParticles(this.particles,r.x, r.y, 30);
     // Fire ring
     ParticleSpawner.spawnFireRingParticles(this.particles,r.x, r.y, 20);
-    this.screenShake = 20;
+    this.screenShake = BALANCE_CONFIG.screenShake.bigBossDeath;
 
     // Damage nearby roaches with visual feedback (no effect on BOSS)
     // Use squared distance to avoid Math.sqrt
@@ -2776,7 +2797,7 @@ export class GameEngine {
     ParticleSpawner.spawnDebrisParticles(this.particles,r.x, r.y, 25);
     ParticleSpawner.spawnSparkParticles(this.particles,r.x, r.y, 30);
     ParticleSpawner.spawnFireRingParticles(this.particles,r.x, r.y, 20);
-    this.screenShake = 20;
+    this.screenShake = BALANCE_CONFIG.screenShake.bigBossDeath;
 
     // Damage nearby roaches
     let hitCount = 0;
@@ -2866,7 +2887,7 @@ export class GameEngine {
         });
       }
       // Screen shake + sound
-      this.screenShake = 28;
+      this.screenShake = BALANCE_CONFIG.screenShake.queenDeath;
       this.audio.playTimedBombExplode();
       Vibration.vibrateDamage();
 
@@ -3022,7 +3043,7 @@ export class GameEngine {
       ParticleSpawner.spawnDebrisParticles(this.particles,r.x, r.y, 20);
       ParticleSpawner.spawnFireRingParticles(this.particles,r.x, r.y, 15);
       ParticleSpawner.spawnSparkParticles(this.particles,r.x, r.y, 20);
-      this.screenShake = 12;
+      this.screenShake = BALANCE_CONFIG.screenShake.bossDeath;
       this.audio.playSuicideExplode();
       Vibration.vibrateSuicideExplode();
       this.addFloatingText(r.x, r.y - 30, hitCount > 0 ? `爆炸!(${hitCount}只受波及)` : '爆炸!', '#ff6600');
@@ -3346,7 +3367,7 @@ export class GameEngine {
       }
       // EXPLOSION!
       if (bomb.timer <= 0) {
-        this.screenShake = 22;
+        this.screenShake = BALANCE_CONFIG.screenShake.massiveExplosion;
         this.audio.playTimedBombExplode();
         Vibration.vibrateDamage();
         for (const other of this.roaches) {
@@ -3666,9 +3687,9 @@ export class GameEngine {
       // 闪电
       this.lightningTimer -= this.deltaTime;
       if (this.lightningTimer <= 0) {
-        this.lightningTimer = 5 + Math.random() * 10;
+        this.lightningTimer = BALANCE_CONFIG.lightning.timerMin + Math.random() * BALANCE_CONFIG.lightning.timerRandMax;
         if (Math.random() < 0.3) {
-          this.lightningFlash = 0.3;
+          this.lightningFlash = BALANCE_CONFIG.lightning.flashDuration;
           this.addFloatingText(this.width / 2, this.height / 2 - 100, '⚡ 闪电 ⚡', '#fbbf24');
         }
       }
@@ -3906,10 +3927,10 @@ export class GameEngine {
 
         // Countdown number with zoom effect (scales up as timer decreases)
         const countColor = bomb.timer <= 1 ? '#ff0000' : '#ffaa00';
-        const countScale = 1.2 + urgency * 1.0; // 1.2→2.2x scale (larger!)
+        const countScale = 1.8 + urgency * 1.5; // 1.8→3.3x scale (1.5× enlarged)
         ctx.save();
         ctx.scale(countScale, countScale);
-        ctx.font = 'bold 28px sans-serif'; // Larger font
+        ctx.font = 'bold 42px sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillStyle = countColor;
@@ -4296,7 +4317,6 @@ export class GameEngine {
       roachFlyingSuicideImg: this.roachFlyingSuicideImg, roachQueenImg: this.roachQueenImg,
       nurseCastFrames: this.nurseCastFrames, mutantTransformFrames: this.mutantTransformFrames,
       imagesLoaded: this.imagesLoaded, time: this.time, deltaTime: this.deltaTime,
-      mutantTransformActive: this.roachAISystem!.mutantTransformActive, mutantTransformFrame: this.roachAISystem!.mutantTransformFrame,
       bossBattle: this.bossBattle, bossAnimState: this.bossAnimState, bossAnimFrames: this.bossAnimFrames,
       onAddParticle: (p) => { this.particles.push(p); },
       onSpawnShockwaveRing: (x, y, count) => { ParticleSpawner.spawnShockwaveRing(this.particles,x, y, count); },

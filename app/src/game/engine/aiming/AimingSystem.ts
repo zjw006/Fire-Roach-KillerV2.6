@@ -4,6 +4,7 @@
  */
 
 import { type ThrowableProjectile } from '../../types';
+import { BALANCE_CONFIG, TEXT_CONFIG } from '../../data';
 
 /**
  * 瞄准系统配置接口
@@ -42,13 +43,13 @@ export class AimingSystem {
   private aimStartTime: number = 0;
 
   /** 最大蓄力时间（秒） */
-  private aimMaxPowerTime: number = 1.5;
+  private aimMaxPowerTime: number = BALANCE_CONFIG.aiming.maxPowerTime;
 
   /** 最小瞄准距离 */
-  private aimMinDist: number = 80;
+  private aimMinDist: number = BALANCE_CONFIG.aiming.minDist;
 
   /** 最大瞄准距离 */
-  private aimMaxDist: number = 500;
+  private aimMaxDist: number = BALANCE_CONFIG.aiming.maxDist;
 
   /**
    * 构造函数
@@ -157,11 +158,11 @@ export class AimingSystem {
     // 计算抛物线轨迹的速度
     const dx = targetX - startX;
     const dy = targetY - startY;
-    const travelTime = 0.5 + this.aimPower * 0.3;
+    const travelTime = BALANCE_CONFIG.aiming.travelTimeBase + this.aimPower * BALANCE_CONFIG.aiming.travelTimePowerMult;
     const vx = dx / travelTime;
     // vy计算考虑重力到达targetY
     // y = vy * t + 0.5 * g * t^2 => vy = (dy - 0.5 * g * t^2) / t
-    const gravity = 400;
+    const gravity = BALANCE_CONFIG.aiming.gravity;
     const vy = (dy - 0.5 * gravity * travelTime * travelTime) / travelTime;
 
     const throwable: ThrowableProjectile = {
@@ -192,9 +193,9 @@ export class AimingSystem {
 
     // 浮动文字
     const names: Record<string, string> = {
-      sticky: '蟑螂贴板',
-      poison: '杀虫剂',
-      molotov: '燃烧瓶',
+      sticky: TEXT_CONFIG.items.sticky,
+      poison: TEXT_CONFIG.items.poison,
+      molotov: TEXT_CONFIG.items.molotov,
     };
     this.config.onAddFloatingText?.(startX, startY - 30, `投掷${names[weapon]}!`, '#fbbf24');
 
@@ -296,7 +297,7 @@ export class AimingSystem {
 
     // 计算弧线控制点
     const midX = (startX + targetX) / 2;
-    const arcHeight = 100 + state.aimPower * 150;
+    const arcHeight = BALANCE_CONFIG.aiming.arcHeightBase + state.aimPower * BALANCE_CONFIG.aiming.arcHeightPowerMult;
     const controlX = midX;
     const controlY = Math.min(startY, targetY) - arcHeight;
 
@@ -315,7 +316,7 @@ export class AimingSystem {
     ctx.beginPath();
     ctx.moveTo(startX, startY);
     // 绘制二次贝塞尔曲线
-    const steps = 30;
+    const steps = BALANCE_CONFIG.aiming.trajectorySteps;
     for (let i = 1; i <= steps; i++) {
       const t = i / steps;
       const x = (1 - t) * (1 - t) * startX + 2 * (1 - t) * t * controlX + t * t * targetX;
@@ -367,9 +368,9 @@ export class AimingSystem {
 
     // 武器名称
     const names: Record<string, string> = {
-      sticky: '蟑螂贴板',
-      poison: '杀虫剂',
-      molotov: '燃烧瓶',
+      sticky: TEXT_CONFIG.items.sticky,
+      poison: TEXT_CONFIG.items.poison,
+      molotov: TEXT_CONFIG.items.molotov,
     };
     ctx.fillStyle = '#fff';
     ctx.fillText(names[state.aimWeapon], startX, startY - 40);

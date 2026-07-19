@@ -1,7 +1,9 @@
-/**
+﻿/**
  * @fileoverview 成就系统模块
  * @description 负责管理游戏中的成就解锁、奖励发放和进度跟踪
  */
+
+import { TEXT_CONFIG } from '../../data';
 
 /**
  * 成就数据接口
@@ -335,24 +337,7 @@ export class AchievementSystem {
    * @returns 解锁条件描述
    */
   getAchievementConditionDescription(achievementId: string): string {
-    switch (achievementId) {
-      case 'first_blood': return '击杀第1只蟑螂';
-      case 'roach_slayer': return '累计击杀100只蟑螂';
-      case 'roach_exterminator': return '累计击杀1000只蟑螂';
-      case 'wave_5': return '通关第5波';
-      case 'wave_10': return '通关第10波';
-      case 'endless_20': return '无尽模式达到20波';
-      case 'endless_50': return '无尽模式达到50波';
-      case 'money_1000': return '累计获得1000金钱';
-      case 'perfect_wave': return '完成1次完美波次（无防线突破）';
-      case 'no_breach': return '连续10波无防线突破';
-      case 'kill_queen': return '击杀1只女王蟑螂';
-      case 'kill_flying': return '累计击杀50只飞行蟑螂';
-      case 'kill_armored': return '累计击杀30只装甲蟑螂';
-      case 'weapon_master': return '解锁5种武器';
-      case 'talent_first': return '学习第1个天赋';
-      default: return '未知成就';
-    }
+    return (TEXT_CONFIG.ui.achievements.conditionDescriptions as Record<string, string>)[achievementId] || '未知成就';
   }
 
   /**

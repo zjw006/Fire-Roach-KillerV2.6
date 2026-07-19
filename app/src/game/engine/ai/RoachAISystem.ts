@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @fileoverview 蟑螂 AI 系统模块
  * @description 负责所有蟑螂敌人的 AI 行为：移动、寻路、闪避、愤怒、特殊技能
  *   （护士治疗、变异变形、分裂、自爆、定时自爆等）、医院专属行为，以及击杀处理
@@ -6,7 +6,7 @@
 
 import { RoachType, RoachState, SceneType, GameMode, GameState, ParticleType } from '../../types';
 import type { Roach, Player, Particle, FireWall, Economy, GameProgress, BossBattleState, WaveConfig } from '../../types';
-import { ENEMY_DEFS, BOSS_CONFIG, SCENE_GROUND_BOUNDS } from '../../data';
+import { ENEMY_DEFS, BOSS_CONFIG, SCENE_GROUND_BOUNDS, TEXT_CONFIG } from '../../data';
 import { ParticleSpawner } from '../particle/ParticleSpawner';
 import type { StickySystem } from '../sticky/StickySystem';
 import type { BossBattleSystem } from '../boss/BossBattleSystem';
@@ -164,20 +164,6 @@ export class RoachAISystem {
     const difficulty = this.cfg.getDifficulty();
     const isHard = difficulty === 'hard';
 
-    // ===== MUTANT TRANSFORMATION FRAME UPDATE =====
-    if (this.mutantTransformActive) {
-      this.mutantTransformTimer -= deltaTime;
-      if (this.mutantTransformTimer <= 0) {
-        this.mutantTransformFrame++;
-        if (this.mutantTransformFrame >= 7) {
-          this.mutantTransformActive = false;
-          this.spawnEmbryoRoaches();
-        } else {
-          this.mutantTransformTimer = 0.2;
-        }
-      }
-    }
-
     for (let i = roaches.length - 1; i >= 0; i--) {
       const r = roaches[i];
       if (!r) continue;
@@ -206,10 +192,24 @@ export class RoachAISystem {
           }
         }
         if (r.deathTimer <= 0) {
-          if (r.type === RoachType.MUTANT && this.mutantTransformActive) {
+          if (r.type === RoachType.MUTANT && r.transformFrame !== undefined && r.transformFrame < 7) {
             r.deathTimer = 0.1;
           } else {
             roaches.splice(i, 1);
+          }
+        }
+        // Per-roach mutant transform animation (7 frames, 200ms each)
+        if (r.type === RoachType.MUTANT && r.state === RoachState.DEAD
+          && r.transformTimer !== undefined && r.transformTimer > 0
+          && r.transformFrame !== undefined && r.transformFrame < 7) {
+          r.transformTimer -= deltaTime;
+          if (r.transformTimer <= 0) {
+            r.transformFrame++;
+            if (r.transformFrame >= 7) {
+              this.spawnEmbryoRoaches(r);
+            } else {
+              r.transformTimer = 0.2;
+            }
           }
         }
         continue;
@@ -473,7 +473,7 @@ export class RoachAISystem {
           for (let m = 0; m < BOSS_CONFIG.queen.minionCount; m++) {
             this.cfg.onSpawnRoach(RoachType.SMALL);
           }
-          this.cfg.onAddFloatingText(r.x, r.y - 50, '女王召唤了小蟑螂!', '#ff44aa');
+          this.cfg.onAddFloatingText(r.x, r.y - 50, TEXT_CONFIG.combat.queenSummon, '#ff44aa');
         }
       }
 
@@ -499,7 +499,7 @@ export class RoachAISystem {
         const placeY = dl - 64;
 
         if (roachBottom >= placeY) {
-          if (r.placeTimer === 0) {
+          if (!r.placeTimer) {
             r.placeTimer = 2.0;
           }
           r.vx = 0;
@@ -515,7 +515,7 @@ export class RoachAISystem {
             this.cfg.placedBombs.push({
               id: r.id, x: r.x, y: placeY, timer: 3,
             });
-            this.cfg.onAddFloatingText(r.x, placeY - 30, '炸弹已安放!', '#ef4444');
+            this.cfg.onAddFloatingText(r.x, placeY - 30, TEXT_CONFIG.combat.bombPlaced, '#ef4444');
             for (let p = 0; p < 8; p++) {
               const angle = (p / 8) * Math.PI * 2;
               const speed = 30 + Math.random() * 40;
@@ -533,7 +533,7 @@ export class RoachAISystem {
             r.size = ENEMY_DEFS[RoachType.LARGE].size;
             r.speed = ENEMY_DEFS[RoachType.LARGE].speed;
             r.baseSpeed = ENEMY_DEFS[RoachType.LARGE].speed;
-            this.cfg.onAddFloatingText(r.x, r.y - 45, '变身大蟑螂!', '#fbbf24');
+            this.cfg.onAddFloatingText(r.x, r.y - 45, TEXT_CONFIG.combat.transformBig, '#fbbf24');
           }
         }
       }
@@ -634,8 +634,8 @@ export class RoachAISystem {
             r.healPhase = 'charging';
             r.healPhaseTimer = 1.0;
             this.cfg.audio.playNurseCast();
-            this.cfg.onAddFloatingText(r.x, r.y - 50, '【施法中】', '#4ade80', 1500);
-            this.cfg.onAddFloatingText(r.x, r.y - 60, '非法行医!', '#5a8a5a');
+            this.cfg.onAddFloatingText(r.x, r.y - 50, TEXT_CONFIG.combat.nurseCasting, '#4ade80', 1500);
+            this.cfg.onAddFloatingText(r.x, r.y - 60, TEXT_CONFIG.combat.nurseIllegal, '#5a8a5a');
           } else {
             r.healTimer! = 1;
           }
@@ -661,7 +661,7 @@ export class RoachAISystem {
           }
         }
         if (healedCount > 0) {
-          this.cfg.onAddFloatingText(r.x, r.y - 50, '治疗喷射!', '#5a8a5a');
+          this.cfg.onAddFloatingText(r.x, r.y - 50, TEXT_CONFIG.combat.nurseSpray, '#5a8a5a');
         }
 
         r.healPhaseTimer! -= deltaTime;
@@ -722,14 +722,14 @@ export class RoachAISystem {
 
     if (!r.breachPhase) r.breachPhase = 'idle';
 
-    // Branch B: Flame killed
+    // Branch B: Flame killed (bomb placement failed)
     if (r.hp <= 0 && r.breachPhase !== 'idle') {
       r.isFlameKilled = true;
       r.state = RoachState.DEAD;
       r.deathTimer = 1.0;
       r.breachPhase = 'residue';
       r.residueTimer = 2.0;
-      this.cfg.onAddFloatingText(r.x, r.y - 30, '炸弹没响...', '#666');
+      this.cfg.onAddFloatingText(r.x, r.y - 30, TEXT_CONFIG.combat.bombFailed, '#666');
       return;
     }
 
@@ -741,7 +741,7 @@ export class RoachAISystem {
       r.isFrozen = false;
     }
 
-    // Phase transition
+    // Phase transition: start approaching
     if (r.breachPhase === 'idle' && distToDefense <= 200) {
       r.breachPhase = 'warning';
       r.breachPhaseTimer = 0.5;
@@ -752,48 +752,39 @@ export class RoachAISystem {
       case 'warning': {
         r.speed = r.baseSpeed * 0.5;
         if (distToDefense <= 80) {
-          r.breachPhase = 'crouching';
-          r.breachPhaseTimer = 3.0;
-          r.placeTimer = 3.0;
+          // Place the timed bomb on the defense line
+          const placeY = dl - 64;
           r.hasPlacedBomb = true;
-          this.cfg.onAddFloatingText(r.x, r.y - 50, '螂家爆破!', '#8b2020');
-        }
-        break;
-      }
+          this.cfg.placedBombs.push({
+            id: r.id, x: r.x, y: placeY, timer: 3,
+          });
+          this.cfg.onAddFloatingText(r.x, placeY - 30, TEXT_CONFIG.combat.bombPlaced, '#ef4444');
 
-      case 'crouching': {
-        r.vx = 0;
-        r.vy = 0;
-        r.burnDamage = 0;
-        r.poisonTimer = 0;
-        r.inFire = false;
-        r.damageFlash = 0;
+          // Spawn placement particles
+          const particles = this.cfg.particles;
+          for (let p = 0; p < 8; p++) {
+            const angle = (p / 8) * Math.PI * 2;
+            const speed = 30 + Math.random() * 40;
+            particles.push({
+              x: r.x, y: r.y,
+              vx: Math.cos(angle) * speed,
+              vy: Math.sin(angle) * speed - 20,
+              life: 0.5, maxLife: 0.5,
+              size: 3 + Math.random() * 4,
+              color: `rgba(200, 150, 50, 0.7)`,
+              type: ParticleType.SPARK,
+            });
+          }
 
-        r.breachPhaseTimer! -= deltaTime;
-        r.placeTimer! -= deltaTime;
-
-        r.crackRadius = Math.min(60, (3.0 - r.breachPhaseTimer!) / 3.0 * 60);
-
-        const secs = Math.ceil(r.placeTimer!);
-        if (r.placeTimer! > 0 && Math.abs(r.placeTimer! - secs) < 0.05 && secs <= 3) {
-          this.cfg.onAddFloatingText(r.x, r.y - 35, `${secs}`, secs <= 1 ? '#8b2020' : '#a05030');
-        }
-
-        if (r.placeTimer! <= 0) {
-          r.breachPhase = 'exploding';
-          r.breachPhaseTimer = 0.4;
-          this.triggerBreachExplosion(r, roaches);
-        }
-        break;
-      }
-
-      case 'exploding': {
-        r.breachPhaseTimer! -= deltaTime;
-        if (r.breachPhaseTimer! <= 0) {
-          r.breachPhase = 'residue';
-          r.residueTimer = 3.0;
-          r.state = RoachState.DEAD;
-          r.deathTimer = 3.0;
+          // Transform into large cockroach with same properties
+          r.type = RoachType.LARGE;
+          r.size = ENEMY_DEFS[RoachType.LARGE].size;
+          r.speed = ENEMY_DEFS[RoachType.LARGE].speed;
+          r.baseSpeed = ENEMY_DEFS[RoachType.LARGE].speed;
+          // Reset breach state so the roach continues as a normal large roach
+          r.breachPhase = undefined;
+          r.placeTimer = undefined;
+          this.cfg.onAddFloatingText(r.x, r.y - 45, TEXT_CONFIG.combat.transformBig, '#fbbf24');
         }
         break;
       }
@@ -855,11 +846,11 @@ export class RoachAISystem {
     if (roachBottom > defenseLineY - defenseDamageRange) {
       const dmg = this.cfg.getDifficulty() === 'hard' ? 15 : 5;
       if (this.cfg.player.shieldTimer > 0) {
-        this.cfg.onAddFloatingText(r.x, defenseLineY - 20, '護盾抵消!', '#22d3ee');
+        this.cfg.onAddFloatingText(r.x, defenseLineY - 20, TEXT_CONFIG.combat.shieldBlock, '#22d3ee');
       } else {
         const newHp = this.cfg.getDefenseHp() - dmg;
         this.cfg.setDefenseHp(newHp);
-        this.cfg.onAddFloatingText(r.x, defenseLineY - 20, `自爆伤害! -${dmg}`, '#ef4444');
+        this.cfg.onAddFloatingText(r.x, defenseLineY - 20, TEXT_CONFIG.combat.suicideDamage(dmg), '#ef4444');
       }
       if (r.type === RoachType.FLYING_SUICIDE) {
         this.cfg.audio.playSuicideBreachFlying();
@@ -872,7 +863,7 @@ export class RoachAISystem {
       }
     }
 
-    this.cfg.onAddFloatingText(r.x, r.y - 30, hitCount > 0 ? `大爆炸!(${hitCount}只受波及)` : '大爆炸!', '#ff4400');
+    this.cfg.onAddFloatingText(r.x, r.y - 30, hitCount > 0 ? TEXT_CONFIG.combat.bigExplosion(hitCount) : '大爆炸!', '#ff4400');
   }
 
   // =========================================================================
@@ -922,11 +913,11 @@ export class RoachAISystem {
     if (roachBottom > defenseLineY - defenseDamageRange) {
       const dmg = this.cfg.getDifficulty() === 'hard' ? 15 : 5;
       if (this.cfg.player.shieldTimer > 0) {
-        this.cfg.onAddFloatingText(r.x, defenseLineY - 20, '護盾抵消!', '#22d3ee');
+        this.cfg.onAddFloatingText(r.x, defenseLineY - 20, TEXT_CONFIG.combat.shieldBlock, '#22d3ee');
       } else {
         const newHp = this.cfg.getDefenseHp() - dmg;
         this.cfg.setDefenseHp(newHp);
-        this.cfg.onAddFloatingText(r.x, defenseLineY - 20, `自爆伤害! -${dmg}`, '#ef4444');
+        this.cfg.onAddFloatingText(r.x, defenseLineY - 20, TEXT_CONFIG.combat.suicideDamage(dmg), '#ef4444');
       }
       if (r.type === RoachType.FLYING_SUICIDE) {
         this.cfg.audio.playSuicideBreachFlying();
@@ -935,7 +926,7 @@ export class RoachAISystem {
       }
     }
 
-    this.cfg.onAddFloatingText(r.x, r.y - 30, hitCount > 0 ? `死亡爆炸!(${hitCount}只受波及)` : '死亡爆炸!', '#ff4400');
+    this.cfg.onAddFloatingText(r.x, r.y - 30, hitCount > 0 ? TEXT_CONFIG.combat.deathExplosion(hitCount) : '死亡爆炸!', '#ff4400');
   }
 
   // =========================================================================
@@ -1003,14 +994,14 @@ export class RoachAISystem {
       const defenseLineY = this.cfg.getDefenseLineY();
       const defDmg = this.cfg.getDifficulty() === 'hard' ? 20 : 8;
       if (this.cfg.player.shieldTimer > 0) {
-        this.cfg.onAddFloatingText(r.x, defenseLineY - 20, '護盾抵消!', '#22d3ee');
+        this.cfg.onAddFloatingText(r.x, defenseLineY - 20, TEXT_CONFIG.combat.shieldBlock, '#22d3ee');
       } else {
         const newHp = this.cfg.getDefenseHp() - defDmg;
         this.cfg.setDefenseHp(newHp);
-        this.cfg.onAddFloatingText(r.x, defenseLineY - 20, `炸弹爆炸! -${defDmg}`, '#ef4444');
+        this.cfg.onAddFloatingText(r.x, defenseLineY - 20, TEXT_CONFIG.combat.bombExplode(defDmg), '#ef4444');
       }
 
-      this.cfg.onAddFloatingText(r.x, r.y - 50, '轰!', '#8b2020');
+      this.cfg.onAddFloatingText(r.x, r.y - 50, TEXT_CONFIG.combat.boom, '#8b2020');
     } finally {
       this._deathChainDepth--;
     }
@@ -1091,7 +1082,7 @@ export class RoachAISystem {
         };
         roaches.push(small);
       }
-      this.cfg.onAddFloatingText(r.x, r.y - 30, '分裂x5!', '#ff8800');
+      this.cfg.onAddFloatingText(r.x, r.y - 30, TEXT_CONFIG.combat.splitSpawn, '#ff8800');
     }
 
     // Flying roach disintegrate
@@ -1128,7 +1119,7 @@ export class RoachAISystem {
         });
       }
       ParticleSpawner.spawnSparkParticles(particles, r.x, r.y, 20);
-      this.cfg.onAddFloatingText(r.x, r.y - 20, '解体!', '#88ccff');
+      this.cfg.onAddFloatingText(r.x, r.y - 20, TEXT_CONFIG.combat.disintegrate, '#88ccff');
     }
 
     // Suicide death explosion
@@ -1157,7 +1148,7 @@ export class RoachAISystem {
       this.cfg.setScreenShake(12);
       this.cfg.audio.playSuicideExplode();
       Vibration.vibrateSuicideExplode();
-      this.cfg.onAddFloatingText(r.x, r.y - 30, hitCount > 0 ? `爆炸!(${hitCount}只受波及)` : '爆炸!', '#ff6600');
+      this.cfg.onAddFloatingText(r.x, r.y - 30, hitCount > 0 ? TEXT_CONFIG.combat.explode(hitCount) : '爆炸!', '#ff6600');
     }
 
     this.cfg.audio.playKill();
@@ -1211,7 +1202,7 @@ export class RoachAISystem {
         }
         if (backlashDmg > 0) {
           boss.hp -= backlashDmg;
-          this.cfg.onAddFloatingText(boss.x + (Math.random() - 0.5) * 40, boss.y - 30, `反噬 -${backlashDmg}`, '#a855f7');
+          this.cfg.onAddFloatingText(boss.x + (Math.random() - 0.5) * 40, boss.y - 30, TEXT_CONFIG.combat.backlash(backlashDmg), '#a855f7');
           boss.damageFlash = 1;
           for (let k = 0; k < 3; k++) {
             particles.push({
@@ -1231,13 +1222,13 @@ export class RoachAISystem {
     economy.totalKills++;
     economy.money += reward;
     economy.totalMoneyEarned += reward;
-    this.cfg.onAddFloatingText(r.x, r.y - 20, `+¥${reward}`, '#4ade80');
+    this.cfg.onAddFloatingText(r.x, r.y - 20, TEXT_CONFIG.combat.killReward(reward), '#4ade80');
     this.cfg.setScreenShake(r.isBoss ? 12 : (r.type === RoachType.LARGE ? 6 : 3));
 
     // Boss death
     if (r.isBoss) {
       this.cfg.bossSystem.activeBosses--;
-      this.cfg.onAddFloatingText(this.cfg.getCanvasWidth() / 2, this.cfg.getCanvasHeight() / 2, 'BOSS 击败!', '#fbbf24');
+      this.cfg.onAddFloatingText(this.cfg.getCanvasWidth() / 2, this.cfg.getCanvasHeight() / 2, TEXT_CONFIG.combat.bossDefeated, '#fbbf24');
       for (const other of roaches) {
         if (other.state === RoachState.ALIVE && other.id !== r.id) {
           other.hp = 0;
@@ -1254,7 +1245,7 @@ export class RoachAISystem {
         timer: 3.0,
         flashPhase: 0,
       });
-      this.cfg.onAddFloatingText(r.x, r.y - 40, '尸体炸弹 3秒!', '#ff4444');
+      this.cfg.onAddFloatingText(r.x, r.y - 40, TEXT_CONFIG.combat.corpseBomb(3), '#ff4444');
       this.cfg.audio.playTimedBombDrop();
     }
 
@@ -1297,24 +1288,26 @@ export class RoachAISystem {
   // =========================================================================
 
   forceEmbryoBurst(r: Roach): void {
+    // Prevent double-call from both engine.ts killRoach and RoachAISystem killRoach
+    if (r.hasTransformed) return;
+    r.hasTransformed = true;
+
     const roll = Math.random();
     if (roll < 0.5) {
-      this._embryoSpawnTypes = [RoachType.SMALL, RoachType.SMALL];
+      r.transformSpawnTypes = [RoachType.SMALL, RoachType.SMALL];
     } else if (roll < 0.8) {
-      this._embryoSpawnTypes = [RoachType.SMALL, RoachType.FLYING];
+      r.transformSpawnTypes = [RoachType.SMALL, RoachType.FLYING];
     } else {
-      this._embryoSpawnTypes = [RoachType.SMALL, RoachType.SUICIDE];
+      r.transformSpawnTypes = [RoachType.SMALL, RoachType.SUICIDE];
     }
 
-    this.mutantTransformActive = true;
-    this.mutantTransformFrame = 0;
-    this.mutantTransformTimer = 0.6;
-    this.mutantTransformX = r.x;
-    this.mutantTransformY = r.y;
+    // Per-roach transformation state (supports multiple simultaneous mutants)
+    r.transformFrame = 0;
+    r.transformTimer = 0.6;
 
     this.cfg.setScreenShake(12);
     this.cfg.audio.playMutantTransform();
-    this.cfg.onAddFloatingText(r.x, r.y - 70, '【胚胎暴走】', '#ff0040', 2000);
+    this.cfg.onAddFloatingText(r.x, r.y - 70, TEXT_CONFIG.combat.embryoBurst, '#ff0040', 2000);
     this.cfg.particles.push({
       x: r.x, y: r.y, vx: 0, vy: 0,
       life: 0.4, maxLife: 0.4,
@@ -1324,14 +1317,15 @@ export class RoachAISystem {
     });
   }
 
-  spawnEmbryoRoaches(): void {
-    const sx = this.mutantTransformX;
-    const sy = this.mutantTransformY;
+  spawnEmbryoRoaches(r: Roach): void {
+    const sx = r.x;
+    const sy = r.y;
     const roaches = this.cfg.roaches;
+    const spawnTypes = r.transformSpawnTypes || [RoachType.SMALL, RoachType.SMALL];
     let spawnedCount = 0;
 
-    for (let i = 0; i < this._embryoSpawnTypes.length; i++) {
-      const spawnType = this._embryoSpawnTypes[i];
+    for (let i = 0; i < spawnTypes.length; i++) {
+      const spawnType = spawnTypes[i];
 
       const newRoach = this.cfg.onSpawnRoach(spawnType);
       if (!newRoach) break;
@@ -1355,14 +1349,14 @@ export class RoachAISystem {
       roaches.push(newRoach);
 
       const typeName = spawnType === RoachType.SMALL ? '小蟑螂' : spawnType === RoachType.FLYING ? '飞行蟑螂' : '自爆蟑螂';
-      this.cfg.onAddFloatingText(newRoach.x, newRoach.y - 50, `【诞生】${typeName}!`, '#00ff80', 1500);
+      this.cfg.onAddFloatingText(newRoach.x, newRoach.y - 50, TEXT_CONFIG.combat.spawnBirth(typeName), '#00ff80', 1500);
     }
 
     this.slimeBurstTimer = 1.2;
     this.slimeBurstX = sx;
     this.slimeBurstY = sy;
 
-    this.cfg.onAddFloatingText(sx, sy - 40, `生成${spawnedCount}只!`, '#ff0040', 2000);
+    this.cfg.onAddFloatingText(sx, sy - 40, TEXT_CONFIG.combat.spawnCount(spawnedCount), '#ff0040', 2000);
   }
 
   // =========================================================================
@@ -1397,9 +1391,9 @@ export class RoachAISystem {
       }
 
       if (this._deathChainDepth <= 1) {
-        this.cfg.onAddFloatingText(r.x, r.y - 40, '酸液飞溅!', '#84cc16');
+        this.cfg.onAddFloatingText(r.x, r.y - 40, TEXT_CONFIG.combat.acidSplash, '#84cc16');
         if (hitCount > 0) {
-          this.cfg.onAddFloatingText(r.x, r.y - 55, `${hitCount}只受腐蚀`, '#a3e635');
+          this.cfg.onAddFloatingText(r.x, r.y - 55, TEXT_CONFIG.combat.acidCorrode(hitCount), '#a3e635');
         }
       }
     } finally {

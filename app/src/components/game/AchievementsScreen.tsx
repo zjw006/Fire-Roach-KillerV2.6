@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @fileoverview 成就系统界面组件
  * 展示玩家已解锁和未解锁的成就列表，支持按"全部/已解锁/未解锁"分类筛选，
  * 包含进度条、分类图标和奖励展示。
@@ -9,6 +9,7 @@ import {
   ArrowLeft, Lock, Check, Trophy, Target, Zap,
   Shield, Flame, Star, Crown, Crosshair, TrendingUp
 } from 'lucide-react';
+import { TEXT_CONFIG } from '@/game/data';
 import type { GameProgress } from '@/game/types';
 import type { AudioManager } from '@/game/audio';
 
@@ -79,7 +80,7 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ progress
               className="flex items-center gap-1 text-stone-400 hover:text-white transition-colors"
             >
               <ArrowLeft size={18} />
-              <span className="text-sm">返回</span>
+              <span className="text-sm">{TEXT_CONFIG.ui.achievements.back}</span>
             </button>
             <div className="flex items-center gap-2">
               <Trophy size={16} className="text-yellow-400" />
@@ -87,7 +88,7 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ progress
             </div>
           </div>
 
-          <h2 className="text-2xl font-bold text-white text-center mb-2">成就系统</h2>
+          <h2 className="text-2xl font-bold text-white text-center mb-2">{TEXT_CONFIG.ui.achievements.title}</h2>
 
           {/* Progress bar */}
           <div className="bg-stone-800 rounded-full h-2.5 mb-1 overflow-hidden">
@@ -97,7 +98,7 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ progress
             />
           </div>
           <div className="text-center text-xs text-stone-500 mb-4">
-            完成度 {progressPercent.toFixed(1)}%
+            {TEXT_CONFIG.ui.achievements.completion(progressPercent.toFixed(1))}
           </div>
 
           {/* Filter tabs */}
@@ -112,7 +113,7 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ progress
                     : 'text-stone-500 hover:text-stone-300'
                 }`}
               >
-                {f === 'all' ? '全部' : f === 'unlocked' ? '已解锁' : '未解锁'}
+                {f === 'all' ? TEXT_CONFIG.ui.achievements.all : f === 'unlocked' ? TEXT_CONFIG.ui.achievements.unlocked : TEXT_CONFIG.ui.achievements.locked}
               </button>
             ))}
           </div>
@@ -161,9 +162,9 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ progress
                       ¥{ach.reward}
                     </div>
                     {ach.unlocked ? (
-                      <div className="text-[10px] text-yellow-500">已解锁</div>
+                      <div className="text-[10px] text-yellow-500">{TEXT_CONFIG.ui.achievements.unlocked}</div>
                     ) : (
-                      <div className="text-[10px] text-stone-600">未解锁</div>
+                      <div className="text-[10px] text-stone-600">{TEXT_CONFIG.ui.achievements.locked}</div>
                     )}
                   </div>
                 </div>
@@ -172,7 +173,7 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ progress
           })}
           {displayList.length === 0 && (
             <div className="text-center text-stone-500 text-sm py-8">
-              该分类下没有成就
+              {TEXT_CONFIG.ui.achievements.empty}
             </div>
           )}
         </div>

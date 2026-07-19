@@ -1,10 +1,10 @@
-/**
+﻿/**
  * @fileoverview 武器系统模块
  * @description 负责管理游戏中的武器掉落、拾取、切换和弹药系统
  */
 
 import { GameState, GameMode, SceneType, type WeaponDrop, type Player, type InventoryItem } from '../../types';
-import { WEAPON_DROP_DEFS, SCENE_ITEM_UNLOCKS } from '../../data';
+import { WEAPON_DROP_DEFS, SCENE_ITEM_UNLOCKS, BALANCE_CONFIG, TEXT_CONFIG } from '../../data';
 
 /**
  * 武器系统配置接口
@@ -73,17 +73,17 @@ export class WeaponSystem {
   
   /** 场景特定的掉落配置 */
   private sceneDropConfigs: Record<SceneType, WeaponDropSpawnConfig> = {
-    [SceneType.KITCHEN]: { spawnInterval: 40, dropCount: 1, dropLife: 12, bobSpeed: 4 },
-    [SceneType.SEWER]: { spawnInterval: 35, dropCount: 1, dropLife: 12, bobSpeed: 4 },
-    [SceneType.DUMP]: { spawnInterval: 30, dropCount: 1, dropLife: 12, bobSpeed: 4 },
-    [SceneType.BASEMENT]: { spawnInterval: 25, dropCount: 1, dropLife: 12, bobSpeed: 4 },
-    [SceneType.ROOFTOP]: { spawnInterval: 20, dropCount: 1, dropLife: 12, bobSpeed: 4 },
-    [SceneType.STREET]: { spawnInterval: 25, dropCount: 1, dropLife: 12, bobSpeed: 4 },
-    [SceneType.HOSPITAL]: { spawnInterval: 30, dropCount: 1, dropLife: 12, bobSpeed: 4 },
-    [SceneType.SUBWAY]: { spawnInterval: 25, dropCount: 1, dropLife: 12, bobSpeed: 4 },
-    [SceneType.SUPERMARKET]: { spawnInterval: 25, dropCount: 1, dropLife: 12, bobSpeed: 4 },
-    [SceneType.SCHOOL]: { spawnInterval: 25, dropCount: 1, dropLife: 12, bobSpeed: 4 },
-    [SceneType.NEST]: { spawnInterval: 30, dropCount: 1, dropLife: 12, bobSpeed: 4 },
+    [SceneType.KITCHEN]: { spawnInterval: BALANCE_CONFIG.weaponDropScene.spawnIntervals.kitchen, dropCount: 1, dropLife: BALANCE_CONFIG.weaponDropScene.dropLife, bobSpeed: BALANCE_CONFIG.weaponDropScene.bobSpeed },
+    [SceneType.SEWER]: { spawnInterval: BALANCE_CONFIG.weaponDropScene.spawnIntervals.sewer, dropCount: 1, dropLife: BALANCE_CONFIG.weaponDropScene.dropLife, bobSpeed: BALANCE_CONFIG.weaponDropScene.bobSpeed },
+    [SceneType.DUMP]: { spawnInterval: BALANCE_CONFIG.weaponDropScene.spawnIntervals.dump, dropCount: 1, dropLife: BALANCE_CONFIG.weaponDropScene.dropLife, bobSpeed: BALANCE_CONFIG.weaponDropScene.bobSpeed },
+    [SceneType.BASEMENT]: { spawnInterval: BALANCE_CONFIG.weaponDropScene.spawnIntervals.basement, dropCount: 1, dropLife: BALANCE_CONFIG.weaponDropScene.dropLife, bobSpeed: BALANCE_CONFIG.weaponDropScene.bobSpeed },
+    [SceneType.ROOFTOP]: { spawnInterval: BALANCE_CONFIG.weaponDropScene.spawnIntervals.rooftop, dropCount: 1, dropLife: BALANCE_CONFIG.weaponDropScene.dropLife, bobSpeed: BALANCE_CONFIG.weaponDropScene.bobSpeed },
+    [SceneType.STREET]: { spawnInterval: BALANCE_CONFIG.weaponDropScene.spawnIntervals.street, dropCount: 1, dropLife: BALANCE_CONFIG.weaponDropScene.dropLife, bobSpeed: BALANCE_CONFIG.weaponDropScene.bobSpeed },
+    [SceneType.HOSPITAL]: { spawnInterval: BALANCE_CONFIG.weaponDropScene.spawnIntervals.hospital, dropCount: 1, dropLife: BALANCE_CONFIG.weaponDropScene.dropLife, bobSpeed: BALANCE_CONFIG.weaponDropScene.bobSpeed },
+    [SceneType.SUBWAY]: { spawnInterval: BALANCE_CONFIG.weaponDropScene.spawnIntervals.subway, dropCount: 1, dropLife: BALANCE_CONFIG.weaponDropScene.dropLife, bobSpeed: BALANCE_CONFIG.weaponDropScene.bobSpeed },
+    [SceneType.SUPERMARKET]: { spawnInterval: BALANCE_CONFIG.weaponDropScene.spawnIntervals.supermarket, dropCount: 1, dropLife: BALANCE_CONFIG.weaponDropScene.dropLife, bobSpeed: BALANCE_CONFIG.weaponDropScene.bobSpeed },
+    [SceneType.SCHOOL]: { spawnInterval: BALANCE_CONFIG.weaponDropScene.spawnIntervals.school, dropCount: 1, dropLife: BALANCE_CONFIG.weaponDropScene.dropLife, bobSpeed: BALANCE_CONFIG.weaponDropScene.bobSpeed },
+    [SceneType.NEST]: { spawnInterval: BALANCE_CONFIG.weaponDropScene.spawnIntervals.nest, dropCount: 1, dropLife: BALANCE_CONFIG.weaponDropScene.dropLife, bobSpeed: BALANCE_CONFIG.weaponDropScene.bobSpeed },
   };
 
   /**

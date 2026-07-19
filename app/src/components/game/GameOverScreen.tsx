@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @fileoverview 游戏结束结算界面组件
  * 根据胜利/失败状态展示不同的结算画面，包含到达波次、总击杀、最终资金等战斗统计数据，
  * 胜利时支持进入下一场景或前往天赋树加点，失败时可重新开始或返回主菜单。
@@ -6,6 +6,7 @@
 
 import React, { useRef } from 'react';
 import { RotateCcw, Home, Skull, Trophy, Flame, Sparkles, Map, ChevronRight, Lightbulb } from 'lucide-react';
+import { TEXT_CONFIG } from '@/game/data';
 import type { Economy, GameMode, SceneType } from '@/game/types';
 import type { AudioManager } from '@/game/audio';
 
@@ -35,7 +36,7 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, g
   const isEndless = gameMode === 'endless';
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  const modeName = isBossMode ? 'BOSS战' : isEndless ? '无尽模式' : gameMode === 'daily' ? '每日挑战' : '剧情模式';
+  const modeName = isBossMode ? TEXT_CONFIG.ui.gameOver.bossModeName : isEndless ? TEXT_CONFIG.ui.gameOver.endlessMode : gameMode === 'daily' ? TEXT_CONFIG.ui.gameOver.dailyModeName : TEXT_CONFIG.ui.gameOver.storyMode;
 
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center overflow-hidden">
@@ -61,17 +62,17 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, g
               <div className="w-16 h-16 mx-auto rounded-full bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center mb-3 shadow-lg shadow-yellow-500/30 ring-2 ring-yellow-400/50">
                 <Trophy size={32} className="text-white" />
               </div>
-              <h2 className="text-3xl font-black text-yellow-400 text-center drop-shadow-lg">{isBossMode ? '螂老大被消灭!' : '胜利!'}</h2>
-              <p className="text-stone-300 text-center text-sm mt-1 drop-shadow">{isBossMode ? '下水道重获安宁' : '成功守住所有波次'}</p>
+              <h2 className="text-3xl font-black text-yellow-400 text-center drop-shadow-lg">{isBossMode ? TEXT_CONFIG.ui.gameOver.bossDefeatedShort : TEXT_CONFIG.combat.victory}</h2>
+              <p className="text-stone-300 text-center text-sm mt-1 drop-shadow">{isBossMode ? TEXT_CONFIG.ui.gameOver.bossVictoryDesc : TEXT_CONFIG.ui.gameOver.victoryDesc}</p>
             </>
           ) : (
             <>
               <div className="w-16 h-16 mx-auto rounded-full bg-gradient-to-br from-red-600 to-red-900 flex items-center justify-center mb-3 shadow-lg shadow-red-600/30 ring-2 ring-red-500/50">
                 <Skull size={32} className="text-white" />
               </div>
-              <h2 className="text-3xl font-black text-red-400 text-center drop-shadow-lg">防线失守</h2>
+              <h2 className="text-3xl font-black text-red-400 text-center drop-shadow-lg">{TEXT_CONFIG.ui.gameOver.defenseBreached}</h2>
               <p className="text-stone-300 text-center text-sm mt-1 drop-shadow">
-                {isEndless ? `无尽模式坚持了 ${wave} 波` : '蟑螂突破了防线'}
+                {isEndless ? TEXT_CONFIG.ui.gameOver.endlessDefeat(wave) : TEXT_CONFIG.ui.gameOver.defeatDesc}
               </p>
             </>
           )}
@@ -94,27 +95,27 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, g
           {/** 战斗统计数据：波次、击杀、资金、各类蟑螂击杀数 */}
           <div className="grid grid-cols-3 gap-2 text-sm">
             <div className="text-center">
-              <div className="text-stone-400 text-[10px]">到达波次</div>
+              <div className="text-stone-400 text-[10px]">{TEXT_CONFIG.ui.gameOver.waveReached}</div>
               <div className="text-lg font-bold text-white">{wave}</div>
             </div>
             <div className="text-center">
-              <div className="text-stone-400 text-[10px]">总击杀</div>
+              <div className="text-stone-400 text-[10px]">{TEXT_CONFIG.ui.gameOver.totalKills}</div>
               <div className="text-lg font-bold text-red-400">{economy.totalKills}</div>
             </div>
             <div className="text-center">
-              <div className="text-stone-400 text-[10px]">最终资金</div>
+              <div className="text-stone-400 text-[10px]">{TEXT_CONFIG.ui.gameOver.finalMoney}</div>
               <div className="text-lg font-bold text-amber-400">¥{economy.money}</div>
             </div>
             <div className="text-center">
-              <div className="text-stone-400 text-[10px]">小蟑螂</div>
+              <div className="text-stone-400 text-[10px]">{TEXT_CONFIG.ui.gameOver.smallRoach}</div>
               <div className="text-base font-bold text-orange-300">{economy.smallKills}</div>
             </div>
             <div className="text-center">
-              <div className="text-stone-400 text-[10px]">大蟑螂</div>
+              <div className="text-stone-400 text-[10px]">{TEXT_CONFIG.ui.gameOver.largeRoach}</div>
               <div className="text-base font-bold text-orange-300">{economy.largeKills}</div>
             </div>
             <div className="text-center">
-              <div className="text-stone-400 text-[10px]">防线突破</div>
+              <div className="text-stone-400 text-[10px]">{TEXT_CONFIG.ui.gameOver.breaches}</div>
               <div className="text-base font-bold text-red-300">{economy.breaches}</div>
             </div>
           </div>
@@ -125,25 +126,25 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, g
               {/** 特殊敌人击杀统计：飞行、装甲、分裂、女王 */}
               {economy.flyingKills > 0 && (
                 <div className="text-center">
-                  <div className="text-stone-500 text-[9px]">飞行</div>
+                  <div className="text-stone-500 text-[9px]">{TEXT_CONFIG.ui.gameOver.flying}</div>
                   <div className="text-sm font-bold text-amber-300">{economy.flyingKills}</div>
                 </div>
               )}
               {economy.armoredKills > 0 && (
                 <div className="text-center">
-                  <div className="text-stone-500 text-[9px]">装甲</div>
+                  <div className="text-stone-500 text-[9px]">{TEXT_CONFIG.ui.gameOver.armored}</div>
                   <div className="text-sm font-bold text-stone-300">{economy.armoredKills}</div>
                 </div>
               )}
               {economy.splittingKills > 0 && (
                 <div className="text-center">
-                  <div className="text-stone-500 text-[9px]">分裂</div>
+                  <div className="text-stone-500 text-[9px]">{TEXT_CONFIG.ui.gameOver.splitting}</div>
                   <div className="text-sm font-bold text-amber-300">{economy.splittingKills}</div>
                 </div>
               )}
               {economy.queenKills > 0 && (
                 <div className="text-center">
-                  <div className="text-stone-500 text-[9px]">女王</div>
+                  <div className="text-stone-500 text-[9px]">{TEXT_CONFIG.ui.gameOver.queen}</div>
                   <div className="text-sm font-bold text-rose-300">{economy.queenKills}</div>
                 </div>
               )}
@@ -173,15 +174,15 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, g
           <div className="bg-gradient-to-r from-yellow-900/60 to-orange-900/60 border border-yellow-500/40 rounded-xl p-3 mb-4 flex items-center gap-3 animate-pulse">
             <Lightbulb size={24} className="text-yellow-400 shrink-0" />
             <div className="flex-1">
-              <div className="text-yellow-300 text-sm font-bold">获得天赋点！</div>
-              <div className="text-yellow-400/70 text-xs">地下室通关奖励，可用于强化角色能力</div>
+              <div className="text-yellow-300 text-sm font-bold">{TEXT_CONFIG.ui.gameOver.talentUnlocked}</div>
+              <div className="text-yellow-400/70 text-xs">{TEXT_CONFIG.ui.gameOver.talentDesc}</div>
             </div>
             <button
               onClick={() => { audio?.playClick(); onOpenTalentTree(); }}
               className="shrink-0 bg-yellow-600 hover:bg-yellow-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1"
             >
               <Sparkles size={12} />
-              去加点
+              {TEXT_CONFIG.ui.gameOver.goAddPoints}
             </button>
           </div>
         )}
@@ -194,7 +195,7 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, g
               onClick={() => { audio?.playClick(); onNextScene(); }}
               className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-white font-bold py-3 px-6 rounded-xl transition-all hover:scale-105 active:scale-95 shadow-lg shadow-amber-900/40 animate-pulse"
             >
-              <span>下一关：{nextSceneName}</span>
+              <span>{TEXT_CONFIG.ui.gameOver.nextLevel(nextSceneName || '')}</span>
               <ChevronRight size={18} />
             </button>
           )}
@@ -204,7 +205,7 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, g
             className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 text-white font-bold py-3 px-6 rounded-xl transition-all hover:scale-105 active:scale-95 shadow-lg shadow-red-900/40"
           >
             <RotateCcw size={18} />
-            再来一局
+            {TEXT_CONFIG.ui.gameOver.playAgain}
           </button>
 
           <button
@@ -212,7 +213,7 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, g
             className="w-full flex items-center justify-center gap-2 bg-stone-800/80 hover:bg-stone-700/80 text-white font-bold py-3 px-6 rounded-xl transition-all hover:scale-105 active:scale-95 border border-stone-600/50 backdrop-blur-sm"
           >
             <Home size={18} />
-            返回主菜单
+            {TEXT_CONFIG.ui.gameOver.backToMenu}
           </button>
         </div>
       </div>

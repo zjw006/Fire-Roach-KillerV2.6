@@ -1,10 +1,11 @@
-/**
+﻿/**
  * @fileoverview 毒雾系统模块
  * @description 负责管理毒雾爆炸粒子、毒雾效果应用
  */
 
 import { RoachState, RoachType, ParticleType } from '../../types';
 import type { Particle, Roach, FireZone } from '../../types';
+import { BALANCE_CONFIG, TEXT_CONFIG } from '../../data';
 
 /**
  * 毒雾系统配置接口
@@ -48,15 +49,16 @@ export class PoisonSystem {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _radius: number
   ): void {
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < BALANCE_CONFIG.poisonCloud.particleCount; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const speed = 40 + Math.random() * 80;
+      const speed = BALANCE_CONFIG.poisonCloud.speedMin + Math.random() * BALANCE_CONFIG.poisonCloud.speedMax;
       particles.push({
         x, y,
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed - 20,
-        life: 0.5 + Math.random() * 0.8, maxLife: 1.3,
-        size: 4 + Math.random() * 12,
+        life: BALANCE_CONFIG.poisonCloud.lifeMin + Math.random() * BALANCE_CONFIG.poisonCloud.lifeMax,
+        maxLife: BALANCE_CONFIG.poisonCloud.maxLife,
+        size: BALANCE_CONFIG.poisonCloud.sizeMin + Math.random() * BALANCE_CONFIG.poisonCloud.sizeMax,
         color: `hsl(${260 + Math.random() * 30}, 80%, ${50 + Math.random() * 20}%)`,
         type: ParticleType.POISON_CLOUD,
       });
@@ -94,17 +96,18 @@ export class PoisonSystem {
       const dx = (r.x - x) / rx;
       const dy = (r.y - y) / ry;
       if (dx * dx + dy * dy < 1) {
-        r.poisonTimer = 6;
-        r.poisonDamage = 2;
-        r.hp -= 2;
+        r.poisonTimer = BALANCE_CONFIG.throwable.poison.poisonTimer;
+        r.poisonDamage = BALANCE_CONFIG.throwable.poison.poisonDamage;
+        r.hp -= BALANCE_CONFIG.throwable.poison.initialDamage;
         hitCount++;
       }
     }
 
     fireZones.push({
       x, y, radius: rx * 0.5,
-      damagePerSecond: 25,
-      life: 6, maxLife: 6,
+      damagePerSecond: BALANCE_CONFIG.poisonCloud.fireZoneDps,
+      life: BALANCE_CONFIG.poisonCloud.fireZoneLife,
+      maxLife: BALANCE_CONFIG.poisonCloud.fireZoneLife,
       type: 'poison',
     });
 
@@ -115,7 +118,7 @@ export class PoisonSystem {
       hitCount > 0 ? `毒雾!(${hitCount}只)` : '毒雾!',
       '#a78bfa'
     );
-    this.config.onScreenShake?.(3);
+    this.config.onScreenShake?.(BALANCE_CONFIG.screenShake.smallExplosion);
 
     return particles;
   }

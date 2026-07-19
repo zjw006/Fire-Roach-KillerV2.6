@@ -5,7 +5,7 @@
 
 import { SceneType, RoachState, RoachType } from '../../types';
 import type { RadarLaser, Roach, Player, TripleFlameState } from '../../types';
-import { SCENE_GROUND_BOUNDS } from '../../data';
+import { SCENE_GROUND_BOUNDS, TEXT_CONFIG } from '../../data';
 
 /** 杀虫剂喷雾状态（引擎内联类型） */
 export interface InsecticideSprayState {
@@ -465,7 +465,7 @@ export class RenderUtils {
     ctx.shadowBlur = 0;
 
     // Label background
-    const names: Record<string, string> = { sticky: '蟑螂贴板', poison: '杀虫剂', molotov: '燃烧瓶', shotgun: '散弹模式' };
+    const names: Record<string, string> = { sticky: TEXT_CONFIG.items.sticky, poison: TEXT_CONFIG.items.poison, molotov: TEXT_CONFIG.items.molotov, shotgun: TEXT_CONFIG.items.shotgun };
     const label1 = `点击放置 ${names[item.type] || '道具'}`;
     const label2 = `范围: X${rx} x Y${ry}`;
     ctx.font = 'bold 14px sans-serif';
@@ -526,7 +526,7 @@ export class RenderUtils {
     ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
     ctx.font = 'bold 13px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('防 线', w / 2, dl - 8);
+    ctx.fillText(TEXT_CONFIG.combat.defenseLine, w / 2, dl - 8);
 
     // ===== SHIELD: blue energy line 20px above defense line =====
     if (shieldTimer > 0) {
@@ -664,7 +664,7 @@ export class RenderUtils {
     ctx.textAlign = 'center';
     const lblX = (farL + farR) / 2;
     const lblY = Math.min(farLY, farRY);
-    ctx.fillText('蟑螂地面边界(6点折线)', lblX, lblY - 14);
+    ctx.fillText(TEXT_CONFIG.combat.groundBounds, lblX, lblY - 14);
 
     ctx.restore();
   }

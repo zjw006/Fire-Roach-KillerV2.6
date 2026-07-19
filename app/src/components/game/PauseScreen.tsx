@@ -5,6 +5,7 @@
  */
 
 import React from 'react';
+import { TEXT_CONFIG } from '@/game/data';
 import { Play, RotateCcw, Home, Flame } from 'lucide-react';
 import type { AudioManager } from '@/game/audio';
 
@@ -30,7 +31,7 @@ export const PauseScreen: React.FC<PauseScreenProps> = ({ onResume, onRestart, o
             <Flame size={22} className="text-orange-500" />
             <h2 className="text-3xl font-black text-amber-300 tracking-wider"
               style={{ textShadow: '0 2px 8px rgba(139,69,19,0.5), 0 0 20px rgba(245,158,11,0.3)' }}>
-              游戏暂停
+              {TEXT_CONFIG.ui.pause.title}
             </h2>
             <Flame size={22} className="text-orange-500" />
           </div>
@@ -47,8 +48,8 @@ export const PauseScreen: React.FC<PauseScreenProps> = ({ onResume, onRestart, o
                 <Play size={24} className="text-amber-300 ml-0.5" />
               </div>
               <div className="text-left">
-                <div className="text-amber-200 font-bold text-base">继续游戏</div>
-                <div className="text-amber-700 text-xs">返回战斗</div>
+                <div className="text-amber-200 font-bold text-base">{TEXT_CONFIG.ui.pause.resume}</div>
+                <div className="text-amber-700 text-xs">{TEXT_CONFIG.ui.pause.resumeDesc}</div>
               </div>
             </button>
 
@@ -59,8 +60,8 @@ export const PauseScreen: React.FC<PauseScreenProps> = ({ onResume, onRestart, o
                 <RotateCcw size={24} className="text-orange-300" />
               </div>
               <div className="text-left">
-                <div className="text-orange-200 font-bold text-base">重新开始</div>
-                <div className="text-orange-700 text-xs">重新挑战本关</div>
+                <div className="text-orange-200 font-bold text-base">{TEXT_CONFIG.ui.pause.restart}</div>
+                <div className="text-orange-700 text-xs">{TEXT_CONFIG.ui.pause.restartDesc}</div>
               </div>
             </button>
 
@@ -71,15 +72,15 @@ export const PauseScreen: React.FC<PauseScreenProps> = ({ onResume, onRestart, o
                 <Home size={24} className="text-stone-400" />
               </div>
               <div className="text-left">
-                <div className="text-stone-300 font-bold text-base">返回主菜单</div>
-                <div className="text-stone-600 text-xs">保存进度并退出</div>
+                <div className="text-stone-300 font-bold text-base">{TEXT_CONFIG.ui.pause.quit}</div>
+                <div className="text-stone-600 text-xs">{TEXT_CONFIG.ui.pause.quitDesc}</div>
               </div>
             </button>
           </div>
 
           {/* Bottom tagline */}
           <p className="mt-5 text-xs tracking-widest text-amber-900/60">
-            烈焰除蟑 · 火线守卫
+            {TEXT_CONFIG.ui.pause.tagline}
           </p>
         </div>
       </div>

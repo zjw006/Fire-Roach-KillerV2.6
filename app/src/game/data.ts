@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @fileoverview 游戏静态数据配置模块
  * @description 定义场景配置、敌人属性、对话内容、天赋树、成就、消耗品、波次配置等游戏核心数据。
  */
@@ -1106,3 +1106,823 @@ export const ENCYCLOPEDIA_DEFS: EncyclopediaEntry[] = [
     unlocked: true,
   },
 ]; // ENCYLOPEDIA_DEFS
+
+// ========== 全局平衡参数配置 ==========
+// 所有游戏数值集中在此，方便策划调整
+// 使用方式：import { BALANCE_CONFIG } from './data'; 然后 BALANCE_CONFIG.xxx.yyy
+export const BALANCE_CONFIG = {
+  // ===== 防线 =====
+  defense: {
+    baseHp: 80,                // 防线初始血量
+    repairPercent: 0.2,        // 防线修复道具回复比例
+  },
+
+  // ===== 玩家 / 燃气 =====
+  player: {
+    baseGasCapacity: 100,      // 基础燃气容量
+    baseFireRange: 440,        // 基础火焰射程
+    baseOverheatThreshold: 1800, // 基础过热阈值
+    heatDecayRate: { easy: 1.5, hard: 1 }, // 冷却速度
+    maxReloadTime: { easy: 8, hard: 15 },   // 最大装填时间
+    shotgunPellets: 5,         // 散弹弹丸数
+    nozzleOffsetY: 322,        // 枪口Y偏移
+    armorShieldCacheInterval: 0.3, // 护甲保护缓存更新间隔
+  },
+
+  // ===== 屏幕震动 =====
+  screenShake: {
+    weaponHit: 2,              // 普通武器命中
+    smallExplosion: 3,         // 小爆炸（毒雾、粘板）
+    mediumExplosion: 5,        // 中等爆炸
+    largeExplosion: 6,         // 大爆炸
+    biggerExplosion: 8,        // 更大爆炸（燃烧瓶）
+    breach: 10,                // 防线突破
+    bossDeath: 12,             // Boss死亡
+    swatter: 12,               // 电蚊拍
+    bigBossDeath: 20,          // 大型Boss死亡
+    massiveExplosion: 22,      // 巨大爆炸
+    queenDeath: 28,            // 女王死亡
+    decayThreshold: 0.5,       // 震动衰减阈值
+  },
+
+  // ===== 性能 =====
+  performance: {
+    particleLimit: { low: 150, medium: 200, high: 250, desktop: 400 },
+  },
+
+  // ===== 闪电天气 =====
+  lightning: {
+    timerMin: 5,               // 闪电间隔最小值
+    timerRandMax: 10,          // 闪电间隔随机范围
+    flashDuration: 0.3,        // 闪电闪光持续时间
+  },
+
+  // ===== 武器伤害 =====
+  weaponDamage: {
+    flamethrower: { easy: 45, hard: 30 },
+    poison: { easy: 20, hard: 12 },
+    shotgun: { easy: 50, hard: 35 },
+    molotov: { easy: 40, hard: 25 },
+    fallback: { easy: 45, hard: 30 }, // 未知武器回退伤害
+  },
+
+  // ===== 碰撞检测 =====
+  collision: {
+    beamHalfWidth: 15,         // 火焰光束半宽
+    armorDamageReduction: 0.2, // 护甲肉盾保护穿透比例
+    armorAbsorbRatio: 0.8,     // 护甲吸收伤害比例
+    panicTimerMin: 0.3,        // 恐慌最小时间
+    panicTimerMax: 0.5,        // 恐慌最大随机时间
+    bossDamageResist: 0.5,     // Boss火焰抗性
+    poisonTimer: 5,            // 毒气持续时间
+    poisonDamageNormal: 1,     // 毒气普通伤害
+    poisonDamageQueen: 2,      // 毒气女王伤害
+    damageFlashDuration: 0.4,  // 受击闪烁持续时间
+    bossDamageFlashDuration: 2.0, // Boss受击闪烁持续时间
+    defenseBreachDamage: {     // 各类型蟑螂突破防线伤害
+      small: { easy: 2, hard: 5 },
+      large: { easy: 5, hard: 15 },
+      flying: { easy: 3, hard: 8 },
+      armored: { easy: 4, hard: 12 },
+      splitting: { easy: 4, hard: 10 },
+      timedSuicide: { easy: 5, hard: 15 },
+      queen: { easy: 12, hard: 35 },
+    },
+  },
+
+  // ===== 雷达激光 =====
+  radarLaser: {
+    duration: 5,               // 激活持续时间
+    fireInterval: 0.3,         // 发射间隔
+    damage: 10,                // 单发伤害
+    shotsRemaining: 5,         // 弹数
+  },
+
+  // ===== 电蚊拍 =====
+  swatter: {
+    cooldownMax: 60,           // 最大冷却时间
+    stunDuration: 5,           // 麻痹持续时间
+    stunSpeedRatio: 0.2,       // 麻痹速度比例
+    animTimer: 0.6,            // 动画持续时间
+    maxInventory: 3,           // 最大库存
+  },
+
+  // ===== 投掷物 =====
+  throwable: {
+    sticky: { radius: 80, stuckTimer: 5, damage: 2, speedRatio: 0.2, fireZoneLife: 4, fireZoneDps: 30 },
+    poison: { radius: 90, poisonTimer: 6, poisonDamage: 2, initialDamage: 2, fireZoneLife: 6, fireZoneDps: 25 },
+    molotov: { radius: 70, baseDamage: 8, burnDamageMultiplier: 2, fireZoneLife: 5, fireZoneDps: 60 },
+    gravity: 400,              // 重力加速度
+    sparkCount: 10,            // 落地火花数量
+    explosionParticleCount: 25, // 爆炸粒子数量
+  },
+
+  // ===== 粘板/粘液弹 =====
+  sticky: {
+    dropCount: 10,             // 粘液弹数量
+    fireInterval: 0.08,        // 发射间隔
+    dropLife: 12,              // 粘液弹附着时间
+    wrapTimer: 12,             // 包裹计时器
+    damagePerTick: 0.5,        // 每跳伤害
+    damageFlash: 0.1,          // 伤害闪烁
+    boardLife: 5,              // 粘板生命周期
+    boardMaxStuck: 5,          // 粘板最大粘住数
+    boardBaseW: 240,           // 粘板基础宽度
+    boardBaseH: 240,           // 粘板基础高度
+    dropSpeed: 250,            // 粘液弹基础速度
+    dropSpeedRandom: 100,      // 粘液弹速度随机范围
+    dropInitialVy: 80,         // 粘液弹初始垂直速度
+    dropInitialVyRandom: 40,   // 粘液弹初始垂直速度随机范围
+    dropSize: 6,               // 粘液弹基础大小
+    dropSizeRandom: 3,         // 粘液弹大小随机范围
+    dropMaxLife: 3,            // 粘液弹最大生命周期
+    trackRange: 400,           // 追踪范围
+    trackSteerFactor: 5,       // 追踪转向系数
+    hitParticleCount: 8,       // 命中粒子数
+  },
+
+  // ===== 瞄准系统 =====
+  aiming: {
+    maxPowerTime: 1.5,         // 最大蓄力时间
+    minDist: 80,               // 最小瞄准距离
+    maxDist: 500,              // 最大瞄准距离
+    gravity: 400,              // 重力
+    travelTimeBase: 0.5,       // 飞行时间基础值
+    travelTimePowerMult: 0.3,  // 飞行时间蓄力系数
+    arcHeightBase: 100,        // 弧线高度基础值
+    arcHeightPowerMult: 150,   // 弧线高度蓄力系数
+    trajectorySteps: 30,       // 轨迹预览步数
+  },
+
+  // ===== Boss 战斗 =====
+  boss: {
+    baseHp: 10000,             // Boss基础血量
+    phaseChangeTimer: 6,       // 阶段切换计时器
+    deathAnimTimer: 1.75,      // 死亡动画计时器（7帧 at 4fps）
+    corpseStayTimer: 2.0,      // 尸体停留时间
+    timeLimit: 180,            // 时间限制
+    eyeHp: 800,                // 眼球血量
+    bellyHp: 1500,             // 腹部血量
+    maxShed: 3,                // 最大蜕皮次数
+    speed: 0.6,                // Boss移动速度
+    wobbleSpeed: 0.5,          // 摆动速度最小值
+    wobbleSpeedRandom: 1,      // 摆动速度随机范围
+    defenseLineOffset: 15,     // Boss防线偏移（安全网）
+  },
+
+  // ===== 波次系统 =====
+  wave: {
+    clearDelay: 2,             // 波次清除延迟
+    clearTimer: 6,             // 波次清除计时器（通关后）
+    baseReward: 50,            // 基础奖励
+    rewardPerWave: 10,         // 每波额外奖励
+    rewardMultiplier: { easy: 0.8, hard: 1.5 },
+    perfectMultiplier: 1.5,    // 完美波次奖励倍率
+    baseInterval: 0.8,         // 基础生成间隔
+    intervalMultiplier: { easy: 1.2, hard: 0.7 },
+    intervalReductionPerWave: 0.05, // 每波间隔减少
+    intervalMin: 0.2,          // 最小生成间隔
+    difficultyMultiplier: { easy: 0.7, hard: 1.5 },
+    difficultyPerWave: 0.1,    // 每波难度递增
+  },
+
+  // ===== 蟑螂 AI =====
+  roachAI: {
+    maxDeathChainDepth: 3,     // 最大死亡链深度
+    transformTimer: 0.2,       // 变异变形帧间隔
+    transformFrameCount: 7,    // 变异变形总帧数
+    flyingDeathVy: 150,        // 飞行蟑螂死亡垂直速度
+    flyingDeathVxRange: 40,    // 飞行蟑螂死亡水平速度范围
+    flyingDeathAngleSpeed: 8,  // 飞行蟑螂死亡旋转速度
+    damageFlashDecay: 5,       // 伤害闪烁衰减速度
+    deathTimerExtension: 0.1,  // 死亡计时器延长（变异变形中）
+    healRange: 360,            // 护士治疗范围
+    healPercent: 0.20,         // 护士治疗百分比
+    nurseShieldHp: 3,          // 护士护盾血量
+    mutantSpawnCount: 2,       // 变异死亡孵出小蟑螂数量
+    slimeBurstRange: 60,       // 粘液爆发范围
+    clusterChanceRadius: 200,  // 集群生成半径
+    bombPlacementDistance: 64, // 定时炸弹放置距离
+    bombCountdown: 3,          // 炸弹倒计时
+    bombExplosionRadius: 196,  // 炸弹爆炸半径
+    bombDamage: 50,            // 炸弹对蟑螂伤害
+    bombDefenseDamage: { easy: 8, hard: 20 }, // 炸弹对防线伤害
+    directionChangeInterval: 1.5, // Z字形方向切换间隔
+    wobbleAmplitude: 30,       // 摆动幅度
+    flyingWobbleAmplitude: 80, // 飞行蟑螂摆动幅度
+  },
+
+  // ===== 消耗品 =====
+  consumable: {
+    combatStartDelay: 1,       // 战斗开始延迟
+    buffFlashDuration: 2,      // 增益闪光持续时间
+    powerBoostDuration: 8,     // 火力全开持续时间
+    shieldDuration: 5,         // 护盾持续时间
+    baitDuration: 3,           // 诱饵持续时间
+    globalCooldown: 1,         // 全局冷却时间
+    baitThrowAnimDuration: 0.8, // 诱饵投掷动画时间
+  },
+
+  // ===== 无尽模式 =====
+  endless: {
+    newRecordTimer: 3,         // 新纪录显示时间
+  },
+
+  // ===== 武器掉落（场景配置） =====
+  weaponDropScene: {
+    dropLife: 12,              // 掉落生命周期
+    bobSpeed: 4,               // 漂浮速度
+    pickBaseX: 60,             // 拾取物基础X偏移
+    pickXRange: 120,           // 拾取物X偏移范围
+    maxInventory: 3,           // 每种类型最大库存
+    spawnIntervals: {
+      kitchen: 40, sewer: 35, dump: 30, basement: 25,
+      rooftop: 20, street: 25, hospital: 30, subway: 25,
+      supermarket: 25, school: 25, nest: 30,
+    } as Record<string, number>,
+  },
+
+  // ===== 毒雾粒子 =====
+  poisonCloud: {
+    particleCount: 20,         // 粒子数量
+    speedMin: 40,              // 粒子速度最小值
+    speedMax: 80,              // 粒子速度随机范围
+    lifeMin: 0.5,              // 粒子生命周期最小值
+    lifeMax: 0.8,              // 粒子生命周期随机范围
+    maxLife: 1.3,              // 粒子最大生命周期
+    sizeMin: 4,                // 粒子大小最小值
+    sizeMax: 12,               // 粒子大小随机范围
+    fireZoneDps: 25,           // 火焰区域DPS
+    fireZoneLife: 6,           // 火焰区域生命周期
+  },
+
+  // ===== 杀虫剂喷雾 =====
+  insecticide: {
+    sprayDuration: 0.15,       // 喷雾持续时间
+    sideParticleCount: 6,      // 侧边粒子数量
+    particleLifeMin: 0.3,      // 粒子生命周期最小值
+    particleLifeMax: 0.4,      // 粒子生命周期随机范围
+    particleSpeedMin: 100,     // 粒子速度最小值
+    particleSpeedMax: 80,      // 粒子速度随机范围
+    particleAlphaMin: 0.25,    // 粒子透明度最小值
+    particleAlphaMax: 0.25,    // 粒子透明度随机范围
+    centerParticleCount: 3,    // 中心粒子数量
+    centerParticleLifeMin: 0.2,
+    centerParticleLifeMax: 0.25,
+    suffocationTimer: 8,       // 窒息持续时间
+    suffocationDps: 1,         // 窒息每秒伤害
+  },
+
+  // ===== 风扇系统 =====
+  fan: {
+    pushForce: 0.5,            // 推力系数
+    waveCount: 18,             // 风扇波数量
+    waveSpeedBase: 2.0,        // 波速基础值
+    waveSpeedIncrement: 0.3,   // 波速增量
+    waveAmplitudeBase: 14,     // 波幅基础值
+    waveAmplitudeIncrement: 1.5, // 波幅增量
+    perspectiveScaleMin: 0.08, // 透视缩放最小值
+    gustCount: 5,              // 阵风数量
+
+    // ===== 暂停菜单 =====
+    pause: {
+      title: '游戏暂停',
+      resume: '继续游戏',
+      resumeDesc: '返回战斗',
+      restart: '重新开始',
+      restartDesc: '重新挑战本关',
+      quit: '返回主菜单',
+      quitDesc: '保存进度并退出',
+      tagline: '烈焰除蟑 · 火线守卫',
+    },
+
+    // ===== 道具揭示 =====
+    itemReveal: {
+      newUnlock: '战斗胜利！解锁新道具',
+      zhangshuSays: '蟑叔说：',
+      clickToClose: '点击任意处关闭',
+    },
+
+    // ===== 道具回收 =====
+    itemRecycle: {
+      title: '道具回收',
+    },
+
+    // ===== 场景选择 =====
+    sceneSelect: {
+      title: '场景选择',
+      unlocked: '已解锁',
+      rewardMultiplier: '奖励',
+      unlockCondition: '通关',
+      enemyStrength: '敌人强度',
+      rewardRate: '奖励倍率',
+      weather: '天气',
+      weatherNone: '无',
+      weatherRain: '雨',
+      weatherFog: '雾',
+      weatherNight: '夜间',
+    },
+
+    // ===== 道具准备 =====
+    preparation: {
+      title: '道具选择',
+      selectHint: '选择',
+      battle: '开始战斗',
+      categories: {
+        control: '控制',
+        aoe: '范围',
+        burst: '爆发',
+      },
+    },
+
+    // ===== 天赋树 =====
+    talentTree: {
+      title: '天赋树',
+      talentPoints: '天赋点',
+      skipTutorial: '跳过引导',
+      nextStep: '下一步',
+      doneTutorial: '知道了，开始加点',
+      zhangshu: '蟑叔',
+      currentLevel: '当前等级',
+      upgradeCost: '升级消耗',
+      maxed: '已满级',
+      upgrade: '升级天赋',
+      insufficient: '天赋点不足',
+      categories: {
+        combat: '战斗强化',
+        survival: '生存强化',
+        utility: '辅助强化',
+        item: '道具专精',
+      },
+      tutorialSteps: [
+        '这是「火焰伤害」，提升你的火焰喷射伤害！每级+10%伤害，最多5级。对付大蟑螂特别有效！',
+        '这是「火焰范围」，增加喷射距离！每级+15%范围，最多5级。烧得更远更安全！',
+        '这是「气罐容量」，增加燃料上限！每级+20%容量，最多5级。少换气罐多烧一会儿！',
+        '这是「过热抗性」，提升过热上限！每级+15%阈值，最多5级。连续喷射不容易熄火！',
+        '这是「冷却速度」，加快散热速度！每级+20%冷却，最多5级。熄火后更快恢复开火！',
+        '这是「防线生命」，增加防线血量！每级+15%血量，最多5级。防线更坚挺，蟑螂更难突破！',
+      ],
+    },
+  },
+} as const;
+
+// ========== 全局文本配置 ==========
+// 所有游戏中显示的UI文字和特效文字集中在此，方便策划调整和未来多语言扩展
+// 使用方式：import { TEXT_CONFIG } from './data'; 然后 TEXT_CONFIG.combat.xxx 或 TEXT_CONFIG.ui.xxx
+export const TEXT_CONFIG = {
+  // ===== 战斗特效文字 =====
+  combat: {
+    // 防线/碰撞
+    defenseBreach: '防线突破!',
+    shieldBlock: '护盾抵消!',
+    armorBreak: '破甲!',
+    armorShatter: '护甲碎裂!',
+    armorImmune: '护甲免疫',
+
+    // 投掷物落地
+    stickyLand: '冰冻!',
+    poisonLand: '毒雾!',
+    molotovLand: '燃烧!',
+
+    // 蟑螂贴板
+    stickyLaunch: '蟑螂贴板发射!',
+    stickyTracking: '10个追踪水滴',
+    stickyCapture: '粘住12秒!',
+    stickyBoard: '贴板!',
+    stickyStuck: '粘住!',
+
+    // 雷达激光
+    radarActivate: '雷达激光启动! 自动追踪目标',
+    radarDesc: '5发激光，伤害与小蟑螂一致',
+    radarCountdown: (s: number) => `雷达激光 ${s}秒...`,
+    radarClosing: '雷达激光即将关闭!',
+    radarClosed: '雷达激光关闭',
+    radarShot: (n: number) => `激光 x${n}`,
+    radarExhausted: '激光发射完毕!',
+    radarKill: '激光击杀!',
+
+    // 电蚊拍
+    swatterReady: '⚡ 电蚊拍就绪!',
+    swatterHit: (hit: number, armor: number) => `⚡电蚊拍全屏!命中${hit}只!破甲${armor}!`,
+    swatterHitParalyze: (hit: number) => `⚡电蚊拍全屏!命中${hit}只!麻痹!`,
+    swatterMiss: '⚡电蚊拍!未命中',
+    swatterNoItem: '没有电蚊拍!',
+    swatterCooldown: (s: string) => `电蚊拍冷却中... (${s}s)`,
+    globalCooldown: (s: string) => `道具冷却中... (${s}s)`,
+    swatterPickup: '获得电蚊拍!',
+
+    // 强力风扇
+    fanActivate: '强力风扇启动!',
+    fanDesc: '蟑螂被吹退8秒!',
+    fanStop: '风扇停止',
+
+    // 毒气喷射
+    insecticideActivate: '双侧毒气喷射!',
+    insecticideDesc: '两侧横向毒雾3秒',
+    insecticideClosing: '毒气喷射即将结束!',
+    insecticideEnd: '毒气喷射结束',
+    insecticideHit: (n: number) => `毒气命中${n}只!`,
+
+    // 蟑螂AI
+    queenSummon: '女王召唤了小蟑螂!',
+    bombPlaced: '炸弹已安放!',
+    transformBig: '变身大蟑螂!',
+    nurseCasting: '【施法中】',
+    nurseIllegal: '非法行医!',
+    bombFailed: '炸弹没响...',
+    corpseBomb: (s: number) => `尸体炸弹 ${s}秒!`,
+    bossDefeated: 'BOSS 击败!',
+    killReward: (reward: number) => `+¥${reward}`,
+
+    // Boss
+    bossAppear: '螂老大出现了!',
+    bossSpawnEggs: '它正在产卵!消灭虫卵!',
+    bossDefeatedText: '螂老大被消灭了!',
+    victory: '胜利!',
+    bossSummon: '召唤虫卵!',
+    bossDialogue1: '螂老大: "不...不可能!"',
+    bossDialogue2: '螂老大: "我的虫卵大军...全灭了..."',
+
+    // 波次
+    waveCleared: '支援单位已清除，推进下一波!',
+    waveClearedN: (wave: number) => `第${wave}波清除!`,
+    gameVictory: '游戏胜利',
+    countdown: '倒计时3-2-1...',
+
+    // 消耗品
+    gasRefill: '燃气已回满!',
+    powerBoost: (s: number) => `>>> 火力全开 ${s}秒 <<<`,
+    shieldActive: (s: number) => `>>> 防线护盾 ${s}秒 <<<`,
+
+    // 渲染器
+    transformCountdown: (s: number) => `变身! ${s}s`,
+    spawnCount: (n: number) => `生成${n}只!`,
+    roachQueen: '蟑螂女王',
+    defenseLine: '防 线',
+    groundBounds: '蟑螂地面边界(6点折线)',
+
+    // 蟑螂AI - 更多
+    nurseSpray: '治疗喷射!',
+    bigExplosion: (n: number) => `大爆炸!(${n}只受波及)`,
+    deathExplosion: (n: number) => `死亡爆炸!(${n}只受波及)`,
+    boom: '轰!',
+    splitSpawn: '分裂x5!',
+    disintegrate: '解体!',
+    explode: (n: number) => `爆炸!(${n}只受波及)`,
+    embryoBurst: '【胚胎暴走】',
+    acidSplash: '酸液飞溅!',
+    acidCorrode: (n: number) => `${n}只受腐蚀`,
+    suicideDamage: (dmg: number) => `自爆伤害! -${dmg}`,
+    bombExplode: (dmg: number) => `炸弹爆炸! -${dmg}`,
+    backlash: (dmg: number) => `反噬 -${dmg}`,
+    spawnBirth: (name: string) => `【诞生】${name}!`,
+
+    // 消耗品 - 更多
+    baitPlaced: '>>> 蟑螂诱饵已投放 <<<',
+    baitEnd: '诱饵效果 消失',
+    powerBoostEnd: '火力全开 结束',
+    shieldEnd: '防线护盾 消失',
+
+    // 天气
+    lightning: '⚡ 闪电 ⚡',
+
+    // 三喷火枪
+    tripleFlameActivate: '三喷火枪模式! 持续10秒',
+    tripleFlameWarning: '⚠ 三喷火枪即将消失! 5秒 ⚠',
+    tripleFlameEnd: '三喷火枪模式结束',
+
+    // 风扇
+    fanBlowing: '吹退中',
+
+    // Boss - 更多
+    bossDialogue3: '螂老大: "这次算你赢了!我会回来的!"',
+    bossFlee: '螂老大飞走了...',
+    bossPhase1: '第一波:虫卵',
+    bossAppearTitle: '【螂老大来袭】',
+    bossDefendLine: '消灭虫卵和蟑螂!保卫防线!',
+    bossDialogueShort: '不...不可能!我的虫卵大军...',
+    bossSummoning: 'BOSS正在召唤虫卵...',
+    preparing: '准备中',
+    bossFleeing: 'BOSS逃跑中',
+
+    // 投掷物 - 更多
+    poisonHit: (n: number) => `毒雾!(${n}只)`,
+
+    // 放置
+    placeItem: (name: string) => `点击放置 ${name}`,
+  },
+
+  // ===== 道具名称 =====
+  items: {
+    sticky: '蟑螂贴板',
+    poison: '杀虫剂',
+    insecticide: '杀虫喷雾',
+    molotov: '燃烧瓶',
+    shotgun: '散弹模式',
+    radar: '雷达激光',
+    fan: '强力风扇',
+    swatter: '电蚊拍',
+  },
+
+  // ===== 武器名称 =====
+  weapons: {
+    flamethrower: '火焰',
+    shotgun: '散弹',
+  },
+
+  // ===== UI 组件文字 =====
+  ui: {
+    // 标题屏幕
+    title: {
+      title: '蟑螂猎手',
+      subtitle: 'ROACH BLASTER',
+      lore: '一寸灰烬，一寸血',
+      clickToStart: '点击开始',
+      initializing: '初始化系统...',
+      loadingHints: [
+        '正在连接灰烬区网络...',
+        '加载蟑螂基因数据库...',
+        '校准火焰喷射器...',
+        '检查丙烷燃料储备...',
+        '扫描辐射水平...',
+        '同步雷达激光系统...',
+        '读取蟑叔的除虫日志...',
+        '正在初始化防线...',
+        '蟑螂感应器预热中...',
+        '准备燃烧瓶弹药...',
+      ],
+    },
+
+    // 主菜单
+    menu: {
+      title: '烈焰除蟑',
+      subtitle: '火线守卫',
+      storyMode: '剧情模式',
+      endlessMode: '无尽模式',
+      selectDifficulty: '选择难度',
+      selectScene: '选择关卡',
+      easy: '简单模式',
+      hard: '困难模式',
+      back: '返回',
+      reset: '重置',
+      resetTitle: '重置进度',
+      resetDesc: '此操作不可恢复',
+      resetConfirm: '确定要删除所有游戏存档吗？包括天赋点、关卡解锁进度、成就和设置都将被清除。',
+      cancel: '取消',
+      confirmDelete: '确认删除',
+      shop: '道具商店',
+      talent: '天赋',
+      achievements: '成就',
+      encyclopedia: '图鉴',
+      locked: '锁定',
+      rewardMultiplier: (n: number) => `x${n}奖励`,
+      mute: '静音',
+      unmute: '开启音效',
+      easyShort: '简单',
+      hardShort: '困难',
+      storyDesc: '10波标准关卡',
+      endlessDesc: '无限波次挑战',
+      backToDifficulty: '[ 返回难度选择 ]',
+      backToMode: '返回模式选择',
+      storyDifficultySelect: (difficulty: string) => `${difficulty} — 选择一个场景`,
+    },
+
+    // HUD
+    hud: {
+      gas: '燃气',
+      wave: '波次',
+      waveDisplay: (current: number, total?: number) => total !== undefined && total > 0 ? `波次 ${current}/${total}` : `波次 ${current}`,
+      money: '资金',
+      kills: '击杀',
+      defense: '防线',
+      tripleFlamethrower: '三喷火枪',
+      reload: '换罐',
+      reloading: (s: number) => `换罐中...${s}s`,
+      reloadFree: '免费',
+      reloadCost: '¥5',
+      overheating: '过热警告!',
+      emergencyCool: (n: number) => `紧急冷却 (${n}次)`,
+      coolExhausted: '冷却已用完',
+      placeItem: '点击屏幕放置位置',
+      cancelPlace: '点击图标取消',
+      itemCooldown: (name: string) => `${name} 冷却中...`,
+    },
+
+    // 倒计时
+    countdown: {
+      battleStart: '战斗开始！',
+      prepare: '准备战斗',
+    },
+
+    // 成就
+    achievements: {
+      title: '成就系统',
+      all: '全部',
+      unlocked: '已解锁',
+      locked: '未解锁',
+      completion: (p: string) => `完成度 ${p}%`,
+      empty: '该分类下没有成就',
+      back: '返回',
+      conditionDescriptions: {
+        first_blood: '击杀第1只蟑螂',
+        roach_slayer: '累计击杀100只蟑螂',
+        roach_exterminator: '累计击杀1000只蟑螂',
+        wave_5: '通关第5波',
+        wave_10: '通关第10波',
+        endless_20: '无尽模式达到20波',
+        endless_50: '无尽模式达到50波',
+        money_1000: '累计获得1000金钱',
+        perfect_wave: '完成1次完美波次（无防线突破）',
+        no_breach: '连续10波无防线突破',
+        kill_queen: '击杀1只女王蟑螂',
+        kill_flying: '累计击杀50只飞行蟑螂',
+        kill_armored: '累计击杀30只装甲蟑螂',
+        weapon_master: '解锁5种武器',
+        talent_first: '学习第1个天赋',
+      },
+    },
+
+    // 图鉴
+    encyclopedia: {
+      title: '蟑螂图鉴',
+      totalKills: (n: number) => `累计击杀 ${n} 只蟑螂`,
+      totalKillsPrefix: '累计击杀 ',
+      totalKillsSuffix: ' 只蟑螂',
+      hp: '生命值',
+      speed: '速度',
+      specialAbility: '特殊能力',
+      description: '描述',
+      funFact: '趣味冷知识',
+      close: '关闭',
+      killed: (n: number) => `已击杀 ${n} 只`,
+      killedSimple: (n: number) => `击杀 ${n}`,
+      hint: '点击已解锁的蟑螂查看详细信息',
+      back: '返回',
+    },
+
+    // 漫画
+    comic: {
+      skip: '跳过',
+      syncing: '同步数据中...',
+      startBattle: '开始战斗',
+      clickToSkip: '[ 点击跳过 ]',
+      clickOrSwipe: '[ 点击或滑动切换 ]',
+      comicPanelAlt: (n: number) => `漫画 ${n}`,
+    },
+
+    // 对话
+    dialog: {
+      skip: '跳过',
+      clickToSkip: '点击跳过打字',
+      starting: '即将开始...',
+      clickToContinue: '点击继续',
+    },
+
+    // 商店
+    shop: {
+      title: '补给站',
+      buy: '购买',
+      insufficient: '资金不足',
+      desc: '购买一次性消耗品，为下一关做准备',
+      hardMode: '[困难模式]',
+      currentMoney: '当前资金',
+      talentPoints: '天赋点',
+      totalKills: '总击杀',
+      flameCategory: '火枪相关',
+      supportCategory: '辅助道具',
+      talentUnlocked: '获得天赋点！',
+      talentDesc: '通关奖励，可用于永久强化角色能力',
+      goAddPoints: '去加点',
+      ownedItems: '已拥有道具',
+      noItems: '暂无道具',
+      nextLevel: (name: string) => `进入下一关：${name}`,
+      playAgain: '再来一局',
+      backToMenu: '返回主菜单',
+    },
+
+    // 无尽模式
+    endless: {
+      currentRun: '本次坚持',
+      bestRecord: '历史最高',
+      newRecord: '你创造了新纪录!',
+    },
+
+    // 游戏结束
+    gameOver: {
+      bossDefeatedShort: '螂老大被消灭!',
+      bossVictoryDesc: '下水道重获安宁',
+      victoryDesc: '成功守住所有波次',
+      defeatDesc: '蟑螂突破了防线',
+      bossModeName: 'BOSS战',
+      dailyModeName: '每日挑战',
+      defenseBreached: '防线失守',
+      endlessDefeat: (wave: number) => `无尽模式坚持了 ${wave} 波`,
+      waveReached: '到达波次',
+      totalKills: '总击杀',
+      finalMoney: '最终资金',
+      smallRoach: '小蟑螂',
+      largeRoach: '大蟑螂',
+      flying: '飞行',
+      armored: '装甲',
+      splitting: '分裂',
+      queen: '女王',
+      breaches: '防线突破',
+      talentUnlocked: '获得天赋点！',
+      talentDesc: '地下室通关奖励，可用于强化角色能力',
+      goAddPoints: '去加点',
+      nextLevel: (name: string) => `下一关：${name}`,
+      playAgain: '再来一局',
+      backToMenu: '返回主菜单',
+      storyMode: '剧情模式',
+      endlessMode: '无尽模式',
+    },
+
+    // 通用
+    common: {
+      back: '返回',
+      close: '关闭',
+      cancel: '取消',
+      confirm: '确认',
+    },
+
+    // ===== 天赋树 =====
+    talentTree: {
+      title: '天赋树',
+      talentPoints: '天赋点',
+      skipTutorial: '跳过引导',
+      nextStep: '下一步',
+      doneTutorial: '知道了，开始加点',
+      zhangshu: '蟑叔',
+      currentLevel: '当前等级',
+      upgradeCost: '升级消耗',
+      maxed: '已满级',
+      upgrade: '升级天赋',
+      insufficient: '天赋点不足',
+      categories: {
+        combat: '战斗强化',
+        survival: '生存强化',
+        utility: '辅助强化',
+        item: '道具专精',
+      },
+      tutorialSteps: [
+        '这是「火焰伤害」，提升你的火焰喷射伤害！每级+10%伤害，最多5级。对付大蟑螂特别有效！',
+        '这是「火焰范围」，增加喷射距离！每级+15%范围，最多5级。烧得更远更安全！',
+        '这是「气罐容量」，增加燃料上限！每级+20%容量，最多5级。少换气罐多烧一会儿！',
+        '这是「过热抗性」，提升过热上限！每级+15%阈值，最多5级。连续喷射不容易熄火！',
+        '这是「冷却速度」，加快散热速度！每级+20%冷却，最多5级。熄火后更快恢复开火！',
+        '这是「防线生命」，增加防线血量！每级+15%血量，最多5级。防线更坚挺，蟑螂更难突破！',
+      ],
+    },
+
+    // ===== 暂停菜单 =====
+    pause: {
+      title: '游戏暂停',
+      resume: '继续游戏',
+      resumeDesc: '返回战斗',
+      restart: '重新开始',
+      restartDesc: '重新挑战本关',
+      quit: '返回主菜单',
+      quitDesc: '保存进度并退出',
+      tagline: '烈焰除蟑 · 火线守卫',
+    },
+
+    // ===== 道具揭示 =====
+    itemReveal: {
+      newUnlock: '战斗胜利！解锁新道具',
+      zhangshuSays: '蟑叔说：',
+      clickToClose: '点击任意处关闭',
+    },
+
+    // ===== 道具回收 =====
+    itemRecycle: {
+      title: '道具回收',
+    },
+
+    // ===== 场景选择 =====
+    sceneSelect: {
+      title: '场景选择',
+      unlocked: '已解锁',
+      rewardMultiplier: '奖励',
+      unlockCondition: '通关',
+      enemyStrength: '敌人强度',
+      rewardRate: '奖励倍率',
+      weather: '天气',
+      weatherNone: '无',
+      weatherRain: '雨',
+      weatherFog: '雾',
+      weatherNight: '夜间',
+    },
+
+    // ===== 道具准备 =====
+    preparation: {
+      title: '道具选择',
+      selectHint: '选择',
+      battle: '开始战斗',
+      categories: {
+        control: '控制',
+        aoe: '范围',
+        burst: '爆发',
+      },
+    },
+  },
+} as const;

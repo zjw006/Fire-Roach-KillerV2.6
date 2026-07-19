@@ -4,7 +4,7 @@
  */
 
 import { GameState, RoachType, RoachState, type Roach, type Player, type TripleFlameState } from '../../types';
-import { ENEMY_DEFS, BOSS_CONFIG } from '../../data';
+import { ENEMY_DEFS, BOSS_CONFIG, BALANCE_CONFIG, TEXT_CONFIG } from '../../data';
 
 /**
  * 碰撞检测系统配置接口
@@ -98,19 +98,19 @@ export class CollisionSystem {
   private adjustWeaponDamageForDifficulty(): void {
     // 重置为默认伤害值
     this.weaponDamageConfigs = {
-      flamethrower: { baseDamage: 45, falloffFactor: 0.7 },
+      flamethrower: { baseDamage: BALANCE_CONFIG.weaponDamage.flamethrower.easy, falloffFactor: 0.7 },
       sticky: { baseDamage: 0, falloffFactor: 0 }, // 粘板无伤害
-      poison: { baseDamage: 20, falloffFactor: 0.7 },
-      shotgun: { baseDamage: 50, falloffFactor: 0.5 },
-      molotov: { baseDamage: 40, falloffFactor: 0.6 },
+      poison: { baseDamage: BALANCE_CONFIG.weaponDamage.poison.easy, falloffFactor: 0.7 },
+      shotgun: { baseDamage: BALANCE_CONFIG.weaponDamage.shotgun.easy, falloffFactor: 0.5 },
+      molotov: { baseDamage: BALANCE_CONFIG.weaponDamage.molotov.easy, falloffFactor: 0.6 },
     };
     
     // 根据难度调整伤害
     if (this.config.difficulty === 'hard') {
-      this.weaponDamageConfigs.flamethrower.baseDamage = 30;
-      this.weaponDamageConfigs.poison.baseDamage = 12;
-      this.weaponDamageConfigs.shotgun.baseDamage = 35;
-      this.weaponDamageConfigs.molotov.baseDamage = 25;
+      this.weaponDamageConfigs.flamethrower.baseDamage = BALANCE_CONFIG.weaponDamage.flamethrower.hard;
+      this.weaponDamageConfigs.poison.baseDamage = BALANCE_CONFIG.weaponDamage.poison.hard;
+      this.weaponDamageConfigs.shotgun.baseDamage = BALANCE_CONFIG.weaponDamage.shotgun.hard;
+      this.weaponDamageConfigs.molotov.baseDamage = BALANCE_CONFIG.weaponDamage.molotov.hard;
     }
   }
 
@@ -130,9 +130,9 @@ export class CollisionSystem {
     if (!player.isFiring || player.isOverheated || player.isReloading || player.gas <= 0) return;
 
     // 确定喷火器位置
-    const nozzleY = player.y - 322;
+    const nozzleY = player.y - BALANCE_CONFIG.player.nozzleOffsetY;
     const maxRange = player.fireRange * 0.5;
-    const beamHalfWidth = 15;
+    const beamHalfWidth = BALANCE_CONFIG.collision.beamHalfWidth;
 
     // 构建枪口位置列表（支持三重火焰）
     const guns: { x: number; damageMult: number }[] = [
@@ -175,7 +175,7 @@ export class CollisionSystem {
           let damage = this.getWeaponDamage(player.currentWeapon) * player.damageMultiplier * falloff * gun.damageMult;
 
           if (r.type === RoachType.QUEEN) {
-            damage *= (1 - BOSS_CONFIG.queen.resistPercent);
+            damage *= (1 - BALANCE_CONFIG.collision.bossDamageResist);
           }
           this.applyWeaponEffect(r, player.currentWeapon);
           r.burnDamage += damage;
@@ -193,7 +193,7 @@ export class CollisionSystem {
    */
   triggerPanicOnArmorBreak(roach: Roach, isStuckByBoard: boolean): void {
     if (roach.armorHp <= 0 && roach.panicTimer <= 0 && !isStuckByBoard) {
-      roach.panicTimer = 0.3 + Math.random() * 0.5;
+      roach.panicTimer = BALANCE_CONFIG.collision.panicTimerMin + Math.random() * BALANCE_CONFIG.collision.panicTimerMax;
       
       if (roach.type === RoachType.SUICIDE || roach.type === RoachType.FLYING_SUICIDE) {
         // 自杀蟑螂：护甲破碎时冲向防御线
@@ -214,7 +214,7 @@ export class CollisionSystem {
   getWeaponDamage(weapon: string): number {
     const config = this.weaponDamageConfigs[weapon];
     if (!config) {
-      return this.config.difficulty === 'hard' ? 30 : 45;
+      return this.config.difficulty === 'hard' ? BALANCE_CONFIG.weaponDamage.fallback.hard : BALANCE_CONFIG.weaponDamage.fallback.easy;
     }
     return config.baseDamage;
   }
@@ -228,8 +228,8 @@ export class CollisionSystem {
     switch (weapon) {
       case 'poison':
         if (roach.poisonTimer <= 0) {
-          roach.poisonTimer = 5;
-          roach.poisonDamage = roach.type === RoachType.QUEEN ? 2 : 1;
+          roach.poisonTimer = BALANCE_CONFIG.collision.poisonTimer;
+          roach.poisonDamage = roach.type === RoachType.QUEEN ? BALANCE_CONFIG.collision.poisonDamageQueen : BALANCE_CONFIG.collision.poisonDamageNormal;
         }
         break;
       // 粘板无伤害效果 - 由粘板系统处理
@@ -283,20 +283,20 @@ export class CollisionSystem {
 
       let dmg = 0;
       switch (r.type) {
-        case RoachType.SMALL: dmg = this.config.difficulty === 'hard' ? 5 : 2; break;
-        case RoachType.LARGE: dmg = this.config.difficulty === 'hard' ? 15 : 5; break;
-        case RoachType.FLYING: dmg = this.config.difficulty === 'hard' ? 8 : 3; break;
-        case RoachType.ARMORED: dmg = this.config.difficulty === 'hard' ? 12 : 4; break;
-        case RoachType.SPLITTING: dmg = this.config.difficulty === 'hard' ? 10 : 4; break;
+        case RoachType.SMALL: dmg = this.config.difficulty === 'hard' ? BALANCE_CONFIG.collision.defenseBreachDamage.small.hard : BALANCE_CONFIG.collision.defenseBreachDamage.small.easy; break;
+        case RoachType.LARGE: dmg = this.config.difficulty === 'hard' ? BALANCE_CONFIG.collision.defenseBreachDamage.large.hard : BALANCE_CONFIG.collision.defenseBreachDamage.large.easy; break;
+        case RoachType.FLYING: dmg = this.config.difficulty === 'hard' ? BALANCE_CONFIG.collision.defenseBreachDamage.flying.hard : BALANCE_CONFIG.collision.defenseBreachDamage.flying.easy; break;
+        case RoachType.ARMORED: dmg = this.config.difficulty === 'hard' ? BALANCE_CONFIG.collision.defenseBreachDamage.armored.hard : BALANCE_CONFIG.collision.defenseBreachDamage.armored.easy; break;
+        case RoachType.SPLITTING: dmg = this.config.difficulty === 'hard' ? BALANCE_CONFIG.collision.defenseBreachDamage.splitting.hard : BALANCE_CONFIG.collision.defenseBreachDamage.splitting.easy; break;
         case RoachType.SUICIDE:
         case RoachType.FLYING_SUICIDE:
           suicideExplodeIndices.push(i);
           continue;
         case RoachType.TIMED_SUICIDE:
-          if (r.hasPlacedBomb) { dmg = this.config.difficulty === 'hard' ? 15 : 5; }
+          if (r.hasPlacedBomb) { dmg = this.config.difficulty === 'hard' ? BALANCE_CONFIG.collision.defenseBreachDamage.timedSuicide.hard : BALANCE_CONFIG.collision.defenseBreachDamage.timedSuicide.easy; }
           else { r.y = defenseLineY - 64; continue; }
           break;
-        case RoachType.QUEEN: dmg = this.config.difficulty === 'hard' ? 35 : 12; break;
+        case RoachType.QUEEN: dmg = this.config.difficulty === 'hard' ? BALANCE_CONFIG.collision.defenseBreachDamage.queen.hard : BALANCE_CONFIG.collision.defenseBreachDamage.queen.easy; break;
       }
 
       dmg = Math.floor(dmg * (1 - player.damageReduction));
@@ -315,7 +315,7 @@ export class CollisionSystem {
         callbacks.onPlayBreach?.();
         callbacks.onVibrateBreach?.();
       }
-      callbacks.onScreenShake?.(10);
+      callbacks.onScreenShake?.(BALANCE_CONFIG.screenShake.breach);
 
       removedIndices.push(i);
       if (r.isBoss) activeBosses.value--;
@@ -347,14 +347,14 @@ export class CollisionSystem {
 
     // 护甲肉盾保护：仅20%伤害穿透
     if (r.armorHp <= 0 && armorShieldCache.has(r.id)) {
-      damage *= 0.2;
+      damage *= BALANCE_CONFIG.collision.armorDamageReduction;
     }
 
     // 护甲吸收80%火焰伤害
     if (r.armorHp > 0) {
-      const armorAbsorb = Math.min(r.armorHp, damage * 0.8);
+      const armorAbsorb = Math.min(r.armorHp, damage * BALANCE_CONFIG.collision.armorAbsorbRatio);
       r.armorHp -= armorAbsorb;
-      damage *= 0.2;
+      damage *= BALANCE_CONFIG.collision.armorDamageReduction;
       if (r.armorHp <= 0) {
         this.config.onSpawnSpark?.(r.x, r.y, 8);
         const label = r.type === RoachType.NURSE || r.type === RoachType.TIMED_SUICIDE ? '护甲碎裂!' : '破甲!';
@@ -363,7 +363,7 @@ export class CollisionSystem {
     }
     r.hp -= damage;
     const hasProtection = r.armorHp > 0;
-    r.damageFlash = hasProtection ? 0 : (r.isBoss ? 2.0 : 0.4);
+    r.damageFlash = hasProtection ? 0 : (r.isBoss ? BALANCE_CONFIG.collision.bossDamageFlashDuration : BALANCE_CONFIG.collision.damageFlashDuration);
   }
 
   /**

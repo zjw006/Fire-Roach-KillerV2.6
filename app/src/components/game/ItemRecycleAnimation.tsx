@@ -5,7 +5,7 @@
  */
 
 import React, { useEffect, useState, useRef } from 'react';
-import { INVENTORY_SELL_PRICES, WEAPON_DROP_DEFS } from '@/game/data';
+import { INVENTORY_SELL_PRICES, WEAPON_DROP_DEFS, TEXT_CONFIG } from '@/game/data';
 
 /** 单个回收道具的飞行参数 */
 interface RecycleItem {

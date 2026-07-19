@@ -10,6 +10,7 @@ import { SkipForward, ChevronLeft, ChevronRight, Swords } from 'lucide-react';
 import type { ComicChapter } from '@/game/comicData';
 import { markComicSeen } from '@/game/comicData';
 import { AudioManager } from '@/game/audio';
+import { TEXT_CONFIG } from '@/game/data';
 
 interface ComicViewerProps {
   chapter: ComicChapter;
@@ -247,7 +248,7 @@ export const ComicViewer: React.FC<ComicViewerProps> = ({ chapter, onComplete, o
           {/* Rivet bottom-right */}
           <div className="absolute -bottom-1 -right-1 w-2 h-2 rounded-full" style={{ background: 'radial-gradient(circle at 30% 30%, #6b5b4a, #3d3020)', boxShadow: '0 0 0 1px #1a1410' }} />
           <SkipForward size={13} />
-          <span className="text-xs font-mono tracking-wider">跳过</span>
+          <span className="text-xs font-mono tracking-wider">{TEXT_CONFIG.ui.comic.skip}</span>
         </button>
       </div>
 
@@ -319,7 +320,7 @@ export const ComicViewer: React.FC<ComicViewerProps> = ({ chapter, onComplete, o
               <div className="flex flex-col items-center gap-3">
                 <div className="w-6 h-6 border-2 border-amber-700/40 border-t-amber-500 rounded-full animate-spin" />
                 <span className="text-[11px] font-mono tracking-wider" style={{ color: 'rgba(201, 169, 110, 0.5)' }}>
-                  同步数据中...
+                  {TEXT_CONFIG.ui.comic.syncing}
                 </span>
               </div>
             </div>
@@ -329,7 +330,7 @@ export const ComicViewer: React.FC<ComicViewerProps> = ({ chapter, onComplete, o
           <img
             key={currentIndex}
             src={currentPanel.image}
-            alt={`漫画 ${currentIndex + 1}`}
+            alt={TEXT_CONFIG.ui.comic.comicPanelAlt(currentIndex + 1)}
             className={`w-full h-full object-contain transition-opacity duration-500 ${getEnterClass()} ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
             draggable={false}
           />
@@ -415,11 +416,11 @@ export const ComicViewer: React.FC<ComicViewerProps> = ({ chapter, onComplete, o
             <div className="absolute -bottom-1 -left-1 w-2 h-2 rounded-full" style={{ background: 'radial-gradient(circle at 30% 30%, #6b5b4a, #3d3020)', boxShadow: '0 0 0 1px rgba(0,0,0,0.5)' }} />
             <div className="absolute -bottom-1 -right-1 w-2 h-2 rounded-full" style={{ background: 'radial-gradient(circle at 30% 30%, #6b5b4a, #3d3020)', boxShadow: '0 0 0 1px rgba(0,0,0,0.5)' }} />
             <Swords size={15} />
-            <span className="font-mono">开始战斗</span>
+            <span className="font-mono">{TEXT_CONFIG.ui.comic.startBattle}</span>
           </button>
         ) : (
           <span className="text-[10px] font-mono tracking-wider" style={{ color: 'rgba(201, 169, 110, 0.4)' }}>
-            {isTyping ? '[ 点击跳过 ]' : '[ 点击或滑动切换 ]'}
+            {isTyping ? TEXT_CONFIG.ui.comic.clickToSkip : TEXT_CONFIG.ui.comic.clickOrSwipe}
           </span>
         )}
       </div>

@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { TEXT_CONFIG } from '@/game/data';
 
 interface CountdownOverlayProps {
   phase: number;     // current displayed number (3, 2, 1)
@@ -54,7 +55,7 @@ export const CountdownOverlay: React.FC<CountdownOverlayProps> = ({ phase, timer
         className="absolute bottom-1/3 left-0 right-0 text-center text-stone-300 text-sm tracking-widest"
         style={{ textShadow: '0 2px 6px rgba(0,0,0,0.8)' }}
       >
-        {showGo ? '战斗开始！' : '准备战斗'}
+        {showGo ? TEXT_CONFIG.ui.countdown.battleStart : TEXT_CONFIG.ui.countdown.prepare}
       </div>
     </div>
   );

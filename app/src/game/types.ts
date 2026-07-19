@@ -429,6 +429,10 @@ export interface Roach {
   residueTimer?: number;
   // Mutant transformation timer
   transformTimer?: number;
+  // Mutant transformation animation frame (0-6)
+  transformFrame?: number;
+  // Mutant embryo burst: roach types to spawn
+  transformSpawnTypes?: RoachType[];
   // Has transformed flag
   hasTransformed?: boolean;
 }

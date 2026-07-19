@@ -7,7 +7,7 @@
 import React, { useRef, useLayoutEffect } from 'react';
 import { ArrowLeft, Map, Lock, Check } from 'lucide-react';
 import type { GameProgress, SceneType } from '@/game/types';
-import { SCENE_CONFIGS, SCENE_ORDER } from '@/game/data';
+import { SCENE_CONFIGS, SCENE_ORDER, TEXT_CONFIG } from '@/game/data';
 import type { AudioManager } from '@/game/audio';
 
 interface SceneSelectScreenProps {

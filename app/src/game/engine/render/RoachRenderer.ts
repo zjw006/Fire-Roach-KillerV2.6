@@ -5,7 +5,7 @@
 
 import type { Roach, BossBattleState, Particle } from '../../types';
 import { RoachType, RoachState, ParticleType } from '../../types';
-import { ENEMY_DEFS } from '../../data';
+import { ENEMY_DEFS, TEXT_CONFIG } from '../../data';
 
 export interface RoachRendererConfig {
   // 图片资源
@@ -26,10 +26,6 @@ export interface RoachRendererConfig {
   // 游戏状态
   time: number;
   deltaTime: number;
-
-  // 变异蟑螂状态
-  mutantTransformActive: boolean;
-  mutantTransformFrame: number;
 
   // Boss 状态
   bossBattle: BossBattleState;
@@ -336,8 +332,8 @@ export class RoachRenderer {
     }
 
     // Normal roach death (non-boss): fade out as a dark circle
-    // SKIP for MUTANT during transformation animation - render 3-frame sequence instead
-    if (r.state === RoachState.DEAD && !(r.type === RoachType.MUTANT && config.mutantTransformActive)) {
+    // SKIP for MUTANT during transformation animation - render 7-frame sequence instead
+    if (r.state === RoachState.DEAD && !(r.type === RoachType.MUTANT && r.transformFrame !== undefined && r.transformFrame < 7)) {
       const alpha = r.deathTimer / 0.6;
       ctx.globalAlpha = alpha;
       ctx.fillStyle = '#222';
@@ -512,11 +508,11 @@ export class RoachRenderer {
           }
         }
       } else if (r.type === RoachType.MUTANT) {
-        // 3-frame transformation animation support
+        // 7-frame transformation animation support (per-roach state)
         let img: HTMLImageElement | null = null;
-        if (config.mutantTransformActive && r.state === RoachState.DEAD) {
+        if (r.transformFrame !== undefined && r.transformFrame < 7 && r.state === RoachState.DEAD) {
           // 7-frame transformation animation (200ms each) - scaled 1.3x for visibility
-          const frameImg = config.mutantTransformFrames[config.mutantTransformFrame];
+          const frameImg = config.mutantTransformFrames[r.transformFrame];
           if (frameImg) {
             img = frameImg;
           } else if (config.roachMutantImg) {
@@ -777,7 +773,7 @@ export class RoachRenderer {
       ctx.font = 'bold 14px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(`变身! ${secsLeft}s`, 0, -swirlR - 10);
+      ctx.fillText(TEXT_CONFIG.combat.transformCountdown(secsLeft), 0, -swirlR - 10);
       ctx.restore();
     }
 
@@ -1254,7 +1250,7 @@ export class RoachRenderer {
       ctx.fillStyle = '#ff44aa';
       ctx.font = 'bold 14px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('蟑螂女王', r.x, r.y - size - 25);
+      ctx.fillText(TEXT_CONFIG.combat.roachQueen, r.x, r.y - size - 25);
     }
   }
 }

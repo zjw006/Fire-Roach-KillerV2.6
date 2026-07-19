@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @fileoverview 标题屏幕组件 — 游戏启动时的主菜单界面，包含废土风格的加载进度条和模拟加载提示。
  * 加载完成后显示"点击开始"闪烁提示，点击或按键后淡出并进入游戏。
  * 包含 CRT 扫描线效果、暗角叠加、废土工业风进度条及中英文标题。
@@ -7,6 +7,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
+import { TEXT_CONFIG } from '@/game/data';
 import type { AudioManager } from '@/game/audio';
 
 
@@ -18,18 +19,7 @@ interface TitleScreenProps {
 }
 
 // Wasteland-style loading hints
-const LOADING_HINTS = [
-  '正在连接灰烬区网络...',
-  '加载蟑螂基因数据库...',
-  '校准火焰喷射器...',
-  '检查丙烷燃料储备...',
-  '扫描辐射水平...',
-  '同步雷达激光系统...',
-  '读取蟑叔的除虫日志...',
-  '正在初始化防线...',
-  '蟑螂感应器预热中...',
-  '准备燃烧瓶弹药...',
-];
+const LOADING_HINTS = TEXT_CONFIG.ui.title.loadingHints;
 
 export const TitleScreen: React.FC<TitleScreenProps> = ({
   onStart,
@@ -190,7 +180,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               '0 0 20px rgba(0,0,0,0.9), 0 2px 4px rgba(0,0,0,0.8), 0 4px 12px rgba(0,0,0,0.6), 0 0 2px rgba(0,0,0,1)',
           }}
         >
-          蟑螂猎手
+          {TEXT_CONFIG.ui.title.title}
         </h1>
 
         {/* English subtitle */}
@@ -220,7 +210,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             textShadow: '0 1px 4px rgba(0,0,0,0.9), 0 0 1px rgba(0,0,0,1)',
           }}
         >
-          一寸灰烬，一寸血
+          {TEXT_CONFIG.ui.title.lore}
         </p>
       </div>
 
@@ -355,7 +345,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                     '0 0 12px rgba(0,0,0,0.9), 0 1px 3px rgba(0,0,0,0.8), 0 0 1px rgba(0,0,0,1)',
                 }}
               >
-                点击开始
+                {TEXT_CONFIG.ui.title.clickToStart}
               </span>
             </div>
 
@@ -383,7 +373,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       {/* Loading placeholder */}
       {!bgLoaded && (
         <div className="absolute inset-0 bg-gray-950 flex items-center justify-center z-20">
-          <div className="text-gray-600 text-sm font-mono">初始化系统...</div>
+          <div className="text-gray-600 text-sm font-mono">{TEXT_CONFIG.ui.title.initializing}</div>
         </div>
       )}
     </div>

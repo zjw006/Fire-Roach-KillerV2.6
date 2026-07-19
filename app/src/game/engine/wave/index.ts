@@ -4,6 +4,7 @@
  */
 
 export { WaveManager } from './WaveManager';
+import { TEXT_CONFIG } from '../../data';
 
 /**
  * 波次系统工具函数
@@ -21,21 +22,21 @@ export function calculateWaveReward(
   difficulty: string = 'normal',
   isPerfect: boolean = false
 ): number {
-  let baseReward = 50 + waveNumber * 10;
+  let baseReward = BALANCE_CONFIG.wave.baseReward + waveNumber * BALANCE_CONFIG.wave.rewardPerWave;
   
   // 难度调整
   switch (difficulty) {
     case 'easy':
-      baseReward *= 0.8;
+      baseReward *= BALANCE_CONFIG.wave.rewardMultiplier.easy;
       break;
     case 'hard':
-      baseReward *= 1.5;
+      baseReward *= BALANCE_CONFIG.wave.rewardMultiplier.hard;
       break;
   }
   
   // 完美波次奖励
   if (isPerfect) {
-    baseReward *= 1.5;
+    baseReward *= BALANCE_CONFIG.wave.perfectMultiplier;
   }
   
   return Math.floor(baseReward);
@@ -51,21 +52,21 @@ export function calculateSpawnInterval(
   waveNumber: number,
   difficulty: string = 'normal'
 ): number {
-  let baseInterval = 0.8;
+  let baseInterval = BALANCE_CONFIG.wave.baseInterval;
   
   // 难度调整
   switch (difficulty) {
     case 'easy':
-      baseInterval *= 1.2;
+      baseInterval *= BALANCE_CONFIG.wave.intervalMultiplier.easy;
       break;
     case 'hard':
-      baseInterval *= 0.7;
+      baseInterval *= BALANCE_CONFIG.wave.intervalMultiplier.hard;
       break;
   }
   
   // 波次越高，生成越快
-  const reduction = Math.min(0.5, (waveNumber - 1) * 0.05);
-  return Math.max(0.2, baseInterval - reduction);
+  const reduction = Math.min(0.5, (waveNumber - 1) * BALANCE_CONFIG.wave.intervalReductionPerWave);
+  return Math.max(BALANCE_CONFIG.wave.intervalMin, baseInterval - reduction);
 }
 
 /**
@@ -83,15 +84,15 @@ export function calculateDifficultyMultiplier(
   // 基础难度
   switch (difficulty) {
     case 'easy':
-      multiplier = 0.7;
+      multiplier = BALANCE_CONFIG.wave.difficultyMultiplier.easy;
       break;
     case 'hard':
-      multiplier = 1.5;
+      multiplier = BALANCE_CONFIG.wave.difficultyMultiplier.hard;
       break;
   }
   
   // 波次递增
-  multiplier *= (1.0 + (waveNumber - 1) * 0.1);
+  multiplier *= (1.0 + (waveNumber - 1) * BALANCE_CONFIG.wave.difficultyPerWave);
   
   return multiplier;
 }
@@ -106,11 +107,7 @@ export function formatWaveDisplay(
   currentWave: number,
   totalWaves: number = 0
 ): string {
-  if (totalWaves > 0) {
-    return `波次 ${currentWave}/${totalWaves}`;
-  } else {
-    return `波次 ${currentWave}`;
-  }
+  return TEXT_CONFIG.ui.hud.waveDisplay(currentWave, totalWaves > 0 ? totalWaves : undefined);
 }
 
 /**

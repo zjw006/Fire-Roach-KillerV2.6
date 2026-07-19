@@ -1,9 +1,10 @@
-/**
+﻿/**
  * @fileoverview 雷达激光系统模块
  * @description 负责管理雷达激光武器的激活、自动追踪、射击和过期清理
  */
 
 import { RoachState, RoachType, type RadarLaser, type Roach, ParticleType } from '../../types';
+import { BALANCE_CONFIG, TEXT_CONFIG } from '../../data';
 
 /**
  * 雷达激光系统配置接口
@@ -41,13 +42,13 @@ export class RadarLaserSystem {
     this.radarLaser = {
       active: false,
       timer: 0,
-      duration: 5,
+      duration: BALANCE_CONFIG.radarLaser.duration,
       targetId: null,
       fireTimer: 0,
-      fireInterval: 0.3,
-      damage: 10,
+      fireInterval: BALANCE_CONFIG.radarLaser.fireInterval,
+      damage: BALANCE_CONFIG.radarLaser.damage,
       laserAlpha: 0,
-      shotsRemaining: 5,
+      shotsRemaining: BALANCE_CONFIG.radarLaser.shotsRemaining,
     };
   }
 
@@ -71,11 +72,11 @@ export class RadarLaserSystem {
     this.radarLaser.fireTimer = 0;
     this.radarLaser.targetId = null;
     this.radarLaser.laserAlpha = 1;
-    this.radarLaser.shotsRemaining = 5;
+    this.radarLaser.shotsRemaining = BALANCE_CONFIG.radarLaser.shotsRemaining;
     this.config.onPlayRadarActivate?.();
     this.config.onVibrateItemUse?.();
-    this.config.onAddFloatingText?.(this.config.canvasWidth / 2, this.config.canvasHeight / 2 - 60, '雷达激光启动! 自动追踪目标', '#22d3ee');
-    this.config.onAddFloatingText?.(this.config.canvasWidth / 2, this.config.canvasHeight / 2 - 40, '5发激光，伤害与小蟑螂一致', '#67e8f9');
+    this.config.onAddFloatingText?.(this.config.canvasWidth / 2, this.config.canvasHeight / 2 - 60, TEXT_CONFIG.combat.radarActivate, '#22d3ee');
+    this.config.onAddFloatingText?.(this.config.canvasWidth / 2, this.config.canvasHeight / 2 - 40, TEXT_CONFIG.combat.radarDesc, '#67e8f9');
   }
 
   // ========== 更新 ==========
@@ -91,14 +92,14 @@ export class RadarLaserSystem {
       this.config.onAddFloatingText?.(this.config.canvasWidth / 2, this.config.canvasHeight / 2 - 80, '雷达激光 3秒...', '#67e8f9');
     }
     if (prevTimer > 1 && this.radarLaser.timer <= 1) {
-      this.config.onAddFloatingText?.(this.config.canvasWidth / 2, this.config.canvasHeight / 2 - 60, '雷达激光即将关闭!', '#f87171');
+      this.config.onAddFloatingText?.(this.config.canvasWidth / 2, this.config.canvasHeight / 2 - 60, TEXT_CONFIG.combat.radarClosing, '#f87171');
     }
 
     if (this.radarLaser.timer <= 0) {
       this.radarLaser.active = false;
       this.radarLaser.timer = 0;
       this.radarLaser.laserAlpha = 0;
-      this.config.onAddFloatingText?.(this.config.canvasWidth / 2, this.config.canvasHeight / 2 - 50, '雷达激光关闭', '#9ca3af');
+      this.config.onAddFloatingText?.(this.config.canvasWidth / 2, this.config.canvasHeight / 2 - 50, TEXT_CONFIG.combat.radarClosed, '#9ca3af');
       return;
     }
 
@@ -163,9 +164,9 @@ export class RadarLaserSystem {
       });
 
       if (this.radarLaser.shotsRemaining > 0) {
-        this.config.onAddFloatingText?.(playerX + 30, playerY - 40, `激光 x${this.radarLaser.shotsRemaining}`, '#22d3ee');
+        this.config.onAddFloatingText?.(playerX + 30, playerY - 40, TEXT_CONFIG.combat.radarShot(this.radarLaser.shotsRemaining), '#22d3ee');
       } else {
-        this.config.onAddFloatingText?.(this.config.canvasWidth / 2, this.config.canvasHeight / 2 - 50, '激光发射完毕!', '#9ca3af');
+        this.config.onAddFloatingText?.(this.config.canvasWidth / 2, this.config.canvasHeight / 2 - 50, TEXT_CONFIG.combat.radarExhausted, '#9ca3af');
         this.radarLaser.active = false;
         this.radarLaser.laserAlpha = 0;
       }
@@ -173,7 +174,7 @@ export class RadarLaserSystem {
       if (target.hp <= 0) {
         const index = roaches.indexOf(target);
         this.config.onKillRoach?.(target, index);
-        this.config.onAddFloatingText?.(target.x, target.y - 20, '激光击杀!', '#22d3ee');
+        this.config.onAddFloatingText?.(target.x, target.y - 20, TEXT_CONFIG.combat.radarKill, '#22d3ee');
         this.radarLaser.targetId = null;
       } else {
         this.config.onAddFloatingText?.(target.x, target.y - 30, `-${damage}`, '#22d3ee');
@@ -183,8 +184,8 @@ export class RadarLaserSystem {
 
   reset(): void {
     this.radarLaser = {
-      active: false, timer: 0, duration: 5, targetId: null,
-      fireTimer: 0, fireInterval: 0.3, damage: 10, laserAlpha: 0, shotsRemaining: 5,
+      active: false, timer: 0, duration: BALANCE_CONFIG.radarLaser.duration, targetId: null,
+      fireTimer: 0, fireInterval: BALANCE_CONFIG.radarLaser.fireInterval, damage: BALANCE_CONFIG.radarLaser.damage, laserAlpha: 0, shotsRemaining: BALANCE_CONFIG.radarLaser.shotsRemaining,
     };
   }
 }

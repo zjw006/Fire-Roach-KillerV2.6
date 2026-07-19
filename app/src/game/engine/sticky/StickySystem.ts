@@ -1,10 +1,10 @@
-/**
+﻿/**
  * @fileoverview 粘板/粘液弹系统模块
  * @description 负责管理粘性板（legacy）和粘液弹（auto-targeting）的完整生命周期
  */
 
 import { RoachState, ParticleType, type StickyBoard, type StickyDrop, type Roach, type Particle } from '../../types';
-import { ENEMY_DEFS } from '../../data';
+import { ENEMY_DEFS, BALANCE_CONFIG, TEXT_CONFIG } from '../../data';
 
 /**
  * 粘板/粘液弹系统配置接口
@@ -66,8 +66,8 @@ export class StickySystem {
   activateStickySpray(): void {
     const cx = this.config.canvasWidth / 2;
     const cy = this.config.getDefenseLineY();
-    const DROP_COUNT = 10;
-    const FIRE_INTERVAL = 0.08;
+    const DROP_COUNT = BALANCE_CONFIG.sticky.dropCount;
+    const FIRE_INTERVAL = BALANCE_CONFIG.sticky.fireInterval;
 
     for (let i = 0; i < DROP_COUNT; i++) {
       const delay = i * FIRE_INTERVAL;
@@ -76,9 +76,9 @@ export class StickySystem {
 
     this.config.onPlayStickySpray?.();
     this.config.onVibrateItemUse?.();
-    this.config.onAddFloatingText?.(cx, cy - 60, '蟑螂贴板发射!', '#facc15');
-    this.config.onAddFloatingText?.(cx, cy - 40, '10个追踪水滴', '#fde047');
-    this.config.onScreenShake?.(3);
+    this.config.onAddFloatingText?.(cx, cy - 60, TEXT_CONFIG.combat.stickyLaunch, '#facc15');
+    this.config.onAddFloatingText?.(cx, cy - 40, TEXT_CONFIG.combat.stickyTracking, '#fde047');
+    this.config.onScreenShake?.(BALANCE_CONFIG.screenShake.smallExplosion);
   }
 
   /** 调度一个延迟激活的粘液弹 */
@@ -88,12 +88,12 @@ export class StickySystem {
       x: cx,
       y: cy,
       vx: 0,
-      vy: -80 - Math.random() * 40,
+      vy: -(BALANCE_CONFIG.sticky.dropInitialVy + Math.random() * BALANCE_CONFIG.sticky.dropInitialVyRandom),
       targetId: null,
-      speed: 250 + Math.random() * 100,
-      life: delay + 3,
-      maxLife: 3,
-      size: 6 + Math.random() * 3,
+      speed: BALANCE_CONFIG.sticky.dropSpeed + Math.random() * BALANCE_CONFIG.sticky.dropSpeedRandom,
+      life: delay + BALANCE_CONFIG.sticky.dropMaxLife,
+      maxLife: BALANCE_CONFIG.sticky.dropMaxLife,
+      size: BALANCE_CONFIG.sticky.dropSize + Math.random() * BALANCE_CONFIG.sticky.dropSizeRandom,
       hit: false,
     });
   }
@@ -150,8 +150,8 @@ export class StickySystem {
                 this.config.onAddFloatingText?.(target.x, target.y - 15, '护甲免疫', '#60a5fa');
               }
             } else {
-              target.hp -= 0.5;
-              target.damageFlash = 0.1;
+              target.hp -= BALANCE_CONFIG.sticky.damagePerTick;
+              target.damageFlash = BALANCE_CONFIG.sticky.damageFlash;
             }
           }
           // 黄色粒子
@@ -186,7 +186,7 @@ export class StickySystem {
         const dx = r.x - drop.x;
         const dy = r.y - drop.y;
         const d = Math.sqrt(dx * dx + dy * dy);
-        if (d < minDist && d < 400) {
+        if (d < minDist && d < BALANCE_CONFIG.sticky.trackRange) {
           minDist = d;
           target = r;
         }
@@ -200,8 +200,8 @@ export class StickySystem {
         if (d > 1) {
           const targetVx = (dx / d) * drop.speed;
           const targetVy = (dy / d) * drop.speed;
-          drop.vx += (targetVx - drop.vx) * 5 * deltaTime;
-          drop.vy += (targetVy - drop.vy) * 5 * deltaTime;
+          drop.vx += (targetVx - drop.vx) * BALANCE_CONFIG.sticky.trackSteerFactor * deltaTime;
+          drop.vy += (targetVy - drop.vy) * BALANCE_CONFIG.sticky.trackSteerFactor * deltaTime;
         }
         drop.targetId = target.id;
 
@@ -215,18 +215,18 @@ export class StickySystem {
             continue;
           } else {
             drop.hit = true;
-            drop.life = 12;
+            drop.life = BALANCE_CONFIG.sticky.dropLife;
             drop.x = target.x;
             drop.y = target.y;
             target.wrappedByDropId = drop.id;
-            target.wrapTimer = 12;
+            target.wrapTimer = BALANCE_CONFIG.sticky.wrapTimer;
             target.speed = 0;
             target.vx = 0;
             target.vy = 0;
-            this.config.onAddFloatingText?.(target.x, target.y - 20, '粘住12秒!', '#facc15');
+            this.config.onAddFloatingText?.(target.x, target.y - 20, TEXT_CONFIG.combat.stickyCapture, '#facc15');
           }
           // 击中粒子
-          for (let p = 0; p < 8; p++) {
+          for (let p = 0; p < BALANCE_CONFIG.sticky.hitParticleCount; p++) {
             this.config.onAddParticle?.({
               x: target.x + (Math.random() - 0.5) * 15,
               y: target.y + (Math.random() - 0.5) * 15,
@@ -259,8 +259,8 @@ export class StickySystem {
   // ========== 粘性板（legacy） ==========
   /** 应用粘性板效果（在指定位置放置粘板） */
   applyStickyBoardEffect(x: number, y: number): void {
-    const BASE_W = 240;
-    const BASE_H = 240;
+    const BASE_W = BALANCE_CONFIG.sticky.boardBaseW;
+    const BASE_H = BALANCE_CONFIG.sticky.boardBaseH;
     const scale = this.getPerspectiveScale(y);
 
     this.stickyBoards.push({
@@ -270,14 +270,14 @@ export class StickySystem {
       height: Math.round(BASE_H * scale),
       hitWidth: 240,
       hitHeight: 240,
-      life: 5,
-      maxLife: 5,
+      life: BALANCE_CONFIG.sticky.boardLife,
+      maxLife: BALANCE_CONFIG.sticky.boardLife,
       stuckRoaches: [],
-      maxStuck: 5,
+      maxStuck: BALANCE_CONFIG.sticky.boardMaxStuck,
     });
 
     this.config.onSpawnSpark?.(x, y, 4);
-    this.config.onAddFloatingText?.(x, y - 30, '贴板!', '#facc15');
+    this.config.onAddFloatingText?.(x, y - 30, TEXT_CONFIG.combat.stickyBoard, '#facc15');
   }
 
   /** 更新粘性板（含生命周期和蟑螂捕获） */
@@ -319,7 +319,7 @@ export class StickySystem {
           r.vx = 0;
           r.vy = 0;
           if (board.stuckRoaches.length === 1) {
-            this.config.onAddFloatingText?.(r.x, r.y - 20, '粘住!', '#facc15');
+            this.config.onAddFloatingText?.(r.x, r.y - 20, TEXT_CONFIG.combat.stickyStuck, '#facc15');
           }
         }
       }

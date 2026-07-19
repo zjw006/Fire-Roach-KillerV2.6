@@ -1,11 +1,11 @@
-/**
+﻿/**
  * @fileoverview 游戏波次管理器
  * @description 负责管理游戏波次的生成、配置、倒计时、多阶段生成和进度跟踪
  */
 
 import { SceneType, RoachType, GameMode, GameState } from '../../types';
 import type { WaveConfig } from '../../types';
-import { SCENE_WAVE_CONFIGS, SCENE_ROACH_TYPES } from '../../data';
+import { SCENE_WAVE_CONFIGS, SCENE_ROACH_TYPES, BALANCE_CONFIG } from '../../data';
 
 // ===== 波次管理器配置接口 =====
 export interface WaveManagerConfig {
@@ -140,7 +140,7 @@ export class WaveManager {
               this.cb.onKillRoach(nr, i);
             }
           }
-          this.cb.onAddFloatingText(this.cfg.width / 2, this.cfg.height * 0.35, '支援单位已清除，推进下一波!', '#fbbf24');
+          this.cb.onAddFloatingText(this.cfg.width / 2, this.cfg.height * 0.35, TEXT_CONFIG.combat.waveCleared, '#fbbf24');
         }
       }
     }
@@ -150,7 +150,7 @@ export class WaveManager {
         this.cb.onGetRoaches().length === 0 && this.spawnQueue.length === 0 && this.wave > 0) {
       this.waveTimer -= deltaTime;
       if (this.waveTimer <= 0) {
-        this.waveTimer = 2;
+        this.waveTimer = BALANCE_CONFIG.wave.clearDelay;
         if (this.cfg.gameMode === GameMode.STORY) {
           const configs = SCENE_WAVE_CONFIGS[this.cfg.currentScene] || SCENE_WAVE_CONFIGS[SceneType.KITCHEN];
           if (this.wave >= configs.length) {
