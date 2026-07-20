@@ -4,7 +4,7 @@
  */
 
 import { RoachState, RoachType, type RadarLaser, type Roach, ParticleType } from '../../types';
-import { BALANCE_CONFIG, TEXT_CONFIG } from '../../data';
+import { BALANCE_CONFIG, TEXT_CONFIG, FLOAT_COLOR } from '../../data';
 
 /**
  * 雷达激光系统配置接口
@@ -75,8 +75,8 @@ export class RadarLaserSystem {
     this.radarLaser.shotsRemaining = BALANCE_CONFIG.radarLaser.shotsRemaining;
     this.config.onPlayRadarActivate?.();
     this.config.onVibrateItemUse?.();
-    this.config.onAddFloatingText?.(this.config.canvasWidth / 2, this.config.canvasHeight / 2 - 60, TEXT_CONFIG.combat.radarActivate, '#22d3ee');
-    this.config.onAddFloatingText?.(this.config.canvasWidth / 2, this.config.canvasHeight / 2 - 40, TEXT_CONFIG.combat.radarDesc, '#67e8f9');
+    this.config.onAddFloatingText?.(this.config.canvasWidth / 2, this.config.canvasHeight / 2 - 60, TEXT_CONFIG.combat.radarActivate, FLOAT_COLOR.shield);
+    this.config.onAddFloatingText?.(this.config.canvasWidth / 2, this.config.canvasHeight / 2 - 40, TEXT_CONFIG.combat.radarDesc, FLOAT_COLOR.radarDesc);
   }
 
   // ========== 更新 ==========
@@ -89,17 +89,17 @@ export class RadarLaserSystem {
 
     // 3秒警告
     if (prevTimer > 3 && this.radarLaser.timer <= 3) {
-      this.config.onAddFloatingText?.(this.config.canvasWidth / 2, this.config.canvasHeight / 2 - 80, '雷达激光 3秒...', '#67e8f9');
+      this.config.onAddFloatingText?.(this.config.canvasWidth / 2, this.config.canvasHeight / 2 - 80, TEXT_CONFIG.combat.radarCountdown(3), FLOAT_COLOR.shield);
     }
     if (prevTimer > 1 && this.radarLaser.timer <= 1) {
-      this.config.onAddFloatingText?.(this.config.canvasWidth / 2, this.config.canvasHeight / 2 - 60, TEXT_CONFIG.combat.radarClosing, '#f87171');
+      this.config.onAddFloatingText?.(this.config.canvasWidth / 2, this.config.canvasHeight / 2 - 60, TEXT_CONFIG.combat.radarClosing, FLOAT_COLOR.warning);
     }
 
     if (this.radarLaser.timer <= 0) {
       this.radarLaser.active = false;
       this.radarLaser.timer = 0;
       this.radarLaser.laserAlpha = 0;
-      this.config.onAddFloatingText?.(this.config.canvasWidth / 2, this.config.canvasHeight / 2 - 50, TEXT_CONFIG.combat.radarClosed, '#9ca3af');
+      this.config.onAddFloatingText?.(this.config.canvasWidth / 2, this.config.canvasHeight / 2 - 50, TEXT_CONFIG.combat.radarClosed, FLOAT_COLOR.expired);
       return;
     }
 
@@ -164,9 +164,9 @@ export class RadarLaserSystem {
       });
 
       if (this.radarLaser.shotsRemaining > 0) {
-        this.config.onAddFloatingText?.(playerX + 30, playerY - 40, TEXT_CONFIG.combat.radarShot(this.radarLaser.shotsRemaining), '#22d3ee');
+        this.config.onAddFloatingText?.(playerX + 30, playerY - 40, TEXT_CONFIG.combat.radarShot(this.radarLaser.shotsRemaining), FLOAT_COLOR.shield);
       } else {
-        this.config.onAddFloatingText?.(this.config.canvasWidth / 2, this.config.canvasHeight / 2 - 50, TEXT_CONFIG.combat.radarExhausted, '#9ca3af');
+        this.config.onAddFloatingText?.(this.config.canvasWidth / 2, this.config.canvasHeight / 2 - 50, TEXT_CONFIG.combat.radarExhausted, FLOAT_COLOR.expired);
         this.radarLaser.active = false;
         this.radarLaser.laserAlpha = 0;
       }
@@ -174,10 +174,10 @@ export class RadarLaserSystem {
       if (target.hp <= 0) {
         const index = roaches.indexOf(target);
         this.config.onKillRoach?.(target, index);
-        this.config.onAddFloatingText?.(target.x, target.y - 20, TEXT_CONFIG.combat.radarKill, '#22d3ee');
+        this.config.onAddFloatingText?.(target.x, target.y - 20, TEXT_CONFIG.combat.radarKill, FLOAT_COLOR.shield);
         this.radarLaser.targetId = null;
       } else {
-        this.config.onAddFloatingText?.(target.x, target.y - 30, `-${damage}`, '#22d3ee');
+        this.config.onAddFloatingText?.(target.x, target.y - 30, TEXT_CONFIG.combat.radarDamage(damage), FLOAT_COLOR.shield);
       }
     }
   }

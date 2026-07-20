@@ -62,6 +62,8 @@ export const GameCanvas: React.FC = () => {
   const [showTitleScreen, setShowTitleScreen] = useState(true);
   const [player, setPlayer] = useState<Player | null>(null);
   const [economy, setEconomy] = useState<Economy | null>(null);
+  const [pendingRewards, setPendingRewards] = useState(0);
+  const [victoryGoldReward, setVictoryGoldReward] = useState(0);
   const [wave, setWave] = useState(0);
   const [defenseHp, setDefenseHp] = useState(80);
   const [maxDefenseHp, setMaxDefenseHp] = useState(80);
@@ -236,17 +238,13 @@ export const GameCanvas: React.FC = () => {
       }
       setWave(engine.wave);
       setEconomy({ ...engine.economy });
+      // Capture victory gold reward for settlement animation
+      setVictoryGoldReward(engine.victoryGoldReward);
       setProgress({ ...engine.progress });
       setTalentPoints(engine.progress.talentTree.points);
       // Ensure progress is saved to localStorage
       engine.saveProgress();
-      // Sync level-end economy.money to menuShopMoney (remaining gold carries over)
-      const victoryReward = engine.economy.money;
-      setMenuShopMoney(() => {
-        const newVal = victoryReward;
-        try { localStorage.setItem('roach_blaster_menu_money', String(newVal)); } catch { /* ignore */ }
-        return newVal;
-      });
+      // Note: menuShopMoney sync is deferred to handleSettleGold() after animation
       // Save remaining consumables to localStorage (cross-level persistence)
       try {
         localStorage.setItem('roach_blaster_consumables', JSON.stringify({
@@ -279,6 +277,7 @@ export const GameCanvas: React.FC = () => {
       setPowerBoostTimer(p.powerBoostTimer);
     };
     engine.onEconomyUpdate = (e: Economy) => setEconomy({ ...e });
+    engine.onPendingRewardUpdate = (rewards: number) => setPendingRewards(rewards);
     engine.onWaveUpdate = (w: number) => setWave(w);
     engine.onDefenseUpdate = (hp: number, maxHp: number) => {
       setDefenseHp(hp);
@@ -626,10 +625,25 @@ export const GameCanvas: React.FC = () => {
     engine.clearRecycledInventory();
     // Refresh settlement UI with updated gold
     setEconomy({ ...engine.economy });
+    // Note: menuShopMoney sync is deferred to handleSettleGold() after victory gold animation
+    // If no victory gold reward, sync immediately
+    if (!engine.victoryGoldReward) {
+      setMenuShopMoney(engine.economy.money);
+      try { localStorage.setItem('roach_blaster_menu_money', String(engine.economy.money)); } catch { /* ignore */ }
+    }
+    setShowRecycleAnim(false);
+  }, []);
+
+  /** 结算界面金币动画完成后：发放关卡金币到经济系统并同步 menuShopMoney */
+  const handleSettleGold = useCallback(() => {
+    const engine = engineRef.current;
+    if (!engine) return;
+    engine.settleVictoryGold();
+    setEconomy({ ...engine.economy });
+    setVictoryGoldReward(0);
     // Sync to menu shop money
     setMenuShopMoney(engine.economy.money);
     try { localStorage.setItem('roach_blaster_menu_money', String(engine.economy.money)); } catch { /* ignore */ }
-    setShowRecycleAnim(false);
   }, []);
 
   /** 退出到主菜单：停止引擎 → 保存进度 → 关闭所有 UI 覆盖层 */
@@ -1032,6 +1046,7 @@ export const GameCanvas: React.FC = () => {
         <GameHUD
           player={player}
           economy={economy}
+          pendingRewards={pendingRewards}
           wave={wave}
           defenseHp={defenseHp}
           maxDefenseHp={maxDefenseHp}
@@ -1319,6 +1334,8 @@ export const GameCanvas: React.FC = () => {
           })()}
           audio={engineRef.current?.audio}
           menuMoney={menuShopMoney}
+          victoryGoldReward={victoryGoldReward}
+          onSettleGold={handleSettleGold}
         />
       )}
 

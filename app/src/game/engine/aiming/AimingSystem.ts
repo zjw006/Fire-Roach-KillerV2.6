@@ -4,7 +4,7 @@
  */
 
 import { type ThrowableProjectile } from '../../types';
-import { BALANCE_CONFIG, TEXT_CONFIG } from '../../data';
+import { BALANCE_CONFIG, TEXT_CONFIG, FLOAT_COLOR } from '../../data';
 
 /**
  * 瞄准系统配置接口
@@ -197,7 +197,7 @@ export class AimingSystem {
       poison: TEXT_CONFIG.items.poison,
       molotov: TEXT_CONFIG.items.molotov,
     };
-    this.config.onAddFloatingText?.(startX, startY - 30, `投掷${names[weapon]}!`, '#fbbf24');
+    this.config.onAddFloatingText?.(startX, startY - 30, TEXT_CONFIG.combat.throwWeapon(names[weapon]), FLOAT_COLOR.gold);
 
     // 重置瞄准状态
     this.isAiming = false;

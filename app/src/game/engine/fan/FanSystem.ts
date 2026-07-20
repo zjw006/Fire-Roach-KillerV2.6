@@ -5,7 +5,7 @@
 
 import { RoachType, RoachState } from '../../types';
 import type { FanState, Roach } from '../../types';
-import { TEXT_CONFIG } from '../../data';
+import { TEXT_CONFIG, FLOAT_COLOR } from '../../data';
 
 /**
  * 风扇系统配置接口
@@ -93,8 +93,8 @@ export class FanSystem {
       ? `蟑螂被吹退${(8 * fanDurationMult).toFixed(1)}秒!(+天赋)`
       : TEXT_CONFIG.combat.fanDesc;
 
-    this.config.onAddFloatingText?.(this.config.canvasWidth / 2, this.config.canvasHeight * 0.3, TEXT_CONFIG.combat.fanActivate, '#a78bfa');
-    this.config.onAddFloatingText?.(this.config.canvasWidth / 2, this.config.canvasHeight * 0.3 + 20, durationText, '#c4b5fd');
+    this.config.onAddFloatingText?.(this.config.canvasWidth / 2, this.config.canvasHeight * 0.3, TEXT_CONFIG.combat.fanActivate, FLOAT_COLOR.fan);
+    this.config.onAddFloatingText?.(this.config.canvasWidth / 2, this.config.canvasHeight * 0.3 + 20, durationText, FLOAT_COLOR.fanSecondary);
     this.config.onScreenShake?.(4);
 
     return true;
@@ -158,7 +158,7 @@ export class FanSystem {
       fan.active = false;
       fan.timer = 0;
       this.config.onStopFanLoop?.();
-      this.config.onAddFloatingText?.(this.config.canvasWidth / 2, this.config.canvasHeight * 0.3, TEXT_CONFIG.combat.fanStop, '#9ca3af');
+      this.config.onAddFloatingText?.(this.config.canvasWidth / 2, this.config.canvasHeight * 0.3, TEXT_CONFIG.combat.fanStop, FLOAT_COLOR.expired);
       for (const r of roaches) {
         r.fanSlowTimer = 0;
         r.fanSlowFactor = 0;

@@ -21,6 +21,7 @@ export { BOSS_ANIMATIONS } from '../bossAnimation';
 export { GameEngine } from '../engine';
 
 // 重新导出已提取的模块（供外部使用）
+export { FloatingTextSystem } from './floating-text/FloatingTextSystem';
 export { SaveSystem } from './save/SaveSystem';
 export { EconomyManager } from './economy/EconomyManager';
 export { AchievementSystem } from './achievement/AchievementSystem';

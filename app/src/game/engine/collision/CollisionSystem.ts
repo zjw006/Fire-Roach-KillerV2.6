@@ -4,7 +4,7 @@
  */
 
 import { GameState, RoachType, RoachState, type Roach, type Player, type TripleFlameState } from '../../types';
-import { ENEMY_DEFS, BOSS_CONFIG, BALANCE_CONFIG, TEXT_CONFIG } from '../../data';
+import { ENEMY_DEFS, BOSS_CONFIG, BALANCE_CONFIG, TEXT_CONFIG, FLOAT_COLOR } from '../../data';
 
 /**
  * 碰撞检测系统配置接口
@@ -308,7 +308,7 @@ export class CollisionSystem {
       }
 
       if (player.shieldTimer > 0) {
-        callbacks.onAddFloatingText?.(r.x, defenseLineY - 20, '护盾抵消!', '#22d3ee');
+        callbacks.onAddFloatingText?.(r.x, defenseLineY - 20, TEXT_CONFIG.combat.shieldBlock, FLOAT_COLOR.shield);
       } else {
         defenseHp.value -= dmg;
         breachCount++;
@@ -319,7 +319,7 @@ export class CollisionSystem {
 
       removedIndices.push(i);
       if (r.isBoss) activeBosses.value--;
-      callbacks.onAddFloatingText?.(r.x, defenseLineY - 20, '防线突破!', '#ef4444');
+      callbacks.onAddFloatingText?.(r.x, defenseLineY - 20, TEXT_CONFIG.combat.defenseBreach, FLOAT_COLOR.danger);
 
       totalDefenseDamage += dmg;
 
@@ -357,8 +357,8 @@ export class CollisionSystem {
       damage *= BALANCE_CONFIG.collision.armorDamageReduction;
       if (r.armorHp <= 0) {
         this.config.onSpawnSpark?.(r.x, r.y, 8);
-        const label = r.type === RoachType.NURSE || r.type === RoachType.TIMED_SUICIDE ? '护甲碎裂!' : '破甲!';
-        this.config.onAddFloatingText?.(r.x, r.y - 30, label, '#fbbf24');
+        const label = r.type === RoachType.NURSE || r.type === RoachType.TIMED_SUICIDE ? TEXT_CONFIG.combat.armorShatter : TEXT_CONFIG.combat.armorBreak;
+        this.config.onAddFloatingText?.(r.x, r.y - 30, label, FLOAT_COLOR.gold);
       }
     }
     r.hp -= damage;

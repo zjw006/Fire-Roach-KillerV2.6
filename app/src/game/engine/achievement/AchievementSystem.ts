@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @fileoverview 成就系统模块
  * @description 负责管理游戏中的成就解锁、奖励发放和进度跟踪
  */
@@ -78,6 +78,8 @@ export interface AchievementSystemConfig {
   onAddFloatingText?: (x: number, y: number, text: string, color: string) => void;
   /** 添加金钱回调（成就奖励） */
   onAddMoney?: (amount: number) => void;
+  /** 添加关卡内待结算金币回调（成就奖励计入关卡金币） */
+  onAddPendingReward?: (amount: number) => void;
   /** 更新经济数据回调 */
   onEconomyUpdate?: (economy: any) => void;
   /** 保存进度回调 */
@@ -142,8 +144,10 @@ export class AchievementSystem {
       if (cond) {
         ach.unlocked = true;
         
-        // 添加成就奖励金钱
-        if (this.config.onAddMoney) {
+        // 添加成就奖励金币到关卡内待结算（仅在关卡内时）
+        if (this.config.onAddPendingReward) {
+          this.config.onAddPendingReward(ach.reward);
+        } else if (this.config.onAddMoney) {
           this.config.onAddMoney(ach.reward);
         }
 
@@ -227,8 +231,10 @@ export class AchievementSystem {
 
     ach.unlocked = true;
     
-    // 添加成就奖励金钱
-    if (this.config.onAddMoney) {
+    // 添加成就奖励金币到关卡内待结算（仅在关卡内时）
+    if (this.config.onAddPendingReward) {
+      this.config.onAddPendingReward(ach.reward);
+    } else if (this.config.onAddMoney) {
       this.config.onAddMoney(ach.reward);
     }
 

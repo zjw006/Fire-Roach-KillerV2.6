@@ -19,6 +19,7 @@ import type { AudioManager } from '@/game/audio';
 interface GameHUDProps {
   player: Player;
   economy: Economy;
+  pendingRewards: number;
   wave: number;
   defenseHp: number;
   maxDefenseHp: number;
@@ -150,6 +151,7 @@ const ManualItemIcon: React.FC<{
 export const GameHUD: React.FC<GameHUDProps> = ({
   player,
   economy,
+  pendingRewards,
   wave,
   defenseHp,
   maxDefenseHp,
@@ -241,7 +243,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           </div>
           <div className="bg-black/50 backdrop-blur-sm rounded-lg px-2 py-1 text-white text-center min-w-[52px]">
             <div className="text-[9px] text-stone-400">{TEXT_CONFIG.ui.hud.money}</div>
-            <div className="text-base font-black text-amber-400 leading-tight">¥{economy.money}</div>
+            <div className="text-base font-black text-amber-400 leading-tight">¥{pendingRewards}</div>
           </div>
           <div className="bg-black/50 backdrop-blur-sm rounded-lg px-2 py-1 text-white text-center min-w-[36px]">
             <div className="text-[9px] text-stone-400">{TEXT_CONFIG.ui.hud.kills}</div>

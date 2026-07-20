@@ -6,7 +6,7 @@
 import { RoachState, RoachType, ParticleType } from '../../types';
 import type { Particle, Roach } from '../../types';
 import { type InsecticideSprayState } from '../render/RenderUtils';
-import { TEXT_CONFIG } from '../../data';
+import { TEXT_CONFIG, FLOAT_COLOR } from '../../data';
 
 /**
  * 杀虫剂系统配置接口
@@ -73,8 +73,8 @@ export class InsecticideSystem {
     this.spray.damageTimer = 0;
     this.config.onPlaySound?.('insecticide_spray');
     this.config.onVibrate?.();
-    this.config.onAddFloatingText?.(canvasWidth / 2, canvasHeight / 2 - 60, TEXT_CONFIG.combat.insecticideActivate, '#4ade80');
-    this.config.onAddFloatingText?.(canvasWidth / 2, canvasHeight / 2 - 40, TEXT_CONFIG.combat.insecticideDesc, '#86efac');
+    this.config.onAddFloatingText?.(canvasWidth / 2, canvasHeight / 2 - 60, TEXT_CONFIG.combat.insecticideActivate, FLOAT_COLOR.reward);
+    this.config.onAddFloatingText?.(canvasWidth / 2, canvasHeight / 2 - 40, TEXT_CONFIG.combat.insecticideDesc, FLOAT_COLOR.insecticideDesc);
     this.config.onScreenShake?.(4);
   }
 
@@ -104,7 +104,7 @@ export class InsecticideSystem {
     // 倒计时警告
     const prevTimer = this.spray.timer + deltaTime;
     if (prevTimer > 1 && this.spray.timer <= 1) {
-      this.config.onAddFloatingText?.(canvasWidth / 2, canvasHeight / 2 - 80, TEXT_CONFIG.combat.insecticideClosing, '#f87171');
+      this.config.onAddFloatingText?.(canvasWidth / 2, canvasHeight / 2 - 80, TEXT_CONFIG.combat.insecticideClosing, FLOAT_COLOR.warning);
     }
 
     // 过期处理
@@ -112,7 +112,7 @@ export class InsecticideSystem {
       this.spray.active = false;
       this.spray.timer = 0;
       particlesToAdd.push(...this.spawnFadeOutParticles(canvasWidth, canvasHeight));
-      this.config.onAddFloatingText?.(canvasWidth / 2, canvasHeight / 2 - 50, TEXT_CONFIG.combat.insecticideEnd, '#9ca3af');
+      this.config.onAddFloatingText?.(canvasWidth / 2, canvasHeight / 2 - 50, TEXT_CONFIG.combat.insecticideEnd, FLOAT_COLOR.expired);
       return particlesToAdd;
     }
 
@@ -269,7 +269,7 @@ export class InsecticideSystem {
 
       // 装甲完全免疫
       if (r.armorHp > 0) {
-        this.config.onAddFloatingText?.(r.x, r.y - 20, '护甲免疫!', '#60a5fa');
+        this.config.onAddFloatingText?.(r.x, r.y - 20, TEXT_CONFIG.combat.armorImmune, FLOAT_COLOR.armorImmune);
         continue;
       }
       // 跳过正在放置炸弹的定时自爆蟑螂
@@ -302,7 +302,7 @@ export class InsecticideSystem {
     }
 
     if (hitCount > 0) {
-      this.config.onAddFloatingText?.(w / 2, cy - 80, TEXT_CONFIG.combat.insecticideHit(hitCount), '#4ade80');
+      this.config.onAddFloatingText?.(w / 2, cy - 80, TEXT_CONFIG.combat.insecticideHit(hitCount), FLOAT_COLOR.reward);
     }
 
     return particles;

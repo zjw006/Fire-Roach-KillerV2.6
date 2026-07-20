@@ -13,7 +13,7 @@ import {
   SceneType
 } from '../../types';
 import { BOSS_ANIMATIONS } from '../../bossAnimation';
-import { TEXT_CONFIG } from '../../data';
+import { TEXT_CONFIG, FLOAT_COLOR } from '../../data';
 import { BALANCE_CONFIG } from '../../data';
 
 // ===== 全局Boss ID计数器 =====
@@ -392,8 +392,8 @@ export class BossBattleSystem {
     this.bossBattle.phaseChangeTimer = BALANCE_CONFIG.boss.phaseChangeTimer;
     this.bossBattle.phaseChangeText = TEXT_CONFIG.combat.bossAppearTitle;
     this.bossBattle.phaseChangeSub = TEXT_CONFIG.combat.bossDefendLine;
-    this.cb.onAddFloatingText(this.cfg.width / 2, this.cfg.height / 3, TEXT_CONFIG.combat.bossAppear, '#ef4444');
-    this.cb.onAddFloatingText(this.cfg.width / 2, this.cfg.height / 3 + 30, TEXT_CONFIG.combat.bossSpawnEggs, '#fbbf24');
+    this.cb.onAddFloatingText(this.cfg.width / 2, this.cfg.height / 3, TEXT_CONFIG.combat.bossAppear, FLOAT_COLOR.danger);
+    this.cb.onAddFloatingText(this.cfg.width / 2, this.cfg.height / 3 + 30, TEXT_CONFIG.combat.bossSpawnEggs, FLOAT_COLOR.gold);
     this.cb.onScreenShake(12);
   }
 
@@ -423,7 +423,7 @@ export class BossBattleSystem {
     this.bossAnimState.timer = 0;
 
     // 死亡效果
-    this.cb.onAddFloatingText(this.cfg.width / 2, this.cfg.height / 3, TEXT_CONFIG.combat.bossDefeatedText, '#ef4444');
+    this.cb.onAddFloatingText(this.cfg.width / 2, this.cfg.height / 3, TEXT_CONFIG.combat.bossDefeatedText, FLOAT_COLOR.danger);
     this.cb.onSpawnExplosionParticles(boss.x, boss.y, 60);
     this.cb.onSpawnShockwaveRing(boss.x, boss.y, 50);
     this.cb.onScreenShake(25);
@@ -453,7 +453,7 @@ export class BossBattleSystem {
     // 死亡动画结束 → 开始尸体停留
     if (bb.deathAnimTimer <= 0 && bb.corpseStayTimer <= 0 && this.cfg.state === GameState.PLAYING) {
       bb.corpseStayTimer = BALANCE_CONFIG.boss.corpseStayTimer;
-      this.cb.onAddFloatingText(this.cfg.width / 2, this.cfg.height / 2, TEXT_CONFIG.combat.victory, '#22c55e');
+      this.cb.onAddFloatingText(this.cfg.width / 2, this.cfg.height / 2, TEXT_CONFIG.combat.victory, FLOAT_COLOR.victory);
     }
 
     // 尸体停留倒计时
@@ -621,7 +621,7 @@ export class BossBattleSystem {
         if (bb.currentWave <= 4) {
           bb.phase = bb.currentWave as 1 | 2 | 3 | 4;
         }
-        this.cb.onAddFloatingText(this.cfg.width / 2, this.cfg.height / 3, `第${bb.currentWave}波清除!`, '#22c55e');
+        this.cb.onAddFloatingText(this.cfg.width / 2, this.cfg.height / 3, `第${bb.currentWave}波清除!`, FLOAT_COLOR.victory);
 
         // 检查是否所有4波完成
         if (bb.currentWave > 4) {
@@ -668,7 +668,7 @@ export class BossBattleSystem {
     bb.phaseJustChanged = true;
     bb.phaseChangeTimer = 3;
 
-    this.cb.onAddFloatingText(castX, castY - 60, TEXT_CONFIG.combat.bossSummon, '#a855f7');
+    this.cb.onAddFloatingText(castX, castY - 60, TEXT_CONFIG.combat.bossSummon, FLOAT_COLOR.backlash);
   }
 
   // ========== Boss 对话与逃跑 ==========
@@ -683,23 +683,23 @@ export class BossBattleSystem {
     bb.dialogueTimer = 3;
     bb.dialogueIndex = 0;
 
-    this.cb.onAddFloatingText(boss.x, boss.y - 100, '螂老大: "不...不可能!"', '#ef4444');
+    this.cb.onAddFloatingText(boss.x, boss.y - 100, '螂老大: "不...不可能!"', FLOAT_COLOR.danger);
 
     setTimeout(() => {
       if (!bb.active) return;
-      this.cb.onAddFloatingText(boss.x, boss.y - 100, '螂老大: "我的虫卵大军...全灭了..."', '#ef4444');
+      this.cb.onAddFloatingText(boss.x, boss.y - 100, '螂老大: "我的虫卵大军...全灭了..."', FLOAT_COLOR.danger);
     }, 3000);
 
     setTimeout(() => {
       if (!bb.active) return;
-      this.cb.onAddFloatingText(boss.x, boss.y - 100, '螂老大: "这次算你赢了!我会回来的!"', '#fbbf24');
+      this.cb.onAddFloatingText(boss.x, boss.y - 100, '螂老大: "这次算你赢了!我会回来的!"', FLOAT_COLOR.gold);
     }, 6000);
 
     setTimeout(() => {
       if (!bb.active) return;
       bb.bossFleeing = true;
       bb.bossFleeTimer = 5;
-      this.cb.onAddFloatingText(boss.x, boss.y - 80, TEXT_CONFIG.combat.bossFlee, '#9ca3af');
+      this.cb.onAddFloatingText(boss.x, boss.y - 80, TEXT_CONFIG.combat.bossFlee, FLOAT_COLOR.expired);
     }, 9000);
   }
 

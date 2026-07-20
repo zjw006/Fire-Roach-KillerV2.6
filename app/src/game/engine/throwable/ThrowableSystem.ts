@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @fileoverview 投掷物系统模块
  * @description 负责管理游戏中所有投掷物的逻辑，包括飞行轨迹、碰撞检测、落地效果等
  */
@@ -11,7 +11,7 @@ import {
   RoachState,
   ParticleType,
 } from '../../types';
-import { BALANCE_CONFIG, TEXT_CONFIG } from '../../data';
+import { BALANCE_CONFIG, TEXT_CONFIG, FLOAT_COLOR } from '../../data';
 
 /**
  * 投掷物系统配置接口
@@ -134,7 +134,7 @@ export class ThrowableSystem {
           type: 'ice',
         });
         this.config.onSpawnIceExplosion?.(t.x, t.y, radius);
-        this.config.onAddFloatingText?.(t.x, t.y - 20, TEXT_CONFIG.combat.stickyLand, '#facc15');
+        this.config.onAddFloatingText?.(t.x, t.y - 20, TEXT_CONFIG.combat.stickyLand, FLOAT_COLOR.switch);
         break;
       }
       case 'poison': {
@@ -148,7 +148,7 @@ export class ThrowableSystem {
           if (Math.sqrt(dx * dx + dy * dy) < radius) {
             // 装甲免疫
             if (r.armorHp > 0) {
-              this.config.onAddFloatingText?.(r.x, r.y - 15, '护甲免疫!', '#60a5fa');
+              this.config.onAddFloatingText?.(r.x, r.y - 15, TEXT_CONFIG.combat.armorImmune, FLOAT_COLOR.armorImmune);
               continue;
             }
             r.poisonTimer = BALANCE_CONFIG.throwable.poison.poisonTimer;
@@ -163,7 +163,7 @@ export class ThrowableSystem {
           type: 'poison',
         });
         this.config.onSpawnPoisonExplosion?.(t.x, t.y, radius);
-        this.config.onAddFloatingText?.(t.x, t.y - 20, '毒雾!', '#a78bfa');
+        this.config.onAddFloatingText?.(t.x, t.y - 20, TEXT_CONFIG.combat.poisonLand, FLOAT_COLOR.fan);
         break;
       }
       case 'molotov': {
@@ -178,7 +178,7 @@ export class ThrowableSystem {
           if (dist < radius) {
             // 装甲免疫
             if (r.armorHp > 0) {
-              this.config.onAddFloatingText?.(r.x, r.y - 15, '护甲免疫!', '#60a5fa');
+              this.config.onAddFloatingText?.(r.x, r.y - 15, TEXT_CONFIG.combat.armorImmune, FLOAT_COLOR.armorImmune);
               continue;
             }
             const dmg = BALANCE_CONFIG.throwable.molotov.baseDamage * (1 - dist / radius);
@@ -194,7 +194,7 @@ export class ThrowableSystem {
         });
         this.config.onSpawnExplosionParticles?.(t.x, t.y, BALANCE_CONFIG.throwable.explosionParticleCount);
         this.config.onScreenShake?.(BALANCE_CONFIG.screenShake.biggerExplosion);
-        this.config.onAddFloatingText?.(t.x, t.y - 20, TEXT_CONFIG.combat.molotovLand, '#f87171');
+        this.config.onAddFloatingText?.(t.x, t.y - 20, TEXT_CONFIG.combat.molotovLand, FLOAT_COLOR.warning);
         break;
       }
     }

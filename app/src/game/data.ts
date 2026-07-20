@@ -1610,6 +1610,52 @@ export const TEXT_CONFIG = {
 
     // 放置
     placeItem: (name: string) => `点击放置 ${name}`,
+
+    // 波次/虫卵
+    waveEggRelease: (wave: number) => `第${wave}波虫卵释放!`,
+    eggHatchPending: (count: number) => `${count}个虫卵即将孵化`,
+
+    // 结算
+    itemRecycle: (amount: number) => `道具回收 +¥${amount}`,
+    talentReward: (points: number) => `+${points} 天赋点!`,
+    starRating: ['', '通关!', '优秀!', '完美!'],
+    breachCount: (count: number) => `防线突破: ${count}次`,
+    defeat: '防线被攻破! 战斗失败!',
+
+    // 无尽模式
+    newRecord: '你创造了新纪录!',
+    bestTimeRefreshed: '历史最高时长已刷新!',
+
+    // 武器/道具拾取
+    weaponPickup: (name: string, bonus: string) => `拾取: ${name}!${bonus}`,
+    weaponSwitch: (name: string) => `切换到: ${name}`,
+    weaponExpired: '武器已过期',
+    barrelCooldown: '⚠️ 枪管冷却中!',
+    openFire: '>>> 开 火 <<<',
+    itemCooldown: (s: string) => `道具冷却中... (${s}s)`,
+    namedCooldown: (name: string, s: string) => `${name}冷却中... (${s}s)`,
+
+    // 火焰墙
+    fireWall: (count: number) => `火焰墙!(${count}只)`,
+    fireWallSimple: '火焰墙!',
+
+    // 尸体炸弹
+    corpseBombExplode: '尸体炸弹爆炸!',
+    corpseBombDamage: (dmg: number) => `尸体炸弹! -${dmg}`,
+
+    // 定时自爆
+    timedSuicideNext: '定时自爆蟑螂出现! 下一只8秒后',
+    timedSuicideAll: '定时自爆蟑螂全部出现!',
+    bombWarning: '!!',
+
+    // 场景解锁
+    sceneUnlock: (name: string) => `解锁新场景: ${name}!`,
+
+    // 投掷武器
+    throwWeapon: (name: string) => `投掷${name}!`,
+
+    // 雷达激光伤害
+    radarDamage: (dmg: number) => `-${dmg}`,
   },
 
   // ===== 道具名称 =====
@@ -1925,4 +1971,83 @@ export const TEXT_CONFIG = {
       },
     },
   },
+} as const;
+
+/**
+ * 浮动文字颜色常量
+ * 使用方式：import { FLOAT_COLOR } from './data'; 然后 FLOAT_COLOR.reward 等
+ */
+export const FLOAT_COLOR = {
+  /** 奖励/成功 (绿色) */
+  reward: '#4ade80',
+  /** 伤害/危险 (红色) */
+  danger: '#ef4444',
+  /** 金币/通知 (金色) */
+  gold: '#fbbf24',
+  /** 警告 (浅红) */
+  warning: '#f87171',
+  /** 护盾 (青色) */
+  shield: '#22d3ee',
+  /** 爆炸 (橙红) */
+  explosion: '#ff4400',
+  /** 爆炸 (橙色) */
+  explosionOrange: '#ff6600',
+  /** 分裂 (琥珀) */
+  split: '#ff8800',
+  /** 解体 (浅蓝) */
+  disintegrate: '#88ccff',
+  /** 反噬 (紫色) */
+  backlash: '#a855f7',
+  /** 尸体炸弹 (红) */
+  corpseBomb: '#ff4444',
+  /** 定时自爆 (琥珀) */
+  timedSuicide: '#f59e0b',
+  /** 警告闪烁 (纯红) */
+  warningFlash: '#ff0000',
+  /** 轰 (暗红) */
+  boom: '#8b2020',
+  /** 过期/冷却 (灰) */
+  expired: '#9ca3af',
+  /** 冷却 (灰蓝) */
+  cooldown: '#94a3b8',
+  /** 切换 (黄) */
+  switch: '#facc15',
+  /** 最佳时间 (浅黄) */
+  bestTime: '#fde047',
+  /** 开火 (绿) */
+  openFire: '#22c55e',
+  /** 护甲免疫 (蓝) */
+  armorImmune: '#60a5fa',
+  /** 2星 (紫) */
+  star2: '#c084fc',
+  /** 风扇 (紫) */
+  fan: '#a78bfa',
+  /** 火焰墙 (浅红) */
+  fireWall: '#f87171',
+  /** 风扇次要色 (淡紫) */
+  fanSecondary: '#c4b5fd',
+  /** 护盾激活 (青色) */
+  shieldActive: '#06b6d4',
+  /** 女王召唤 (粉红) */
+  queenSummon: '#ff44aa',
+  /** 护士治疗 (暗绿) */
+  nurseHeal: '#5a8a5a',
+  /** 炸弹失效 (灰色) */
+  bombFail: '#666666',
+  /** 胚胎暴走 (深红) */
+  embryoBurst: '#ff0040',
+  /** 诞生 (亮绿) */
+  spawnBirth: '#00ff80',
+  /** 酸液飞溅 (黄绿) */
+  acidSplash: '#84cc16',
+  /** 酸液腐蚀 (亮黄绿) */
+  acidCorrode: '#a3e635',
+  /** 杀虫剂描述 (浅绿) */
+  insecticideDesc: '#86efac',
+  /** 雷达描述 (浅青) */
+  radarDesc: '#67e8f9',
+  /** 护士施法 (亮绿) */
+  nurseCasting: '#4ade80',
+  /** 胜利 (绿) */
+  victory: '#22c55e',
 } as const;

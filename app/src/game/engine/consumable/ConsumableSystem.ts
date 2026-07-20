@@ -1,11 +1,11 @@
-﻿/**
+/**
  * @fileoverview 消耗品系统模块
  * @description 负责管理游戏中所有消耗品的逻辑，包括购买、库存、自动使用、冷却系统、效果应用等
  */
 
 import { GameState, ParticleType } from '../../types';
 import type { Player, Particle, ConsumableDef } from '../../types';
-import { BALANCE_CONFIG, TEXT_CONFIG } from '../../data';
+import { BALANCE_CONFIG, TEXT_CONFIG, FLOAT_COLOR } from '../../data';
 
 /**
  * 消耗品系统配置接口
@@ -163,7 +163,7 @@ export class ConsumableSystem {
       case 'gas_refill': {
         player.gas = player.maxGas;
         this.buffFlashTimers['gas_refill'] = BALANCE_CONFIG.consumable.buffFlashDuration;
-        this.config.onAddFloatingText(player.x, player.y - 40, TEXT_CONFIG.combat.gasRefill, '#fbbf24', 1500);
+        this.config.onAddFloatingText(player.x, player.y - 40, TEXT_CONFIG.combat.gasRefill, FLOAT_COLOR.gold, 1500);
         break;
       }
       case 'defense_repair': {
@@ -187,14 +187,14 @@ export class ConsumableSystem {
       }
       case 'power_boost': {
         player.powerBoostTimer = BALANCE_CONFIG.consumable.powerBoostDuration;
-        this.config.onAddFloatingText(this.config.getCanvasWidth() / 2, this.config.getCanvasHeight() / 2, TEXT_CONFIG.combat.powerBoost(BALANCE_CONFIG.consumable.powerBoostDuration), '#ef4444', 2000, 32);
+        this.config.onAddFloatingText(this.config.getCanvasWidth() / 2, this.config.getCanvasHeight() / 2, TEXT_CONFIG.combat.powerBoost(BALANCE_CONFIG.consumable.powerBoostDuration), FLOAT_COLOR.danger, 2000, 32);
         break;
       }
       case 'shield': {
         player.shieldTimer = BALANCE_CONFIG.consumable.shieldDuration;
         player.shieldActive = true;
         this.buffFlashTimers['shield'] = BALANCE_CONFIG.consumable.shieldDuration;
-        this.config.onAddFloatingText(this.config.getCanvasWidth() / 2, this.config.getCanvasHeight() / 2 - 50, TEXT_CONFIG.combat.shieldActive(BALANCE_CONFIG.consumable.shieldDuration), '#06b6d4', 2000);
+        this.config.onAddFloatingText(this.config.getCanvasWidth() / 2, this.config.getCanvasHeight() / 2 - 50, TEXT_CONFIG.combat.shieldActive(BALANCE_CONFIG.consumable.shieldDuration), FLOAT_COLOR.shieldActive, 2000);
         break;
       }
       case 'bait': {
@@ -209,7 +209,7 @@ export class ConsumableSystem {
           targetY,
           timer: BALANCE_CONFIG.consumable.baitThrowAnimDuration,
         };
-        this.config.onAddFloatingText(targetX, targetY - 40, TEXT_CONFIG.combat.baitPlaced, '#fbbf24', 2000);
+        this.config.onAddFloatingText(targetX, targetY - 40, TEXT_CONFIG.combat.baitPlaced, FLOAT_COLOR.gold, 2000);
         break;
       }
     }
@@ -314,7 +314,7 @@ export class ConsumableSystem {
       if (player.powerBoostTimer <= 0) {
         player.powerBoostTimer = 0;
         this._lastPowerBoostCountdown = -1;
-        this.config.onAddFloatingText(this.config.getCanvasWidth() / 2, this.config.getCanvasHeight() / 2, TEXT_CONFIG.combat.powerBoostEnd, '#f87171', 1500, 32);
+        this.config.onAddFloatingText(this.config.getCanvasWidth() / 2, this.config.getCanvasHeight() / 2, TEXT_CONFIG.combat.powerBoostEnd, FLOAT_COLOR.warning, 1500, 32);
       }
     }
 
@@ -325,7 +325,7 @@ export class ConsumableSystem {
         player.shieldTimer = 0;
         player.shieldActive = false;
         delete this.buffFlashTimers['shield'];
-        this.config.onAddFloatingText(this.config.getCanvasWidth() / 2, this.config.getCanvasHeight() / 2 - 50, TEXT_CONFIG.combat.shieldEnd, '#22d3ee', 1500);
+        this.config.onAddFloatingText(this.config.getCanvasWidth() / 2, this.config.getCanvasHeight() / 2 - 50, TEXT_CONFIG.combat.shieldEnd, FLOAT_COLOR.shield, 1500);
       }
     }
 
@@ -350,7 +350,7 @@ export class ConsumableSystem {
       if (player.baitTimer <= 0) {
         player.baitTimer = 0;
         this.baitTarget.active = false;
-        this.config.onAddFloatingText(this.baitTarget.x, this.baitTarget.y - 40, TEXT_CONFIG.combat.baitEnd, '#fbbf24', 1500);
+        this.config.onAddFloatingText(this.baitTarget.x, this.baitTarget.y - 40, TEXT_CONFIG.combat.baitEnd, FLOAT_COLOR.gold, 1500);
       }
     }
   }

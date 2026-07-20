@@ -109,7 +109,7 @@
 import { GameState, RoachType, RoachState, SceneType, WeatherType, ParticleType, FlameMode, GameMode, SAVE_VERSION, type Roach, type Player, type Particle, type FireZone, type FireWall, type Economy, type WeaponDrop, type GameProgress, type WaveConfig, type ThrowableProjectile, type InventoryItem, type TripleFlameState, type BossBattleState, type RadarLaser, type StickyBoard, type StickyDrop, type FanState } from './types';
 import * as Vibration from './vibration';
 import { AudioManager } from './audio';
-import { SCENE_CONFIGS, ENEMY_DEFS, TALENT_DEFS, WEAPON_DROP_DEFS, INVENTORY_SELL_PRICES, BOSS_CONFIG, SCENE_WAVE_CONFIGS, SCENE_ITEM_UNLOCKS, SCENE_ROACH_TYPES, SCENE_UNLOCK_CHAIN, SCENE_REWARD_ITEMS, SCENE_GROUND_BOUNDS, createDefaultProgress, ENCYCLOPEDIA_DEFS, CONSUMABLE_DEFS, BALANCE_CONFIG } from './data';
+import { SCENE_CONFIGS, ENEMY_DEFS, TALENT_DEFS, WEAPON_DROP_DEFS, INVENTORY_SELL_PRICES, BOSS_CONFIG, SCENE_WAVE_CONFIGS, SCENE_ITEM_UNLOCKS, SCENE_ROACH_TYPES, SCENE_UNLOCK_CHAIN, SCENE_REWARD_ITEMS, SCENE_GROUND_BOUNDS, createDefaultProgress, ENCYCLOPEDIA_DEFS, CONSUMABLE_DEFS, BALANCE_CONFIG, TEXT_CONFIG, FLOAT_COLOR } from './data';
 import { BOSS_ANIMATIONS } from './bossAnimation';
 import { SaveSystem } from './engine/save/SaveSystem';
 import { EconomyManager } from './engine/economy/EconomyManager';
@@ -137,24 +137,11 @@ import { BossBattleSystem } from './engine/boss/BossBattleSystem';
 import { WaveManager } from './engine/wave/WaveManager';
 import { WeatherSystem } from './engine/weather/WeatherSystem';
 import { RoachAISystem, getNextId, setNextId, getNextBossId, setNextBossId } from './engine/ai/RoachAISystem';
+import { FloatingTextSystem } from './engine/floating-text/FloatingTextSystem';
 
 // =============================================================================
-// 模块级：内部类型与全局变量
+// 模块级：全局变量
 // =============================================================================
-
-/** 浮动文字特效数据（用于伤害数字、金钱提示、倒计时等 HUD 漂浮文字） */
-interface FloatingText {
-  x: number;
-  y: number;
-  text: string;
-  color: string;
-  life: number;
-  maxLife: number;
-  /** 垂直上升速度（负值 = 向上飘） */
-  vy: number;
-  /** 可选字体缩放（1.0 = 默认 16px） */
-  scale?: number;
-}
 
 /** 全局蟑螂 ID 计数器（自增，确保每只蟑螂有唯一标识） */
 let nextId = 1;
@@ -233,7 +220,7 @@ export class GameEngine {
   endlessBestTime: number = 0;
   endlessNewRecordShown: boolean = false;
   endlessNewRecordTimer: number = 0;
-  floatingTexts: FloatingText[] = [];
+  floatingTextSystem!: FloatingTextSystem;
 
   /** 战斗后道具揭示数据 */
   itemRevealData: { type: string; name: string; icon: string; desc: string }[] = [];
@@ -357,6 +344,7 @@ export class GameEngine {
   onPlayerUpdate?: (player: Player) => void;
   onWaveUpdate?: (wave: number, totalWaves: number) => void;
   onDefenseUpdate?: (hp: number, maxHp: number) => void;
+  onPendingRewardUpdate?: (pendingRewards: number) => void;
   onGameOver?: (economy: Economy, wave: number) => void;
   onBossUpdate?: (bossState: BossBattleState) => void;
   onWaveClear?: () => void;
@@ -416,6 +404,12 @@ export class GameEngine {
 
   /** 失败/重新开始保护：防止 gameDefeat() 被多次调用 */
   defeatTriggered: boolean = false;
+
+  /** 关卡内待结算金币（仅在胜利时发放） */
+  pendingRewards: number = 0;
+
+  /** 胜利时待动画展示的金币奖励（用于结算界面动画） */
+  victoryGoldReward: number = 0;
 
   /** 厨房第一波教程暂停：阻止生成直到教程完成 */
   get tutorialPauseSpawn(): boolean { return this.waveManager!.tutorialPauseSpawn; }
@@ -545,7 +539,7 @@ export class GameEngine {
       canvasWidth: this.width,
       canvasHeight: this.height,
       onAddFloatingText: (x, y, text, color) => { this.addFloatingText(x, y, text, color); },
-      onAddMoney: (amount) => { this.economy.money += amount; },
+      onAddPendingReward: (amount) => { this.pendingRewards += amount; this.onPendingRewardUpdate?.(this.pendingRewards); },
       onSaveProgress: () => { this.saveProgress(); },
       onEconomyUpdate: (e) => { this.onEconomyUpdate?.(this.economy); },
     });
@@ -556,6 +550,7 @@ export class GameEngine {
       canvasWidth: this.width,
       canvasHeight: this.height,
     });
+    this.floatingTextSystem = new FloatingTextSystem();
     this.collisionSystem = new CollisionSystem({
       difficulty: this.difficulty as 'easy' | 'hard',
       currentScene: this.currentScene,
@@ -589,12 +584,12 @@ export class GameEngine {
         // 浮动文字和屏幕震动
         const def = WEAPON_DROP_DEFS[drop.type];
         if (def) {
-          this.addFloatingText(this.player.x, this.player.y - 80, `拾取: ${def.name}!${bonusText}`, '#4ade80');
+          this.addFloatingText(this.player.x, this.player.y - 80, TEXT_CONFIG.combat.weaponPickup(def.name, bonusText), FLOAT_COLOR.reward);
         }
         this.screenShake = BALANCE_CONFIG.screenShake.weaponHit;
       },
       onSwitchWeapon: (weapon, weaponName) => {
-        this.addFloatingText(this.player.x, this.player.y - 60, `切换到: ${weaponName}`, '#facc15');
+        this.addFloatingText(this.player.x, this.player.y - 60, TEXT_CONFIG.combat.weaponSwitch(weaponName), FLOAT_COLOR.switch);
       },
     });
     this.stickySystem = new StickySystem({
@@ -817,6 +812,7 @@ export class GameEngine {
       onGameVictory: () => { this.gameVictory(); },
       onSellUnusedInventory: () => this.sellUnusedInventory(),
       onUnlockNextScene: () => this.unlockNextScene(),
+      onAddPendingReward: (amount) => { this.pendingRewards += amount; this.onPendingRewardUpdate?.(this.pendingRewards); },
     });
 
     // ===== 初始化 WaveManager =====
@@ -1153,7 +1149,7 @@ export class GameEngine {
     this.stickySystem?.reset();
     this.fireWalls = [];
     this.fanSystem?.reset();
-    this.floatingTexts = [];
+    this.floatingTextSystem.reset();
     this.weaponSystem?.reset();
     this.selectedItems = []; // Clear player-selected items
     this.armorShieldCache.clear();
@@ -1194,6 +1190,9 @@ export class GameEngine {
     this.waveTimer = 1;
     this.bossSystem!.activeBosses = 0;
     this.defeatTriggered = false;
+    this.pendingRewards = 0;
+    this.victoryGoldReward = 0;
+    this.onPendingRewardUpdate?.(0);
     this.tutorialPauseSpawn = false;
     this.throwableSystem?.reset();
     this.aimingSystem?.reset();
@@ -1261,12 +1260,16 @@ export class GameEngine {
   /** 停止游戏循环 */
   stop() {
     this.state = GameState.MENU;
+    this.pendingRewards = 0;
+    this.victoryGoldReward = 0;
+    this.onPendingRewardUpdate?.(0);
     this.audio.stopBGM();
     this.audio.stopGameOverBGM();
     this.audio.stopVictoryBGM();
     this.audio.stopFire();
     this.audio.stopFanLoop();
     this.audio.stopFireWallBurn();
+    this.audio.stopFlyingBuzzLoop();
     cancelAnimationFrame(this.animationId);
     this.onStateChange?.(this.state);
   }
@@ -1481,8 +1484,8 @@ export class GameEngine {
       // Egg pod system removed
     }
 
-    this.addFloatingText(this.width / 2, this.height / 3, `第${wave}波虫卵释放!`, '#ef4444');
-    this.addFloatingText(this.width / 2, this.height / 3 + 25, `${config.count}个虫卵即将孵化`, '#fbbf24');
+    this.addFloatingText(this.width / 2, this.height / 3, TEXT_CONFIG.combat.waveEggRelease(wave), FLOAT_COLOR.danger);
+    this.addFloatingText(this.width / 2, this.height / 3 + 25, TEXT_CONFIG.combat.eggHatchPending(config.count), FLOAT_COLOR.gold);
     this.screenShake = BALANCE_CONFIG.screenShake.largeExplosion;
   }
 
@@ -1550,6 +1553,16 @@ export class GameEngine {
     this.onEconomyUpdate?.(this.economy);
   }
 
+  /** 结算界面动画完成后调用 — 将关卡内金币奖励发放到经济系统 */
+  settleVictoryGold() {
+    if (this.victoryGoldReward > 0) {
+      this.economy.money += this.victoryGoldReward;
+      this.economy.totalMoneyEarned += this.victoryGoldReward;
+      this.victoryGoldReward = 0;
+      this.onEconomyUpdate?.(this.economy);
+    }
+  }
+
   /** 在回收动画完成后调用 — 实际清空库存 */
   clearRecycledInventory() {
     this.inventory = [];
@@ -1559,10 +1572,15 @@ export class GameEngine {
 
   /** 触发游戏胜利流程 */
   gameVictory() {
+    // 保存关卡内累计的金币奖励到 victoryGoldReward（由结算界面动画展示后发放）
+    this.victoryGoldReward = this.pendingRewards;
+    this.pendingRewards = 0;
+    this.onPendingRewardUpdate?.(0);
+
     // 在胜利界面之前出售未使用的库存道具
     const sellTotal = this.sellUnusedInventory();
     if (sellTotal > 0) {
-      this.addFloatingText(this.width / 2, this.height * 0.3, `道具回收 +¥${sellTotal}`, '#fbbf24');
+      this.addFloatingText(this.width / 2, this.height * 0.3, TEXT_CONFIG.combat.itemRecycle(sellTotal), FLOAT_COLOR.gold);
     }
 
     this.screenShake = BALANCE_CONFIG.screenShake.biggerExplosion;
@@ -1572,6 +1590,7 @@ export class GameEngine {
     this.player.heat = 0;
     this.player.heatWarningTimer = 0;
     // 战斗结束时停止所有武器和连续音效
+    this.audio.stopBGM();
     this.audio.stopFire();
     this.audio.stopFanLoop();
     this.audio.stopFireWallBurn();
@@ -1592,7 +1611,7 @@ export class GameEngine {
     this.addTalentPoints(talentReward);
     this.saveProgress();
     // 显示天赋点奖励浮动文字
-    this.addFloatingText(this.width / 2, this.height * 0.35, `+${talentReward} 天赋点!`, '#fbbf24');
+    this.addFloatingText(this.width / 2, this.height * 0.35, TEXT_CONFIG.combat.talentReward(talentReward), FLOAT_COLOR.gold);
 
     // ===== 医院专属：三星评级系统 =====
     if (this.currentScene === SceneType.HOSPITAL) {
@@ -1607,11 +1626,11 @@ export class GameEngine {
 
       // 显示星级评定浮动文字
       const starText = '⭐'.repeat(stars);
-      const ratingTexts = ['', '通关!', '优秀!', '完美!'];
-      this.addFloatingText(this.width / 2, this.height * 0.45, starText, '#fbbf24');
-      this.addFloatingText(this.width / 2, this.height * 0.5, ratingTexts[stars], stars === 3 ? '#fbbf24' : (stars === 2 ? '#c084fc' : '#94a3b8'));
+      const ratingTexts = TEXT_CONFIG.combat.starRating;
+      this.addFloatingText(this.width / 2, this.height * 0.45, starText, FLOAT_COLOR.gold);
+      this.addFloatingText(this.width / 2, this.height * 0.5, ratingTexts[stars], stars === 3 ? FLOAT_COLOR.gold : (stars === 2 ? FLOAT_COLOR.star2 : FLOAT_COLOR.expired));
       if (this.hospitalBreaches > 0) {
-        this.addFloatingText(this.width / 2, this.height * 0.55, `防线突破: ${this.hospitalBreaches}次`, '#f87171');
+        this.addFloatingText(this.width / 2, this.height * 0.55, TEXT_CONFIG.combat.breachCount(this.hospitalBreaches), FLOAT_COLOR.warning);
       }
     }
 
@@ -1679,10 +1698,11 @@ export class GameEngine {
     // Guard: prevent multiple calls
     if (this.defeatTriggered) return;
     this.defeatTriggered = true;
-    // Defense breach: no gold reward, no item recycling, clear all earned gold
-    this.economy.money = 0;
+    // 失败：关卡内金币不发放，但已有金币池保留
+    this.pendingRewards = 0;
+    this.onPendingRewardUpdate?.(0);
     this.state = GameState.GAME_OVER;
-    this.addFloatingText(this.width / 2, this.height / 2, '防线被攻破! 战斗失败!', '#ef4444');
+    this.addFloatingText(this.width / 2, this.height / 2, TEXT_CONFIG.combat.defeat, FLOAT_COLOR.danger);
     this.screenShake = BALANCE_CONFIG.screenShake.bossDeath;
     this.audio.stopBGM();
     this.audio.stopFire();
@@ -1801,8 +1821,8 @@ export class GameEngine {
       if (this.endlessBestTime > 0 && this.endlessElapsedTime > this.endlessBestTime && !this.endlessNewRecordShown) {
         this.endlessNewRecordShown = true;
         this.endlessNewRecordTimer = BALANCE_CONFIG.endless.newRecordTimer; // 3 seconds
-        this.addFloatingText(this.width * 0.75, 60, '你创造了新纪录!', '#fbbf24');
-        this.addFloatingText(this.width * 0.75, 80, '历史最高时长已刷新!', '#fde047');
+        this.addFloatingText(this.width * 0.75, 60, TEXT_CONFIG.combat.newRecord, FLOAT_COLOR.gold);
+        this.addFloatingText(this.width * 0.75, 80, TEXT_CONFIG.combat.bestTimeRefreshed, FLOAT_COLOR.bestTime);
         this.screenShake = BALANCE_CONFIG.screenShake.largeExplosion;
         Vibration.vibrateNewRecord();
       }
@@ -1908,7 +1928,7 @@ export class GameEngine {
       if (p.weaponTimer <= 0) {
         p.currentWeapon = 'flamethrower';
         p.isTempWeapon = false;
-        this.addFloatingText(p.x, p.y - 60, '武器已过期', '#9ca3af');
+        this.addFloatingText(p.x, p.y - 60, TEXT_CONFIG.combat.weaponExpired, FLOAT_COLOR.expired);
       }
     }
 
@@ -1917,7 +1937,7 @@ export class GameEngine {
     const warnThreshold = p.overheatThreshold - 300; // 1500 for default overheatThreshold=1800
     if (p.heat >= warnThreshold && p.heatWarningTimer <= 0 && !p.isOverheated) {
       p.heatWarningTimer = 3;
-      this.addFloatingText(p.x, p.y - 60, '⚠️ 枪管冷却中!', '#fbbf24', 1500, 18);
+      this.addFloatingText(p.x, p.y - 60, TEXT_CONFIG.combat.barrelCooldown, FLOAT_COLOR.gold, 1500, 18);
     }
 
     // 射击逻辑：基于当前武器
@@ -1969,7 +1989,7 @@ export class GameEngine {
         p.isOverheated = false;
         p.heat = 0;
         // Show "FIRE" text at screen center (same position as overheat countdown)
-        this.addFloatingText(this.width / 2, this.height / 2, '>>> 开 火 <<<', '#22c55e', 2000, 28);
+        this.addFloatingText(this.width / 2, this.height / 2, TEXT_CONFIG.combat.openFire, FLOAT_COLOR.openFire, 2000, 28);
       }
     }
 
@@ -1985,7 +2005,7 @@ export class GameEngine {
         p.isReloading = false;
         p.gas = p.maxGas;
         // 装弹完成，在屏幕中央显示"开火"文字
-        this.addFloatingText(this.width / 2, this.height / 2, '>>> 开 火 <<<', '#22c55e', 2000, 28);
+        this.addFloatingText(this.width / 2, this.height / 2, TEXT_CONFIG.combat.openFire, FLOAT_COLOR.openFire, 2000, 28);
       }
     }
 
@@ -2189,12 +2209,12 @@ export class GameEngine {
 
     // Check picked-up item cooldown (shares globalConsumableCooldown with shop consumables)
     if (this.consumableSystem!.globalConsumableCooldown > 0) {
-      this.addFloatingText(this.player.x, this.player.y - 40, `道具冷却中... (${this.consumableSystem!.globalConsumableCooldown.toFixed(1)}s)`, '#94a3b8', 800);
+      this.addFloatingText(this.player.x, this.player.y - 40, TEXT_CONFIG.combat.itemCooldown(this.consumableSystem!.globalConsumableCooldown.toFixed(1)), FLOAT_COLOR.cooldown, 800);
       return;
     }
     if ((this.consumableSystem!.itemCooldowns[item.type] || 0) > 0) {
       const def = WEAPON_DROP_DEFS[item.type as keyof typeof WEAPON_DROP_DEFS];
-      this.addFloatingText(this.player.x, this.player.y - 40, `${def?.name || ''}冷却中... (${this.consumableSystem!.itemCooldowns[item.type].toFixed(1)}s)`, '#94a3b8', 800);
+      this.addFloatingText(this.player.x, this.player.y - 40, TEXT_CONFIG.combat.namedCooldown(def?.name || '', this.consumableSystem!.itemCooldowns[item.type].toFixed(1)), FLOAT_COLOR.cooldown, 800);
       return;
     }
 
@@ -2446,8 +2466,8 @@ export class GameEngine {
     }
     this.screenShake = BALANCE_CONFIG.screenShake.biggerExplosion;
 
-    const label = target ? `火焰墙!(${hitCount > 0 ? hitCount + '只' : ''})` : '火焰墙!';
-    this.addFloatingText((wallX1 + wallX2) / 2, wallY - 20, label, '#f87171');
+    const label = target ? TEXT_CONFIG.combat.fireWall(hitCount) : TEXT_CONFIG.combat.fireWallSimple;
+    this.addFloatingText((wallX1 + wallX2) / 2, wallY - 20, label, FLOAT_COLOR.fireWall);
   }
 
   // ===== PERSPECTIVE GROUND BOUNDS: get left/right x boundaries at a given Y =====
@@ -2742,10 +2762,10 @@ export class GameEngine {
     if (roachBottom > this.defenseLineY() - defenseDamageRange) {
       const dmg = this.difficulty === 'hard' ? 15 : 5;
       if (this.player.shieldTimer > 0) {
-        this.addFloatingText(r.x, this.defenseLineY() - 20, '护盾抵消!', '#22d3ee');
+        this.addFloatingText(r.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.shieldBlock, FLOAT_COLOR.shield);
       } else {
         this.defenseHp -= dmg;
-        this.addFloatingText(r.x, this.defenseLineY() - 20, `自爆伤害! -${dmg}`, '#ef4444');
+        this.addFloatingText(r.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.suicideDamage(dmg), FLOAT_COLOR.danger);
       }
       if (r.type === RoachType.FLYING_SUICIDE) {
         this.audio.playSuicideBreachFlying();
@@ -2755,8 +2775,9 @@ export class GameEngine {
       if (this.defenseHp <= 0) {
         this.defenseHp = 0;
         Vibration.vibrateGameOver();
-        // Defense breach: no gold reward, no item recycling, clear all earned gold
-        this.economy.money = 0;
+        // 失败：关卡内金币不发放，但已有金币池保留
+        this.pendingRewards = 0;
+        this.onPendingRewardUpdate?.(0);
         this.state = GameState.GAME_OVER;
         // Stop all continuous sound effects on game over
         this.audio.stopBGM();
@@ -2774,7 +2795,7 @@ export class GameEngine {
       }
     }
 
-    this.addFloatingText(r.x, r.y - 30, hitCount > 0 ? `大爆炸!(${hitCount}只受波及)` : '大爆炸!', '#ff4400');
+    this.addFloatingText(r.x, r.y - 30, hitCount > 0 ? TEXT_CONFIG.combat.bigExplosion(hitCount) : '大爆炸!', FLOAT_COLOR.explosion);
   }
 
   // Suicide roach: explode when killed by flame (before reaching defense line)
@@ -2825,10 +2846,10 @@ export class GameEngine {
     if (roachBottom > this.defenseLineY() - defenseDamageRange) {
       const dmg = this.difficulty === 'hard' ? 15 : 5;
       if (this.player.shieldTimer > 0) {
-        this.addFloatingText(r.x, this.defenseLineY() - 20, '护盾抵消!', '#22d3ee');
+        this.addFloatingText(r.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.shieldBlock, FLOAT_COLOR.shield);
       } else {
         this.defenseHp -= dmg;
-        this.addFloatingText(r.x, this.defenseLineY() - 20, `自爆伤害! -${dmg}`, '#ef4444');
+        this.addFloatingText(r.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.suicideDamage(dmg), FLOAT_COLOR.danger);
       }
       if (r.type === RoachType.FLYING_SUICIDE) {
         this.audio.playSuicideBreachFlying();
@@ -2837,7 +2858,7 @@ export class GameEngine {
       }
     }
 
-    this.addFloatingText(r.x, r.y - 30, hitCount > 0 ? `死亡爆炸!(${hitCount}只受波及)` : '死亡爆炸!', '#ff4400');
+    this.addFloatingText(r.x, r.y - 30, hitCount > 0 ? TEXT_CONFIG.combat.deathExplosion(hitCount) : '死亡爆炸!', FLOAT_COLOR.explosion);
   }
 
   // [REMOVED] spawnDebrisParticles, spawnFireRingParticles, spawnShockwaveRing — migrated to ParticleSpawner
@@ -2912,13 +2933,13 @@ export class GameEngine {
       // Damage defense line
       const defDmg = this.difficulty === 'hard' ? 20 : 8;
       if (this.player.shieldTimer > 0) {
-        this.addFloatingText(r.x, this.defenseLineY() - 20, '护盾抵消!', '#22d3ee');
+        this.addFloatingText(r.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.shieldBlock, FLOAT_COLOR.shield);
       } else {
         this.defenseHp -= defDmg;
-        this.addFloatingText(r.x, this.defenseLineY() - 20, `炸弹爆炸! -${defDmg}`, '#ef4444');
+        this.addFloatingText(r.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.bombExplode(defDmg), FLOAT_COLOR.danger);
       }
 
-      this.addFloatingText(r.x, r.y - 50, '轰!', '#8b2020');
+      this.addFloatingText(r.x, r.y - 50, TEXT_CONFIG.combat.boom, FLOAT_COLOR.boom);
     } finally {
       this._deathChainDepth--;
     }
@@ -2977,7 +2998,7 @@ export class GameEngine {
         };
         this.roaches.push(small);
       }
-      this.addFloatingText(r.x, r.y - 30, '分裂x5!', '#ff8800');
+      this.addFloatingText(r.x, r.y - 30, TEXT_CONFIG.combat.splitSpawn, FLOAT_COLOR.split);
     }
 
     // 飞行蟑螂：死亡时解体并坠落
@@ -3017,7 +3038,7 @@ export class GameEngine {
       }
       // 羽毛/火花粒子
       ParticleSpawner.spawnSparkParticles(this.particles,r.x, r.y, 20);
-      this.addFloatingText(r.x, r.y - 20, '解体!', '#88ccff');
+      this.addFloatingText(r.x, r.y - 20, TEXT_CONFIG.combat.disintegrate, FLOAT_COLOR.disintegrate);
     }
     // 自爆/飞行自爆蟑螂：死亡时增强爆炸
     if (r.type === RoachType.SUICIDE || r.type === RoachType.FLYING_SUICIDE) {
@@ -3046,7 +3067,7 @@ export class GameEngine {
       this.screenShake = BALANCE_CONFIG.screenShake.bossDeath;
       this.audio.playSuicideExplode();
       Vibration.vibrateSuicideExplode();
-      this.addFloatingText(r.x, r.y - 30, hitCount > 0 ? `爆炸!(${hitCount}只受波及)` : '爆炸!', '#ff6600');
+      this.addFloatingText(r.x, r.y - 30, hitCount > 0 ? TEXT_CONFIG.combat.explode(hitCount) : '爆炸!', FLOAT_COLOR.explosionOrange);
     }
 
     this.audio.playKill();
@@ -3102,7 +3123,7 @@ export class GameEngine {
           boss.hp -= backlashDmg;
           // bossHp is now purely for 4-layer UI display - updated by wave clears only
           // Visual feedback for backlash
-          this.addFloatingText(boss.x + (Math.random() - 0.5) * 40, boss.y - 30, `反噬 -${backlashDmg}`, '#a855f7');
+          this.addFloatingText(boss.x + (Math.random() - 0.5) * 40, boss.y - 30, TEXT_CONFIG.combat.backlash(backlashDmg), FLOAT_COLOR.backlash);
           boss.damageFlash = 1;
           // 紫色反噬粒子
           for (let k = 0; k < 3; k++) {
@@ -3121,15 +3142,15 @@ export class GameEngine {
     }
 
     this.economy.totalKills++;
-    this.economy.money += reward;
-    this.economy.totalMoneyEarned += reward;
-    this.addFloatingText(r.x, r.y - 20, `+¥${reward}`, '#4ade80');
+    this.pendingRewards += reward;
+    this.onPendingRewardUpdate?.(this.pendingRewards);
+    this.addFloatingText(r.x, r.y - 20, TEXT_CONFIG.combat.killReward(reward), FLOAT_COLOR.reward);
     this.screenShake = r.isBoss ? 12 : (r.type === RoachType.LARGE ? 6 : 3);
 
     // Boss 死亡清除所有剩余蟑螂
     if (r.isBoss) {
       this.bossSystem!.activeBosses--;
-      this.addFloatingText(this.width / 2, this.height / 2, 'BOSS 击败!', '#fbbf24');
+      this.addFloatingText(this.width / 2, this.height / 2, TEXT_CONFIG.combat.bossDefeated, FLOAT_COLOR.gold);
       // Kill all remaining roaches
       for (const other of this.roaches) {
         if (other.state === RoachState.ALIVE && other.id !== r.id) {
@@ -3148,7 +3169,7 @@ export class GameEngine {
         timer: 3.0, // 3 second countdown
         flashPhase: 0,
       });
-      this.addFloatingText(r.x, r.y - 40, '尸体炸弹 3秒!', '#ff4444');
+      this.addFloatingText(r.x, r.y - 40, TEXT_CONFIG.combat.corpseBomb(3), FLOAT_COLOR.corpseBomb);
       this.audio.playTimedBombDrop();
     }
 
@@ -3275,7 +3296,9 @@ export class GameEngine {
     if (result.gameOver) {
       this.defenseHp = 0;
       Vibration.vibrateGameOver();
-      this.economy.money = 0;
+      // 失败：关卡内金币不发放，但已有金币池保留
+      this.pendingRewards = 0;
+      this.onPendingRewardUpdate?.(0);
       this.state = GameState.GAME_OVER;
       this.audio.stopBGM();
       this.audio.stopFire();
@@ -3315,9 +3338,9 @@ export class GameEngine {
         this.timedSuicideSpawnRemaining--;
         this.timedSuicideSpawnTimer = this.timedSuicideSpawnRemaining > 0 ? 8.0 : 0;
         if (this.timedSuicideSpawnRemaining > 0) {
-          this.addFloatingText(this.width / 2, 150, `定时自爆蟑螂出现! 下一只8秒后`, '#f59e0b');
+          this.addFloatingText(this.width / 2, 150, TEXT_CONFIG.combat.timedSuicideNext, FLOAT_COLOR.timedSuicide);
         } else {
-          this.addFloatingText(this.width / 2, 150, '定时自爆蟑螂全部出现!', '#f59e0b');
+          this.addFloatingText(this.width / 2, 150, TEXT_CONFIG.combat.timedSuicideAll, FLOAT_COLOR.timedSuicide);
         }
       }
     }
@@ -3330,7 +3353,7 @@ export class GameEngine {
       // Countdown floating text
       const secs = Math.ceil(bomb.timer);
       if (bomb.timer > 0 && Math.abs(bomb.timer - secs) < 0.05 && secs <= 3) {
-        this.addFloatingText(bomb.x, bomb.y - 25, `${secs}`, secs <= 1 ? '#ef4444' : '#fbbf24');
+        this.addFloatingText(bomb.x, bomb.y - 25, `${secs}`, secs <= 1 ? FLOAT_COLOR.danger : FLOAT_COLOR.gold);
       }
       // Red flash pulse during countdown (last 3 seconds)
       if (bomb.timer <= 3 && bomb.timer > 0) {
@@ -3363,7 +3386,7 @@ export class GameEngine {
       }
       // 0.5s warning pulse
       if (bomb.timer <= 0.5 && Math.floor(bomb.timer * 6) % 2 === 0) {
-        this.addFloatingText(bomb.x, bomb.y - 40, '!!', '#ff0000');
+        this.addFloatingText(bomb.x, bomb.y - 40, TEXT_CONFIG.combat.bombWarning, FLOAT_COLOR.warningFlash);
       }
       // EXPLOSION!
       if (bomb.timer <= 0) {
@@ -3394,15 +3417,15 @@ export class GameEngine {
         if (defenseDist < 120) {
           const defenseDmg = 12;
           if (this.player.shieldTimer > 0) {
-            this.addFloatingText(bomb.x, this.defenseLineY() - 20, '护盾抵消!', '#22d3ee');
+            this.addFloatingText(bomb.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.shieldBlock, FLOAT_COLOR.shield);
           } else {
             this.defenseHp -= defenseDmg;
-            this.addFloatingText(bomb.x, this.defenseLineY() - 20, `尸体炸弹! -${defenseDmg}`, '#ef4444');
+            this.addFloatingText(bomb.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.corpseBombDamage(defenseDmg), FLOAT_COLOR.danger);
           }
         }
         ParticleSpawner.spawnExplosionParticles(this.particles,bomb.x, bomb.y, 20);
         ParticleSpawner.spawnSmokeParticles(this.particles,bomb.x, bomb.y, 10);
-        this.addFloatingText(bomb.x, bomb.y - 40, '尸体炸弹爆炸!', '#ff4400');
+        this.addFloatingText(bomb.x, bomb.y - 40, TEXT_CONFIG.combat.corpseBombExplode, FLOAT_COLOR.explosion);
         this.deadTimedBombs.splice(i, 1);
       }
     }
@@ -3414,7 +3437,7 @@ export class GameEngine {
         bomb.timer -= this.deltaTime;
         const secs = Math.ceil(bomb.timer);
         if (bomb.timer > 0 && Math.abs(bomb.timer - secs) < 0.05 && secs <= 3) {
-          this.addFloatingText(bomb.x, bomb.y - 20, `${secs}`, secs <= 1 ? '#ef4444' : '#fbbf24');
+          this.addFloatingText(bomb.x, bomb.y - 20, `${secs}`, secs <= 1 ? FLOAT_COLOR.danger : FLOAT_COLOR.gold);
         }
         if (bomb.timer <= 0) {
           ParticleSpawner.spawnExplosionParticles(this.particles,bomb.x, bomb.y, 80);
@@ -3461,10 +3484,10 @@ export class GameEngine {
           }
           const defDmg = this.difficulty === 'hard' ? 20 : 8;
           if (this.player.shieldTimer > 0) {
-            this.addFloatingText(bomb.x, this.defenseLineY() - 20, '护盾抵消!', '#22d3ee');
+            this.addFloatingText(bomb.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.shieldBlock, FLOAT_COLOR.shield);
           } else {
             this.defenseHp -= defDmg;
-            this.addFloatingText(bomb.x, this.defenseLineY() - 20, `炸弹爆炸! -${defDmg}`, '#ef4444');
+            this.addFloatingText(bomb.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.bombExplode(defDmg), FLOAT_COLOR.danger);
           }
           this.placedBombs.splice(bi, 1);
         }
@@ -3511,7 +3534,7 @@ export class GameEngine {
       if (!this.progress.scenesUnlocked.includes(nextScene)) {
         this.progress.scenesUnlocked.push(nextScene);
         this.saveProgress(); // Save immediately after unlocking
-        this.addFloatingText(this.width / 2, this.height / 2 + 50, `解锁新场景: ${SCENE_CONFIGS[nextScene].name}!`, '#fbbf24');
+        this.addFloatingText(this.width / 2, this.height / 2 + 50, TEXT_CONFIG.combat.sceneUnlock(SCENE_CONFIGS[nextScene].name), FLOAT_COLOR.gold);
       }
     }
   }
@@ -3534,13 +3557,7 @@ export class GameEngine {
    * @param {number} fontSize - 字体大小
    */
   addFloatingText(x: number, y: number, text: string, color: string, durationMs?: number, fontSize?: number) {
-    // Cap floating texts - truncate from end (much faster than splice from start)
-    if (this.floatingTexts.length > 20) {
-      this.floatingTexts.length = 20;
-    }
-    const maxLife = durationMs ? durationMs / 1000 : 1.0;
-    const scale = fontSize ? fontSize / 16 : 1.0;
-    this.floatingTexts.push({ x, y, text, color, life: maxLife, maxLife, vy: -35, scale });
+    this.floatingTextSystem.addFloatingText(x, y, text, color, durationMs, fontSize);
   }
 
   /** 更新所有粒子特效（位置、生命周期） */
@@ -3553,7 +3570,7 @@ export class GameEngine {
     });
     this.particleSystem!.updateParticlesAndFloatingTexts(
       this.particles,
-      this.floatingTexts,
+      this.floatingTextSystem.getFloatingTexts(),
       this.fireZones,
       this.roaches,
       this.armorShieldCache
@@ -3690,7 +3707,7 @@ export class GameEngine {
         this.lightningTimer = BALANCE_CONFIG.lightning.timerMin + Math.random() * BALANCE_CONFIG.lightning.timerRandMax;
         if (Math.random() < 0.3) {
           this.lightningFlash = BALANCE_CONFIG.lightning.flashDuration;
-          this.addFloatingText(this.width / 2, this.height / 2 - 100, '⚡ 闪电 ⚡', '#fbbf24');
+          this.addFloatingText(this.width / 2, this.height / 2 - 100, TEXT_CONFIG.combat.lightning, FLOAT_COLOR.gold);
         }
       }
       // 更新闪电闪光
@@ -4441,9 +4458,9 @@ export class GameEngine {
     WeatherSystem.renderWeatherForeground(ctx, w, this.weatherParticles, () => this.renderDefenseLine(ctx, w));
   }
 
-  /** 渲染浮动文字（委托给 ParticleSystem 静态方法） */
+  /** 渲染浮动文字（委托给 FloatingTextSystem 模块） */
   renderFloatingTexts(ctx: CanvasRenderingContext2D) {
-    ParticleSystem.renderFloatingTexts(ctx, this.floatingTexts);
+    this.floatingTextSystem.render(ctx);
   }
 
   // =============================================================================

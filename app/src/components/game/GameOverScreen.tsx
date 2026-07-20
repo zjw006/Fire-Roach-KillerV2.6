@@ -1,10 +1,10 @@
-﻿/**
+/**
  * @fileoverview 游戏结束结算界面组件
  * 根据胜利/失败状态展示不同的结算画面，包含到达波次、总击杀、最终资金等战斗统计数据，
  * 胜利时支持进入下一场景或前往天赋树加点，失败时可重新开始或返回主菜单。
  */
 
-import React, { useRef } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { RotateCcw, Home, Skull, Trophy, Flame, Sparkles, Map, ChevronRight, Lightbulb } from 'lucide-react';
 import { TEXT_CONFIG } from '@/game/data';
 import type { Economy, GameMode, SceneType } from '@/game/types';
@@ -27,14 +27,57 @@ interface GameOverScreenProps {
   onOpenTalentTree?: () => void;
   audio?: AudioManager;
   menuMoney?: number; // Cross-level total money (menuShopMoney)
+  /** 关卡内获得的金币奖励（用于胜利结算动画） */
+  victoryGoldReward?: number;
+  /** 结算动画完成后回调（发放金币到经济系统） */
+  onSettleGold?: () => void;
 }
 
-export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, gameMode, currentScene, isVictory, hasNextScene, nextSceneName, onRestart, onQuit, onNextScene, talentPoints, bossDefeated, onOpenTalentTree, audio}) => {
+export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, gameMode, currentScene, isVictory, hasNextScene, nextSceneName, onRestart, onQuit, onNextScene, talentPoints, bossDefeated, onOpenTalentTree, audio, victoryGoldReward, onSettleGold}) => {
   /** 判断当前场景和模式类型 */
   const isBasement = currentScene === 'basement';
   const isBossMode = bossDefeated;
   const isEndless = gameMode === 'endless';
   const videoRef = useRef<HTMLVideoElement>(null);
+
+  /** 金币动画状态 */
+  const hasReward = (victoryGoldReward ?? 0) > 0;
+  const baseGold = economy.money;
+  const finalGold = baseGold + (victoryGoldReward ?? 0);
+  const [displayGold, setDisplayGold] = useState(hasReward ? baseGold : finalGold);
+  const [animationDone, setAnimationDone] = useState(!hasReward);
+
+  useEffect(() => {
+    if (!hasReward) {
+      // No reward to animate, settle immediately
+      onSettleGold?.();
+      return;
+    }
+
+    const reward = victoryGoldReward ?? 0;
+    // 动态时长：基础 1000ms + 每金币 3ms，最低 800ms，最高 5000ms
+    const duration = Math.max(800, Math.min(1000 + reward * 3, 5000));
+    const tickInterval = 50; // 固定 50ms 间隔，音效以固定节奏播放
+    const steps = Math.round(duration / tickInterval);
+    const stepAmount = reward / steps;
+    let currentStep = 0;
+
+    const timer = setInterval(() => {
+      currentStep++;
+      const newGold = Math.min(baseGold + Math.round(stepAmount * currentStep), finalGold);
+      setDisplayGold(newGold);
+      audio?.playCoinTick();
+
+      if (currentStep >= steps) {
+        clearInterval(timer);
+        setDisplayGold(finalGold);
+        setAnimationDone(true);
+        onSettleGold?.();
+      }
+    }, tickInterval);
+
+    return () => clearInterval(timer);
+  }, []); // Run only once on mount
 
   const modeName = isBossMode ? TEXT_CONFIG.ui.gameOver.bossModeName : isEndless ? TEXT_CONFIG.ui.gameOver.endlessMode : gameMode === 'daily' ? TEXT_CONFIG.ui.gameOver.dailyModeName : TEXT_CONFIG.ui.gameOver.storyMode;
 
@@ -104,7 +147,12 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, g
             </div>
             <div className="text-center">
               <div className="text-stone-400 text-[10px]">{TEXT_CONFIG.ui.gameOver.finalMoney}</div>
-              <div className="text-lg font-bold text-amber-400">¥{economy.money}</div>
+              <div className={`text-lg font-bold text-amber-400 ${hasReward && !animationDone ? 'animate-pulse' : ''}`}>
+                ¥{animationDone ? economy.money : displayGold}
+                {hasReward && !animationDone && (
+                  <span className="text-xs text-green-400 ml-0.5">+{victoryGoldReward}</span>
+                )}
+              </div>
             </div>
             <div className="text-center">
               <div className="text-stone-400 text-[10px]">{TEXT_CONFIG.ui.gameOver.smallRoach}</div>

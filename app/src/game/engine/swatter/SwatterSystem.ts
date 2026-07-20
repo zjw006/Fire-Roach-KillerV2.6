@@ -4,7 +4,7 @@
  */
 
 import { RoachState, type Roach, type InventoryItem } from '../../types';
-import { WEAPON_DROP_DEFS, BALANCE_CONFIG, TEXT_CONFIG } from '../../data';
+import { WEAPON_DROP_DEFS, BALANCE_CONFIG, TEXT_CONFIG, FLOAT_COLOR } from '../../data';
 
 /**
  * 电蚊拍系统配置接口
@@ -74,7 +74,7 @@ export class SwatterSystem {
       if (this.swatterCooldown <= 0) {
         this.swatterReady = true;
         this.swatterCooldown = 0;
-        this.config.onAddFloatingText?.(playerX, playerY - 50, TEXT_CONFIG.combat.swatterReady, '#4ade80');
+        this.config.onAddFloatingText?.(playerX, playerY - 50, TEXT_CONFIG.combat.swatterReady, FLOAT_COLOR.reward);
       }
     }
   }
@@ -97,18 +97,18 @@ export class SwatterSystem {
 
     // 检查全局道具冷却
     if (result.globalConsumableCooldown > 0) {
-      this.config.onAddFloatingText?.(playerX, playerY - 40, TEXT_CONFIG.combat.globalCooldown(result.globalConsumableCooldown.toFixed(1)), '#94a3b8', 800);
+      this.config.onAddFloatingText?.(playerX, playerY - 40, TEXT_CONFIG.combat.globalCooldown(result.globalConsumableCooldown.toFixed(1)), FLOAT_COLOR.cooldown, 800);
       return result;
     }
     if ((result.itemCooldowns['swatter'] || 0) > 0) {
-      this.config.onAddFloatingText?.(playerX, playerY - 40, TEXT_CONFIG.combat.swatterCooldown(result.itemCooldowns['swatter'].toFixed(1)), '#94a3b8', 800);
+      this.config.onAddFloatingText?.(playerX, playerY - 40, TEXT_CONFIG.combat.swatterCooldown(result.itemCooldowns['swatter'].toFixed(1)), FLOAT_COLOR.cooldown, 800);
       return result;
     }
 
     // 检查物品栏
     const swatterIdx = result.inventory.findIndex((item: InventoryItem) => item.type === 'swatter');
     if (swatterIdx < 0 || result.inventory[swatterIdx].count <= 0) {
-      this.config.onAddFloatingText?.(playerX, playerY - 50, TEXT_CONFIG.combat.swatterNoItem, '#9ca3af');
+      this.config.onAddFloatingText?.(playerX, playerY - 50, TEXT_CONFIG.combat.swatterNoItem, FLOAT_COLOR.expired);
       return result;
     }
 
@@ -146,7 +146,7 @@ export class SwatterSystem {
         r.armorHp = 0;
         armorBreakCount++;
         this.config.onSpawnSparkParticles?.(r.x, r.y, 5);
-        this.config.onAddFloatingText?.(r.x, r.y - 30, TEXT_CONFIG.combat.armorBreak, '#fbbf24');
+        this.config.onAddFloatingText?.(r.x, r.y - 30, TEXT_CONFIG.combat.armorBreak, FLOAT_COLOR.gold);
       }
 
       // 麻痹减速
@@ -162,9 +162,9 @@ export class SwatterSystem {
       const msg = armorBreakCount > 0
         ? TEXT_CONFIG.combat.swatterHit(hitCount, armorBreakCount)
         : TEXT_CONFIG.combat.swatterHitParalyze(hitCount);
-      this.config.onAddFloatingText?.(this.config.canvasWidth / 2, this.config.canvasHeight / 3, msg, '#4ade80');
+      this.config.onAddFloatingText?.(this.config.canvasWidth / 2, this.config.canvasHeight / 3, msg, FLOAT_COLOR.reward);
     } else {
-      this.config.onAddFloatingText?.(this.config.canvasWidth / 2, this.config.canvasHeight / 3, TEXT_CONFIG.combat.swatterMiss, '#9ca3af');
+      this.config.onAddFloatingText?.(this.config.canvasWidth / 2, this.config.canvasHeight / 3, TEXT_CONFIG.combat.swatterMiss, FLOAT_COLOR.expired);
     }
 
     return result;
@@ -181,11 +181,11 @@ export class SwatterSystem {
     if (existing) {
       if (existing.count < BALANCE_CONFIG.swatter.maxInventory) {
         existing.count++;
-        this.config.onAddFloatingText?.(x, y - 40, TEXT_CONFIG.combat.swatterPickup, '#4ade80');
+        this.config.onAddFloatingText?.(x, y - 40, TEXT_CONFIG.combat.swatterPickup, FLOAT_COLOR.reward);
       }
     } else {
       inventory.push({ type: 'swatter', count: 1 });
-      this.config.onAddFloatingText?.(x, y - 40, TEXT_CONFIG.combat.swatterPickup, '#4ade80');
+      this.config.onAddFloatingText?.(x, y - 40, TEXT_CONFIG.combat.swatterPickup, FLOAT_COLOR.reward);
     }
     onInventoryUpdate(inventory);
   }

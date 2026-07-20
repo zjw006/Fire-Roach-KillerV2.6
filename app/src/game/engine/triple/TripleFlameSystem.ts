@@ -4,7 +4,7 @@
  */
 
 import type { TripleFlameState } from '../../types';
-import { TEXT_CONFIG } from '../../data';
+import { TEXT_CONFIG, FLOAT_COLOR } from '../../data';
 
 /**
  * 三重火焰系统配置接口
@@ -65,7 +65,7 @@ export class TripleFlameSystem {
     this.config.onVibrateItemUse?.();
     this.config.onAddFloatingText?.(
       this.config.canvasWidth / 2, this.config.canvasHeight / 2 - 60,
-      TEXT_CONFIG.combat.tripleFlameActivate, '#fbbf24'
+      TEXT_CONFIG.combat.tripleFlameActivate, FLOAT_COLOR.gold
     );
   }
 
@@ -79,7 +79,7 @@ export class TripleFlameSystem {
     if (prevTimer > 5 && this.tripleFlame.timer <= 5) {
       this.config.onAddFloatingText?.(
         this.config.canvasWidth / 2, this.config.canvasHeight / 2 - 80,
-        TEXT_CONFIG.combat.tripleFlameWarning, '#ef4444'
+        TEXT_CONFIG.combat.tripleFlameWarning, FLOAT_COLOR.danger
       );
     }
 
@@ -88,7 +88,7 @@ export class TripleFlameSystem {
       if (prevTimer > sec && this.tripleFlame.timer <= sec) {
         this.config.onAddFloatingText?.(
           this.config.canvasWidth / 2, this.config.canvasHeight / 2 - 50,
-          `${sec}...`, sec <= 2 ? '#f87171' : '#fbbf24'
+          `${sec}...`, sec <= 2 ? FLOAT_COLOR.warning : FLOAT_COLOR.gold
         );
       }
     }
@@ -98,7 +98,7 @@ export class TripleFlameSystem {
       this.tripleFlame.timer = 0;
       this.config.onAddFloatingText?.(
         this.config.canvasWidth / 2, this.config.canvasHeight / 2 - 50,
-        TEXT_CONFIG.combat.tripleFlameEnd, '#9ca3af'
+        TEXT_CONFIG.combat.tripleFlameEnd, FLOAT_COLOR.expired
       );
     }
   }

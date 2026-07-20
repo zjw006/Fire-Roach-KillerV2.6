@@ -1840,6 +1840,39 @@ export class AudioManager {
     }, 550);
   }
 
+  /** 播放金币累计音效（短促清脆双音，用于结算界面金币动画） */
+  playCoinTick() {
+    if (!this.audioContext || this.isMuted) return;
+    const ctx = this.audioContext;
+    const now = ctx.currentTime;
+
+    // Layer 1: Bright high chime — C6 (1047Hz) → fast decay
+    const chime1 = ctx.createOscillator();
+    chime1.type = 'sine';
+    chime1.frequency.setValueAtTime(1047, now);
+    const gain1 = ctx.createGain();
+    gain1.gain.setValueAtTime(0, now);
+    gain1.gain.linearRampToValueAtTime(0.3, now + 0.005);
+    gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+    chime1.connect(gain1);
+    gain1.connect(ctx.destination);
+    chime1.start(now);
+    chime1.stop(now + 0.08);
+
+    // Layer 2: Second harmonic — E6 (1319Hz), slightly delayed for "ca-ching" feel
+    const chime2 = ctx.createOscillator();
+    chime2.type = 'sine';
+    chime2.frequency.setValueAtTime(1319, now + 0.02);
+    const gain2 = ctx.createGain();
+    gain2.gain.setValueAtTime(0, now + 0.02);
+    gain2.gain.linearRampToValueAtTime(0.2, now + 0.025);
+    gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+    chime2.connect(gain2);
+    gain2.connect(ctx.destination);
+    chime2.start(now + 0.02);
+    chime2.stop(now + 0.12);
+  }
+
   /** 恢复被浏览器挂起的 AudioContext（用于处理自动播放策略） */
   resumeAudioContext() {
     if (this.audioContext && this.audioContext.state === 'suspended') {
