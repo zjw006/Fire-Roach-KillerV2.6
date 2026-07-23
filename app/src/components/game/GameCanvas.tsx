@@ -1234,7 +1234,11 @@ export const GameCanvas: React.FC = () => {
       {showAchievements && progress && (
         <AchievementsScreen
           progress={progress}
+          pendingAnimations={engineRef.current?.getAchievementPendingAnimations?.() ?? []}
+          onAnimationComplete={(id) => engineRef.current?.markAchievementAnimationPlayed?.(id)}
+          onAllAnimationsComplete={() => engineRef.current?.clearAchievementAnimations?.()}
           onClose={() => {
+            engineRef.current?.clearAchievementAnimations?.();
             setShowAchievements(false);
             setGameState(GameState.MENU);
           }}

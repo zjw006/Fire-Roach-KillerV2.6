@@ -1879,4 +1879,45 @@ export class AudioManager {
       this.audioContext.resume();
     }
   }
+
+  /** 播放成就解锁音效（Web Audio API 合成短促号角：C→E→G 上行琶音） */
+  playAchievementUnlock() {
+    if (!this.audioContext || this.isMuted) return;
+    const ctx = this.audioContext;
+    const now = ctx.currentTime;
+
+    const notes = [
+      { freq: 523, start: 0, gain: 0.3, duration: 0.25 },   // C5
+      { freq: 659, start: 0.12, gain: 0.3, duration: 0.25 }, // E5
+      { freq: 784, start: 0.24, gain: 0.35, duration: 0.4 }, // G5
+    ];
+
+    for (const note of notes) {
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      const gain = ctx.createGain();
+      osc.frequency.setValueAtTime(note.freq, now + note.start);
+      gain.gain.setValueAtTime(0, now + note.start);
+      gain.gain.linearRampToValueAtTime(note.gain, now + note.start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + note.start + note.duration);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + note.start);
+      osc.stop(now + note.start + note.duration);
+    }
+
+    // 叠加一层闪光音效（高频清脆短音，最后 0.2s）
+    const sparkle = ctx.createOscillator();
+    const sparkleGain = ctx.createGain();
+    sparkle.type = 'triangle';
+    sparkle.frequency.setValueAtTime(1200, now + 0.5);
+    sparkle.frequency.exponentialRampToValueAtTime(2400, now + 0.7);
+    sparkleGain.gain.setValueAtTime(0, now + 0.5);
+    sparkleGain.gain.linearRampToValueAtTime(0.15, now + 0.52);
+    sparkleGain.gain.exponentialRampToValueAtTime(0.01, now + 0.7);
+    sparkle.connect(sparkleGain);
+    sparkleGain.connect(ctx.destination);
+    sparkle.start(now + 0.5);
+    sparkle.stop(now + 0.7);
+  }
 }

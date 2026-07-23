@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @fileoverview 游戏静态数据配置模块
  * @description 定义场景配置、敌人属性、对话内容、天赋树、成就、消耗品、波次配置等游戏核心数据。
  */
@@ -1769,6 +1769,7 @@ export const TEXT_CONFIG = {
       completion: (p: string) => `完成度 ${p}%`,
       empty: '该分类下没有成就',
       back: '返回',
+      unlockTitle: '成就解锁！',
       conditionDescriptions: {
         first_blood: '击杀第1只蟑螂',
         roach_slayer: '累计击杀100只蟑螂',

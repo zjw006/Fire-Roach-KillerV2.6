@@ -93,6 +93,8 @@ export interface AchievementSystemConfig {
 export class AchievementSystem {
   /** 系统配置 */
   private config: AchievementSystemConfig;
+  /** 自上次查看成就界面以来新解锁的成就 ID 集合（用于解锁动画） */
+  private newlyUnlockedIds: Set<string> = new Set();
 
   /**
    * 构造函数
@@ -143,6 +145,7 @@ export class AchievementSystem {
 
       if (cond) {
         ach.unlocked = true;
+        this.newlyUnlockedIds.add(ach.id); // 标记为新解锁，用于成就界面动画
         
         // 添加成就奖励金币到关卡内待结算（仅在关卡内时）
         if (this.config.onAddPendingReward) {
@@ -230,6 +233,7 @@ export class AchievementSystem {
     }
 
     ach.unlocked = true;
+    this.newlyUnlockedIds.add(ach.id); // 标记为新解锁
     
     // 添加成就奖励金币到关卡内待结算（仅在关卡内时）
     if (this.config.onAddPendingReward) {
@@ -315,15 +319,13 @@ export class AchievementSystem {
   }
 
   /**
-   * 重置成就系统
+   * 重置成就系统（仅重置单局数据，不重置已解锁成就）
    */
   reset(): void {
-    // 重置所有成就为未解锁状态
-    for (const ach of this.config.playerProgress.achievements) {
-      ach.unlocked = false;
-    }
+    // 清空新解锁动画队列
+    this.newlyUnlockedIds.clear();
 
-    // 重置经济统计数据
+    // 重置经济统计数据（单局数据）
     this.config.economyStats = {
       totalKills: 0,
       highestWave: 0,
@@ -353,5 +355,29 @@ export class AchievementSystem {
    */
   getAchievementDetails(achievementId: string): AchievementData | null {
     return this.config.playerProgress.achievements.find(a => a.id === achievementId) || null;
+  }
+
+  /**
+   * 获取待播放动画的新解锁成就列表
+   * @returns 新解锁成就列表
+   */
+  getPendingAnimations(): AchievementData[] {
+    return this.config.playerProgress.achievements
+      .filter(a => this.newlyUnlockedIds.has(a.id));
+  }
+
+  /**
+   * 标记某个成就的解锁动画已播放
+   * @param id 成就ID
+   */
+  markAnimationPlayed(id: string): void {
+    this.newlyUnlockedIds.delete(id);
+  }
+
+  /**
+   * 清除所有待播放动画标记（关闭成就界面时调用）
+   */
+  clearAnimationQueue(): void {
+    this.newlyUnlockedIds.clear();
   }
 }

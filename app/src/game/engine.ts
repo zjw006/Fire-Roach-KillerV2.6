@@ -1563,6 +1563,21 @@ export class GameEngine {
     }
   }
 
+  /** 获取待播放动画的新解锁成就列表（成就界面打开时调用） */
+  getAchievementPendingAnimations() {
+    return this.achievementSystem?.getPendingAnimations() ?? [];
+  }
+
+  /** 标记某个成就的解锁动画已播放 */
+  markAchievementAnimationPlayed(id: string) {
+    this.achievementSystem?.markAnimationPlayed(id);
+  }
+
+  /** 清除所有待播放成就动画标记（成就界面关闭时调用） */
+  clearAchievementAnimations() {
+    this.achievementSystem?.clearAnimationQueue();
+  }
+
   /** 在回收动画完成后调用 — 实际清空库存 */
   clearRecycledInventory() {
     this.inventory = [];
