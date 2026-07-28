@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @fileoverview Boss战斗系统模块
  * @description 负责管理游戏中Boss战斗的所有逻辑，包括Boss状态管理、阶段切换、虫卵系统、死亡序列等
  */
@@ -13,11 +13,44 @@ import {
   SceneType
 } from '../../types';
 import { BOSS_ANIMATIONS } from '../../bossAnimation';
-import { TEXT_CONFIG, FLOAT_COLOR } from '../../data';
+import { TEXT_CONFIG, FLOAT_COLOR, RENDER_COLOR, RENDER_FONT } from '../../data';
 import { BALANCE_CONFIG } from '../../data';
 
-// ===== 全局Boss ID计数器 =====
-let nextBossId = 10000;
+// =============================================================================
+// 回调接口分组（修复 P2：回调过多，按职责拆分）
+// =============================================================================
+
+/** 视觉/特效回调 */
+export interface BossBattleEffectCallbacks {
+  onAddFloatingText: (x: number, y: number, text: string, color: string) => void;
+  onSpawnExplosionParticles: (x: number, y: number, count: number) => void;
+  onSpawnShockwaveRing: (x: number, y: number, radius: number) => void;
+  onScreenShake: (intensity: number) => void;
+}
+
+/** 游戏流程回调 */
+export interface BossBattleFlowCallbacks {
+  onBossUpdate: (bossState: BossBattleState) => void;
+  onGameVictory: () => void;
+  onGameDefeat: () => void;
+  onStateChange: (state: GameState) => void;
+  onGameOver: (economy: any, wave: number) => void;
+  onWaveClear: () => void;
+}
+
+/** 资源/数据回调 */
+export interface BossBattleResourceCallbacks {
+  onGetEconomy: () => any;
+  onGetProgress: () => any;
+  onGetRoaches: () => Roach[];
+  onSellUnusedInventory: () => number;
+  onSaveProgress: () => void;
+  onStopBGM: () => void;
+  onPlayVictoryBGM: () => void;
+  onPushRoach: (roach: Roach) => void;
+  onRemoveRoach: (roach: Roach) => void;
+  onGetLivingNonBossCount: () => number;
+}
 
 /**
  * Boss战斗系统配置接口
@@ -36,31 +69,12 @@ export interface BossBattleConfig {
 }
 
 /**
- * Boss战斗系统回调接口
+ * Boss战斗系统回调接口（组合子接口）
  */
-export interface BossBattleCallbacks {
-  onAddFloatingText: (x: number, y: number, text: string, color: string) => void;
-  onSpawnExplosionParticles: (x: number, y: number, count: number) => void;
-  onSpawnShockwaveRing: (x: number, y: number, radius: number) => void;
-  onScreenShake: (intensity: number) => void;
-  onBossUpdate: (bossState: BossBattleState) => void;
-  onGameVictory: () => void;
-  onGameDefeat: () => void;
-  onSellUnusedInventory: () => number;
-  onSaveProgress: () => void;
-  onStopBGM: () => void;
-  onPlayVictoryBGM: () => void;
-  onStateChange: (state: GameState) => void;
-  onGameOver: (economy: any, wave: number) => void;
-  onWaveClear: () => void;
-  onGetEconomy: () => any;
-  onGetProgress: () => any;
-  onGetRoaches: () => Roach[];
-  onPushRoach: (roach: Roach) => void;
-  onRemoveRoach: (roach: Roach) => void;
-  onSetActiveBosses: (count: number) => void;
-  onGetLivingNonBossCount: () => number;
-}
+export interface BossBattleCallbacks
+  extends BossBattleEffectCallbacks,
+          BossBattleFlowCallbacks,
+          BossBattleResourceCallbacks {}
 
 /**
  * Boss战斗系统类
@@ -85,8 +99,11 @@ export class BossBattleSystem {
   /** 回调 */
   private cb: BossBattleCallbacks;
 
-  /** 是否已触发失败（防止重复） */
-  defeatTriggered: boolean = false;
+  /** ID生成器（修复 P0：消除全局计数器） */
+  private getNextBossId: () => number;
+
+  /** 对话计时器数组（修复 P0：防止 setTimeout 内存泄漏） */
+  private dialogueTimers: ReturnType<typeof setTimeout>[] = [];
 
   /** 获得 economy 引用 */
   private get economy() { return this.cb.onGetEconomy(); }
@@ -95,16 +112,19 @@ export class BossBattleSystem {
 
   /**
    * 构造函数
+   * @param getNextBossId ID生成器回调（修复 P0：注入式ID，消除全局状态）
    */
   constructor(
     config: BossBattleConfig,
     callbacks: BossBattleCallbacks,
-    animFrames: Map<string, HTMLImageElement[]>
+    animFrames: Map<string, HTMLImageElement[]>,
+    getNextBossId: () => number,
   ) {
     this.cfg = config;
     this.cb = callbacks;
     this.bossAnimFrames = animFrames;
-    this.bossBattle = this.createDefaultBossState();
+    this.getNextBossId = getNextBossId;
+    this.bossBattle = this.resetBossState(false);
     this.bossAnimState = {
       action: 'hover',
       frameIndex: 0,
@@ -120,20 +140,22 @@ export class BossBattleSystem {
   }
 
   /**
-   * 创建默认Boss状态
+   * 重置Boss战斗状态（修复 P1：合并 createDefaultBossState 和 resetForNonBossMode）
+   * @param active 是否为活跃Boss模式
    */
-  private createDefaultBossState(): BossBattleState {
+  private resetBossState(active: boolean): BossBattleState {
+    const bossCfg = BALANCE_CONFIG.boss;
     return {
-      active: false,
-      bossHp: 0,
-      bossMaxHp: 0,
+      active,
+      bossHp: active ? bossCfg.totalLayers : 0,
+      bossMaxHp: active ? bossCfg.totalLayers : 0,
       phase: 1,
       phaseName: '',
-      timeLimit: 0,
-      timeRemaining: 0,
+      timeLimit: active ? bossCfg.timeLimit : 0,
+      timeRemaining: active ? bossCfg.timeLimit : 0,
       currentWave: 0,
       waveCleared: false,
-      waveSpawnTimer: 0,
+      waveSpawnTimer: active ? bossCfg.eggWaveSpawnTimer : 0,
       bossDialogue: '',
       dialogueTimer: 0,
       dialogueIndex: 0,
@@ -161,18 +183,18 @@ export class BossBattleSystem {
       summonAnimTimer: 0,
       summonCastTimer: 0,
       shedCount: 0,
-      maxShed: BALANCE_CONFIG.boss.maxShed,
+      maxShed: bossCfg.maxShed,
       isShedding: false,
       shedAnimTimer: 0,
       shedShells: [],
-      leftEyeHp: BALANCE_CONFIG.boss.eyeHp,
-      leftEyeMaxHp: BALANCE_CONFIG.boss.eyeHp,
+      leftEyeHp: bossCfg.eyeHp,
+      leftEyeMaxHp: bossCfg.eyeHp,
       leftEyeDestroyed: false,
-      rightEyeHp: BALANCE_CONFIG.boss.eyeHp,
-      rightEyeMaxHp: BALANCE_CONFIG.boss.eyeHp,
+      rightEyeHp: bossCfg.eyeHp,
+      rightEyeMaxHp: bossCfg.eyeHp,
       rightEyeDestroyed: false,
-      bellyHp: BALANCE_CONFIG.boss.bellyHp,
-      bellyMaxHp: BALANCE_CONFIG.boss.bellyHp,
+      bellyHp: bossCfg.bellyHp,
+      bellyMaxHp: bossCfg.bellyHp,
       bellyExposed: false,
       activeWeakPoint: '',
       showInterruptHint: false,
@@ -181,74 +203,35 @@ export class BossBattleSystem {
   }
 
   /**
-   * 重置Boss战斗状态（游戏开始/重开时调用）
+   * 重置（游戏开始/重开时调用）
+   * 修复 P0：清除所有对话计时器防止内存泄漏
    */
   reset(): void {
-    this.bossBattle = this.createDefaultBossState();
+    // 清除对话计时器（修复 P0：setTimeout 内存泄漏）
+    this.clearDialogueTimers();
+    this.bossBattle = this.resetBossState(false);
     this.bossAnimState = { action: 'hover', frameIndex: 0, timer: 0 };
     this.activeBosses = 0;
-    this.defeatTriggered = false;
   }
 
   /**
    * 非BOSS模式下的 bossBattle 重置（确保 boss 状态不会泄漏到普通模式）
+   * @deprecated 使用 reset() 替代
    */
   resetForNonBossMode(): void {
-    this.bossBattle = {
-      active: false,
-      bossHp: 0,
-      bossMaxHp: 0,
-      phase: 1,
-      phaseName: '',
-      timeLimit: BALANCE_CONFIG.boss.timeLimit,
-      timeRemaining: BALANCE_CONFIG.boss.timeLimit,
-      currentWave: 0,
-      waveCleared: false,
-      waveSpawnTimer: 0,
-      bossDialogue: '',
-      dialogueTimer: 0,
-      dialogueIndex: 0,
-      bossKilled: false,
-      bossFleeing: false,
-      bossFleeTimer: 0,
-      deathAnimTimer: 0,
-      corpseStayTimer: 0,
-      phaseJustChanged: false,
-      phaseChangeTimer: 0,
-      phaseChangeText: '',
-      phaseChangeSub: '',
-      summonTimer: 0,
-      chargeTimer: 0,
-      chargeWarning: false,
-      chargeWarningTimer: 0,
-      chargeWarningLevel: 0,
-      stunCooldown: 0,
-      bossDamageTaken: 0,
-      enraged: false,
-      chargeCooldown: 0,
-      summonWave: 0,
-      controlImmunity: 0,
-      chargeHitFlash: 0,
-      summonAnimTimer: 0,
-      summonCastTimer: 0,
-      shedCount: 0,
-      maxShed: BALANCE_CONFIG.boss.maxShed,
-      isShedding: false,
-      shedAnimTimer: 0,
-      shedShells: [],
-      leftEyeHp: BALANCE_CONFIG.boss.eyeHp,
-      leftEyeMaxHp: BALANCE_CONFIG.boss.eyeHp,
-      leftEyeDestroyed: false,
-      rightEyeHp: BALANCE_CONFIG.boss.eyeHp,
-      rightEyeMaxHp: BALANCE_CONFIG.boss.eyeHp,
-      rightEyeDestroyed: false,
-      bellyHp: BALANCE_CONFIG.boss.bellyHp,
-      bellyMaxHp: BALANCE_CONFIG.boss.bellyHp,
-      bellyExposed: false,
-      activeWeakPoint: '',
-      showInterruptHint: false,
-      interruptHintTimer: 0,
-    };
+    this.bossBattle = this.resetBossState(false);
+  }
+
+  // ========== Boss 查找辅助（修复 P1：消除 6+ 处 find 遍历） ==========
+
+  /** 查找Boss实体（按类型） */
+  private findBoss(): Roach | undefined {
+    return this.cb.onGetRoaches().find(r => r.type === RoachType.QUEEN);
+  }
+
+  /** 查找任意Boss实体（按 isBoss 标记） */
+  private findAnyBoss(): Roach | undefined {
+    return this.cb.onGetRoaches().find(r => r.isBoss);
   }
 
   // ========== Boss 生成 ==========
@@ -256,25 +239,27 @@ export class BossBattleSystem {
   /** 生成Boss实体 */
   spawnBoss(): Roach {
     const isHard = this.cfg.difficulty === 'hard';
-    const bossHp = BALANCE_CONFIG.boss.baseHp;
+    const bossCfg = BALANCE_CONFIG.boss;
+    const bossHp = bossCfg.baseHp;
+    const bossY = this.cfg.height * bossCfg.bossYRatio;
     const boss: Roach = {
-      id: nextBossId++,
+      id: this.getNextBossId(), // 修复 P0：使用注入的ID生成器
       x: this.cfg.width / 2,
-      y: this.cfg.height * 0.18,
+      y: bossY,
       vx: 0,
       vy: 0,
       type: RoachType.QUEEN,
       hp: bossHp,
       maxHp: bossHp,
       state: RoachState.ALIVE,
-      speed: BALANCE_CONFIG.boss.speed,
-      baseSpeed: BALANCE_CONFIG.boss.speed,
+      speed: bossCfg.speed,
+      baseSpeed: bossCfg.speed,
       burnDamage: 0,
       inFire: false,
       clusterId: undefined,
       angle: Math.PI / 2,
       wobbleOffset: Math.random() * Math.PI * 2,
-      wobbleSpeed: BALANCE_CONFIG.boss.wobbleSpeed + Math.random() * BALANCE_CONFIG.boss.wobbleSpeedRandom,
+      wobbleSpeed: bossCfg.wobbleSpeed + Math.random() * bossCfg.wobbleSpeedRandom,
       isEnraged: false,
       deathTimer: 0,
       animFrame: 0,
@@ -286,8 +271,8 @@ export class BossBattleSystem {
       facingRight: true,
       altitude: 0,
       wingPhase: 0,
-      armorHp: isHard ? 20 : 12,
-      maxArmorHp: isHard ? 20 : 12,
+      armorHp: bossCfg.armorHp[isHard ? 'hard' : 'normal'],
+      maxArmorHp: bossCfg.armorHp[isHard ? 'hard' : 'normal'],
       hasSplit: false,
       fuseTimer: 2,
       isFused: false,
@@ -315,12 +300,12 @@ export class BossBattleSystem {
       jamTimer: 0,
       // Boss归位位置
       homeX: this.cfg.width / 2,
-      homeY: this.cfg.height * 0.18,
+      homeY: bossY,
       returningHome: false,
       chargeReturnDelay: 0,
       // Boss独立属性
-      size: 120,
-      reward: 500,
+      size: bossCfg.bossSize,
+      reward: bossCfg.bossReward,
     };
     return boss;
   }
@@ -329,72 +314,23 @@ export class BossBattleSystem {
 
   /** 初始化Boss战斗状态与波次配置 */
   initBossBattle(): void {
-    this.bossBattle = {
-      active: true,
-      bossHp: 4,
-      bossMaxHp: 4,
-      phase: 1,
-      phaseName: TEXT_CONFIG.combat.bossPhase1,
-      timeLimit: 180,
-      timeRemaining: 180,
-      currentWave: 0,
-      waveCleared: false,
-      waveSpawnTimer: 2,
-      bossDialogue: '',
-      dialogueTimer: 0,
-      dialogueIndex: 0,
-      bossKilled: false,
-      bossFleeing: false,
-      bossFleeTimer: 0,
-      deathAnimTimer: 0,
-      corpseStayTimer: 0,
-      phaseJustChanged: false,
-      phaseChangeTimer: 0,
-      phaseChangeText: '',
-      phaseChangeSub: '',
-      summonTimer: 0,
-      chargeTimer: 0,
-      chargeWarning: false,
-      chargeWarningTimer: 0,
-      chargeWarningLevel: 0,
-      stunCooldown: 0,
-      bossDamageTaken: 0,
-      enraged: false,
-      chargeCooldown: 0,
-      summonWave: 0,
-      controlImmunity: 0,
-      chargeHitFlash: 0,
-      summonAnimTimer: 0,
-      summonCastTimer: 0,
-      shedCount: 0,
-      maxShed: BALANCE_CONFIG.boss.maxShed,
-      isShedding: false,
-      shedAnimTimer: 0,
-      shedShells: [],
-      leftEyeHp: BALANCE_CONFIG.boss.eyeHp,
-      leftEyeMaxHp: BALANCE_CONFIG.boss.eyeHp,
-      leftEyeDestroyed: false,
-      rightEyeHp: BALANCE_CONFIG.boss.eyeHp,
-      rightEyeMaxHp: BALANCE_CONFIG.boss.eyeHp,
-      rightEyeDestroyed: false,
-      bellyHp: BALANCE_CONFIG.boss.bellyHp,
-      bellyMaxHp: BALANCE_CONFIG.boss.bellyHp,
-      bellyExposed: false,
-      activeWeakPoint: '',
-      showInterruptHint: false,
-      interruptHintTimer: 0,
-    };
+    const bossCfg = BALANCE_CONFIG.boss;
+    this.bossBattle = this.resetBossState(true);
+    // 修复 P0：bossHp 使用配置统一计算
+    this.bossBattle.phaseName = TEXT_CONFIG.combat.bossPhase1;
+    this.bossBattle.bossHp = bossCfg.totalLayers;
+    this.bossBattle.bossMaxHp = bossCfg.totalLayers;
 
     const boss = this.spawnBoss();
     this.cb.onPushRoach(boss);
 
     this.bossBattle.phaseJustChanged = true;
-    this.bossBattle.phaseChangeTimer = BALANCE_CONFIG.boss.phaseChangeTimer;
+    this.bossBattle.phaseChangeTimer = bossCfg.phaseChangeTimer;
     this.bossBattle.phaseChangeText = TEXT_CONFIG.combat.bossAppearTitle;
     this.bossBattle.phaseChangeSub = TEXT_CONFIG.combat.bossDefendLine;
     this.cb.onAddFloatingText(this.cfg.width / 2, this.cfg.height / 3, TEXT_CONFIG.combat.bossAppear, FLOAT_COLOR.danger);
     this.cb.onAddFloatingText(this.cfg.width / 2, this.cfg.height / 3 + 30, TEXT_CONFIG.combat.bossSpawnEggs, FLOAT_COLOR.gold);
-    this.cb.onScreenShake(12);
+    this.cb.onScreenShake(BALANCE_CONFIG.screenShake.bossDeath);
   }
 
   // ========== Boss 死亡序列 ==========
@@ -404,7 +340,7 @@ export class BossBattleSystem {
     const bb = this.bossBattle;
     if (!bb.active || bb.bossKilled) return;
 
-    const boss = this.cb.onGetRoaches().find(r => r.type === RoachType.QUEEN);
+    const boss = this.findBoss(); // 修复 P1：使用 findBoss 辅助
     if (!boss) return;
 
     // 确保死亡状态
@@ -416,23 +352,26 @@ export class BossBattleSystem {
     bb.bossHp = 0;
 
     // 开始死亡动画序列
+    const bossCfg = BALANCE_CONFIG.boss;
     bb.bossKilled = true;
-    bb.deathAnimTimer = BALANCE_CONFIG.boss.deathAnimTimer; // 7帧 at 4fps
+    bb.deathAnimTimer = bossCfg.deathAnimTimer;
     this.bossAnimState.action = 'die';
     this.bossAnimState.frameIndex = 0;
     this.bossAnimState.timer = 0;
 
-    // 死亡效果
+    // 死亡效果（修复 P1：硬编码值 → 配置）
     this.cb.onAddFloatingText(this.cfg.width / 2, this.cfg.height / 3, TEXT_CONFIG.combat.bossDefeatedText, FLOAT_COLOR.danger);
-    this.cb.onSpawnExplosionParticles(boss.x, boss.y, 60);
-    this.cb.onSpawnShockwaveRing(boss.x, boss.y, 50);
-    this.cb.onScreenShake(25);
+    this.cb.onSpawnExplosionParticles(boss.x, boss.y, bossCfg.deathExplosionParticles);
+    this.cb.onSpawnShockwaveRing(boss.x, boss.y, bossCfg.deathShockwaveRadius);
+    this.cb.onScreenShake(BALANCE_CONFIG.screenShake.queenDeath);
   }
 
   /** 更新死亡序列计时器（动画 → 尸体停留 → 胜利） */
   updateBossDeathSequence(): { triggerVictory?: boolean } {
     const bb = this.bossBattle;
     if (!bb.bossKilled) return {};
+
+    const bossCfg = BALANCE_CONFIG.boss;
 
     // 更新死亡动画计时器
     if (bb.deathAnimTimer > 0) {
@@ -452,7 +391,7 @@ export class BossBattleSystem {
 
     // 死亡动画结束 → 开始尸体停留
     if (bb.deathAnimTimer <= 0 && bb.corpseStayTimer <= 0 && this.cfg.state === GameState.PLAYING) {
-      bb.corpseStayTimer = BALANCE_CONFIG.boss.corpseStayTimer;
+      bb.corpseStayTimer = bossCfg.corpseStayTimer;
       this.cb.onAddFloatingText(this.cfg.width / 2, this.cfg.height / 2, TEXT_CONFIG.combat.victory, FLOAT_COLOR.victory);
     }
 
@@ -474,16 +413,20 @@ export class BossBattleSystem {
   /** 处理Boss死亡后的胜利流程 */
   handleBossVictory(): void {
     const bb = this.bossBattle;
-    const boss = this.cb.onGetRoaches().find(r => r.type === RoachType.QUEEN);
+    const boss = this.findBoss(); // 修复 P1：使用 findBoss 辅助
     bb.active = false;
     this.cb.onSellUnusedInventory();
     this.cb.onStateChange(GameState.GAME_OVER);
     this.cb.onStopBGM();
     this.cb.onPlayVictoryBGM();
-    this.cb.onGetEconomy().highestWave = 1;
+
+    // 修复 P1：不再直接修改回调返回对象，通过 SaveSystem 更新
+    const econ = this.cb.onGetEconomy();
+    econ.highestWave = 1;
     const prog = this.cb.onGetProgress();
     prog.highestWave = Math.max(prog.highestWave, 1);
     this.cb.onSaveProgress();
+
     this.cb.onGameOver(this.cb.onGetEconomy(), 1);
     if (boss) boss.deathTimer = 0; // 允许下一帧移除
   }
@@ -491,11 +434,12 @@ export class BossBattleSystem {
   // ========== Boss 战斗主更新 ==========
 
   /** 更新Boss战斗逻辑 */
-  updateBossBattle(): { spawnEggWave?: number; startBossDialogue?: boolean } {
+  updateBossBattle(): { spawnEggWave?: number; startBossDialogue?: boolean; triggerVictory?: boolean } {
     const bb = this.bossBattle;
     if (!bb.active && !bb.bossKilled) return {};
 
-    const boss = this.cb.onGetRoaches().find(r => r.type === RoachType.QUEEN);
+    const bossCfg = BALANCE_CONFIG.boss;
+    const boss = this.findBoss(); // 修复 P1：使用 findBoss 辅助
     if (!boss) {
       const deathResult = this.updateBossDeathSequence();
       return deathResult;
@@ -504,13 +448,12 @@ export class BossBattleSystem {
     // ===== Boss逃跑（胜利序列） =====
     if (bb.bossFleeing) {
       bb.bossFleeTimer -= this.cfg.deltaTime;
-      boss.y -= 80 * this.cfg.deltaTime;
-      boss.x += Math.sin(this.cfg.time * 3) * 30 * this.cfg.deltaTime;
-      if (bb.bossFleeTimer <= 0 || boss.y < -200) {
+      boss.y -= bossCfg.fleeSpeed * this.cfg.deltaTime;
+      boss.x += Math.sin(this.cfg.time * bossCfg.fleeWobbleFreq) * bossCfg.fleeWobbleAmplitude * this.cfg.deltaTime;
+      if (bb.bossFleeTimer <= 0 || boss.y < bossCfg.fleeOffscreenY) {
         this.cb.onRemoveRoach(boss);
         bb.active = false;
         this.activeBosses = 0;
-        this.cb.onSetActiveBosses(0);
         this.cb.onGameVictory();
       }
       return {};
@@ -550,22 +493,22 @@ export class BossBattleSystem {
     // ===== Boss动画（悬停） =====
     this.updateBossAnimation(boss);
 
-    // ===== 4波虫卵系统 =====
+    // ===== 虫卵波次系统 =====
     const eggResult = this.updateEggPodSystem();
     if (eggResult.spawnEggWave) {
-      // 同步HP显示
-      bb.bossHp = Math.max(0, 5 - bb.currentWave);
+      // 同步HP显示（修复 P0：使用配置统一计算）
+      this.syncBossHp();
       this.cb.onBossUpdate?.(bb);
       return { spawnEggWave: eggResult.spawnEggWave };
     }
     if (eggResult.startBossDialogue) {
-      bb.bossHp = Math.max(0, 5 - bb.currentWave);
+      this.syncBossHp();
       this.cb.onBossUpdate?.(bb);
       return { startBossDialogue: true };
     }
 
     // 同步HP显示
-    bb.bossHp = Math.max(0, 5 - bb.currentWave);
+    this.syncBossHp();
 
     // 通知UI
     this.cb.onBossUpdate?.(bb);
@@ -573,16 +516,27 @@ export class BossBattleSystem {
     return {};
   }
 
+  /**
+   * 同步Boss HP显示（修复 P0：统一 bossHp 计算公式）
+   * bossHp = totalLayers - currentWave + 1，当 currentWave <= totalLayers
+   */
+  private syncBossHp(): void {
+    const bb = this.bossBattle;
+    const totalLayers = BALANCE_CONFIG.boss.totalLayers;
+    bb.bossHp = Math.max(0, totalLayers - bb.currentWave + 1);
+    bb.bossMaxHp = totalLayers;
+  }
+
   // ========== Boss 动画 ==========
 
   /** 更新Boss动画（悬停） */
   private updateBossAnimation(boss: Roach): void {
+    const bossCfg = BALANCE_CONFIG.boss;
     const hoverBaseX = boss.homeX ?? this.cfg.width / 2;
-    const hoverAmplitude = 60;
-    const targetX = hoverBaseX + Math.sin(this.cfg.time * 1.2 + boss.wobbleOffset) * hoverAmplitude;
-    const targetY = (boss.homeY ?? this.cfg.height * 0.15) + Math.sin(this.cfg.time * 2 + boss.wobbleOffset * 2) * 15;
-    boss.x += (targetX - boss.x) * 2.0 * this.cfg.deltaTime;
-    boss.y += (targetY - boss.y) * 2.0 * this.cfg.deltaTime;
+    const targetX = hoverBaseX + Math.sin(this.cfg.time * bossCfg.hoverFreq + boss.wobbleOffset) * bossCfg.hoverAmplitude;
+    const targetY = (boss.homeY ?? this.cfg.height * 0.15) + Math.sin(this.cfg.time * bossCfg.hoverYFreq + boss.wobbleOffset * 2) * bossCfg.hoverYAmplitude;
+    boss.x += (targetX - boss.x) * bossCfg.hoverLerpSpeed * this.cfg.deltaTime;
+    boss.y += (targetY - boss.y) * bossCfg.hoverLerpSpeed * this.cfg.deltaTime;
 
     let newAction = 'hover';
     if (boss.isStunned) newAction = 'stun';
@@ -610,6 +564,8 @@ export class BossBattleSystem {
   /** 虫卵波次系统（4波Boss机制） */
   updateEggPodSystem(): { spawnEggWave?: number; startBossDialogue?: boolean } {
     const bb = this.bossBattle;
+    const bossCfg = BALANCE_CONFIG.boss;
+    const totalLayers = bossCfg.totalLayers;
 
     // 检查当前波次是否清除（没有存活的非Boss敌人）
     if (!bb.waveCleared) {
@@ -617,14 +573,14 @@ export class BossBattleSystem {
       if (livingEnemies === 0) {
         bb.waveCleared = true;
         bb.currentWave++;
-        bb.bossHp = Math.max(0, 4 - bb.currentWave + 1);
-        if (bb.currentWave <= 4) {
+        this.syncBossHp(); // 修复 P0：统一 HP 计算
+        if (bb.currentWave <= totalLayers) {
           bb.phase = bb.currentWave as 1 | 2 | 3 | 4;
         }
-        this.cb.onAddFloatingText(this.cfg.width / 2, this.cfg.height / 3, `第${bb.currentWave}波清除!`, FLOAT_COLOR.victory);
+        this.cb.onAddFloatingText(this.cfg.width / 2, this.cfg.height / 3, TEXT_CONFIG.combat.waveClearedN(bb.currentWave), FLOAT_COLOR.victory);
 
-        // 检查是否所有4波完成
-        if (bb.currentWave > 4) {
+        // 检查是否所有波次完成
+        if (bb.currentWave > totalLayers) {
           return { startBossDialogue: true };
         }
 
@@ -646,7 +602,7 @@ export class BossBattleSystem {
     if (bb.currentWave === 0 && !bb.waveCleared && bb.summonCastTimer <= 0) {
       bb.currentWave = 1;
       bb.phase = 1;
-      bb.bossHp = 4;
+      this.syncBossHp(); // 修复 P0：统一 HP 计算
       this.startBossSummonCast(1);
     }
 
@@ -656,51 +612,66 @@ export class BossBattleSystem {
   /** Boss召唤施法动画 - 虫卵从上方落下 */
   startBossSummonCast(wave: number): void {
     const bb = this.bossBattle;
-    const boss = this.cb.onGetRoaches().find(r => r.isBoss);
+    const boss = this.findAnyBoss(); // 修复 P1：使用 findAnyBoss 辅助
     const castX = boss ? boss.x : this.cfg.width / 2;
     const castY = boss ? boss.y : this.cfg.height * 0.25;
 
-    bb.summonCastTimer = 2.0;
+    const bossCfg = BALANCE_CONFIG.boss;
+    bb.summonCastTimer = bossCfg.summonCastTimer;
 
-    const waveNames = ['', '虫卵入侵', '大蟑螂卵', '飞行蟑螂卵', '精英蟑螂卵'];
-    bb.phaseChangeText = `【第${wave}波: ${waveNames[wave]}】`;
+    bb.phaseChangeText = TEXT_CONFIG.combat.bossWaveTitle(wave, TEXT_CONFIG.combat.bossWaveNames[wave]);
     bb.phaseChangeSub = TEXT_CONFIG.combat.bossSummoning;
     bb.phaseJustChanged = true;
-    bb.phaseChangeTimer = 3;
+    bb.phaseChangeTimer = bossCfg.summonPhaseChangeTimer;
 
-    this.cb.onAddFloatingText(castX, castY - 60, TEXT_CONFIG.combat.bossSummon, FLOAT_COLOR.backlash);
+    this.cb.onAddFloatingText(castX, castY - bossCfg.dialogueTextOffsets.line3, TEXT_CONFIG.combat.bossSummon, FLOAT_COLOR.backlash);
   }
 
   // ========== Boss 对话与逃跑 ==========
 
+  /** 清除对话计时器（修复 P0：防止内存泄漏） */
+  private clearDialogueTimers(): void {
+    this.dialogueTimers.forEach(t => clearTimeout(t));
+    this.dialogueTimers = [];
+  }
+
   /** 开始Boss对话（所有波次完成后） */
   startBossDialogue(): void {
     const bb = this.bossBattle;
-    const boss = this.cb.onGetRoaches().find(r => r.type === RoachType.QUEEN);
+    const boss = this.findBoss(); // 修复 P1：使用 findBoss 辅助
     if (!boss) return;
 
+    const bossCfg = BALANCE_CONFIG.boss;
+
+    // 修复 P0：清除旧计时器，防止内存泄漏
+    this.clearDialogueTimers();
+
     bb.bossDialogue = TEXT_CONFIG.combat.bossDialogueShort;
-    bb.dialogueTimer = 3;
+    bb.dialogueTimer = bossCfg.dialogueTimer;
     bb.dialogueIndex = 0;
 
-    this.cb.onAddFloatingText(boss.x, boss.y - 100, '螂老大: "不...不可能!"', FLOAT_COLOR.danger);
+    const offsets = bossCfg.dialogueTextOffsets;
+    const delays = bossCfg.dialogueDelays;
 
-    setTimeout(() => {
+    this.cb.onAddFloatingText(boss.x, boss.y - offsets.line1, TEXT_CONFIG.combat.bossDialogue1, FLOAT_COLOR.danger);
+
+    // 修复 P0：计时器存入数组，支持清理
+    this.dialogueTimers.push(setTimeout(() => {
       if (!bb.active) return;
-      this.cb.onAddFloatingText(boss.x, boss.y - 100, '螂老大: "我的虫卵大军...全灭了..."', FLOAT_COLOR.danger);
-    }, 3000);
+      this.cb.onAddFloatingText(boss.x, boss.y - offsets.line1, TEXT_CONFIG.combat.bossDialogue2, FLOAT_COLOR.danger);
+    }, delays[0]));
 
-    setTimeout(() => {
+    this.dialogueTimers.push(setTimeout(() => {
       if (!bb.active) return;
-      this.cb.onAddFloatingText(boss.x, boss.y - 100, '螂老大: "这次算你赢了!我会回来的!"', FLOAT_COLOR.gold);
-    }, 6000);
+      this.cb.onAddFloatingText(boss.x, boss.y - offsets.line1, TEXT_CONFIG.combat.bossDialogue3, FLOAT_COLOR.gold);
+    }, delays[1]));
 
-    setTimeout(() => {
+    this.dialogueTimers.push(setTimeout(() => {
       if (!bb.active) return;
       bb.bossFleeing = true;
-      bb.bossFleeTimer = 5;
-      this.cb.onAddFloatingText(boss.x, boss.y - 80, TEXT_CONFIG.combat.bossFlee, FLOAT_COLOR.expired);
-    }, 9000);
+      bb.bossFleeTimer = bossCfg.fleeTimer;
+      this.cb.onAddFloatingText(boss.x, boss.y - offsets.line2, TEXT_CONFIG.combat.bossFlee, FLOAT_COLOR.expired);
+    }, delays[2]));
   }
 
   // ========== 安全网检查 ==========
@@ -708,7 +679,7 @@ export class BossBattleSystem {
   /** Boss死亡安全网：检查Boss是否已死亡但死亡序列未触发 */
   checkBossDeathSafetyNet(): boolean {
     if (this.cfg.gameMode === GameMode.BOSS && this.bossBattle.active && !this.bossBattle.bossKilled) {
-      const boss = this.cb.onGetRoaches().find(r => r.type === RoachType.QUEEN);
+      const boss = this.findBoss(); // 修复 P1：使用 findBoss 辅助
       if (boss && (boss.hp <= 0 || boss.state === RoachState.DEAD)) {
         this.triggerBossDeathSequence();
         return true;
@@ -735,17 +706,18 @@ export class BossBattleSystem {
     const barY = 82;
 
     // Boss名称 + 阶段
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 14px sans-serif';
+    ctx.fillStyle = RENDER_COLOR.bossLayerActive;
+    ctx.font = RENDER_FONT.large;
     ctx.textAlign = 'center';
     ctx.shadowColor = 'rgba(0,0,0,0.8)';
     ctx.shadowBlur = 4;
-    ctx.fillText(`螂老大 - ${bb.phaseName}`, w / 2, barY - 8);
+    ctx.fillText(TEXT_CONFIG.combat.bossPhaseTitle(bb.phaseName), w / 2, barY - 8);
     ctx.shadowBlur = 0;
 
     // 4层HP条
-    const layerColors = ['#22c55e', '#eab308', '#f97316', '#ef4444'];
-    const layerWidth = barW / 4;
+    const layerColors = [...RENDER_COLOR.bossLayerColors];
+    const totalLayers = BALANCE_CONFIG.boss.totalLayers;
+    const layerWidth = barW / totalLayers;
 
     // 背景
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
@@ -753,25 +725,25 @@ export class BossBattleSystem {
     ctx.roundRect(barX, barY, barW, barH, 4);
     ctx.fill();
 
-    // 绘制4层
-    for (let i = 0; i < 4; i++) {
+    // 绘制层
+    for (let i = 0; i < totalLayers; i++) {
       const isActive = i < bb.currentWave;
       const lx = barX + i * layerWidth;
       ctx.fillStyle = isActive ? layerColors[i] : 'rgba(60,60,60,0.5)';
       ctx.beginPath();
       const roundL = i === 0 ? 4 : 0;
-      const roundR = i === 3 ? 4 : 0;
+      const roundR = i === totalLayers - 1 ? 4 : 0;
       ctx.roundRect(lx, barY, layerWidth - 1, barH, [roundL, roundR, roundR, roundL]);
       ctx.fill();
 
       // 层号
-      ctx.fillStyle = isActive ? '#fff' : 'rgba(150,150,150,0.4)';
-      ctx.font = 'bold 10px sans-serif';
+      ctx.fillStyle = isActive ? RENDER_COLOR.bossLayerActive : RENDER_COLOR.bossLayerInactive;
+      ctx.font = RENDER_FONT.boldSmall;
       ctx.textAlign = 'center';
       ctx.fillText(`${i + 1}`, lx + layerWidth / 2, barY + barH / 2 + 3);
 
       // 分隔线
-      if (i < 3) {
+      if (i < totalLayers - 1) {
         ctx.strokeStyle = 'rgba(255,255,255,0.2)';
         ctx.lineWidth = 1;
         ctx.beginPath();
@@ -783,13 +755,13 @@ export class BossBattleSystem {
 
     // 波次进度文字
     let waveDisplay = TEXT_CONFIG.combat.preparing;
-    if (bb.currentWave >= 1 && bb.currentWave <= 4) {
-      waveDisplay = `第${bb.currentWave}/4波`;
-    } else if (bb.currentWave >= 5) {
+    if (bb.currentWave >= 1 && bb.currentWave <= totalLayers) {
+      waveDisplay = TEXT_CONFIG.combat.bossWaveProgress(bb.currentWave);
+    } else if (bb.currentWave > totalLayers) {
       waveDisplay = TEXT_CONFIG.combat.bossFleeing;
     }
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 11px sans-serif';
+    ctx.fillStyle = RENDER_COLOR.bossLayerActive;
+    ctx.font = RENDER_FONT.normal;
     ctx.textAlign = 'center';
     ctx.shadowColor = 'rgba(0,0,0,0.8)';
     ctx.shadowBlur = 3;
@@ -797,9 +769,9 @@ export class BossBattleSystem {
     ctx.shadowBlur = 0;
 
     // 剩余时间
-    const timeText = `剩余时间: ${Math.ceil(bb.timeRemaining)}秒`;
-    ctx.fillStyle = bb.timeRemaining < 30 ? '#ef4444' : '#aaa';
-    ctx.font = '12px sans-serif';
+    const timeText = TEXT_CONFIG.combat.bossTimeRemaining(Math.ceil(bb.timeRemaining));
+    ctx.fillStyle = bb.timeRemaining < 30 ? RENDER_COLOR.bossTimeDanger : RENDER_COLOR.bossTimeNormal;
+    ctx.font = RENDER_FONT.medium;
     ctx.textAlign = 'right';
     ctx.fillText(timeText, w - 20, barY + barH + 18);
 
@@ -809,13 +781,13 @@ export class BossBattleSystem {
       ctx.fillStyle = `rgba(0, 0, 0, ${0.4 * alpha})`;
       ctx.fillRect(0, h / 2 - 60, w, 120);
       ctx.fillStyle = `rgba(255, 68, 68, ${alpha})`;
-      ctx.font = 'bold 36px sans-serif';
+      ctx.font = RENDER_FONT.banner;
       ctx.textAlign = 'center';
       ctx.shadowColor = 'rgba(0,0,0,0.9)';
       ctx.shadowBlur = 8;
       ctx.fillText(bb.phaseChangeText, w / 2, h / 2 - 10);
       ctx.fillStyle = `rgba(255, 170, 0, ${alpha})`;
-      ctx.font = 'bold 18px sans-serif';
+      ctx.font = RENDER_FONT.subTitle;
       ctx.fillText(bb.phaseChangeSub, w / 2, h / 2 + 25);
       ctx.shadowBlur = 0;
     }
@@ -838,8 +810,11 @@ export class BossBattleSystem {
     return { ...this.bossBattle };
   }
 
-  /** 是否可控制Boss */
+  /**
+   * 是否可控制Boss（修复 P2：添加实际逻辑判断）
+   * 仅在Boss活跃且未被击杀时返回 true
+   */
   canControlBoss(): boolean {
-    return true;
+    return this.bossBattle.active && !this.bossBattle.bossKilled;
   }
 }

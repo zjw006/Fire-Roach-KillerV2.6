@@ -5,18 +5,18 @@
 
 import { RoachType, RoachState } from '../../types';
 import type { FanState, Roach } from '../../types';
-import { TEXT_CONFIG, FLOAT_COLOR } from '../../data';
+import { TEXT_CONFIG, FLOAT_COLOR, RENDER_COLOR, RENDER_FONT, BALANCE_CONFIG } from '../../data';
 
 /**
- * 风扇系统配置接口
+ * 风扇系统配置接口（修复 P2：统一为 getter 函数，消除函数/值不一致）
  */
 export interface FanSystemConfig {
-  /** 游戏画布宽度 */
-  canvasWidth: number;
-  /** 游戏画布高度 */
-  canvasHeight: number;
-  /** 防御线Y坐标 */
-  defenseLineY: () => number;
+  /** 获取画布宽度 */
+  getCanvasWidth: () => number;
+  /** 获取画布高度 */
+  getCanvasHeight: () => number;
+  /** 获取防御线Y坐标 */
+  getDefenseLineY: () => number;
   /** 天赋倍数 */
   talentMultipliers?: {
     fanDuration?: number;
@@ -44,13 +44,14 @@ export class FanSystem {
 
   constructor(config: FanSystemConfig) {
     this.config = config;
+    const fanCfg = BALANCE_CONFIG.fan;
     this.fanState = {
       active: false,
       timer: 0,
-      duration: 8,
-      slowFactor: 0.5,
+      duration: fanCfg.defaultDuration,
+      slowFactor: fanCfg.defaultSlowFactor,
       bladeAngle: 0,
-      bladeSpeed: 15,
+      bladeSpeed: fanCfg.defaultBladeSpeed,
     };
   }
 
@@ -75,58 +76,77 @@ export class FanSystem {
   }
 
   // ========== 激活 ==========
+
+  /**
+   * 激活风扇（修复 P1：重复激活时给予反馈）
+   */
   activateFan(): boolean {
-    if (this.fanState.active) {
-      const fanDurationMult = this.config.talentMultipliers?.fanDuration || 1;
-      this.fanState.timer = this.fanState.duration * fanDurationMult;
-      return true;
-    }
+    const fanCfg = BALANCE_CONFIG.fan;
+    const fanDurationMult = this.config.talentMultipliers?.fanDuration || 1;
+    const wasActive = this.fanState.active;
 
     this.fanState.active = true;
-    const fanDurationMult = this.config.talentMultipliers?.fanDuration || 1;
     this.fanState.timer = this.fanState.duration * fanDurationMult;
     this.fanState.bladeAngle = 0;
 
-    this.config.onStartFanLoop?.();
+    const W = this.config.getCanvasWidth();
+    const H = this.config.getCanvasHeight();
+    const textY = H * fanCfg.activationTextYRatio;
 
-    const durationText = fanDurationMult > 1
-      ? `蟑螂被吹退${(8 * fanDurationMult).toFixed(1)}秒!(+天赋)`
-      : TEXT_CONFIG.combat.fanDesc;
+    if (wasActive) {
+      // 修复 P1：重复激活给予反馈
+      this.config.onAddFloatingText?.(W / 2, textY, TEXT_CONFIG.combat.fanRefresh, FLOAT_COLOR.fan);
+      this.config.onAddFloatingText?.(W / 2, textY + fanCfg.activationTextYOffset, TEXT_CONFIG.combat.fanTimer(this.fanState.timer.toFixed(1)), FLOAT_COLOR.fanSecondary);
+    } else {
+      this.config.onStartFanLoop?.();
 
-    this.config.onAddFloatingText?.(this.config.canvasWidth / 2, this.config.canvasHeight * 0.3, TEXT_CONFIG.combat.fanActivate, FLOAT_COLOR.fan);
-    this.config.onAddFloatingText?.(this.config.canvasWidth / 2, this.config.canvasHeight * 0.3 + 20, durationText, FLOAT_COLOR.fanSecondary);
-    this.config.onScreenShake?.(4);
+      // 修复 P2：使用配置值替代硬编码 8
+      const durationText = fanDurationMult > 1
+        ? TEXT_CONFIG.combat.fanDurationWithTalent(fanCfg.defaultDuration, fanDurationMult)
+        : TEXT_CONFIG.combat.fanDesc;
+
+      this.config.onAddFloatingText?.(W / 2, textY, TEXT_CONFIG.combat.fanActivate, FLOAT_COLOR.fan);
+      this.config.onAddFloatingText?.(W / 2, textY + fanCfg.activationTextYOffset, durationText, FLOAT_COLOR.fanSecondary);
+      this.config.onScreenShake?.(fanCfg.activationScreenShake);
+    }
 
     return true;
   }
 
   // ========== 效果计算 ==========
+
   /** 根据蟑螂类型获取风扇效果参数 [slowFactor, pushSpeed] */
   getFanEffectByType(type: RoachType): [number, number] {
-    switch (type) {
-      case RoachType.FLYING: return [0.70, 120];
-      case RoachType.FLYING_SUICIDE: return [0.65, 100];
-      case RoachType.SMALL: return [0.60, 80];
-      case RoachType.LARGE: return [0.40, 50];
-      case RoachType.SPLITTING: return [0.40, 50];
-      case RoachType.SUICIDE: return [0.30, 35];
-      case RoachType.ARMORED: return [0.20, 25];
-      case RoachType.QUEEN: return [0.10, 15];
-      default: return [0.40, 50];
-    }
+    const effects = BALANCE_CONFIG.fan.effects;
+    // 将 RoachType 枚举值映射到配置 key
+    const key = type.toString().toLowerCase();
+    // 处理特殊映射：FLYING_SUICIDE → flyingSuicide
+    const configKey = key.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+    return effects[configKey] || effects.default;
   }
 
-  /** 应用风扇效果到单个蟑螂 */
+  /**
+   * 应用风扇效果到单个蟑螂（修复 P1：保留 fanPushY 动量，限制减速时间不超过风扇剩余时间）
+   */
   applyFanEffect(roach: Roach): void {
     const [slowFactor] = this.getFanEffectByType(roach.type);
     const fanSlowMult = this.config.talentMultipliers?.fanSlow || 1;
     roach.fanSlowFactor = slowFactor * fanSlowMult;
     const fanDurationMult = this.config.talentMultipliers?.fanDuration || 1;
-    roach.fanSlowTimer = this.fanState.duration * fanDurationMult;
-    roach.fanPushY = 0;
+    const fullDuration = this.fanState.duration * fanDurationMult;
+    // 修复 P1：减速时间不超过风扇剩余时间
+    roach.fanSlowTimer = Math.min(fullDuration, Math.max(0, this.fanState.timer));
+    // 修复 P1：保留已有 fanPushY 动量，不重置为 0
+    if (roach.fanSlowTimer <= 0) {
+      roach.fanPushY = 0;
+    }
   }
 
   // ========== 更新 ==========
+
+  /**
+   * 更新风扇（修复 P1：合并 4 次遍历为 2 次；修复 P2：修复清理/计时器重叠）
+   */
   updateFan(deltaTime: number, roaches: Roach[]): FanState {
     const fan = this.fanState;
     if (!fan.active) return fan;
@@ -134,40 +154,46 @@ export class FanSystem {
     fan.timer -= deltaTime;
     fan.bladeAngle += fan.bladeSpeed * deltaTime;
 
-    const fanTopY = this.config.canvasHeight / 2;
+    const fanCfg = BALANCE_CONFIG.fan;
+    const fanTopY = this.config.getCanvasHeight() * fanCfg.fanTopYRatio;
+    const defenseLineY = this.config.getDefenseLineY();
 
-    // 对风扇激活期间新生成的蟑螂应用风扇效果
-    for (const r of roaches) {
-      if (r.state !== RoachState.ALIVE || r.isBoss) continue;
-      if (r.fanSlowTimer <= 0 && fan.timer > 0 && r.y >= fanTopY && r.y <= this.config.defenseLineY()) {
-        this.applyFanEffect(r);
-      }
-    }
-
-    // 将所有受影响的蟑螂向上推
-    for (const r of roaches) {
-      if (r.state !== RoachState.ALIVE || r.isBoss) continue;
-      if (r.fanSlowTimer > 0 && r.y >= fanTopY) {
-        const [, pushSpeed] = this.getFanEffectByType(r.type);
-        r.fanPushY -= pushSpeed * deltaTime;
-      }
-    }
-
-    // 风扇结束
+    // 风扇结束：清理所有蟑螂的风扇状态
     if (fan.timer <= 0) {
       fan.active = false;
       fan.timer = 0;
       this.config.onStopFanLoop?.();
-      this.config.onAddFloatingText?.(this.config.canvasWidth / 2, this.config.canvasHeight * 0.3, TEXT_CONFIG.combat.fanStop, FLOAT_COLOR.expired);
+      this.config.onAddFloatingText?.(
+        this.config.getCanvasWidth() / 2,
+        this.config.getCanvasHeight() * fanCfg.activationTextYRatio,
+        TEXT_CONFIG.combat.fanStop,
+        FLOAT_COLOR.expired,
+      );
       for (const r of roaches) {
         r.fanSlowTimer = 0;
         r.fanSlowFactor = 0;
         r.fanPushY = 0;
       }
+      // 修复 P2：提前返回，避免后续无效的计时器更新遍历
+      return fan;
     }
 
-    // 更新受影响蟑螂的减速计时器
+    // 修复 P1：单次遍历处理新蟑螂效果应用 + 击退 + 减速计时器更新
     for (const r of roaches) {
+      if (r.state !== RoachState.ALIVE || r.isBoss) continue;
+
+      // 对新进入风扇区域的蟑螂应用效果
+      if (r.fanSlowTimer <= 0 && r.y >= fanTopY && r.y <= defenseLineY) {
+        this.applyFanEffect(r);
+      }
+
+      // 击退：将受影响的蟑螂向上推
+      if (r.fanSlowTimer > 0 && r.y >= fanTopY) {
+        const [, pushSpeed] = this.getFanEffectByType(r.type);
+        r.fanPushY -= pushSpeed * deltaTime;
+      }
+
+      // 减速计时器递减
       if (r.fanSlowTimer > 0) {
         r.fanSlowTimer -= deltaTime;
         if (r.fanSlowTimer <= 0) {
@@ -180,36 +206,42 @@ export class FanSystem {
   }
 
   // ========== 渲染 ==========
+
+  /**
+   * 渲染风扇（修复 P1：修复 globalAlpha 作用域；修复 P2：参数配置化 + 优化粒子 save/restore）
+   */
   renderFan(ctx: CanvasRenderingContext2D, gameTime: number): void {
     if (!this.fanState.active) return;
     const fan = this.fanState;
-    const W = this.config.canvasWidth;
-    const H = this.config.canvasHeight;
-    const dl = this.config.defenseLineY();
-    const fanTopY = H / 2;
+    const fanCfg = BALANCE_CONFIG.fan;
+    const W = this.config.getCanvasWidth();
+    const H = this.config.getCanvasHeight();
+    const dl = this.config.getDefenseLineY();
+    const fanTopY = H * fanCfg.fanTopYRatio;
     const t = gameTime;
     const RANGE = dl - fanTopY;
-    const SOURCE_WIDTH = W * 0.7;
+    const SOURCE_WIDTH = W * fanCfg.sourceWidthRatio;
 
     ctx.save();
 
     // ===== 透视气流线 =====
-    const waveCount = 18;
-    for (let i = 0; i < waveCount; i++) {
-      const srcX = (i / (waveCount - 1)) * SOURCE_WIDTH + (W - SOURCE_WIDTH) / 2;
-      const waveSpeed = 2.0 + i * 0.3;
-      const wavePhase = t * waveSpeed + i * 2.7;
-      const baseAmplitude = 14 + i * 1.5;
+    // 修复 P1：用 save/restore 包裹 globalAlpha 修改
+    ctx.save();
+    for (let i = 0; i < fanCfg.waveCount; i++) {
+      const srcX = (i / (fanCfg.waveCount - 1)) * SOURCE_WIDTH + (W - SOURCE_WIDTH) / 2;
+      const waveSpeed = fanCfg.waveSpeedBase + i * fanCfg.waveSpeedIncrement;
+      const wavePhase = t * waveSpeed + i * fanCfg.wavePhaseMultiplier;
+      const baseAmplitude = fanCfg.waveAmplitudeBase + i * fanCfg.waveAmplitudeIncrement;
 
-      ctx.globalAlpha = 0.04 + Math.sin(wavePhase * 0.5) * 0.03;
-      ctx.strokeStyle = i % 3 === 0 ? '#c4b5fd' : '#a78bfa';
-      ctx.lineWidth = 2.0 + Math.sin(wavePhase) * 1.0;
+      ctx.globalAlpha = fanCfg.waveAlphaBase + Math.sin(wavePhase * 0.5) * fanCfg.waveAlphaAmp;
+      ctx.strokeStyle = i % 3 === 0 ? RENDER_COLOR.fanWaveSecondary : RENDER_COLOR.fanWavePrimary;
+      ctx.lineWidth = fanCfg.waveStrokeBase + Math.sin(wavePhase) * fanCfg.waveStrokeAmp;
       ctx.beginPath();
 
       let firstPoint = true;
-      for (let y = dl; y >= fanTopY; y -= 5) {
+      for (let y = dl; y >= fanTopY; y -= fanCfg.waveLineYStep) {
         const normalizedY = (dl - y) / RANGE;
-        const perspectiveScale = 1.0 - normalizedY * 0.92;
+        const perspectiveScale = 1.0 - normalizedY * (1 - fanCfg.perspectiveScaleMin);
         const cx = W / 2 + (srcX - W / 2) * perspectiveScale;
         const amplitude = baseAmplitude * perspectiveScale;
         const x = cx + Math.sin(normalizedY * Math.PI * 6 + wavePhase) * amplitude;
@@ -218,20 +250,21 @@ export class FanSystem {
       }
       ctx.stroke();
     }
+    ctx.restore(); // 恢复 globalAlpha
 
     // ===== 透视阵风前沿 =====
-    const gustCount = 5;
-    for (let g = 0; g < gustCount; g++) {
-      const gustSpeed = 0.5 + g * 0.3;
-      const gustPhase = (t * gustSpeed + g / gustCount) % 1.0;
+    ctx.save();
+    for (let g = 0; g < fanCfg.gustCount; g++) {
+      const gustSpeed = fanCfg.gustSpeedBase + g * fanCfg.gustSpeedIncrement;
+      const gustPhase = (t * gustSpeed + g / fanCfg.gustCount) % 1.0;
       const gustY = dl - gustPhase * RANGE;
-      const gustAlpha = Math.sin(gustPhase * Math.PI) * 0.15;
+      const gustAlpha = Math.sin(gustPhase * Math.PI) * fanCfg.gustAlphaBase;
       if (gustAlpha <= 0 || gustY < fanTopY) continue;
 
       const normalizedY = (dl - gustY) / RANGE;
-      const perspectiveScale = 1.0 - normalizedY * 0.92;
+      const perspectiveScale = 1.0 - normalizedY * (1 - fanCfg.perspectiveScaleMin);
       const gustHalfWidth = (SOURCE_WIDTH / 2) * perspectiveScale;
-      const gustHeight = 45 + g * 12;
+      const gustHeight = fanCfg.gustHeightBase + g * fanCfg.gustHeightIncrement;
 
       const grad = ctx.createLinearGradient(0, gustY - gustHeight / 2, 0, gustY + gustHeight / 2);
       grad.addColorStop(0, 'rgba(167, 139, 250, 0)');
@@ -241,7 +274,7 @@ export class FanSystem {
       ctx.fillRect(W / 2 - gustHalfWidth, gustY - gustHeight / 2, gustHalfWidth * 2, gustHeight);
 
       ctx.globalAlpha = gustAlpha * 1.5;
-      ctx.strokeStyle = '#e9d5ff';
+      ctx.strokeStyle = RENDER_COLOR.fanGust;
       ctx.lineWidth = 1.5;
       // Left edge
       ctx.beginPath();
@@ -262,33 +295,47 @@ export class FanSystem {
       }
       ctx.stroke();
     }
+    ctx.restore(); // 恢复 globalAlpha
 
-    // ===== 透视粒子 =====
-    const particleCount = 28;
-    for (let p = 0; p < particleCount; p++) {
-      const riseSpeed = 50 + (p % 5) * 30;
+    // ===== 透视粒子（修复 P2：手动变换替代 save/restore 嵌套） =====
+    ctx.save();
+    for (let p = 0; p < fanCfg.particleCount; p++) {
+      const riseSpeed = fanCfg.particleRiseSpeedBase + (p % 5) * fanCfg.particleRiseSpeedIncrement;
       const phase = (p * 137.5 + t * riseSpeed) % RANGE;
       const py = dl - phase;
       const normalizedY = phase / RANGE;
-      const perspectiveScale = 1.0 - normalizedY * 0.92;
+      const perspectiveScale = 1.0 - normalizedY * (1 - fanCfg.perspectiveScaleMin);
       const srcHalfWidth = SOURCE_WIDTH / 2;
       const baseX = (p * 97.3) % SOURCE_WIDTH - srcHalfWidth;
       const px = W / 2 + baseX * perspectiveScale + Math.sin(t * 2 + p) * 8 * perspectiveScale;
-      const pSize = (1.8 + Math.sin(p + t) * 0.6) * perspectiveScale;
-      const pAlpha = (0.15 + Math.sin(t * 2.5 + p * 1.7) * 0.1) * (0.5 + normalizedY * 0.5);
+      const pSize = (fanCfg.particleSizeBase + Math.sin(p + t) * fanCfg.particleSizeAmp) * perspectiveScale;
+      const pAlpha = (fanCfg.particleAlphaBase + Math.sin(t * 2.5 + p * 1.7) * fanCfg.particleAlphaAmp) * (0.5 + normalizedY * 0.5);
 
       ctx.globalAlpha = Math.max(0, pAlpha);
-      ctx.fillStyle = p % 2 === 0 ? '#ddd6fe' : '#c4b5fd';
-      ctx.save();
-      ctx.translate(px, py);
-      ctx.rotate(Math.sin(t + p * 0.5) * 0.3 - 0.1);
-      ctx.fillRect(-pSize / 2, -pSize * 2.5, pSize, pSize * 5);
-      ctx.restore();
+      ctx.fillStyle = p % 2 === 0 ? RENDER_COLOR.fanParticleLight : RENDER_COLOR.fanParticleDark;
+      
+      // 修复 P2：手动变换替代 save/restore 嵌套，减少 GPU 状态切换
+      const angle = Math.sin(t + p * 0.5) * fanCfg.particleRotateAmp - 0.1;
+      const cos = Math.cos(angle);
+      const sin = Math.sin(angle);
+      const hw = pSize / 2;
+      const hh = pSize * fanCfg.particleSizeLength / 2;
+      // 旋转矩形四个角
+      const corners = [
+        [-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh],
+      ].map(([lx, ly]) => [px + lx * cos - ly * sin, py + lx * sin + ly * cos]);
+      ctx.beginPath();
+      ctx.moveTo(corners[0][0], corners[0][1]);
+      for (let c = 1; c < 4; c++) ctx.lineTo(corners[c][0], corners[c][1]);
+      ctx.closePath();
+      ctx.fill();
     }
+    ctx.restore(); // 恢复 globalAlpha
 
     // ===== 风扇源轮廓 =====
-    ctx.globalAlpha = 0.08;
-    ctx.strokeStyle = '#c4b5fd';
+    ctx.save();
+    ctx.globalAlpha = fanCfg.sourceAlpha;
+    ctx.strokeStyle = RENDER_COLOR.fanWaveSecondary;
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(W / 2 - SOURCE_WIDTH / 2, dl);
@@ -301,20 +348,20 @@ export class FanSystem {
     ctx.beginPath();
     ctx.arc(W / 2, fanTopY, SOURCE_WIDTH * 0.04, 0, Math.PI, true);
     ctx.stroke();
+    ctx.restore();
 
     // ===== 源发光 =====
     const sourceGrad = ctx.createRadialGradient(W / 2, dl, 0, W / 2, dl, SOURCE_WIDTH / 2);
-    sourceGrad.addColorStop(0, 'rgba(167, 139, 250, 0.18)');
-    sourceGrad.addColorStop(0.5, 'rgba(196, 181, 253, 0.06)');
+    sourceGrad.addColorStop(0, `rgba(167, 139, 250, ${fanCfg.sourceGlowAlpha})`);
+    sourceGrad.addColorStop(0.5, `rgba(196, 181, 253, ${fanCfg.sourceGlowMidAlpha})`);
     sourceGrad.addColorStop(1, 'rgba(167, 139, 250, 0)');
-    ctx.globalAlpha = 1;
     ctx.fillStyle = sourceGrad;
     ctx.fillRect(W / 2 - SOURCE_WIDTH / 2, fanTopY, SOURCE_WIDTH, RANGE);
 
     // ===== 风扇图标 + 计时器 =====
     const iconCX = W / 2;
-    const iconCY = dl - 30;
-    const iconSize = 22;
+    const iconCY = dl - fanCfg.iconYOffset;
+    const iconSize = fanCfg.iconSize;
 
     ctx.fillStyle = 'rgba(229, 231, 235, 0.9)';
     ctx.beginPath();
@@ -326,39 +373,40 @@ export class FanSystem {
 
     for (let i = 0; i < 3; i++) {
       const angle = fan.bladeAngle + (i * Math.PI * 2 / 3);
-      const bx = iconCX + Math.cos(angle) * iconSize * 0.55;
-      const by = iconCY + Math.sin(angle) * iconSize * 0.55;
-      ctx.fillStyle = '#60a5fa';
+      const bx = iconCX + Math.cos(angle) * iconSize * fanCfg.bladeRadiusRatio;
+      const by = iconCY + Math.sin(angle) * iconSize * fanCfg.bladeRadiusRatio;
+      ctx.fillStyle = RENDER_COLOR.fanIconBlade;
       ctx.beginPath();
-      ctx.ellipse(bx, by, 4, 8, angle + Math.PI / 2, 0, Math.PI * 2);
+      ctx.ellipse(bx, by, fanCfg.bladeSize, fanCfg.bladeLength, angle + Math.PI / 2, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    ctx.fillStyle = '#4b5563';
+    ctx.fillStyle = RENDER_COLOR.fanIconCenter;
     ctx.beginPath();
-    ctx.arc(iconCX, iconCY, 4, 0, Math.PI * 2);
+    ctx.arc(iconCX, iconCY, fanCfg.centerSize, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = '#a78bfa';
-    ctx.font = 'bold 12px sans-serif';
+    ctx.fillStyle = RENDER_COLOR.fanIconPrimary;
+    ctx.font = RENDER_FONT.boldMedium;
     ctx.textAlign = 'center';
-    ctx.fillText(`风扇 ${fan.timer.toFixed(1)}s`, iconCX, iconCY - iconSize - 8);
+    ctx.fillText(TEXT_CONFIG.combat.fanTimer(fan.timer.toFixed(1)), iconCX, iconCY - iconSize - fanCfg.iconTimerYOffset);
 
     ctx.fillStyle = 'rgba(167, 139, 250, 0.7)';
-    ctx.font = '10px sans-serif';
-    ctx.fillText(TEXT_CONFIG.combat.fanBlowing, iconCX, iconCY - iconSize - 20);
+    ctx.font = RENDER_FONT.small;
+    ctx.fillText(TEXT_CONFIG.combat.fanBlowing, iconCX, iconCY - iconSize - fanCfg.iconBlowingYOffset);
 
     ctx.restore();
   }
 
   reset(): void {
+    const fanCfg = BALANCE_CONFIG.fan;
     this.fanState = {
       active: false,
       timer: 0,
-      duration: 8,
-      slowFactor: 0.5,
+      duration: fanCfg.defaultDuration,
+      slowFactor: fanCfg.defaultSlowFactor,
       bladeAngle: 0,
-      bladeSpeed: 15,
+      bladeSpeed: fanCfg.defaultBladeSpeed,
     };
   }
 }

@@ -4,7 +4,7 @@
  */
 
 import type { TripleFlameState } from '../../types';
-import { TEXT_CONFIG, FLOAT_COLOR } from '../../data';
+import { TEXT_CONFIG, FLOAT_COLOR, BALANCE_CONFIG } from '../../data';
 
 /**
  * 三重火焰系统配置接口
@@ -31,12 +31,13 @@ export class TripleFlameSystem {
 
   constructor(config: TripleFlameSystemConfig) {
     this.config = config;
+    const tfCfg = BALANCE_CONFIG.tripleFlame;
     this.tripleFlame = {
       active: false,
       timer: 0,
-      duration: 15,
-      sideOffset: 100,
-      sideDamageMult: 0.8,
+      duration: tfCfg.duration,
+      sideOffset: tfCfg.sideOffset,
+      sideDamageMult: tfCfg.sideDamageMult,
     };
   }
 
@@ -44,9 +45,9 @@ export class TripleFlameSystem {
     this.config = { ...this.config, ...config };
   }
 
-  /** 获取三重火焰状态（用于碰撞检测和渲染） */
+  /** 获取三重火焰状态（返回副本，防止外部修改内部状态） */
   getState(): TripleFlameState {
-    return this.tripleFlame;
+    return { ...this.tripleFlame };
   }
 
   isActive(): boolean {
@@ -56,7 +57,12 @@ export class TripleFlameSystem {
   // ========== 激活 ==========
   activateTripleFlame(): void {
     if (this.tripleFlame.active) {
+      // 重复激活：刷新计时器并给出反馈
       this.tripleFlame.timer = this.tripleFlame.duration;
+      this.config.onAddFloatingText?.(
+        this.config.canvasWidth / 2, this.config.canvasHeight / 2 - 60,
+        TEXT_CONFIG.combat.tripleFlameRefresh, FLOAT_COLOR.gold
+      );
       return;
     }
     this.tripleFlame.active = true;
@@ -72,24 +78,31 @@ export class TripleFlameSystem {
   // ========== 更新 ==========
   updateTripleFlame(deltaTime: number): void {
     if (!this.tripleFlame.active) return;
+
+    const tfCfg = BALANCE_CONFIG.tripleFlame;
     const prevTimer = this.tripleFlame.timer;
     this.tripleFlame.timer -= deltaTime;
 
-    // 5秒警告
-    if (prevTimer > 5 && this.tripleFlame.timer <= 5) {
+    // 警告阈值（使用配置值，不再硬编码5）
+    if (prevTimer > tfCfg.warningThreshold && this.tripleFlame.timer <= tfCfg.warningThreshold) {
       this.config.onAddFloatingText?.(
         this.config.canvasWidth / 2, this.config.canvasHeight / 2 - 80,
         TEXT_CONFIG.combat.tripleFlameWarning, FLOAT_COLOR.danger
       );
     }
 
-    // 3、2、1秒倒计时
-    for (const sec of [3, 2, 1]) {
-      if (prevTimer > sec && this.tripleFlame.timer <= sec) {
-        this.config.onAddFloatingText?.(
-          this.config.canvasWidth / 2, this.config.canvasHeight / 2 - 50,
-          `${sec}...`, sec <= 2 ? FLOAT_COLOR.warning : FLOAT_COLOR.gold
-        );
+    // 倒计时：逐秒整数边界检测，防止大deltaTime跳过
+    if (this.tripleFlame.timer > 0) {
+      const prevFloor = Math.ceil(prevTimer);  // 上一帧的整数秒上界
+      const currFloor = Math.ceil(this.tripleFlame.timer);  // 当前帧的整数秒上界
+      // 跨越了整数秒边界才触发
+      if (prevFloor > currFloor) {
+        for (let sec = prevFloor - 1; sec >= Math.max(currFloor, 1); sec--) {
+          this.config.onAddFloatingText?.(
+            this.config.canvasWidth / 2, this.config.canvasHeight / 2 - 50,
+            `${sec}...`, sec === 1 ? FLOAT_COLOR.danger : FLOAT_COLOR.warning
+          );
+        }
       }
     }
 
@@ -104,12 +117,13 @@ export class TripleFlameSystem {
   }
 
   reset(): void {
+    const tfCfg = BALANCE_CONFIG.tripleFlame;
     this.tripleFlame = {
       active: false,
       timer: 0,
-      duration: 15,
-      sideOffset: 100,
-      sideDamageMult: 0.8,
+      duration: tfCfg.duration,
+      sideOffset: tfCfg.sideOffset,
+      sideDamageMult: tfCfg.sideDamageMult,
     };
   }
 }

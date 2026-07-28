@@ -67,9 +67,9 @@
  *
  * 【每帧渲染链路】render() 按顺序调用（→ 表示委托给模块）：
  *   BackgroundRenderer.renderBackground() → renderMovementRange() →
- *   BackgroundRenderer.renderWeatherBackground() →
+ *   WeatherSystem.renderWeatherBackground() →
  *   BackgroundRenderer.renderFireZones() →
- *   BackgroundRenderer.renderFireWalls() → renderStickyBoards() →
+ *   ParticleSystem.renderFireWalls() → renderStickyBoards() →
  *   renderStickyDrops() → renderWeaponDrops() → renderParticles() →
  *   renderBaitMark() → RoachRenderer.renderRoaches() → renderBaitThrow() →
  *   renderPlayer()（含 NurseRenderer.renderNurseHealVFX()） →
@@ -136,7 +136,7 @@ import { ConsumableSystem } from './engine/consumable/ConsumableSystem';
 import { BossBattleSystem } from './engine/boss/BossBattleSystem';
 import { WaveManager } from './engine/wave/WaveManager';
 import { WeatherSystem } from './engine/weather/WeatherSystem';
-import { RoachAISystem, getNextId, setNextId, getNextBossId, setNextBossId } from './engine/ai/RoachAISystem';
+import { RoachAISystem } from './engine/ai/RoachAISystem';
 import { FloatingTextSystem } from './engine/floating-text/FloatingTextSystem';
 
 // =============================================================================
@@ -365,6 +365,7 @@ export class GameEngine {
   weatherParticles: Particle[] = [];
   lightningTimer: number = 0;
   lightningFlash: number = 0;
+  lightningTextCooldown: number = 0;
   /** 成就系统模块（委托给 AchievementSystem） */
   private achievementSystem: AchievementSystem | null = null;
   /** 粒子系统模块（委托给 ParticleSystem） */
@@ -488,8 +489,6 @@ export class GameEngine {
 
   // [已移除] 医院虫卵系统 — 死代码
   // ===== 医院专属：三星评级系统 =====
-  hospitalTotalEggPods: number = 0; // 本关生成的虫卵总数
-  hospitalDestroyedEggPods: number = 0; // 本关摧毁的虫卵总数
   hospitalBreaches: number = 0; // 本关防线突破次数（用于星级评定）
   hospitalStarRating: number = 0; // 0-3 stars
 
@@ -559,6 +558,8 @@ export class GameEngine {
       onPlayBreach: () => { this.audio.playBreach(); },
       onVibrateBreach: () => { Vibration.vibrateBreach(); },
       onVibrateGameOver: () => { Vibration.vibrateGameOver(); },
+      onScreenShake: (amount) => { this.screenShake = amount; },
+      onSuicideExplode: (r, i) => { this.suicideExplode(r, i); },
     });
     this.weaponSystem = new WeaponSystem({
       difficulty: this.difficulty as 'easy' | 'hard',
@@ -604,9 +605,9 @@ export class GameEngine {
       onScreenShake: (amount) => { this.screenShake = amount; },
     });
     this.fanSystem = new FanSystem({
-      canvasWidth: this.width,
-      canvasHeight: this.height,
-      defenseLineY: () => this.defenseLineY(),
+      getCanvasWidth: () => this.width,
+      getCanvasHeight: () => this.height,
+      getDefenseLineY: () => this.defenseLineY(),
       talentMultipliers: this.talentMultipliers,
       onAddFloatingText: (x, y, text, color) => { this.addFloatingText(x, y, text, color); },
       onStartFanLoop: () => { this.audio.startFanLoop(); },
@@ -646,7 +647,12 @@ export class GameEngine {
       onAddFloatingText: (x, y, text, color) => { this.addFloatingText(x, y, text, color); },
       onPlaySound: (soundName) => {
         if (soundName === 'molotov_throw') { this.audio.playMolotovThrow(); }
+        else if (soundName === 'sticky_throw') { this.audio.playStickyThrow(); }
+        else if (soundName === 'poison_throw') { this.audio.playPoisonThrow(); }
       },
+      getNextThrowableId: () => nextId++,
+      getCanvasWidth: () => this.width,
+      getDefenseLineY: () => this.defenseLineY(),
     });
     this.insecticideSystem = new InsecticideSystem({
       onAddFloatingText: (x, y, text, color) => { this.addFloatingText(x, y, text, color); },
@@ -676,12 +682,33 @@ export class GameEngine {
           });
         }
       },
-      onSpawnPoisonExplosion: (x, y, radius) => { PoisonSystem.spawnPoisonExplosion(this.particles, x, y, radius); },
+      onSpawnPoisonExplosion: (x, y) => { PoisonSystem.spawnPoisonExplosion(this.particles, x, y); },
       onScreenShake: (amount) => { this.screenShake = amount; },
+      // 统一伤害/效果入口，避免投掷物系统直接修改蟑螂状态
+      onApplyDamageToRoach: (r, damage) => { r.hp -= damage; },
+      onApplyStickyToRoach: (r, stuckTimer, speedRatio) => {
+        r.stuckTimer = stuckTimer;
+        r.speed = r.baseSpeed * speedRatio;
+      },
+      onApplyPoisonToRoach: (r, poisonTimer, poisonDamage, initialDamage) => {
+        r.poisonTimer = poisonTimer;
+        r.poisonDamage = poisonDamage;
+        r.hp -= initialDamage;
+      },
+      onApplyBurnToRoach: (r, damage, burnDamage) => {
+        r.hp -= damage;
+        r.burnDamage = burnDamage;
+      },
+      onShowArmorImmune: (r) => {
+        this.addFloatingText(r.x, r.y - 15, TEXT_CONFIG.combat.armorImmune, FLOAT_COLOR.armorImmune);
+      },
     });
     this.poisonSystem = new PoisonSystem({
       onAddFloatingText: (x, y, text, color) => { this.addFloatingText(x, y, text, color); },
       onScreenShake: (amount) => { this.screenShake = amount; },
+      onAddZone: (zone) => { this.fireZones.push(zone); },
+      onDamageRoach: (roach, damage) => { roach.hp -= damage; },
+      onSpawnPoisonExplosion: (x, y) => { PoisonSystem.spawnPoisonExplosion(this.particles, x, y); },
     });
     this.consumableSystem = new ConsumableSystem({
       consumableDefs: CONSUMABLE_DEFS,
@@ -704,6 +731,7 @@ export class GameEngine {
       getPlayer: () => this.player,
       getDefenseHp: () => this.defenseHp,
       getMaxDefenseHp: () => this.maxDefenseHp,
+      setDefenseHp: (hp) => { this.defenseHp = hp; },
       getCanvasWidth: () => this.width,
       getCanvasHeight: () => this.height,
       getGameState: () => this.state,
@@ -758,10 +786,10 @@ export class GameEngine {
           const idx = this.roaches.indexOf(roach);
           if (idx >= 0) this.roaches.splice(idx, 1);
         },
-        onSetActiveBosses: (count) => { this.bossSystem!.activeBosses = count; },
         onGetLivingNonBossCount: () => this.roaches.filter(r => r.state === RoachState.ALIVE && !r.isBoss).length,
       },
       this.bossAnimFrames,
+      () => nextBossId++, // 修复 P0：注入 ID 生成器，消除全局计数器
     );
 
     // ===== 初始化 RoachAISystem（在 BossBattleSystem 之后，确保 this.bossSystem 可用） =====
@@ -813,6 +841,7 @@ export class GameEngine {
       onSellUnusedInventory: () => this.sellUnusedInventory(),
       onUnlockNextScene: () => this.unlockNextScene(),
       onAddPendingReward: (amount) => { this.pendingRewards += amount; this.onPendingRewardUpdate?.(this.pendingRewards); },
+      getNextId: () => nextId++, // 修复 P0：注入 ID 生成器，消除全局计数器冲突
     });
 
     // ===== 初始化 WaveManager =====
@@ -832,6 +861,17 @@ export class GameEngine {
         onTutorialPauseChange: (paused) => { this.onTutorialPauseChange?.(paused); },
         onKillRoach: (roach, idx) => { this.killRoach(roach, idx); },
         onGetRoaches: () => this.roaches,
+        onKillAllNurseRoaches: () => {
+          // 医院专属：通过回调统一处理护士蟑螂清除，避免波次管理器直接修改HP
+          const roaches = this.roaches;
+          for (let i = roaches.length - 1; i >= 0; i--) {
+            const r = roaches[i];
+            if (r.type === RoachType.NURSE && r.state === 'alive') {
+              r.hp = 0;
+              this.killRoach(r, i);
+            }
+          }
+        },
         onGetEconomy: () => this.economy,
         onGetProgress: () => this.progress,
         onGetTimedSuicideRemaining: () => this.timedSuicideSpawnRemaining,
@@ -870,10 +910,18 @@ export class GameEngine {
 
   /** 异步加载所有游戏图片资源 */
   loadImages() {
+    const loadPromises: Promise<void>[] = [];
     const load = (src: string, setter: (img: HTMLImageElement) => void) => {
-      const img = new Image();
-      img.onload = () => { setter(img); };
-      img.src = src;
+      const promise = new Promise<void>((resolve) => {
+        const img = new Image();
+        img.onload = () => { setter(img); resolve(); };
+        img.onerror = () => {
+          console.warn(`[Engine] Failed to load image: ${src}`);
+          resolve(); // 修复 P1：加载失败不阻塞，继续加载其他资源
+        };
+        img.src = src;
+      });
+      loadPromises.push(promise);
     };
     load('/assets/gun.png', (img) => this.gunImg = img);
     load('/assets/roach.png', (img) => this.roachImg = img);
@@ -947,7 +995,12 @@ export class GameEngine {
         this.bgSceneImages[sceneType] = img;
       }
     }
-    this.imagesLoaded = true;
+    // 修复 P1：使用 Promise.all 等待所有图片实际加载完成后再设置标志
+    Promise.all(loadPromises).then(() => {
+      this.imagesLoaded = true;
+    }).catch(() => {
+      this.imagesLoaded = true; // 即使部分失败也允许渲染
+    });
   }
 
   /** 玩家基准 X 坐标（屏幕中央） */
@@ -1154,8 +1207,6 @@ export class GameEngine {
     this.selectedItems = []; // Clear player-selected items
     this.armorShieldCache.clear();
     this.armorShieldCacheTimer = 0;
-    this.hospitalTotalEggPods = 0;
-    this.hospitalDestroyedEggPods = 0;
     this.hospitalBreaches = 0;
     this.hospitalStarRating = 0;
     this.placedBombs = [];
@@ -1210,6 +1261,7 @@ export class GameEngine {
     this.screenShake = 0;
     this.lightningTimer = 0;
     this.lightningFlash = 0;
+    this.lightningTextCooldown = 0;
     this.achievementSystem?.reset();
     this.particleSystem?.clearAll();
     this.economy.totalGamesPlayed = this.progress.totalKills + 1;
@@ -1479,9 +1531,8 @@ export class GameEngine {
     // - Ground usable area: Y ≈ 0.41 ~ 0.90
     // - Must be within 300px of defense line (0.90)
     // - Final range: max(0.41, 0.90-300/h) ~ 0.90
-    // [REMOVED] Egg pod spawn logic removed
     for (let i = 0; i < config.count; i++) {
-      // Egg pod system removed
+      // Wave egg release: count display only, actual spawning handled by WaveManager
     }
 
     this.addFloatingText(this.width / 2, this.height / 3, TEXT_CONFIG.combat.waveEggRelease(wave), FLOAT_COLOR.danger);
@@ -1490,19 +1541,14 @@ export class GameEngine {
   }
 
   updateEggPods() {
-    // [REMOVED] Egg pod system removed
+    // Egg pod system removed — no-op
   }
-
-  // [REMOVED] hatchEggPod(pod: any) { // Egg pod system removed
-  // }
-
-  // [REMOVED] damageEggPod(podId: number, damage: number) {
-  //   // Egg pod system removed
-  // }
 
   // 电蚊拍拾取（委托给 SwatterSystem 模块）
   spawnSwatterPickup(x: number, y: number) {
-    this.swatterSystem!.spawnSwatterPickup(x, y, this.inventory, (inv) => { this.onInventoryUpdate?.(inv); });
+    const newInventory = this.swatterSystem!.spawnSwatterPickup(x, y, this.inventory);
+    this.inventory = newInventory;
+    this.onInventoryUpdate?.(this.inventory);
   }
 
   // ===== BOSS 对话与逃跑（胜利序列） =====
@@ -1731,11 +1777,6 @@ export class GameEngine {
       this.onGameOver?.(this.economy, this.bossSystem!.bossBattle.currentWave);
     }, 2000);
   }
-
-  // Compute armor for egg-hatched roaches
-  // [REMOVED] computeEggPodArmor(type: RoachType, def: EnemyDef, hpMult: number): number {
-  //   return 0; // Egg pod system removed
-  // }
 
   canControlBoss(): boolean {
     return this.bossSystem!.canControlBoss();
@@ -1990,7 +2031,7 @@ export class GameEngine {
       }
 
       if (p.isTempWeapon && ammoKey !== 'flamethrower') {
-        p.weaponAmmo[ammoKey] = Math.max(0, (p.weaponAmmo[ammoKey] || 0) - this.deltaTime * 3);
+        p.weaponAmmo[ammoKey] = Math.max(0, (p.weaponAmmo[ammoKey] || 0) - 1); // 修复 P1：统一为整数递减，与 molotovCount 一致
       }
     } else {
       this.audio.stopFire();
@@ -2036,7 +2077,7 @@ export class GameEngine {
     const baseDamage = (this.difficulty === 'hard' ? 200 : 300) * this.deltaTime * p.damageMultiplier * powerBoostMult;
     const range = p.fireRange * 0.5;
     const spreadAngle = (Math.PI / 15) * p.flameSpreadMultiplier;
-    ParticleSpawner.spawnConeFire(this.particles, this.fireZones, this.deltaTime,p.x, p.y, -Math.PI / 2, range, spreadAngle, baseDamage, 'fire');
+    ParticleSpawner.spawnConeFire({ particles: this.particles, fireZones: this.fireZones, deltaTime: this.deltaTime, x: p.x, y: p.y, angle: -Math.PI / 2, range, baseDamage, type: 'fire' });
     // Black smoke at flame tip during power boost (use dynamic particle limit)
     if (p.powerBoostTimer > 0 && this.particles.length < this._particleLimit - 10 && Math.random() < 0.4) {
       const tipY = p.y - 322 - range;
@@ -2072,7 +2113,7 @@ export class GameEngine {
     const gasCost = this.deltaTime;
     const range = p.fireRange * 0.45;
     const baseDamage = 30 * this.deltaTime;
-    ParticleSpawner.spawnConeFire(this.particles, this.fireZones, this.deltaTime,p.x, p.y, -Math.PI / 2, range, Math.PI / 6, baseDamage, 'poison');
+    ParticleSpawner.spawnConeFire({ particles: this.particles, fireZones: this.fireZones, deltaTime: this.deltaTime, x: p.x, y: p.y, angle: -Math.PI / 2, range, baseDamage, type: 'poison' });
     p.gas -= gasCost * p.gasCostMultiplier;
     if (p.gas < 0) p.gas = 0;
     p.heat += this.deltaTime * 80;
@@ -2090,7 +2131,7 @@ export class GameEngine {
     // Wide spread shotgun blast
     for (let i = 0; i < p.shotgunPellets; i++) {
       const spreadAngle = -Math.PI / 2 + (i - p.shotgunPellets / 2) * (Math.PI / 8);
-      ParticleSpawner.spawnConeFire(this.particles, this.fireZones, this.deltaTime,p.x, p.y, spreadAngle, range, Math.PI / 12, baseDamage / p.shotgunPellets, 'fire');
+      ParticleSpawner.spawnConeFire({ particles: this.particles, fireZones: this.fireZones, deltaTime: this.deltaTime, x: p.x, y: p.y, angle: spreadAngle, range, baseDamage: baseDamage / p.shotgunPellets, type: 'fire' });
     }
     p.gas -= gasCost * p.gasCostMultiplier;
     if (p.gas < 0) p.gas = 0;
@@ -2169,7 +2210,7 @@ export class GameEngine {
 
   // ========== THROWABLE AIMING & THROWING (delegated to AimingSystem) ==========
   startAiming(weapon: 'sticky' | 'poison' | 'molotov') {
-    this.aimingSystem!.startAiming(weapon, this.time, this.player.x, this.player.y);
+    return this.aimingSystem!.startAiming(weapon, this.time, this.player.x, this.player.y, this.player.weaponAmmo, this.player.isTempWeapon);
   }
 
   throwAimedWeapon() {
@@ -2180,8 +2221,6 @@ export class GameEngine {
       this.player.y
     );
     if (result.throwable) {
-      nextId++;
-      result.throwable.id = nextId;
       this.throwableSystem!.addThrowable(result.throwable);
       this.player.weaponAmmo = result.updatedAmmo;
     }
@@ -2765,7 +2804,9 @@ export class GameEngine {
         other.inFire = true;
         hitCount++;
         if (other.hp <= 0 && this._deathChainDepth < this.MAX_DEATH_CHAIN_DEPTH) {
-          this.killRoach(other, this.roaches.indexOf(other));
+              this._deathChainDepth++; // 修复 P1：递归前递增深度计数器
+              this.killRoach(other, this.roaches.indexOf(other));
+              this._deathChainDepth--; // 修复 P1：递归后递减深度计数器
         }
       }
     }
@@ -2876,7 +2917,7 @@ export class GameEngine {
     this.addFloatingText(r.x, r.y - 30, hitCount > 0 ? TEXT_CONFIG.combat.deathExplosion(hitCount) : '死亡爆炸!', FLOAT_COLOR.explosion);
   }
 
-  // [REMOVED] spawnDebrisParticles, spawnFireRingParticles, spawnShockwaveRing — migrated to ParticleSpawner
+  // spawnDebrisParticles, spawnFireRingParticles, spawnShockwaveRing — migrated to ParticleSpawner
 
 
 
@@ -2963,10 +3004,7 @@ export class GameEngine {
   killRoach(r: Roach,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _index: number) {
-    // Reset death chain depth at top-level kill entry (not from chain reactions)
-    if (this._deathChainDepth === 0) {
-      this._deathChainDepth = 1;
-    }
+    // 修复 P1：死亡链深度由 suicideExplode 管理，killRoach 入口不再重置计数器
 
     // Suicide roaches: explode on death (even before reaching defense line)
     // This ensures they always deal damage when killed by flame
@@ -3229,13 +3267,13 @@ export class GameEngine {
       this.player,
       this.roaches,
       this.tripleFlameSystem!.getState(),
-      (id) => this.stickySystem!.isStuckByBoard(id, this.roaches)
+      (id) => this.stickySystem!.isStuckByBoard(id)
     );
-    this.fireZones = [];
+    this.fireZones = this.fireZones.filter(z => z.maxLife >= 1); // 修复 P0：保留持久火焰区域（燃烧瓶等，maxLife≥1），清除每帧武器火焰区域（maxLife=0.5）
   }
 
   isStuckByBoard(roachId: number): boolean {
-    return this.stickySystem!.isStuckByBoard(roachId, this.roaches);
+    return this.stickySystem!.isStuckByBoard(roachId);
   }
 
   getWeaponDamage(p: Player): number {
@@ -3270,33 +3308,29 @@ export class GameEngine {
    */
   checkDefense() {
     const dl = this.defenseLineY();
-    const defenseHpRef = { value: this.defenseHp };
-    const activeBossesRef = { value: this.activeBosses };
 
+    // 修复 P1：不再用对象包装传引用，直接传值
     const result = this.collisionSystem!.checkDefenseBreach(
-      this.roaches, dl, this.player, defenseHpRef, activeBossesRef,
-      {
-        onSuicideExplode: (r, i) => { this.suicideExplode(r, i); },
-        onAddFloatingText: (x, y, text, color) => { this.addFloatingText(x, y, text, color); },
-        onPlayBreach: () => { this.audio.playBreach(); },
-        onVibrateBreach: () => { Vibration.vibrateBreach(); },
-        onScreenShake: (amount) => { this.screenShake = amount; },
-        onBossStop: this.bossSystem!.bossBattle.active,
-      }
+      this.roaches, dl, this.player, this.defenseHp, this.activeBosses,
+      this.bossSystem!.bossBattle.active, // 修复 P2：onBossStop → isBossActive
     );
 
     // 同步回引擎状态
-    this.defenseHp = defenseHpRef.value;
-    this.activeBosses = activeBossesRef.value;
+    this.defenseHp = result.defenseHp;
+    this.activeBosses = result.activeBosses;
 
-    // 处理自杀爆炸
-    for (const idx of result.suicideExplodeIndices) {
-      this.suicideExplode(this.roaches[idx], idx);
-    }
+    // 处理自杀爆炸 + 突破移除（修复 P1：合并为单次降序处理，避免索引偏移）
+    const allIndices = [
+      ...result.suicideExplodeIndices.map(i => ({ idx: i, isSuicide: true as const })),
+      ...result.removedIndices.map(i => ({ idx: i, isSuicide: false as const })),
+    ].sort((a, b) => b.idx - a.idx);
 
-    // 移除突破防线的蟑螂
-    for (const idx of result.removedIndices.sort((a, b) => b - a)) {
-      this.roaches.splice(idx, 1);
+    for (const { idx, isSuicide } of allIndices) {
+      if (isSuicide) {
+        this.suicideExplode(this.roaches[idx], idx);
+      } else {
+        this.roaches.splice(idx, 1);
+      }
     }
 
     // 处理防线突破统计
@@ -3525,8 +3559,6 @@ export class GameEngine {
     this.waveManager!.doWaveSpawn();
   }
 
-  // [REMOVED] Hospital egg pod system — dead code (spawnHospitalEggPods, updateHospitalEggPods, hatchHospitalEggPod, damageHospitalEggPod, triggerDisinfectionReward)
-
   getWaveConfig(wave: number): WaveConfig {
     return this.waveManager!.getWaveConfig(wave);
   }
@@ -3560,7 +3592,7 @@ export class GameEngine {
   //       rain, lightning, shield
   // 性能：前 120 帧采样帧率，动态调整粒子数量上限 (150-400)
   // =============================================================================
-  // [REMOVED] spawnConeFire, spawnSmokeParticles, spawnAshParticles, spawnBloodParticles, spawnSparkParticles, spawnExplosionParticles — migrated to ParticleSpawner
+  // spawnConeFire, spawnSmokeParticles, spawnAshParticles, spawnBloodParticles, spawnSparkParticles, spawnExplosionParticles — migrated to ParticleSpawner
 
   /**
    * 添加浮动文字特效
@@ -3576,16 +3608,17 @@ export class GameEngine {
   }
 
   /** 更新所有粒子特效（位置、生命周期） */
-  /** 更新粒子（委托给 ParticleSystem 模块） */
+  /** 更新粒子和浮动文字（委托给 ParticleSystem 和 FloatingTextSystem 模块） */
   updateParticles() {
     this.particleSystem!.updateConfig({
       particleLimit: this._particleLimit,
       deltaTime: this.deltaTime,
       defenseLineY: this.defenseLineY(),
     });
-    this.particleSystem!.updateParticlesAndFloatingTexts(
+    // 修复 P1：浮动文字更新由 FloatingTextSystem 自身管理，不再暴露内部数组给 ParticleSystem
+    this.floatingTextSystem.update(this.deltaTime);
+    this.particleSystem!.syncParticleArrays(
       this.particles,
-      this.floatingTextSystem.getFloatingTexts(),
       this.fireZones,
       this.roaches,
       this.armorShieldCache
@@ -3672,7 +3705,7 @@ export class GameEngine {
 
   // ========== SWATTER (delegated to SwatterSystem module) =========
 
-  // [REMOVED] spawnLightningParticles — migrated to ParticleSpawner
+  // spawnLightningParticles — migrated to ParticleSpawner
 
 
   // =============================================================================
@@ -3684,45 +3717,52 @@ export class GameEngine {
     const weather = scene.weather;
 
     if (weather === WeatherType.RAIN) {
-      // 雨滴粒子
-      if (Math.random() < 0.4) {
+      // 雨滴粒子（帧率无关：spawnRate * deltaTime）
+      const rainCfg = BALANCE_CONFIG.weather.rain;
+      if (Math.random() < rainCfg.spawnRate * this.deltaTime) {
         const rainParticle: Particle = {
           x: Math.random() * this.width,
           y: -10,
-          vx: -20 + Math.random() * 10,
-          vy: 200 + Math.random() * 100,
-          life: 2,
-          maxLife: 2,
-          size: 1 + Math.random(),
-          color: 'rgba(150, 180, 220, 0.4)',
+          vx: rainCfg.vxMin + Math.random() * rainCfg.vxRange,
+          vy: rainCfg.vyMin + Math.random() * rainCfg.vyRange,
+          life: rainCfg.life,
+          maxLife: rainCfg.life,
+          size: rainCfg.sizeMin + Math.random() * rainCfg.sizeRange,
+          color: rainCfg.color,
           type: ParticleType.RAIN,
         };
         this.weatherParticles.push(rainParticle);
       }
     } else if (weather === WeatherType.FOG) {
-      // 缓慢移动的雾
-      if (Math.random() < 0.05) {
+      // 缓慢移动的雾（帧率无关：spawnRate * deltaTime）
+      const fogCfg = BALANCE_CONFIG.weather.fog;
+      if (Math.random() < fogCfg.spawnRate * this.deltaTime) {
+        const life = fogCfg.lifeMin + Math.random() * fogCfg.lifeRange;
         const fogParticle: Particle = {
           x: Math.random() < 0.5 ? -20 : this.width + 20,
           y: Math.random() * this.height,
-          vx: (Math.random() < 0.5 ? 1 : -1) * (10 + Math.random() * 10),
-          vy: -5 + Math.random() * 10,
-          life: 8 + Math.random() * 4,
-          maxLife: 8 + Math.random() * 4,
-          size: 30 + Math.random() * 50,
-          color: `rgba(180, 180, 160, ${0.05 + Math.random() * 0.05})`,
+          vx: (Math.random() < 0.5 ? 1 : -1) * (fogCfg.vxMin + Math.random() * fogCfg.vxRange),
+          vy: fogCfg.vyMin + Math.random() * fogCfg.vyRange,
+          life,
+          maxLife: life,
+          size: fogCfg.sizeMin + Math.random() * fogCfg.sizeRange,
+          color: `rgba(${fogCfg.colorBase}, ${fogCfg.alphaMin + Math.random() * fogCfg.alphaRange})`,
           type: ParticleType.SMOKE,
         };
         this.weatherParticles.push(fogParticle);
       }
     } else if (weather === WeatherType.NIGHT) {
-      // 闪电
+      // 闪电（带文字冷却防刷屏）
       this.lightningTimer -= this.deltaTime;
+      this.lightningTextCooldown -= this.deltaTime;
       if (this.lightningTimer <= 0) {
         this.lightningTimer = BALANCE_CONFIG.lightning.timerMin + Math.random() * BALANCE_CONFIG.lightning.timerRandMax;
-        if (Math.random() < 0.3) {
+        if (Math.random() < BALANCE_CONFIG.lightning.chance) {
           this.lightningFlash = BALANCE_CONFIG.lightning.flashDuration;
-          this.addFloatingText(this.width / 2, this.height / 2 - 100, TEXT_CONFIG.combat.lightning, FLOAT_COLOR.gold);
+          if (this.lightningTextCooldown <= 0) {
+            this.addFloatingText(this.width / 2, this.height / 2 - 100, TEXT_CONFIG.combat.lightning, FLOAT_COLOR.gold);
+            this.lightningTextCooldown = BALANCE_CONFIG.lightning.textCooldown;
+          }
         }
       }
       // 更新闪电闪光
@@ -3738,7 +3778,7 @@ export class GameEngine {
       p.x += p.vx * this.deltaTime;
       p.y += p.vy * this.deltaTime;
       if (p.type === ParticleType.SMOKE && weather === WeatherType.FOG) {
-        p.size *= 1.005;
+        p.size *= BALANCE_CONFIG.weather.fog.growthRate;
       }
       if (p.life <= 0) {
         this.weatherParticles.splice(i, 1);
@@ -3890,36 +3930,38 @@ export class GameEngine {
       imagesLoaded: this.imagesLoaded,
       bgSceneImages: this.bgSceneImages,
       lightningFlash: this.lightningFlash,
-      bgKitchenHardImg: this.bgKitchenHardImg,
-      bgKitchenEasyImg: this.bgKitchenEasyImg,
-      bgImg: this.bgImg,
-      bgSewerHardImg: this.bgSewerHardImg,
-      bgSewerEasyImg: this.bgSewerEasyImg,
-      bgSewerImg: this.bgSewerImg,
-      bgDumpHardImg: this.bgDumpHardImg,
-      bgDumpEasyImg: this.bgDumpEasyImg,
-      bgDumpImg: this.bgDumpImg,
-      bgBasementHardImg: this.bgBasementHardImg,
-      bgBasementEasyImg: this.bgBasementEasyImg,
-      bgBasementImg: this.bgBasementImg,
-      bgRooftopHardImg: this.bgRooftopHardImg,
-      bgRooftopEasyImg: this.bgRooftopEasyImg,
-      bgRooftopImg: this.bgRooftopImg,
-      bgStreetHardImg: this.bgStreetHardImg,
-      bgStreetEasyImg: this.bgStreetEasyImg,
-      bgStreetImg: this.bgStreetImg,
+      bgImages: {
+        kitchen_hard: this.bgKitchenHardImg!,
+        kitchen_easy: this.bgKitchenEasyImg!,
+        kitchen: this.bgImg!,
+        sewer_hard: this.bgSewerHardImg!,
+        sewer_easy: this.bgSewerEasyImg!,
+        sewer: this.bgSewerImg!,
+        dump_hard: this.bgDumpHardImg!,
+        dump_easy: this.bgDumpEasyImg!,
+        dump: this.bgDumpImg!,
+        basement_hard: this.bgBasementHardImg!,
+        basement_easy: this.bgBasementEasyImg!,
+        basement: this.bgBasementImg!,
+        rooftop_hard: this.bgRooftopHardImg!,
+        rooftop_easy: this.bgRooftopEasyImg!,
+        rooftop: this.bgRooftopImg!,
+        street_hard: this.bgStreetHardImg!,
+        street_easy: this.bgStreetEasyImg!,
+        street: this.bgStreetImg!,
+      },
     });
     /** 显示移动范围叠加层（玩家可走区域的半透明可视化） */
     if (this.showMovementRange) {
       this.renderMovementRange(ctx);
     }
-    BackgroundRenderer.renderWeatherBackground(ctx, w, h, this.lightningFlash);
+    WeatherSystem.renderWeatherBackground(ctx, w, h, this.lightningFlash);
     BackgroundRenderer.renderFireZones(ctx, {
       player: this.player,
       tripleFlameState: this.tripleFlameSystem!.getState(),
       time: this.time,
     });
-    BackgroundRenderer.renderFireWalls(ctx, this.fireWalls, this.time);
+    ParticleSystem.renderFireWalls(ctx, this.fireWalls, this.time);
     this.renderStickyBoards();
     this.renderStickyDrops(ctx);
     this.renderWeaponDrops(ctx);
@@ -4277,15 +4319,18 @@ export class GameEngine {
   renderEggPods(
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _ctx: CanvasRenderingContext2D) {
-    // [REMOVED] Egg pod system removed
+    // Egg pod rendering removed — system decommissioned
   }
 
   // ========== INSECTICIDE SPRAY RENDERING (delegated to RenderUtils static method) =========
 
   // ========== RADAR LASER RENDERING =========
-  /** 渲染雷达激光（委托给 RenderUtils 静态方法） */
+  /** 渲染雷达激光（委托给 RenderUtils 静态方法，目标由调用方预解析） */
   renderRadarLaser(ctx: CanvasRenderingContext2D) {
-    RenderUtils.renderRadarLaser(ctx, this.radarLaserSystem!.getState(), this.roaches, this.player.x, this.player.y, this.time);
+    const rl = this.radarLaserSystem!.getState();
+    if (!rl.active) return;
+    const target = this.roaches.find(r => r.id === rl.targetId && r.state === RoachState.ALIVE) ?? null;
+    RenderUtils.renderRadarLaser(ctx, target, rl.active, rl.timer, this.player.x, this.player.y, this.time);
   }
 
   renderDefenseLine(ctx: CanvasRenderingContext2D, w: number) {
@@ -4461,7 +4506,14 @@ export class GameEngine {
 
   /** 渲染电蚊拍（委托给 RenderUtils 静态方法） */
   renderSwatter(ctx: CanvasRenderingContext2D) {
-    RenderUtils.renderSwatter(ctx, this.swatterSystem!.swatterActive, this.swatterSystem!.swatterAnimTimer, this.swatterSystem!.swatterSwingX, this.width, this.height, this.roaches);
+    RenderUtils.renderSwatter(ctx, {
+      active: this.swatterSystem!.swatterActive,
+      animTimer: this.swatterSystem!.swatterAnimTimer,
+      swingX: this.swatterSystem!.swatterSwingX,
+      canvasWidth: this.width,
+      canvasHeight: this.height,
+      roaches: this.roaches,
+    });
   }
 
   /** 渲染枪口闪光（委托给 RenderUtils 静态方法） */
@@ -4470,7 +4522,8 @@ export class GameEngine {
   }
 
   renderWeatherForeground(ctx: CanvasRenderingContext2D, w: number) {
-    WeatherSystem.renderWeatherForeground(ctx, w, this.weatherParticles, () => this.renderDefenseLine(ctx, w));
+    WeatherSystem.renderWeatherForeground(ctx, w, this.weatherParticles);
+    this.renderDefenseLine(ctx, w);
   }
 
   /** 渲染浮动文字（委托给 FloatingTextSystem 模块） */

@@ -6,7 +6,7 @@
 
 import { RoachType, RoachState, SceneType, GameMode, GameState, ParticleType } from '../../types';
 import type { Roach, Player, Particle, FireWall, Economy, GameProgress, BossBattleState, WaveConfig } from '../../types';
-import { ENEMY_DEFS, BOSS_CONFIG, SCENE_GROUND_BOUNDS, TEXT_CONFIG, FLOAT_COLOR } from '../../data';
+import { ENEMY_DEFS, BOSS_CONFIG, SCENE_GROUND_BOUNDS, TEXT_CONFIG, FLOAT_COLOR, BALANCE_CONFIG } from '../../data';
 import { ParticleSpawner } from '../particle/ParticleSpawner';
 import type { StickySystem } from '../sticky/StickySystem';
 import type { BossBattleSystem } from '../boss/BossBattleSystem';
@@ -76,20 +76,16 @@ export interface RoachAISystemConfig {
   onSellUnusedInventory: () => void;
   onUnlockNextScene: () => void;
   onAddPendingReward: (amount: number) => void;
+  /** 修复 P0：获取下一个蟑螂 ID（回调注入，避免多模块独立计数器） */
+  getNextId: () => number;
 }
 
 // =============================================================================
 // 类：RoachAISystem
 // =============================================================================
 
-/** 全局蟑螂 ID 计数器（与 engine.ts 共享） */
-let nextId = 1;
-let nextBossId = 10000;
-
-export function getNextId(): number { return nextId; }
-export function setNextId(v: number): void { nextId = v; }
-export function getNextBossId(): number { return nextBossId; }
-export function setNextBossId(v: number): void { nextBossId = v; }
+// 修复 P0：移除模块级 nextId/nextBossId，统一通过回调注入从 engine.ts 获取 ID
+// 避免 engine.ts 和 RoachAISystem.ts 各自维护独立计数器导致 ID 冲突
 
 export class RoachAISystem {
   private cfg: RoachAISystemConfig;
@@ -157,257 +153,284 @@ export class RoachAISystem {
     const defenseLineY = this.cfg.getDefenseLineY();
     const canvasWidth = this.cfg.getCanvasWidth();
     const canvasHeight = this.cfg.getCanvasHeight();
-    const currentScene = this.cfg.getCurrentScene();
     const roaches = this.cfg.roaches;
-    const particles = this.cfg.particles;
     const fireWalls = this.cfg.fireWalls;
-    const player = this.cfg.player;
-    const difficulty = this.cfg.getDifficulty();
-    const isHard = difficulty === 'hard';
+    const isHard = this.cfg.getDifficulty() === 'hard';
 
     for (let i = roaches.length - 1; i >= 0; i--) {
       const r = roaches[i];
       if (!r) continue;
 
-      // Decrement spawn immunity timer
-      if (r.spawnImmuneTimer && r.spawnImmuneTimer > 0) {
-        r.spawnImmuneTimer -= deltaTime;
-      }
+      // Spawn immunity & heal buff timers
+      if (r.spawnImmuneTimer && r.spawnImmuneTimer > 0) r.spawnImmuneTimer -= deltaTime;
+      if (r.healBuffTimer && r.healBuffTimer > 0) r.healBuffTimer -= deltaTime;
 
-      // Decrement heal buff timer
-      if (r.healBuffTimer && r.healBuffTimer > 0) {
-        r.healBuffTimer -= deltaTime;
-      }
-
+      // Dead roach state
       if (r.state === RoachState.DEAD) {
-        r.deathTimer -= deltaTime;
-        if (r.type === RoachType.FLYING || r.type === RoachType.FLYING_SUICIDE) {
-          r.vy = 150;
-          r.y += r.vy * deltaTime;
-          r.vx = (Math.random() - 0.5) * 40;
-          r.x += r.vx * deltaTime;
-          r.angle += deltaTime * 8;
-          if (r.y >= defenseLineY) {
-            r.y = defenseLineY;
-            r.deathTimer = 0;
-          }
-        }
-        if (r.deathTimer <= 0) {
-          if (r.type === RoachType.MUTANT && r.transformFrame !== undefined && r.transformFrame < 7) {
-            r.deathTimer = 0.1;
-          } else {
-            roaches.splice(i, 1);
-          }
-        }
-        // Per-roach mutant transform animation (7 frames, 200ms each)
-        if (r.type === RoachType.MUTANT && r.state === RoachState.DEAD
-          && r.transformTimer !== undefined && r.transformTimer > 0
-          && r.transformFrame !== undefined && r.transformFrame < 7) {
-          r.transformTimer -= deltaTime;
-          if (r.transformTimer <= 0) {
-            r.transformFrame++;
-            if (r.transformFrame >= 7) {
-              this.spawnEmbryoRoaches(r);
-            } else {
-              r.transformTimer = 0.2;
-            }
-          }
-        }
-        continue;
+        if (this.handleDeadRoachState(r, i, roaches, defenseLineY, deltaTime)) continue;
       }
 
-      // Damage flash decay
-      if (r.damageFlash > 0) r.damageFlash -= deltaTime * 5;
+      // Pre-movement state updates (returns isImmobilized for bait & movement)
+      const isImmobilized = this.handleRoachPreMovement(r, deltaTime, time, roaches);
 
-      // Status effects
-      this.updateStatusEffects(r);
+      // Calculate movement angle
+      let moveAngle = this.calculateMoveAngle(r, time, defenseLineY, canvasWidth, deltaTime);
+      moveAngle = this.applyBaitPull(r, moveAngle, isImmobilized);
 
-      // Stunned or board-stuck
-      const isImmobilized = r.isStunned || this.cfg.stickySystem.isStuckByBoard(r.id, roaches);
-      if (isImmobilized) {
-        r.vx = 0; r.vy = 0;
-      }
-
-      // Enrage
-      if (!r.isEnraged && r.hp < r.maxHp * 0.2 && r.type !== RoachType.ARMORED) {
-        r.isEnraged = true;
-        r.speed = r.baseSpeed * 2;
-      }
-
-      // Panic timer
-      if (r.panicTimer > 0) r.panicTimer -= deltaTime;
-
-      let moveAngle: number;
-
-      if (r.panicTimer > 0) {
-        moveAngle = r.panicAngle + Math.sin(time * 15 + r.wobbleOffset) * 0.8;
-      } else {
-        const isFlying = r.type === RoachType.FLYING || r.type === RoachType.FLYING_SUICIDE;
-        const wanderAmplitude = isFlying ? 80 : 30;
-        const targetX = r.x + Math.sin(r.wobbleOffset + time * r.wobbleSpeed) * wanderAmplitude;
-        const dl = defenseLineY;
-        const roachSize = ENEMY_DEFS[r.type].size;
-        const roachBottom = r.y + roachSize * 0.4;
-        const targetY = roachBottom >= dl ? dl + 200 : dl;
-        const dx = targetX - r.x;
-        const dy = targetY - r.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        moveAngle = dist > 1 ? Math.atan2(dy, dx) : r.angle;
-
-        // Force near defense line
-        const distToDefense = dl - roachBottom;
-        if (distToDefense > 0 && distToDefense < 50) {
-          const minSin = 0.3 + (1 - distToDefense / 50) * 0.4;
-          if (Math.sin(moveAngle) < minSin) {
-            moveAngle = Math.asin(Math.min(minSin, 0.99));
-          }
-        }
-
-        // Flying roaches: charge
-        if (isFlying && distToDefense < 150) {
-          const chargeSpeed = 2.5 * (1 - distToDefense / 150);
-          r.speed = r.baseSpeed * (1 + chargeSpeed);
-        } else if (!isFlying) {
-          const margin = 80;
-          if (distToDefense < 120) {
-            const pushStrength = (1 - distToDefense / 120) * 150 * deltaTime;
-            if (r.x < margin) {
-              moveAngle += pushStrength * (margin - r.x) / margin;
-            } else if (r.x > canvasWidth - margin) {
-              moveAngle -= pushStrength * (r.x - (canvasWidth - margin)) / margin;
-            }
-          }
-        }
-      }
-
-      // BAIT CONSUMABLE
-      if (player.baitTimer > 0 && !isImmobilized && this.cfg.consumableSystem.baitTarget.active) {
-        const baitDx = this.cfg.consumableSystem.baitTarget.x - r.x;
-        const baitDy = this.cfg.consumableSystem.baitTarget.y - r.y;
-        const baitDist = Math.sqrt(baitDx * baitDx + baitDy * baitDy);
-        if (baitDist > 10) {
-          const baitAngle = Math.atan2(baitDy, baitDx);
-          const pullStrength = 0.7;
-          const cosA = Math.cos(moveAngle);
-          const sinA = Math.sin(moveAngle);
-          const cosB = Math.cos(baitAngle);
-          const sinB = Math.sin(baitAngle);
-          moveAngle = Math.atan2(
-            sinA * (1 - pullStrength) + sinB * pullStrength,
-            cosA * (1 - pullStrength) + cosB * pullStrength
-          );
-          r.speed = r.baseSpeed * 1.3;
-        }
-      }
-
-      // Normal movement with fan slow
+      // Apply movement (velocity, dodge, position, clamping, wing animation)
       const fanMultiplier = r.fanSlowTimer > 0 ? (1 - r.fanSlowFactor) : 1;
       const effectiveSpeed = r.speed * fanMultiplier;
+      this.applyRoachMovement(r, moveAngle, effectiveSpeed, roaches, deltaTime, canvasWidth, canvasHeight, fireWalls, defenseLineY, isImmobilized);
 
-      // ===== NURSE ROACH FOLLOW MOVEMENT =====
-      if (r.type === RoachType.NURSE) {
-        let nearest: Roach | null = null;
-        let nearestDist = Infinity;
-        for (const other of roaches) {
-          if (other.id === r.id) continue;
-          if (other.state !== RoachState.ALIVE) continue;
-          if (other.type === RoachType.NURSE) continue;
-          if (other.type === RoachType.TIMED_SUICIDE) continue;
-          const dx = other.x - r.x;
-          const dy = other.y - r.y;
-          const d = Math.sqrt(dx * dx + dy * dy);
-          if (d < nearestDist) {
-            nearestDist = d;
-            nearest = other;
-          }
-        }
-        if (nearest && nearestDist > 40) {
-          const followAngle = Math.atan2(nearest.y - r.y, nearest.x - r.x);
-          const followSpeed = r.speed * 0.5;
-          r.vx = Math.cos(followAngle) * followSpeed * 65;
-          r.vy = Math.sin(followAngle) * followSpeed * 65;
-        } else if (nearest && nearestDist <= 40) {
-          r.vx = 0;
-          r.vy = 0;
-        } else {
-          r.vx = 0;
-          r.vy = 0;
-        }
-      } else if (r.type === RoachType.MUTANT && r.transformTimer && r.transformTimer > 0) {
-        r.vx = 0;
-        r.vy = 0;
-      } else if (r.type === RoachType.TIMED_SUICIDE && r.placeTimer && r.placeTimer > 0) {
-        r.vx = 0;
-        r.vy = 0;
-      } else if (r.spawnImmuneTimer && r.spawnImmuneTimer > 0) {
-        r.vx = 0;
-        r.vy = 0;
-      } else {
-        r.vx = Math.cos(moveAngle) * effectiveSpeed * 65;
-        r.vy = Math.sin(moveAngle) * effectiveSpeed * 65;
-      }
+      // Suicide fuse check (returns true if roach exploded and was removed)
+      if (this.handleSuicideFuseCheck(r, i, defenseLineY, deltaTime)) continue;
 
-      // Minimum downward speed
-      if (!isImmobilized && r.type !== RoachType.FLYING && r.type !== RoachType.FLYING_SUICIDE && r.type !== RoachType.NURSE && !(r.type === RoachType.TIMED_SUICIDE && r.placeTimer && r.placeTimer > 0) && r.vy < 10) {
-        r.vy = 10;
-      }
+      // Queen minion spawn
+      this.handleQueenSpawnMinions(r, deltaTime);
 
-      // Dodge
-      if ((r.type === RoachType.SUICIDE || r.type === RoachType.SMALL) && r.dodgeTimer > 0) {
-        r.dodgeTimer -= deltaTime;
-        if (r.dodgeTimer <= 0) {
-          r.dodgeDir = 0;
-        } else {
-          let dodgeSpeed: number;
-          if (r.isSplitChild) {
-            dodgeSpeed = 250;
-          } else if (r.type === RoachType.SMALL) {
-            dodgeSpeed = 180;
-          } else {
-            dodgeSpeed = 100;
-          }
-          const fanMult = r.fanSlowTimer > 0 ? (1 - r.fanSlowFactor) : 1;
-          dodgeSpeed *= fanMult;
-          r.vx = r.dodgeDir * dodgeSpeed;
-          // Fire wall blocks during dodge
-          for (const wall of fireWalls) {
-            if (r.x >= wall.x1 && r.x <= wall.x2) {
-              const wallTop = wall.y - wall.height * 0.5;
-              if (r.y > wallTop && r.y < wallTop + wall.height + 5 && r.vy > 0) {
-                r.y = wallTop;
-                r.vy = 0;
-              }
-            }
-          }
-          // Fan push during dodge
-          if (r.fanPushY < 0 && r.y >= canvasHeight / 2 && r.armorHp <= 0) {
-            r.y += r.fanPushY * deltaTime;
-            r.y = Math.max(canvasHeight / 2, r.y);
-          }
-          // Edge stop
-          const edgeMargin = 50;
-          if ((r.x <= edgeMargin && r.dodgeDir < 0) || (r.x >= canvasWidth - edgeMargin && r.dodgeDir > 0)) {
-            r.dodgeDir = 0;
-            r.dodgeTimer = 0;
-          }
-        }
-      }
+      // Nurse heal
+      this.updateNurseHeal(r, roaches);
 
-      r.x += r.vx * deltaTime;
+      // Fire dodge triggers (suicide & small roaches)
+      this.handleFireDodgeTriggers(r, roaches);
+
+      // Timed suicide breach
+      this.updateTimedSuicideBreach(r, i, roaches, defenseLineY, isHard);
+
+      // Burn & poison damage, kill check
+      this.handleBurnAndPoisonDamage(r, i, roaches, deltaTime, isHard);
+    }
+  }
+
+  // =========================================================================
+  // 子方法：死亡蟑螂状态处理
+  // =========================================================================
+
+  /** 处理已死亡蟑螂的状态（飞行坠落、变异变形、移除）。返回 true 表示需要 continue */
+  private handleDeadRoachState(r: Roach, i: number, roaches: Roach[], defenseLineY: number, deltaTime: number): boolean {
+    r.deathTimer -= deltaTime;
+    if (r.type === RoachType.FLYING || r.type === RoachType.FLYING_SUICIDE) {
+      r.vy = BALANCE_CONFIG.roachAI.flyingDeathVy;
       r.y += r.vy * deltaTime;
-      r.angle = moveAngle;
-
-      // Pull back into screen
-      const margin = 100;
-      if (r.x < -margin) r.x += 80 * deltaTime;
-      if (r.x > canvasWidth + margin) r.x -= 80 * deltaTime;
-      if (r.y < -margin) r.y += 80 * deltaTime;
-      if (r.y > canvasHeight + margin * 2) {
-        r.y = defenseLineY + 50;
+      r.vx = (Math.random() - 0.5) * BALANCE_CONFIG.roachAI.flyingDeathVxRange;
+      r.x += r.vx * deltaTime;
+      r.angle += deltaTime * BALANCE_CONFIG.roachAI.flyingDeathAngleSpeed;
+      if (r.y >= defenseLineY) {
+        r.y = defenseLineY;
+        r.deathTimer = 0;
       }
+    }
+    if (r.deathTimer <= 0) {
+      if (r.type === RoachType.MUTANT && r.transformFrame !== undefined && r.transformFrame < BALANCE_CONFIG.roachAI.transformFrameCount) {
+        r.deathTimer = BALANCE_CONFIG.roachAI.deathTimerExtension;
+      } else {
+        roaches.splice(i, 1);
+        return true;
+      }
+    }
+    // Per-roach mutant transform animation
+    if (r.type === RoachType.MUTANT && r.state === RoachState.DEAD
+      && r.transformTimer !== undefined && r.transformTimer > 0
+      && r.transformFrame !== undefined && r.transformFrame < BALANCE_CONFIG.roachAI.transformFrameCount) {
+      r.transformTimer -= deltaTime;
+      if (r.transformTimer <= 0) {
+        r.transformFrame++;
+        if (r.transformFrame >= BALANCE_CONFIG.roachAI.transformFrameCount) {
+          this.spawnEmbryoRoaches(r);
+        } else {
+          r.transformTimer = BALANCE_CONFIG.roachAI.transformTimer;
+        }
+      }
+    }
+    return true; // continue to next iteration
+  }
 
-      // Fire wall blocks ground roaches
-      if (r.type !== RoachType.FLYING && r.type !== RoachType.FLYING_SUICIDE) {
+  // =========================================================================
+  // 子方法：移动前状态更新
+  // =========================================================================
+
+  /** 处理移动前的状态更新（伤害闪烁、状态效果、定身、愤怒、恐慌）。返回 isImmobilized */
+  private handleRoachPreMovement(r: Roach, deltaTime: number, _time: number, roaches: Roach[]): boolean {
+    const moveCfg = BALANCE_CONFIG.roachAI.movement;
+
+    // Damage flash decay
+    if (r.damageFlash > 0) r.damageFlash -= deltaTime * BALANCE_CONFIG.roachAI.damageFlashDecay;
+
+    // Status effects
+    this.updateStatusEffects(r);
+
+    // Stunned or board-stuck
+    const isImmobilized = r.isStunned || this.cfg.stickySystem.isStuckByBoard(r.id);
+    if (isImmobilized) {
+      r.vx = 0; r.vy = 0;
+    }
+
+    // Enrage
+    if (!r.isEnraged && r.hp < r.maxHp * moveCfg.enrageHpThreshold && r.type !== RoachType.ARMORED) {
+      r.isEnraged = true;
+      r.speed = r.baseSpeed * moveCfg.enrageSpeedMult;
+    }
+
+    // Panic timer
+    if (r.panicTimer > 0) r.panicTimer -= deltaTime;
+
+    return isImmobilized;
+  }
+
+  // =========================================================================
+  // 子方法：移动角度计算
+  // =========================================================================
+
+  /** 计算蟑螂移动角度（恐慌/正常移动/强制接近防线/飞行冲刺/边缘排斥） */
+  private calculateMoveAngle(r: Roach, time: number, defenseLineY: number, canvasWidth: number, deltaTime: number): number {
+    const moveCfg = BALANCE_CONFIG.roachAI.movement;
+
+    if (r.panicTimer > 0) {
+      return r.panicAngle + Math.sin(time * 15 + r.wobbleOffset) * 0.8;
+    }
+
+    const isFlying = r.type === RoachType.FLYING || r.type === RoachType.FLYING_SUICIDE;
+    const wanderAmplitude = isFlying ? moveCfg.flyingWanderAmplitude : moveCfg.groundWanderAmplitude;
+    const targetX = r.x + Math.sin(r.wobbleOffset + time * r.wobbleSpeed) * wanderAmplitude;
+    const dl = defenseLineY;
+    const roachSize = ENEMY_DEFS[r.type].size;
+    const roachBottom = r.y + roachSize * 0.4;
+    const targetY = roachBottom >= dl ? dl + 200 : dl;
+    const dx = targetX - r.x;
+    const dy = targetY - r.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    let moveAngle = dist > 1 ? Math.atan2(dy, dx) : r.angle;
+
+    // Force near defense line
+    const distToDefense = dl - roachBottom;
+    if (distToDefense > 0 && distToDefense < moveCfg.forceApproachDist) {
+      const minSin = moveCfg.forceApproachMinSin + (1 - distToDefense / moveCfg.forceApproachDist) * moveCfg.forceApproachMaxSin;
+      if (Math.sin(moveAngle) < minSin) {
+        moveAngle = Math.asin(Math.min(minSin, 0.99));
+      }
+    }
+
+    // Flying roaches: charge
+    if (isFlying && distToDefense < moveCfg.flyingChargeDist) {
+      const chargeSpeed = moveCfg.flyingChargeSpeed * (1 - distToDefense / moveCfg.flyingChargeDist);
+      r.speed = r.baseSpeed * (1 + chargeSpeed);
+    } else if (!isFlying) {
+      if (distToDefense < moveCfg.edgeRepelDist) {
+        const pushStrength = (1 - distToDefense / moveCfg.edgeRepelDist) * moveCfg.edgeRepelStrength * deltaTime;
+        if (r.x < moveCfg.edgeStopMargin) {
+          moveAngle += pushStrength * (moveCfg.edgeStopMargin - r.x) / moveCfg.edgeStopMargin;
+        } else if (r.x > canvasWidth - moveCfg.edgeStopMargin) {
+          moveAngle -= pushStrength * (r.x - (canvasWidth - moveCfg.edgeStopMargin)) / moveCfg.edgeStopMargin;
+        }
+      }
+    }
+
+    return moveAngle;
+  }
+
+  // =========================================================================
+  // 子方法：诱饵效果
+  // =========================================================================
+
+  /** 应用诱饵消耗品效果（拉向诱饵位置）。返回可能被修改的移动角度 */
+  private applyBaitPull(r: Roach, moveAngle: number, isImmobilized: boolean): number {
+    const player = this.cfg.player;
+    if (player.baitTimer <= 0 || isImmobilized || !this.cfg.consumableSystem.baitTarget.active) return moveAngle;
+
+    const baitDx = this.cfg.consumableSystem.baitTarget.x - r.x;
+    const baitDy = this.cfg.consumableSystem.baitTarget.y - r.y;
+    const baitDist = Math.sqrt(baitDx * baitDx + baitDy * baitDy);
+    if (baitDist > 10) {
+      const baitAngle = Math.atan2(baitDy, baitDx);
+      const pullStrength = BALANCE_CONFIG.roachAI.movement.baitPullStrength;
+      const cosA = Math.cos(moveAngle);
+      const sinA = Math.sin(moveAngle);
+      const cosB = Math.cos(baitAngle);
+      const sinB = Math.sin(baitAngle);
+      r.speed = r.baseSpeed * BALANCE_CONFIG.roachAI.movement.baitSpeedMult;
+      return Math.atan2(
+        sinA * (1 - pullStrength) + sinB * pullStrength,
+        cosA * (1 - pullStrength) + cosB * pullStrength
+      );
+    }
+    return moveAngle;
+  }
+
+  // =========================================================================
+  // 子方法：移动执行
+  // =========================================================================
+
+  /** 执行蟑螂移动（护士跟随、标准移动、闪避、位置更新、边界限制、火墙阻挡、风扇推力、翅膀动画） */
+  private applyRoachMovement(
+    r: Roach, moveAngle: number, effectiveSpeed: number, roaches: Roach[],
+    deltaTime: number, canvasWidth: number, canvasHeight: number,
+    fireWalls: FireWall[], defenseLineY: number, isImmobilized: boolean,
+  ): void {
+    const moveCfg = BALANCE_CONFIG.roachAI.movement;
+    const dodgeCfg = BALANCE_CONFIG.roachAI.dodge;
+
+    // ===== NURSE ROACH FOLLOW MOVEMENT =====
+    if (r.type === RoachType.NURSE) {
+      let nearest: Roach | null = null;
+      let nearestDist = Infinity;
+      for (const other of roaches) {
+        if (other.id === r.id) continue;
+        if (other.state !== RoachState.ALIVE) continue;
+        if (other.type === RoachType.NURSE) continue;
+        if (other.type === RoachType.TIMED_SUICIDE) continue;
+        const dx = other.x - r.x;
+        const dy = other.y - r.y;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d < nearestDist) {
+          nearestDist = d;
+          nearest = other;
+        }
+      }
+      if (nearest && nearestDist > moveCfg.nurseStopDist) {
+        const followAngle = Math.atan2(nearest.y - r.y, nearest.x - r.x);
+        const followSpeed = r.speed * moveCfg.nurseFollowSpeedMult;
+        r.vx = Math.cos(followAngle) * followSpeed * 65;
+        r.vy = Math.sin(followAngle) * followSpeed * 65;
+      } else {
+        r.vx = 0; r.vy = 0;
+      }
+    } else if (r.type === RoachType.MUTANT && r.transformTimer && r.transformTimer > 0) {
+      r.vx = 0; r.vy = 0;
+    } else if (r.type === RoachType.TIMED_SUICIDE && r.placeTimer && r.placeTimer > 0) {
+      r.vx = 0; r.vy = 0;
+    } else if (r.spawnImmuneTimer && r.spawnImmuneTimer > 0) {
+      r.vx = 0; r.vy = 0;
+    } else {
+      r.vx = Math.cos(moveAngle) * effectiveSpeed * 65;
+      r.vy = Math.sin(moveAngle) * effectiveSpeed * 65;
+    }
+
+    // Minimum downward speed
+    if (!isImmobilized && r.type !== RoachType.FLYING && r.type !== RoachType.FLYING_SUICIDE
+      && r.type !== RoachType.NURSE
+      && !(r.type === RoachType.TIMED_SUICIDE && r.placeTimer && r.placeTimer > 0)
+      && r.vy < moveCfg.minDownwardSpeed) {
+      r.vy = moveCfg.minDownwardSpeed;
+    }
+
+    // Dodge
+    if ((r.type === RoachType.SUICIDE || r.type === RoachType.SMALL) && r.dodgeTimer > 0) {
+      r.dodgeTimer -= deltaTime;
+      if (r.dodgeTimer <= 0) {
+        r.dodgeDir = 0;
+      } else {
+        let dodgeSpeed: number;
+        if (r.isSplitChild) {
+          dodgeSpeed = dodgeCfg.splitChildSpeed;
+        } else if (r.type === RoachType.SMALL) {
+          dodgeSpeed = dodgeCfg.smallSpeed;
+        } else {
+          dodgeSpeed = dodgeCfg.suicideSpeed;
+        }
+        const fanMult = r.fanSlowTimer > 0 ? (1 - r.fanSlowFactor) : 1;
+        dodgeSpeed *= fanMult;
+        r.vx = r.dodgeDir * dodgeSpeed;
+        // Fire wall blocks during dodge
         for (const wall of fireWalls) {
           if (r.x >= wall.x1 && r.x <= wall.x2) {
             const wallTop = wall.y - wall.height * 0.5;
@@ -417,171 +440,187 @@ export class RoachAISystem {
             }
           }
         }
+        // Fan push during dodge
+        if (r.fanPushY < 0 && r.y >= canvasHeight / 2 && r.armorHp <= 0) {
+          r.y += r.fanPushY * deltaTime;
+          r.y = Math.max(canvasHeight / 2, r.y);
+        }
+        // Edge stop
+        const edgeMargin = 50;
+        if ((r.x <= edgeMargin && r.dodgeDir < 0) || (r.x >= canvasWidth - edgeMargin && r.dodgeDir > 0)) {
+          r.dodgeDir = 0;
+          r.dodgeTimer = 0;
+        }
       }
+    }
 
-      // Fan upward push
-      if (r.fanPushY < 0 && r.y >= canvasHeight / 2 && r.armorHp <= 0) {
-        r.y += r.fanPushY * deltaTime;
-        r.y = Math.max(canvasHeight / 2, r.y);
+    r.x += r.vx * deltaTime;
+    r.y += r.vy * deltaTime;
+    r.angle = moveAngle;
+
+    // Pull back into screen
+    const margin = 100;
+    if (r.x < -margin) r.x += 80 * deltaTime;
+    if (r.x > canvasWidth + margin) r.x -= 80 * deltaTime;
+    if (r.y < -margin) r.y += 80 * deltaTime;
+    if (r.y > canvasHeight + margin * 2) {
+      r.y = defenseLineY + 50;
+    }
+
+    // Fire wall blocks ground roaches
+    if (r.type !== RoachType.FLYING && r.type !== RoachType.FLYING_SUICIDE) {
+      for (const wall of fireWalls) {
+        if (r.x >= wall.x1 && r.x <= wall.x2) {
+          const wallTop = wall.y - wall.height * 0.5;
+          if (r.y > wallTop && r.y < wallTop + wall.height + 5 && r.vy > 0) {
+            r.y = wallTop;
+            r.vy = 0;
+          }
+        }
       }
+    }
 
-      // Clamp X
-      if (r.type === RoachType.FLYING || r.type === RoachType.FLYING_SUICIDE) {
-        const roachSize = r.size ?? ENEMY_DEFS[r.type].size;
-        const edgeMargin = Math.max(40, roachSize * 0.8);
-        r.x = Math.max(edgeMargin, Math.min(canvasWidth - edgeMargin, r.x));
+    // Fan upward push
+    if (r.fanPushY < 0 && r.y >= canvasHeight / 2 && r.armorHp <= 0) {
+      r.y += r.fanPushY * deltaTime;
+      r.y = Math.max(canvasHeight / 2, r.y);
+    }
+
+    // Clamp X
+    if (r.type === RoachType.FLYING || r.type === RoachType.FLYING_SUICIDE) {
+      const roachSize = r.size ?? ENEMY_DEFS[r.type].size;
+      const edgeMargin = Math.max(40, roachSize * 0.8);
+      r.x = Math.max(edgeMargin, Math.min(canvasWidth - edgeMargin, r.x));
+    } else {
+      const [gLeft, gRight] = this.cfg.getGroundBoundsAtY(r.y);
+      r.x = Math.max(gLeft + 5, Math.min(gRight - 5, r.x));
+    }
+
+    // Wing animation
+    r.animTimer += deltaTime;
+    if (r.animTimer > 0.12) {
+      r.animTimer = 0;
+      r.animFrame = (r.animFrame + 1) % 4;
+    }
+  }
+
+  // =========================================================================
+  // 子方法：自爆引信检查
+  // =========================================================================
+
+  /** 检查自爆/飞行自爆蟑螂的引信状态。返回 true 表示已爆炸并移除 */
+  private handleSuicideFuseCheck(r: Roach, i: number, defenseLineY: number, deltaTime: number): boolean {
+    if (r.type !== RoachType.SUICIDE && r.type !== RoachType.FLYING_SUICIDE) return false;
+
+    const distToDefense = defenseLineY - r.y;
+    const fuseCfg = BALANCE_CONFIG.roachAI.suicideFuse;
+    const fuseTriggerDist = (r.type === RoachType.FLYING_SUICIDE) ? fuseCfg.flyingTriggerDist : fuseCfg.groundTriggerDist;
+    if (distToDefense >= fuseTriggerDist) return false;
+
+    r.isFused = true;
+    r.fuseTimer -= deltaTime;
+    if (Math.random() < fuseCfg.sparkChance) {
+      this.cfg.particles.push({
+        x: r.x + (Math.random() - 0.5) * 10,
+        y: r.y + (Math.random() - 0.5) * 10,
+        vx: 0, vy: -20,
+        life: 0.3, maxLife: 0.3,
+        size: 3, color: FLOAT_COLOR.explosion,
+        type: ParticleType.SPARK,
+      });
+    }
+    if (r.fuseTimer <= 0) {
+      this.suicideExplode(r, i);
+      return true;
+    }
+    return false;
+  }
+
+  // =========================================================================
+  // 子方法：女王召唤小兵
+  // =========================================================================
+
+  /** 处理女王蟑螂召唤小兵 */
+  private handleQueenSpawnMinions(r: Roach, deltaTime: number): void {
+    const bossBattle = this.cfg.bossSystem.bossBattle;
+    if (r.type !== RoachType.QUEEN || (bossBattle.active && r.isBoss)) return;
+
+    r.spawnTimer -= deltaTime;
+    if (r.spawnTimer <= 0) {
+      r.spawnTimer = BOSS_CONFIG.queen.spawnInterval;
+      for (let m = 0; m < BOSS_CONFIG.queen.minionCount; m++) {
+        this.cfg.onSpawnRoach(RoachType.SMALL);
+      }
+      this.cfg.onAddFloatingText(r.x, r.y - 50, TEXT_CONFIG.combat.queenSummon, FLOAT_COLOR.queenSummon);
+    }
+  }
+
+  // =========================================================================
+  // 子方法：火焰闪避触发
+  // =========================================================================
+
+  /** 处理自爆/小蟑螂在火焰中触发闪避 */
+  private handleFireDodgeTriggers(r: Roach, roaches: Roach[]): void {
+    const dodgeCfg = BALANCE_CONFIG.roachAI.dodge;
+
+    // Suicide roach dodge in fire
+    if (r.type === RoachType.SUICIDE && r.inFire && !this.cfg.stickySystem.isStuckByBoard(r.id)) {
+      if (r.dodgeDir === 0) {
+        r.dodgeDir = Math.random() < 0.5 ? -1 : 1;
+      }
+      r.dodgeTimer = dodgeCfg.suicideDuration;
+    }
+
+    // Small roach dodge in fire
+    if (r.type === RoachType.SMALL && r.inFire && !this.cfg.stickySystem.isStuckByBoard(r.id)) {
+      if (r.dodgeDir === 0) {
+        r.dodgeDir = Math.random() < 0.5 ? -1 : 1;
+      }
+      if (r.isSplitChild) {
+        r.dodgeTimer = dodgeCfg.splitChildMin + Math.random() * (dodgeCfg.splitChildMax - dodgeCfg.splitChildMin);
       } else {
-        const [gLeft, gRight] = this.cfg.getGroundBoundsAtY(r.y);
-        r.x = Math.max(gLeft + 5, Math.min(gRight - 5, r.x));
+        r.dodgeTimer = dodgeCfg.smallMin + Math.random() * (dodgeCfg.smallMax - dodgeCfg.smallMin);
       }
+    }
+  }
 
-      // Wing animation
-      r.animTimer += deltaTime;
-      if (r.animTimer > 0.12) {
-        r.animTimer = 0;
-        r.animFrame = (r.animFrame + 1) % 4;
+  // =========================================================================
+  // 子方法：燃烧与毒伤处理
+  // =========================================================================
+
+  /** 处理燃烧伤害和中毒持续伤害，并在血量归零时触发击杀 */
+  private handleBurnAndPoisonDamage(r: Roach, i: number, roaches: Roach[], deltaTime: number, isHard: boolean): void {
+    const particles = this.cfg.particles;
+
+    // Apply burn damage
+    if (r.inFire && r.burnDamage > 0) {
+      const dmg = r.burnDamage * deltaTime;
+      this.cfg.onApplyDamageToRoach(r, dmg);
+      r.burnDamage = 0;
+      if (Math.random() < 0.3) {
+        ParticleSpawner.spawnSmokeParticles(particles, r.x, r.y, 1);
       }
+      r.inFire = false;
+    }
 
-      // Suicide / Flying Suicide fuse
-      if (r.type === RoachType.SUICIDE || r.type === RoachType.FLYING_SUICIDE) {
-        const distToDefense = defenseLineY - r.y;
-        const fuseTriggerDist = (r.type === RoachType.FLYING_SUICIDE) ? 80 : 150;
-        if (distToDefense < fuseTriggerDist) {
-          r.isFused = true;
-          r.fuseTimer -= deltaTime;
-          if (Math.random() < 0.3) {
-            particles.push({
-              x: r.x + (Math.random() - 0.5) * 10,
-              y: r.y + (Math.random() - 0.5) * 10,
-              vx: 0, vy: -20,
-              life: 0.3, maxLife: 0.3,
-              size: 3, color: '#ff4400',
-              type: ParticleType.SPARK,
-            });
-          }
-          if (r.fuseTimer <= 0) {
-            this.suicideExplode(r, i);
-            continue;
-          }
-        }
+    // Poison DoT
+    if (r.poisonTimer > 0 && !(r.type === RoachType.TIMED_SUICIDE && r.placeTimer && r.placeTimer > 0)) {
+      r.hp -= r.poisonDamage * deltaTime;
+      r.poisonTimer -= deltaTime;
+      if (Math.random() < 0.2) {
+        particles.push({
+          x: r.x + (Math.random() - 0.5) * 15,
+          y: r.y + (Math.random() - 0.5) * 15,
+          vx: 0, vy: -10,
+          life: 0.5, maxLife: 0.5,
+          size: 4, color: FLOAT_COLOR.fan,
+          type: ParticleType.POISON_CLOUD,
+        });
       }
+    }
 
-      // Queen spawn minions
-      const bossBattle = this.cfg.bossSystem.bossBattle;
-      if (r.type === RoachType.QUEEN && !(bossBattle.active && r.isBoss)) {
-        r.spawnTimer -= deltaTime;
-        if (r.spawnTimer <= 0) {
-          r.spawnTimer = BOSS_CONFIG.queen.spawnInterval;
-          for (let m = 0; m < BOSS_CONFIG.queen.minionCount; m++) {
-            this.cfg.onSpawnRoach(RoachType.SMALL);
-          }
-          this.cfg.onAddFloatingText(r.x, r.y - 50, TEXT_CONFIG.combat.queenSummon, FLOAT_COLOR.queenSummon);
-        }
-      }
-
-      // ===== NURSE ROACH AOE HEAL =====
-      this.updateNurseHeal(r, roaches);
-
-      // ===== SUICIDE DODGE IN FIRE =====
-      if (r.type === RoachType.SUICIDE && r.inFire && !this.cfg.stickySystem.isStuckByBoard(r.id, roaches)) {
-        if (r.dodgeDir === 0) {
-          r.dodgeDir = Math.random() < 0.5 ? -1 : 1;
-        }
-        r.dodgeTimer = 1.2;
-      }
-
-      // ===== TIMED SUICIDE BREACH SYSTEM =====
-      this.updateTimedSuicideBreach(r, i, roaches, defenseLineY, isHard);
-
-      // Legacy: handle old placed bombs
-      if (r.type === RoachType.TIMED_SUICIDE && r.state === RoachState.ALIVE && !r.hasPlacedBomb && !(r.breachPhase && r.breachPhase !== 'idle')) {
-        const roachSize = ENEMY_DEFS[r.type].size;
-        const roachBottom = r.y + roachSize * 0.4;
-        const dl = defenseLineY;
-        const placeY = dl - 64;
-
-        if (roachBottom >= placeY) {
-          if (!r.placeTimer) {
-            r.placeTimer = 2.0;
-          }
-          r.vx = 0;
-          r.vy = 0;
-          r.burnDamage = 0;
-          r.poisonTimer = 0;
-          r.poisonDamage = 0;
-          r.inFire = false;
-          r.damageFlash = 0;
-          r.placeTimer! -= deltaTime;
-          if (r.placeTimer! <= 0) {
-            r.hasPlacedBomb = true;
-            this.cfg.placedBombs.push({
-              id: r.id, x: r.x, y: placeY, timer: 3,
-            });
-            this.cfg.onAddFloatingText(r.x, placeY - 30, TEXT_CONFIG.combat.bombPlaced, FLOAT_COLOR.danger);
-            for (let p = 0; p < 8; p++) {
-              const angle = (p / 8) * Math.PI * 2;
-              const speed = 30 + Math.random() * 40;
-              particles.push({
-                x: r.x, y: r.y,
-                vx: Math.cos(angle) * speed,
-                vy: Math.sin(angle) * speed - 20,
-                life: 0.5, maxLife: 0.5,
-                size: 3 + Math.random() * 4,
-                color: `rgba(200, 150, 50, 0.7)`,
-                type: ParticleType.SPARK,
-              });
-            }
-            r.type = RoachType.LARGE;
-            r.size = ENEMY_DEFS[RoachType.LARGE].size;
-            r.speed = ENEMY_DEFS[RoachType.LARGE].speed;
-            r.baseSpeed = ENEMY_DEFS[RoachType.LARGE].speed;
-            this.cfg.onAddFloatingText(r.x, r.y - 45, TEXT_CONFIG.combat.transformBig, FLOAT_COLOR.gold);
-          }
-        }
-      }
-
-      // SMALL roach dodge
-      if (r.type === RoachType.SMALL && r.inFire && !this.cfg.stickySystem.isStuckByBoard(r.id, roaches)) {
-        if (r.dodgeDir === 0) {
-          r.dodgeDir = Math.random() < 0.5 ? -1 : 1;
-        }
-        if (r.isSplitChild) {
-          r.dodgeTimer = 0.2 + Math.random() * 0.2;
-        } else {
-          r.dodgeTimer = 0.4 + Math.random() * 0.3;
-        }
-      }
-
-      // Apply burn damage
-      if (r.inFire && r.burnDamage > 0) {
-        const dmg = r.burnDamage * deltaTime;
-        this.cfg.onApplyDamageToRoach(r, dmg);
-        r.burnDamage = 0;
-        if (Math.random() < 0.3) {
-          ParticleSpawner.spawnSmokeParticles(particles, r.x, r.y, 1);
-        }
-        r.inFire = false;
-      }
-
-      // Poison DoT
-      if (r.poisonTimer > 0 && !(r.type === RoachType.TIMED_SUICIDE && r.placeTimer && r.placeTimer > 0)) {
-        r.hp -= r.poisonDamage * deltaTime;
-        r.poisonTimer -= deltaTime;
-        if (Math.random() < 0.2) {
-          particles.push({
-            x: r.x + (Math.random() - 0.5) * 15,
-            y: r.y + (Math.random() - 0.5) * 15,
-            vx: 0, vy: -10,
-            life: 0.5, maxLife: 0.5,
-            size: 4, color: '#a78bfa',
-            type: ParticleType.POISON_CLOUD,
-          });
-        }
-      }
-
-      if (r.hp <= 0) {
-        this.killRoach(r, i, roaches, particles, isHard);
-      }
+    if (r.hp <= 0) {
+      this.killRoach(r, i, roaches, particles, isHard);
     }
   }
 
@@ -595,6 +634,7 @@ export class RoachAISystem {
       r.stunTimer -= deltaTime;
       if (r.stunTimer <= 0) {
         r.isStunned = false;
+        r.speed = r.baseSpeed;  // 恢复麻痹后的速度
         if (r.isBoss && r.type === RoachType.QUEEN && this.cfg.bossSystem.bossBattle.active) {
           const homeX = r.homeX ?? this.cfg.getCanvasWidth() / 2;
           const homeY = r.homeY ?? this.cfg.getCanvasHeight() * 0.18;
@@ -604,6 +644,13 @@ export class RoachAISystem {
             r.returningHome = true;
           }
         }
+      }
+    }
+    // 粘性投掷物减速恢复
+    if (r.stuckTimer > 0) {
+      r.stuckTimer -= deltaTime;
+      if (r.stuckTimer <= 0) {
+        r.speed = r.baseSpeed;  // 恢复减速后的速度
       }
     }
   }
@@ -724,6 +771,7 @@ export class RoachAISystem {
     const deltaTime = this.cfg.getDeltaTime();
     const dl = defenseLineY;
     const distToDefense = dl - r.y;
+    const tCfg = BALANCE_CONFIG.roachAI.timedBreach;
 
     if (!r.breachPhase) r.breachPhase = 'idle';
 
@@ -731,9 +779,9 @@ export class RoachAISystem {
     if (r.hp <= 0 && r.breachPhase !== 'idle') {
       r.isFlameKilled = true;
       r.state = RoachState.DEAD;
-      r.deathTimer = 1.0;
+      r.deathTimer = tCfg.deathTimer;
       r.breachPhase = 'residue';
-      r.residueTimer = 2.0;
+      r.residueTimer = tCfg.residueTimer;
       this.cfg.onAddFloatingText(r.x, r.y - 30, TEXT_CONFIG.combat.bombFailed, FLOAT_COLOR.bombFail);
       return;
     }
@@ -747,21 +795,21 @@ export class RoachAISystem {
     }
 
     // Phase transition: start approaching
-    if (r.breachPhase === 'idle' && distToDefense <= 200) {
+    if (r.breachPhase === 'idle' && distToDefense <= tCfg.approachDist) {
       r.breachPhase = 'warning';
-      r.breachPhaseTimer = 0.5;
+      r.breachPhaseTimer = tCfg.warningTimer;
       r.crackRadius = 0;
     }
 
     switch (r.breachPhase) {
       case 'warning': {
-        r.speed = r.baseSpeed * 0.5;
-        if (distToDefense <= 80) {
+        r.speed = r.baseSpeed * tCfg.warningSpeedMult;
+        if (distToDefense <= tCfg.placeDistance) {
           // Place the timed bomb on the defense line
-          const placeY = dl - 64;
+          const placeY = dl - BALANCE_CONFIG.roachAI.bombPlacementDistance;
           r.hasPlacedBomb = true;
           this.cfg.placedBombs.push({
-            id: r.id, x: r.x, y: placeY, timer: 3,
+            id: r.id, x: r.x, y: placeY, timer: tCfg.bombTimer,
           });
           this.cfg.onAddFloatingText(r.x, placeY - 30, TEXT_CONFIG.combat.bombPlaced, FLOAT_COLOR.danger);
 
@@ -805,25 +853,56 @@ export class RoachAISystem {
   }
 
   // =========================================================================
-  // 自爆爆炸
+  // 自爆爆炸（统一入口）
   // =========================================================================
 
+  /**
+   * 自爆爆炸（引信触发）
+   * @description 引信倒计时归零时调用，会从数组中移除蟑螂
+   */
   suicideExplode(r: Roach, index: number): void {
+    this.performSuicideExplosion(r, index);
+  }
+
+  /**
+   * 自杀死亡爆炸（被击杀时触发）
+   * @description 不会从数组中移除蟑螂（由 killRoach 管理生命周期）
+   */
+  suicideDeathExplode(r: Roach): void {
+    if (r._deathExploded) return;
+    r._deathExploded = true;
+    this.performSuicideExplosion(r);
+  }
+
+  /**
+   * 执行自爆爆炸（合并 suicideExplode 和 suicideDeathExplode 的公共逻辑）
+   * @param r 蟑螂实例
+   * @param spliceIndex 从数组中移除的索引（undefined 表示不移除，用于死亡爆炸）
+   */
+  private performSuicideExplosion(r: Roach, spliceIndex?: number): void {
     const roaches = this.cfg.roaches;
     const particles = this.cfg.particles;
-    roaches.splice(index, 1);
+    const isFuseTriggered = spliceIndex !== undefined;
+
+    // 引信触发：从数组中移除蟑螂
+    if (isFuseTriggered) {
+      roaches.splice(spliceIndex!, 1);
+    }
+
     this.cfg.audio.playSuicideExplode();
     Vibration.vibrateSuicideExplode();
-    const explodeRadius = 100;
 
-    ParticleSpawner.spawnExplosionParticles(particles, r.x, r.y, 50);
-    ParticleSpawner.spawnSmokeParticles(particles, r.x, r.y, 40);
-    ParticleSpawner.spawnDebrisParticles(particles, r.x, r.y, 25);
-    ParticleSpawner.spawnSparkParticles(particles, r.x, r.y, 30);
-    ParticleSpawner.spawnFireRingParticles(particles, r.x, r.y, 20);
-    this.cfg.setScreenShake(20);
-
+    const cfg = BALANCE_CONFIG.roachAI.suicideExplosion;
+    const explodeRadius = cfg.radius;
     const explodeRadiusSq = explodeRadius * explodeRadius;
+
+    ParticleSpawner.spawnExplosionParticles(particles, r.x, r.y, cfg.explosionParticles);
+    ParticleSpawner.spawnSmokeParticles(particles, r.x, r.y, cfg.smokeParticles);
+    ParticleSpawner.spawnDebrisParticles(particles, r.x, r.y, cfg.debrisParticles);
+    ParticleSpawner.spawnSparkParticles(particles, r.x, r.y, cfg.sparkParticles);
+    ParticleSpawner.spawnFireRingParticles(particles, r.x, r.y, cfg.fireRingParticles);
+    this.cfg.setScreenShake(cfg.screenShake);
+
     let hitCount = 0;
     for (const other of roaches) {
       if (other.state !== RoachState.ALIVE || other.isBoss) continue;
@@ -832,24 +911,28 @@ export class RoachAISystem {
       const distSq = dx * dx + dy * dy;
       if (distSq < explodeRadiusSq) {
         const dist = Math.sqrt(distSq);
-        const dmg = 15 * (1 - dist / explodeRadius);
+        const dmg = cfg.damage * (1 - dist / explodeRadius);
         other.hp -= dmg;
         other.burnDamage = dmg * 2;
         other.damageFlash = (other.armorHp > 0) ? 0 : 2;
         other.inFire = true;
         hitCount++;
         if (other.hp <= 0 && this._deathChainDepth < this.MAX_DEATH_CHAIN_DEPTH) {
-          this.killRoach(other, roaches.indexOf(other), roaches, particles, this.cfg.getDifficulty() === 'hard');
+          const otherIndex = roaches.findIndex(rr => rr.id === other.id);
+          this.killRoach(other, otherIndex, roaches, particles, this.cfg.getDifficulty() === 'hard');
         }
       }
     }
 
+    // 防线伤害判定
     const defenseLineY = this.cfg.getDefenseLineY();
     const roachSize = ENEMY_DEFS[r.type].size;
     const roachBottom = r.y + roachSize * 0.4;
-    const defenseDamageRange = (r.type === RoachType.FLYING_SUICIDE) ? 300 : 100;
+    const defenseDamageRange = (r.type === RoachType.FLYING_SUICIDE)
+      ? cfg.defenseDamageRangeFlying : cfg.defenseDamageRange;
     if (roachBottom > defenseLineY - defenseDamageRange) {
-      const dmg = this.cfg.getDifficulty() === 'hard' ? 15 : 5;
+      const dmg = this.cfg.getDifficulty() === 'hard'
+        ? cfg.defenseDamage.hard : cfg.defenseDamage.easy;
       if (this.cfg.player.shieldTimer > 0) {
         this.cfg.onAddFloatingText(r.x, defenseLineY - 20, TEXT_CONFIG.combat.shieldBlock, FLOAT_COLOR.shield);
       } else {
@@ -862,76 +945,20 @@ export class RoachAISystem {
       } else {
         this.cfg.audio.playSuicideBreachGround();
       }
-      if (this.cfg.getDefenseHp() <= 0) {
+      if (isFuseTriggered && this.cfg.getDefenseHp() <= 0) {
         this.handleDefenseBreachGameOver();
         return;
       }
     }
 
-    this.cfg.onAddFloatingText(r.x, r.y - 30, hitCount > 0 ? TEXT_CONFIG.combat.bigExplosion(hitCount) : '大爆炸!', FLOAT_COLOR.explosion);
-  }
-
-  // =========================================================================
-  // 自杀死亡爆炸
-  // =========================================================================
-
-  suicideDeathExplode(r: Roach): void {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if ((r as any)._deathExploded) return;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (r as any)._deathExploded = true;
-
-    const roaches = this.cfg.roaches;
-    const particles = this.cfg.particles;
-    this.cfg.audio.playSuicideExplode();
-    Vibration.vibrateSuicideExplode();
-    const explodeRadius = 100;
-
-    ParticleSpawner.spawnExplosionParticles(particles, r.x, r.y, 50);
-    ParticleSpawner.spawnSmokeParticles(particles, r.x, r.y, 40);
-    ParticleSpawner.spawnDebrisParticles(particles, r.x, r.y, 25);
-    ParticleSpawner.spawnSparkParticles(particles, r.x, r.y, 30);
-    ParticleSpawner.spawnFireRingParticles(particles, r.x, r.y, 20);
-    this.cfg.setScreenShake(20);
-
-    let hitCount = 0;
-    for (const other of roaches) {
-      if (other.state !== RoachState.ALIVE || other.isBoss) continue;
-      const dx = other.x - r.x;
-      const dy = other.y - r.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < explodeRadius) {
-        const dmg = 15 * (1 - dist / explodeRadius);
-        other.hp -= dmg;
-        other.burnDamage = dmg * 2;
-        other.damageFlash = (other.armorHp > 0) ? 0 : 2;
-        other.inFire = true;
-        hitCount++;
-        if (other.hp <= 0) this.killRoach(other, roaches.indexOf(other), roaches, particles, this.cfg.getDifficulty() === 'hard');
-      }
-    }
-
-    const defenseLineY = this.cfg.getDefenseLineY();
-    const roachSize = ENEMY_DEFS[r.type].size;
-    const roachBottom = r.y + roachSize * 0.4;
-    const defenseDamageRange = (r.type === RoachType.FLYING_SUICIDE) ? 300 : 100;
-    if (roachBottom > defenseLineY - defenseDamageRange) {
-      const dmg = this.cfg.getDifficulty() === 'hard' ? 15 : 5;
-      if (this.cfg.player.shieldTimer > 0) {
-        this.cfg.onAddFloatingText(r.x, defenseLineY - 20, TEXT_CONFIG.combat.shieldBlock, FLOAT_COLOR.shield);
-      } else {
-        const newHp = this.cfg.getDefenseHp() - dmg;
-        this.cfg.setDefenseHp(newHp);
-        this.cfg.onAddFloatingText(r.x, defenseLineY - 20, TEXT_CONFIG.combat.suicideDamage(dmg), FLOAT_COLOR.danger);
-      }
-      if (r.type === RoachType.FLYING_SUICIDE) {
-        this.cfg.audio.playSuicideBreachFlying();
-      } else {
-        this.cfg.audio.playSuicideBreachGround();
-      }
-    }
-
-    this.cfg.onAddFloatingText(r.x, r.y - 30, hitCount > 0 ? TEXT_CONFIG.combat.deathExplosion(hitCount) : '死亡爆炸!', FLOAT_COLOR.explosion);
+    // 浮动文字
+    this.cfg.onAddFloatingText(
+      r.x, r.y - 30,
+      hitCount > 0
+        ? (isFuseTriggered ? TEXT_CONFIG.combat.bigExplosion(hitCount) : TEXT_CONFIG.combat.deathExplosion(hitCount))
+        : (isFuseTriggered ? '大爆炸!' : '死亡爆炸!'),
+      FLOAT_COLOR.explosion
+    );
   }
 
   // =========================================================================
@@ -944,11 +971,14 @@ export class RoachAISystem {
 
     try {
       const particles = this.cfg.particles;
-      ParticleSpawner.spawnExplosionParticles(particles, r.x, r.y, 80);
-      ParticleSpawner.spawnFireRingParticles(particles, r.x, r.y, 30);
-      ParticleSpawner.spawnSmokeParticles(particles, r.x, r.y, 40);
+      const cfg = BALANCE_CONFIG.roachAI.breachExplosion;
+      const bombCfg = BALANCE_CONFIG.roachAI;
 
-      for (let fi = 0; fi < 3; fi++) {
+      ParticleSpawner.spawnExplosionParticles(particles, r.x, r.y, cfg.explosionParticles);
+      ParticleSpawner.spawnFireRingParticles(particles, r.x, r.y, cfg.fireRingParticles);
+      ParticleSpawner.spawnSmokeParticles(particles, r.x, r.y, cfg.smokeParticles);
+
+      for (let fi = 0; fi < cfg.ringCount; fi++) {
         particles.push({
           x: r.x + (Math.random() - 0.5) * 30,
           y: r.y + (Math.random() - 0.5) * 20,
@@ -960,8 +990,8 @@ export class RoachAISystem {
         });
       }
 
-      for (let d = 0; d < 15; d++) {
-        const angle = (d / 15) * Math.PI * 2 + Math.random() * 0.3;
+      for (let d = 0; d < cfg.debrisCount; d++) {
+        const angle = (d / cfg.debrisCount) * Math.PI * 2 + Math.random() * 0.3;
         const speed = 100 + Math.random() * 150;
         particles.push({
           x: r.x, y: r.y,
@@ -975,15 +1005,15 @@ export class RoachAISystem {
         });
       }
 
-      this.cfg.setScreenShake(28);
+      this.cfg.setScreenShake(cfg.screenShake);
       this.cfg.audio.playTimedBombExplode();
       Vibration.vibrateDamage();
 
       for (const other of roaches) {
         if (other.state !== RoachState.ALIVE || other.id === r.id) continue;
         const d = Math.sqrt((other.x - r.x) ** 2 + (other.y - r.y) ** 2);
-        if (d < 196) {
-          const dmg = 20 * (1 - d / 196);
+        if (d < bombCfg.bombExplosionRadius) {
+          const dmg = bombCfg.bombDamage * (1 - d / bombCfg.bombExplosionRadius);
           other.hp -= dmg;
           other.burnDamage = dmg * 2;
           other.inFire = true;
@@ -991,13 +1021,15 @@ export class RoachAISystem {
             other.hp = 0;
             other.state = RoachState.DEAD;
             other.deathTimer = 1.5;
-            this.killRoach(other, roaches.indexOf(other), roaches, particles, this.cfg.getDifficulty() === 'hard');
+            const otherIndex = roaches.findIndex(rr => rr.id === other.id);
+            this.killRoach(other, otherIndex, roaches, particles, this.cfg.getDifficulty() === 'hard');
           }
         }
       }
 
       const defenseLineY = this.cfg.getDefenseLineY();
-      const defDmg = this.cfg.getDifficulty() === 'hard' ? 20 : 8;
+      const defDmg = this.cfg.getDifficulty() === 'hard'
+        ? bombCfg.bombDefenseDamage.hard : bombCfg.bombDefenseDamage.easy;
       if (this.cfg.player.shieldTimer > 0) {
         this.cfg.onAddFloatingText(r.x, defenseLineY - 20, TEXT_CONFIG.combat.shieldBlock, FLOAT_COLOR.shield);
       } else {
@@ -1075,15 +1107,16 @@ export class RoachAISystem {
 
     // Splitting roach
     if (r.type === RoachType.SPLITTING && !r.hasSplit) {
+      const splitCfg = BALANCE_CONFIG.roachAI.split;
       r.hasSplit = true;
-      r.deathTimer = 0.5;
-      for (let s = 0; s < 5; s++) {
-        const angle = (s / 5) * Math.PI * 2;
-        const spawnX = r.x + Math.cos(angle) * 50;
-        const spawnY = r.y + Math.sin(angle) * 30;
+      r.deathTimer = splitCfg.deathTimer;
+      for (let s = 0; s < splitCfg.count; s++) {
+        const angle = (s / splitCfg.count) * Math.PI * 2;
+        const spawnX = r.x + Math.cos(angle) * splitCfg.spawnRadius;
+        const spawnY = r.y + Math.sin(angle) * splitCfg.spawnRadius * 0.6;
         const small: Roach = {
           ...this.createSmallRoachFromSplit(spawnX, spawnY),
-          id: nextId++,
+          id: this.cfg.getNextId(),
         };
         roaches.push(small);
       }
@@ -1092,9 +1125,10 @@ export class RoachAISystem {
 
     // Flying roach disintegrate
     if (r.type === RoachType.FLYING) {
-      r.deathTimer = 2.0;
-      for (let w = 0; w < 8; w++) {
-        const wingAngle = (w / 8) * Math.PI * 2;
+      const flyDeathCfg = BALANCE_CONFIG.roachAI.flyingDeath;
+      r.deathTimer = flyDeathCfg.deathTimer;
+      for (let w = 0; w < flyDeathCfg.wingParticles; w++) {
+        const wingAngle = (w / flyDeathCfg.wingParticles) * Math.PI * 2;
         const wingSpeed = 60 + Math.random() * 100;
         particles.push({
           x: r.x + (Math.random() - 0.5) * 20,
@@ -1108,7 +1142,7 @@ export class RoachAISystem {
           type: ParticleType.ICE,
         });
       }
-      for (let b = 0; b < 12; b++) {
+      for (let b = 0; b < flyDeathCfg.debrisParticles; b++) {
         const debrisAngle = Math.random() * Math.PI * 2;
         const debrisSpeed = 30 + Math.random() * 80;
         particles.push({
@@ -1123,44 +1157,17 @@ export class RoachAISystem {
           type: ParticleType.ASH,
         });
       }
-      ParticleSpawner.spawnSparkParticles(particles, r.x, r.y, 20);
+      ParticleSpawner.spawnSparkParticles(particles, r.x, r.y, flyDeathCfg.sparkParticles);
       this.cfg.onAddFloatingText(r.x, r.y - 20, TEXT_CONFIG.combat.disintegrate, FLOAT_COLOR.disintegrate);
-    }
-
-    // Suicide death explosion
-    if (r.type === RoachType.SUICIDE || r.type === RoachType.FLYING_SUICIDE) {
-      const explodeRadius = 80;
-      let hitCount = 0;
-      for (const other of roaches) {
-        if (other.state !== RoachState.ALIVE || other.id === r.id) continue;
-        const dx = other.x - r.x;
-        const dy = other.y - r.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < explodeRadius) {
-          const dmg = 12 * (1 - dist / explodeRadius);
-          other.hp -= dmg;
-          other.burnDamage = dmg * 2;
-          other.damageFlash = (other.armorHp > 0) ? 0 : 2;
-          other.inFire = true;
-          hitCount++;
-        }
-      }
-      ParticleSpawner.spawnExplosionParticles(particles, r.x, r.y, 35);
-      ParticleSpawner.spawnSmokeParticles(particles, r.x, r.y, 30);
-      ParticleSpawner.spawnDebrisParticles(particles, r.x, r.y, 20);
-      ParticleSpawner.spawnFireRingParticles(particles, r.x, r.y, 15);
-      ParticleSpawner.spawnSparkParticles(particles, r.x, r.y, 20);
-      this.cfg.setScreenShake(12);
-      this.cfg.audio.playSuicideExplode();
-      Vibration.vibrateSuicideExplode();
-      this.cfg.onAddFloatingText(r.x, r.y - 30, hitCount > 0 ? TEXT_CONFIG.combat.explode(hitCount) : '爆炸!', FLOAT_COLOR.explosionOrange);
     }
 
     this.cfg.audio.playKill();
     Vibration.vibrateKill();
-    ParticleSpawner.spawnAshParticles(particles, r.x, r.y, r.type === RoachType.QUEEN ? 50 : (r.type === RoachType.LARGE ? 20 : 12));
-    ParticleSpawner.spawnSparkParticles(particles, r.x, r.y, r.type === RoachType.QUEEN ? 40 : (r.type === RoachType.LARGE ? 15 : 8));
-    ParticleSpawner.spawnBloodParticles(particles, r.x, r.y, r.type === RoachType.QUEEN ? 40 : (r.type === RoachType.LARGE ? 25 : 15));
+    const dpCfg = BALANCE_CONFIG.roachAI.deathParticles;
+    const dp = r.type === RoachType.QUEEN ? dpCfg.queen : (r.type === RoachType.LARGE ? dpCfg.large : dpCfg.default);
+    ParticleSpawner.spawnAshParticles(particles, r.x, r.y, dp.ash);
+    ParticleSpawner.spawnSparkParticles(particles, r.x, r.y, dp.spark);
+    ParticleSpawner.spawnBloodParticles(particles, r.x, r.y, dp.blood);
 
     const sceneMult = this.cfg.getSceneConfig().rewardMultiplier;
     const rewardMult = (this.cfg.getTalentMultipliers().rewardMultiplier || 1) * sceneMult;
@@ -1195,16 +1202,8 @@ export class RoachAISystem {
     if (bossBattle.active && bossBattle.phase === 1 && !r.isBoss) {
       const boss = roaches.find(br => br.type === RoachType.QUEEN && br.state === RoachState.ALIVE && br.isBoss);
       if (boss && boss.hp > 0) {
-        let backlashDmg = 0;
-        switch (r.type) {
-          case RoachType.SMALL: backlashDmg = 50; break;
-          case RoachType.LARGE: backlashDmg = 150; break;
-          case RoachType.FLYING: backlashDmg = 100; break;
-          case RoachType.SUICIDE: backlashDmg = 200; break;
-          case RoachType.FLYING_SUICIDE: backlashDmg = 180; break;
-          case RoachType.SPLITTING: backlashDmg = 150; break;
-          case RoachType.ARMORED: backlashDmg = 100; break;
-        }
+        const backlashCfg = BALANCE_CONFIG.roachAI.bossBacklash;
+        const backlashDmg = backlashCfg[r.type as keyof typeof backlashCfg] ?? 0;
         if (backlashDmg > 0) {
           boss.hp -= backlashDmg;
           this.cfg.onAddFloatingText(boss.x + (Math.random() - 0.5) * 40, boss.y - 30, TEXT_CONFIG.combat.backlash(backlashDmg), FLOAT_COLOR.backlash);
@@ -1216,7 +1215,7 @@ export class RoachAISystem {
               vx: (Math.random() - 0.5) * 60,
               vy: (Math.random() - 0.5) * 60 - 30,
               life: 0.6, maxLife: 0.6,
-              size: 4, color: '#a855f7',
+              size: 4, color: FLOAT_COLOR.backlash,
               type: ParticleType.SPARK,
             });
           }
@@ -1227,7 +1226,7 @@ export class RoachAISystem {
     economy.totalKills++;
     this.cfg.onAddPendingReward(reward);
     this.cfg.onAddFloatingText(r.x, r.y - 20, TEXT_CONFIG.combat.killReward(reward), FLOAT_COLOR.reward);
-    this.cfg.setScreenShake(r.isBoss ? 12 : (r.type === RoachType.LARGE ? 6 : 3));
+    this.cfg.setScreenShake(r.isBoss ? BALANCE_CONFIG.screenShake.bossDeath : (r.type === RoachType.LARGE ? BALANCE_CONFIG.screenShake.largeExplosion : BALANCE_CONFIG.screenShake.smallExplosion));
 
     // Boss death
     if (r.isBoss) {
@@ -1373,8 +1372,9 @@ export class RoachAISystem {
 
     try {
       const roaches = this.cfg.roaches;
-      const acidRadiusSq = 10000;
-      const acidRadius = 100;
+      const cfg = BALANCE_CONFIG.roachAI.acidSplash;
+      const acidRadius = cfg.radius;
+      const acidRadiusSq = acidRadius * acidRadius;
       let hitCount = 0;
       for (const other of roaches) {
         if (other.state !== RoachState.ALIVE || other.id === r.id) continue;
@@ -1383,13 +1383,14 @@ export class RoachAISystem {
         const distSq = dx * dx + dy * dy;
         if (distSq < acidRadiusSq) {
           const dist = Math.sqrt(distSq);
-          const dmg = 10 * (1 - dist / acidRadius);
+          const dmg = cfg.damage * (1 - dist / acidRadius);
           other.hp -= dmg;
-          other.burnDamage = dmg * 1.5;
+          other.burnDamage = dmg * cfg.burnMultiplier;
           other.inFire = true;
           hitCount++;
           if (other.hp <= 0 && this._deathChainDepth < this.MAX_DEATH_CHAIN_DEPTH) {
-            this.killRoach(other, roaches.indexOf(other), roaches, this.cfg.particles, this.cfg.getDifficulty() === 'hard');
+            const otherIndex = roaches.findIndex(rr => rr.id === other.id);
+            this.killRoach(other, otherIndex, roaches, this.cfg.particles, this.cfg.getDifficulty() === 'hard');
           }
         }
       }

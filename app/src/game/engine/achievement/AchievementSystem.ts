@@ -3,7 +3,7 @@
  * @description 负责管理游戏中的成就解锁、奖励发放和进度跟踪
  */
 
-import { TEXT_CONFIG } from '../../data';
+import { TEXT_CONFIG, FLOAT_COLOR } from '../../data';
 
 /**
  * 成就数据接口
@@ -19,6 +19,10 @@ export interface AchievementData {
   unlocked: boolean;
   /** 成就奖励（金钱） */
   reward: number;
+  /** 解锁条件表达式（如 "totalKills >= 100"） */
+  condition: string;
+  /** 解锁条件描述 */
+  conditionDescription: string;
 }
 
 /**
@@ -114,6 +118,7 @@ export class AchievementSystem {
 
   /**
    * 检查并解锁符合条件的成就
+   * @description 根据 ACHIEVEMENT_DEFS 中的 condition 配置动态求值，无需修改源码即可新增成就
    * @returns 是否有成就被解锁
    */
   checkAchievements(): boolean {
@@ -123,64 +128,70 @@ export class AchievementSystem {
 
     for (const ach of p.achievements) {
       if (ach.unlocked) continue;
+      if (!this.evaluateCondition(ach.condition, e, p)) continue;
 
-      let cond = false;
-      switch (ach.id) {
-        case 'first_blood': cond = e.totalKills >= 1; break;
-        case 'roach_slayer': cond = e.totalKills >= 100; break;
-        case 'roach_exterminator': cond = e.totalKills >= 1000; break;
-        case 'wave_5': cond = e.highestWave >= 5; break;
-        case 'wave_10': cond = e.highestWave >= 10; break;
-        case 'endless_20': cond = e.highestEndlessWave >= 20; break;
-        case 'endless_50': cond = e.highestEndlessWave >= 50; break;
-        case 'money_1000': cond = e.totalMoneyEarned >= 1000; break;
-        case 'perfect_wave': cond = e.perfectWaves >= 1; break;
-        case 'no_breach': cond = e.breaches === 0 && e.highestWave >= 10; break;
-        case 'kill_queen': cond = e.queenKills >= 1; break;
-        case 'kill_flying': cond = e.flyingKills >= 50; break;
-        case 'kill_armored': cond = e.armoredKills >= 30; break;
-        case 'weapon_master': cond = (p.weaponsUnlocked?.length || 0) >= 5; break;
-        case 'talent_first': cond = Object.values(p.talentTree.talents).some(v => (v || 0) > 0); break;
-      }
-
-      if (cond) {
-        ach.unlocked = true;
-        this.newlyUnlockedIds.add(ach.id); // 标记为新解锁，用于成就界面动画
-        
-        // 添加成就奖励金币到关卡内待结算（仅在关卡内时）
-        if (this.config.onAddPendingReward) {
-          this.config.onAddPendingReward(ach.reward);
-        } else if (this.config.onAddMoney) {
-          this.config.onAddMoney(ach.reward);
-        }
-
-        // 添加成就解锁浮动文字
-        if (this.config.onAddFloatingText) {
-          this.config.onAddFloatingText(
-            this.config.canvasWidth / 2,
-            this.config.canvasHeight / 2 - 50,
-            `成就: ${ach.name} +¥${ach.reward}`,
-            '#fbbf24'
-          );
-        }
-
-        updated = true;
-      }
+      ach.unlocked = true;
+      this.newlyUnlockedIds.add(ach.id);
+      this.grantAchievementReward(ach);
+      updated = true;
     }
 
     if (updated) {
-      // 保存进度
-      if (this.config.onSaveProgress) {
-        this.config.onSaveProgress();
-      }
-
-      // 更新经济数据
-      if (this.config.onEconomyUpdate) {
-        this.config.onEconomyUpdate(this.config.economyStats);
-      }
+      this.config.onSaveProgress?.();
+      this.config.onEconomyUpdate?.(this.config.economyStats);
     }
 
     return updated;
+  }
+
+  /**
+   * 评估成就解锁条件（配置驱动）
+   * @description 将 ACHIEVEMENT_DEFS 中的 condition 字符串（如 "totalKills >= 100"、"breaches == 0 and highestWave >= 10"）
+   *              转换为 JavaScript 表达式求值，支持新增成就无需修改源码
+   * @param condition 条件表达式字符串
+   * @param e 经济统计数据
+   * @param p 玩家进度
+   * @returns 条件是否满足
+   */
+  private evaluateCondition(condition: string, e: EconomyStats, p: PlayerProgress): boolean {
+    // 将 'and' 关键字转换为 '&&' 以支持 JavaScript 求值
+    const jsCondition = condition.replace(/\band\b/gi, '&&');
+
+    try {
+      // 构造受控作用域：仅暴露 EconomyStats 和 PlayerProgress 中的已知字段
+      const fn = new Function('e', 'p', `
+        const { totalKills, highestWave, highestEndlessWave, totalMoneyEarned, perfectWaves, breaches, queenKills, flyingKills, armoredKills } = e;
+        const weaponsUnlockedCount = (p.weaponsUnlocked?.length || 0);
+        const allWeaponsUnlocked = weaponsUnlockedCount >= 5;
+        const talentPointsSpent = Object.values(p.talentTree.talents).reduce((s, v) => s + (v || 0), 0);
+        return ${jsCondition};
+      `);
+      return fn(e, p);
+    } catch {
+      // 条件表达式解析失败时返回 false，避免崩溃
+      return false;
+    }
+  }
+
+  /**
+   * 发放成就奖励（提取公共逻辑，消除 checkAchievements 和 unlockAchievement 中的重复代码）
+   * @param ach 成就数据
+   */
+  private grantAchievementReward(ach: AchievementData): void {
+    // 发放奖励金币：优先使用关卡内待结算（仅在关卡内时），否则直接加钱
+    if (this.config.onAddPendingReward) {
+      this.config.onAddPendingReward(ach.reward);
+    } else if (this.config.onAddMoney) {
+      this.config.onAddMoney(ach.reward);
+    }
+
+    // 显示成就解锁浮动文字
+    this.config.onAddFloatingText?.(
+      this.config.canvasWidth / 2,
+      this.config.canvasHeight / 2 - 50,
+      TEXT_CONFIG.combat.achievementUnlock(ach.name, ach.reward),
+      FLOAT_COLOR.gold
+    );
   }
 
   /**
@@ -233,29 +244,9 @@ export class AchievementSystem {
     }
 
     ach.unlocked = true;
-    this.newlyUnlockedIds.add(ach.id); // 标记为新解锁
-    
-    // 添加成就奖励金币到关卡内待结算（仅在关卡内时）
-    if (this.config.onAddPendingReward) {
-      this.config.onAddPendingReward(ach.reward);
-    } else if (this.config.onAddMoney) {
-      this.config.onAddMoney(ach.reward);
-    }
-
-    // 添加成就解锁浮动文字
-    if (this.config.onAddFloatingText) {
-      this.config.onAddFloatingText(
-        this.config.canvasWidth / 2,
-        this.config.canvasHeight / 2 - 50,
-        `成就: ${ach.name} +¥${ach.reward}`,
-        '#fbbf24'
-      );
-    }
-
-    // 保存进度
-    if (this.config.onSaveProgress) {
-      this.config.onSaveProgress();
-    }
+    this.newlyUnlockedIds.add(ach.id);
+    this.grantAchievementReward(ach);
+    this.config.onSaveProgress?.();
 
     return true;
   }
@@ -300,11 +291,14 @@ export class AchievementSystem {
    */
   updatePlayerProgress(progress: Partial<PlayerProgress>): void {
     if (progress.achievements) {
-      // 合并成就数据
+      // 合并成就数据：更新已有成就，添加新增成就（来自游戏更新）
       for (const newAch of progress.achievements) {
         const existingAch = this.config.playerProgress.achievements.find(a => a.id === newAch.id);
         if (existingAch) {
           existingAch.unlocked = newAch.unlocked;
+        } else {
+          // 新增成就 ID（例如游戏更新引入了新成就），添加到列表
+          this.config.playerProgress.achievements.push({ ...newAch });
         }
       }
     }
@@ -345,7 +339,8 @@ export class AchievementSystem {
    * @returns 解锁条件描述
    */
   getAchievementConditionDescription(achievementId: string): string {
-    return (TEXT_CONFIG.ui.achievements.conditionDescriptions as Record<string, string>)[achievementId] || '未知成就';
+    const ach = this.config.playerProgress.achievements.find(a => a.id === achievementId);
+    return ach?.conditionDescription || '未知成就';
   }
 
   /**

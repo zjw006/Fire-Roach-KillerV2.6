@@ -435,6 +435,8 @@ export interface Roach {
   transformSpawnTypes?: RoachType[];
   // Has transformed flag
   hasTransformed?: boolean;
+  // Death explosion guard (prevents duplicate suicide death explosions)
+  _deathExploded?: boolean;
 }
 
 /** 自动追踪粘板弹丸 */
@@ -462,6 +464,18 @@ export interface WeaponDrop {
   life: number;
   maxLife: number;
   bobPhase: number;
+}
+
+/** 关卡结束后掉落的道具箱（战场掉落） */
+export interface ItemDropOnField {
+  type: string;
+  name: string;
+  icon: string;
+  x: number;
+  y: number;
+  targetY: number;
+  bobPhase: number;
+  fallSpeed: number;
 }
 
 /** 雷达激光状态 */
@@ -660,6 +674,8 @@ export interface Achievement {
   name: string;
   description: string;
   condition: string;
+  /** 成就解锁条件描述（用于 UI 展示） */
+  conditionDescription: string;
   unlocked: boolean;
   reward: number;
   /** 是否已完成 */

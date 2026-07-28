@@ -3,8 +3,15 @@
  * @description 负责管理游戏中的武器掉落、拾取、切换和弹药系统
  */
 
-import { GameState, GameMode, SceneType, type WeaponDrop, type Player, type InventoryItem } from '../../types';
-import { WEAPON_DROP_DEFS, SCENE_ITEM_UNLOCKS, BALANCE_CONFIG, TEXT_CONFIG } from '../../data';
+import { GameState, GameMode, SceneType, type WeaponDrop, type Player } from '../../types';
+import { WEAPON_DROP_DEFS, SCENE_ITEM_UNLOCKS, BALANCE_CONFIG } from '../../data';
+
+/** 喷火器武器类型标识 */
+const FLAMETHROWER = 'flamethrower' as const;
+/** 基础粘板回退类型 */
+const FALLBACK_WEAPON = 'sticky' as const;
+/** 所有武器类型列表 */
+const ALL_WEAPON_TYPES = ['sticky', 'poison', 'fan', 'molotov', 'shotgun', 'radar', 'swatter'] as const;
 
 /**
  * 武器系统配置接口
@@ -51,9 +58,6 @@ export interface WeaponDropSpawnConfig {
   bobSpeed: number;
 }
 
-/** 全局掉落物 ID 计数器 */
-let nextDropId = 1;
-
 /**
  * 武器系统类
  * @description 管理游戏中的武器掉落、拾取、切换和弹药系统
@@ -61,30 +65,15 @@ let nextDropId = 1;
 export class WeaponSystem {
   /** 系统配置 */
   private config: WeaponSystemConfig;
-  
+
   /** 武器掉落数组 */
   private weaponDrops: WeaponDrop[] = [];
-  
+
   /** 掉落生成计时器 */
   private dropSpawnTimer: number = 0;
-  
-  /** 玩家物品栏 */
-  private inventory: InventoryItem[] = [];
-  
-  /** 场景特定的掉落配置 */
-  private sceneDropConfigs: Record<SceneType, WeaponDropSpawnConfig> = {
-    [SceneType.KITCHEN]: { spawnInterval: BALANCE_CONFIG.weaponDropScene.spawnIntervals.kitchen, dropCount: 1, dropLife: BALANCE_CONFIG.weaponDropScene.dropLife, bobSpeed: BALANCE_CONFIG.weaponDropScene.bobSpeed },
-    [SceneType.SEWER]: { spawnInterval: BALANCE_CONFIG.weaponDropScene.spawnIntervals.sewer, dropCount: 1, dropLife: BALANCE_CONFIG.weaponDropScene.dropLife, bobSpeed: BALANCE_CONFIG.weaponDropScene.bobSpeed },
-    [SceneType.DUMP]: { spawnInterval: BALANCE_CONFIG.weaponDropScene.spawnIntervals.dump, dropCount: 1, dropLife: BALANCE_CONFIG.weaponDropScene.dropLife, bobSpeed: BALANCE_CONFIG.weaponDropScene.bobSpeed },
-    [SceneType.BASEMENT]: { spawnInterval: BALANCE_CONFIG.weaponDropScene.spawnIntervals.basement, dropCount: 1, dropLife: BALANCE_CONFIG.weaponDropScene.dropLife, bobSpeed: BALANCE_CONFIG.weaponDropScene.bobSpeed },
-    [SceneType.ROOFTOP]: { spawnInterval: BALANCE_CONFIG.weaponDropScene.spawnIntervals.rooftop, dropCount: 1, dropLife: BALANCE_CONFIG.weaponDropScene.dropLife, bobSpeed: BALANCE_CONFIG.weaponDropScene.bobSpeed },
-    [SceneType.STREET]: { spawnInterval: BALANCE_CONFIG.weaponDropScene.spawnIntervals.street, dropCount: 1, dropLife: BALANCE_CONFIG.weaponDropScene.dropLife, bobSpeed: BALANCE_CONFIG.weaponDropScene.bobSpeed },
-    [SceneType.HOSPITAL]: { spawnInterval: BALANCE_CONFIG.weaponDropScene.spawnIntervals.hospital, dropCount: 1, dropLife: BALANCE_CONFIG.weaponDropScene.dropLife, bobSpeed: BALANCE_CONFIG.weaponDropScene.bobSpeed },
-    [SceneType.SUBWAY]: { spawnInterval: BALANCE_CONFIG.weaponDropScene.spawnIntervals.subway, dropCount: 1, dropLife: BALANCE_CONFIG.weaponDropScene.dropLife, bobSpeed: BALANCE_CONFIG.weaponDropScene.bobSpeed },
-    [SceneType.SUPERMARKET]: { spawnInterval: BALANCE_CONFIG.weaponDropScene.spawnIntervals.supermarket, dropCount: 1, dropLife: BALANCE_CONFIG.weaponDropScene.dropLife, bobSpeed: BALANCE_CONFIG.weaponDropScene.bobSpeed },
-    [SceneType.SCHOOL]: { spawnInterval: BALANCE_CONFIG.weaponDropScene.spawnIntervals.school, dropCount: 1, dropLife: BALANCE_CONFIG.weaponDropScene.dropLife, bobSpeed: BALANCE_CONFIG.weaponDropScene.bobSpeed },
-    [SceneType.NEST]: { spawnInterval: BALANCE_CONFIG.weaponDropScene.spawnIntervals.nest, dropCount: 1, dropLife: BALANCE_CONFIG.weaponDropScene.dropLife, bobSpeed: BALANCE_CONFIG.weaponDropScene.bobSpeed },
-  };
+
+  /** 掉落物ID计数器（实例级，避免模块级全局状态冲突） */
+  private nextDropId: number = 1;
 
   /**
    * 构造函数
@@ -92,7 +81,7 @@ export class WeaponSystem {
    */
   constructor(config: WeaponSystemConfig) {
     this.config = config;
-    this.dropSpawnTimer = this.getCurrentSceneConfig().spawnInterval;
+    this.dropSpawnTimer = this.getSceneDropConfig().spawnInterval;
   }
 
   /**
@@ -122,10 +111,6 @@ export class WeaponSystem {
 
   /**
    * 更新武器掉落
-   * @param deltaTime 时间增量
-   * @param player 玩家对象
-   * @param defenseLineY 防线Y坐标
-   * @param tutorialPauseSpawn 教程暂停生成标志
    */
   private updateWeaponDrops(
     deltaTime: number,
@@ -133,12 +118,12 @@ export class WeaponSystem {
     defenseLineY: number,
     tutorialPauseSpawn: boolean
   ): void {
-    const sceneConfig = this.getCurrentSceneConfig();
-    
+    const sceneConfig = this.getSceneDropConfig();
+
     // 更新掉落生成计时器（跳过教程暂停期间）
     if (!tutorialPauseSpawn) {
       this.dropSpawnTimer -= deltaTime;
-      
+
       // 生成新的武器掉落
       if (this.dropSpawnTimer <= 0) {
         this.spawnWeaponDrop(sceneConfig.dropCount, defenseLineY);
@@ -149,22 +134,24 @@ export class WeaponSystem {
     }
 
     // 更新现有掉落
+    const pickupRadius = BALANCE_CONFIG.weaponDropScene.pickupRadius;
     for (let i = this.weaponDrops.length - 1; i >= 0; i--) {
       const drop = this.weaponDrops[i];
-      
+
       // 更新掉落生命周期
       drop.life -= deltaTime;
       drop.bobPhase += deltaTime * sceneConfig.bobSpeed;
-      
+
       // 移除过期的掉落
       if (drop.life <= 0) {
         this.weaponDrops.splice(i, 1);
         continue;
       }
-      
-      // 检查玩家拾取
+
+      // 检查玩家拾取（X用玩家位置，Y用防线位置，因为玩家在防线处操作）
       const dx = Math.abs(drop.x - player.x);
-      if (dx < 60) {
+      const dy = Math.abs(drop.y - defenseLineY);
+      if (dx < pickupRadius && dy < pickupRadius) {
         this.pickupWeaponDrop(drop, player);
         this.weaponDrops.splice(i, 1);
       }
@@ -173,78 +160,63 @@ export class WeaponSystem {
 
   /**
    * 生成武器掉落
-   * @param count 生成数量
+   * @param _count 生成数量（保留参数以兼容未来扩展）
    * @param defenseLineY 防线Y坐标
    */
-  private spawnWeaponDrop(count: number, defenseLineY: number): void {
+  private spawnWeaponDrop(_count: number, defenseLineY: number): void {
     // 获取当前场景可用的武器类型
     const availableTypes = this.getAvailableWeaponTypes();
-    
+
     // 如果没有可用的武器类型，使用基础粘板
     if (availableTypes.length === 0) {
-      availableTypes.push('sticky');
+      availableTypes.push(FALLBACK_WEAPON);
     }
 
-    // 基础生成位置
+    const wdCfg = BALANCE_CONFIG.weaponDropScene;
     const canvasWidth = this.config.canvasWidth || 540;
-    const baseX = 60 + Math.random() * (canvasWidth - 120);
-    const baseY = defenseLineY - 135 + Math.random() * 30;
+    const baseX = wdCfg.pickBaseX + Math.random() * (canvasWidth - wdCfg.pickXRange * 2);
+    const baseY = defenseLineY - wdCfg.spawnYOffset + Math.random() * wdCfg.spawnYRange;
 
-    for (let i = 0; i < count; i++) {
-      // 随机选择武器类型
-      const typeIndex = Math.floor(Math.random() * availableTypes.length);
-      const type = availableTypes[typeIndex] as WeaponDrop['type'];
-      
-      // 计算掉落位置
-      const x = count > 1
-        ? Math.max(40, Math.min(canvasWidth - 40, baseX + (i - (count - 1) / 2) * 100))
-        : baseX;
-      
-      const y = baseY + (Math.random() - 0.5) * 20;
-      
-      // 创建新的武器掉落
-      this.weaponDrops.push({
-        id: nextDropId++,
-        x,
-        y,
-        type,
-        life: this.getCurrentSceneConfig().dropLife,
-        maxLife: this.getCurrentSceneConfig().dropLife,
-        bobPhase: Math.random() * Math.PI * 2,
-      });
-    }
+    // 随机选择武器类型
+    const typeIndex = Math.floor(Math.random() * availableTypes.length);
+    const type = availableTypes[typeIndex] as WeaponDrop['type'];
+
+    // 创建新的武器掉落
+    this.weaponDrops.push({
+      id: this.nextDropId++,
+      x: baseX,
+      y: baseY,
+      type,
+      life: wdCfg.dropLife,
+      maxLife: wdCfg.dropLife,
+      bobPhase: Math.random() * Math.PI * 2,
+    });
   }
 
   /**
    * 获取当前场景可用的武器类型
-   * @returns 可用的武器类型数组
    */
   private getAvailableWeaponTypes(): string[] {
-    // 所有可能的武器类型
-    const allWeaponTypes = ['sticky', 'poison', 'fan', 'molotov', 'shotgun', 'radar', 'swatter'];
-    
     // 使用玩家选择的物品（如果可用），否则使用场景默认解锁的物品
     const unlockedItems = this.config.selectedItems.length > 0
       ? this.config.selectedItems
       : (this.config.gameMode === GameMode.STORY
-          ? (this.config.difficulty === 'hard' 
-              ? allWeaponTypes 
-              : (SCENE_ITEM_UNLOCKS[this.config.currentScene] || ['sticky']))
-          : allWeaponTypes);
-    
-    // 过滤只包含玩家已解锁的武器
+          ? (this.config.difficulty === 'hard'
+              ? [...ALL_WEAPON_TYPES]
+              : (SCENE_ITEM_UNLOCKS[this.config.currentScene] || [FALLBACK_WEAPON]))
+          : [...ALL_WEAPON_TYPES]);
+
+    // 过滤只包含玩家已解锁的武器（喷火器始终可用，独立处理）
     const availableItems = unlockedItems.filter((item: string) =>
-      this.config.unlockedWeapons.includes(item) || item === 'flamethrower'
+      this.config.unlockedWeapons.includes(item) || item === FLAMETHROWER
     );
-    
+
     // 回退：如果没有物品通过过滤，使用基础粘板
-    return availableItems.length > 0 ? availableItems : ['sticky'];
+    return availableItems.length > 0 ? availableItems : [FALLBACK_WEAPON];
   }
 
   /**
    * 拾取武器掉落
-   * @param drop 武器掉落对象
-   * @param player 玩家对象
    */
   private pickupWeaponDrop(drop: WeaponDrop, player: Player): void {
     const weaponDef = WEAPON_DROP_DEFS[drop.type];
@@ -252,8 +224,8 @@ export class WeaponSystem {
       return;
     }
 
-    // 应用资源节省天赋：拾取时额外+1弹药
-    const itemAmmoBonus = this.config.talentMultipliers?.itemAmmo || 0;
+    // 应用资源节省天赋：拾取时额外+1弹药（确保整数）
+    const itemAmmoBonus = Math.round(this.config.talentMultipliers?.itemAmmo || 0);
     const pickupCount = 1 + itemAmmoBonus;
 
     // 更新玩家武器弹药
@@ -261,16 +233,13 @@ export class WeaponSystem {
 
     // 生成拾取提示文本
     const bonusText = itemAmmoBonus > 0 ? `(+${itemAmmoBonus}天赋)` : '';
-    
+
     // 调用拾取回调（用于浮动文字、屏幕震动、物品栏管理等）
     this.config.onPickup?.(drop, pickupCount, bonusText);
   }
 
   /**
    * 更新玩家武器弹药
-   * @param player 玩家对象
-   * @param weaponType 武器类型
-   * @param ammoCount 弹药数量
    */
   private updatePlayerWeaponAmmo(
     player: Player,
@@ -297,28 +266,28 @@ export class WeaponSystem {
    * @returns 是否切换成功
    */
   switchWeapon(player: Player, weapon: string): boolean {
-    // 切换到喷火器
-    if (weapon === 'flamethrower') {
-      player.currentWeapon = 'flamethrower';
+    // 喷火器：始终可用，无需弹药
+    if (weapon === FLAMETHROWER) {
+      player.currentWeapon = FLAMETHROWER;
       player.isTempWeapon = false;
       return true;
     }
 
     // 检查武器是否已解锁
-    const isUnlocked = this.config.unlockedWeapons.includes(weapon);
-    if (!isUnlocked && !player.isTempWeapon) {
+    if (!this.config.unlockedWeapons.includes(weapon)) {
       return false;
     }
 
     // 检查弹药是否充足
     const ammo = player.weaponAmmo?.[weapon] || 0;
-    if (ammo <= 0 && !player.isTempWeapon && weapon !== 'flamethrower') {
+    if (ammo <= 0) {
       return false;
     }
 
     // 切换武器
     player.currentWeapon = weapon as Player['currentWeapon'];
-    
+    player.isTempWeapon = false;
+
     // 显示切换提示
     const weaponDef = WEAPON_DROP_DEFS[weapon as keyof typeof WEAPON_DROP_DEFS];
     if (weaponDef) {
@@ -329,16 +298,21 @@ export class WeaponSystem {
   }
 
   /**
-   * 获取当前场景的掉落配置
-   * @returns 当前场景的掉落配置
+   * 获取当前场景的掉落配置（工厂函数，消除重复的对象字面量）
    */
-  private getCurrentSceneConfig(): WeaponDropSpawnConfig {
-    return this.sceneDropConfigs[this.config.currentScene] || this.sceneDropConfigs[SceneType.KITCHEN];
+  private getSceneDropConfig(): WeaponDropSpawnConfig {
+    const sceneCfg = BALANCE_CONFIG.weaponDropScene;
+    const sceneKey = this.config.currentScene;
+    return {
+      spawnInterval: sceneCfg.spawnIntervals[sceneKey] || sceneCfg.spawnIntervals.kitchen,
+      dropCount: 1,
+      dropLife: sceneCfg.dropLife,
+      bobSpeed: sceneCfg.bobSpeed,
+    };
   }
 
   /**
    * 获取所有武器掉落
-   * @returns 武器掉落数组
    */
   getWeaponDrops(): WeaponDrop[] {
     return this.weaponDrops;
@@ -356,21 +330,12 @@ export class WeaponSystem {
    */
   reset(): void {
     this.weaponDrops = [];
-    this.inventory = [];
-    this.dropSpawnTimer = this.getCurrentSceneConfig().spawnInterval;
-  }
-
-  /**
-   * 获取玩家物品栏
-   * @returns 物品栏数组
-   */
-  getInventory(): InventoryItem[] {
-    return [...this.inventory];
+    this.dropSpawnTimer = this.getSceneDropConfig().spawnInterval;
+    this.nextDropId = 1;
   }
 
   /**
    * 更新配置
-   * @param newConfig 新的配置
    */
   updateConfig(newConfig: Partial<WeaponSystemConfig>): void {
     this.config = { ...this.config, ...newConfig };
@@ -378,7 +343,6 @@ export class WeaponSystem {
 
   /**
    * 获取当前配置
-   * @returns 当前配置
    */
   getConfig(): WeaponSystemConfig {
     return { ...this.config };

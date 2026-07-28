@@ -1764,6 +1764,95 @@ export class AudioManager {
     }
   }
 
+  /** 播放粘板投掷音效（扁平物体破空 + 拍击声） */
+  playStickyThrow() {
+    if (!this.audioContext || this.isMuted) return;
+    const ctx = this.audioContext;
+    const now = ctx.currentTime;
+
+    // Layer 1: flat object whoosh (lower frequency, broader band)
+    const whooshNoise = ctx.createBufferSource();
+    const bufSize = ctx.sampleRate * 0.35;
+    const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < bufSize; i++) d[i] = (Math.random() * 2 - 1);
+    whooshNoise.buffer = buf;
+    const whooshFilter = ctx.createBiquadFilter();
+    whooshFilter.type = 'bandpass';
+    whooshFilter.frequency.setValueAtTime(500, now);
+    whooshFilter.frequency.linearRampToValueAtTime(150, now + 0.35);
+    whooshFilter.Q.setValueAtTime(0.8, now);
+    const whooshGain = ctx.createGain();
+    whooshGain.gain.setValueAtTime(0.25, now);
+    whooshGain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+    whooshNoise.connect(whooshFilter);
+    whooshFilter.connect(whooshGain);
+    whooshGain.connect(ctx.destination);
+    whooshNoise.start(now);
+    whooshNoise.stop(now + 0.35);
+
+    // Layer 2: sticky slap impact (low thud)
+    const slap = ctx.createOscillator();
+    slap.type = 'triangle';
+    slap.frequency.setValueAtTime(120, now);
+    slap.frequency.exponentialRampToValueAtTime(40, now + 0.15);
+    const slapGain = ctx.createGain();
+    slapGain.gain.setValueAtTime(0.3, now);
+    slapGain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+    slap.connect(slapGain);
+    slapGain.connect(ctx.destination);
+    slap.start(now);
+    slap.stop(now + 0.15);
+  }
+
+  /** 播放毒药罐投掷音效（加压罐体破空嘶嘶声） */
+  playPoisonThrow() {
+    if (!this.audioContext || this.isMuted) return;
+    const ctx = this.audioContext;
+    const now = ctx.currentTime;
+
+    // Layer 1: pressurized canister whoosh (higher pitch, sharper)
+    const whooshNoise = ctx.createBufferSource();
+    const bufSize = ctx.sampleRate * 0.3;
+    const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < bufSize; i++) d[i] = (Math.random() * 2 - 1);
+    whooshNoise.buffer = buf;
+    const whooshFilter = ctx.createBiquadFilter();
+    whooshFilter.type = 'bandpass';
+    whooshFilter.frequency.setValueAtTime(1200, now);
+    whooshFilter.frequency.linearRampToValueAtTime(300, now + 0.3);
+    whooshFilter.Q.setValueAtTime(1.5, now);
+    const whooshGain = ctx.createGain();
+    whooshGain.gain.setValueAtTime(0.2, now);
+    whooshGain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+    whooshNoise.connect(whooshFilter);
+    whooshFilter.connect(whooshGain);
+    whooshGain.connect(ctx.destination);
+    whooshNoise.start(now);
+    whooshNoise.stop(now + 0.3);
+
+    // Layer 2: gas hiss release (high-frequency noise burst)
+    const hiss = ctx.createBufferSource();
+    const hissSize = ctx.sampleRate * 0.25;
+    const hissBuf = ctx.createBuffer(1, hissSize, ctx.sampleRate);
+    const hd = hissBuf.getChannelData(0);
+    for (let i = 0; i < hissSize; i++) hd[i] = (Math.random() * 2 - 1);
+    hiss.buffer = hissBuf;
+    const hissFilter = ctx.createBiquadFilter();
+    hissFilter.type = 'highpass';
+    hissFilter.frequency.setValueAtTime(2000, now);
+    hissFilter.frequency.linearRampToValueAtTime(4000, now + 0.1);
+    const hissGain = ctx.createGain();
+    hissGain.gain.setValueAtTime(0.15, now);
+    hissGain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+    hiss.connect(hissFilter);
+    hissFilter.connect(hissGain);
+    hissGain.connect(ctx.destination);
+    hiss.start(now);
+    hiss.stop(now + 0.25);
+  }
+
   /** 火墙持续燃烧音频节点 */
   private fireWallNodes: { noise: AudioBufferSourceNode; gain: GainNode } | null = null;
 

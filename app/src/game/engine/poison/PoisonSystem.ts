@@ -1,11 +1,12 @@
-﻿/**
+/**
  * @fileoverview 毒雾系统模块
- * @description 负责管理毒雾爆炸粒子、毒雾效果应用
+ * @description 负责管理毒雾爆炸粒子、毒雾效果应用。
+ *              伤害计算和区域添加通过回调委托给外部，实现职责分离。
  */
 
 import { RoachState, RoachType, ParticleType } from '../../types';
 import type { Particle, Roach, FireZone } from '../../types';
-import { BALANCE_CONFIG, TEXT_CONFIG } from '../../data';
+import { BALANCE_CONFIG, TEXT_CONFIG, FLOAT_COLOR } from '../../data';
 
 /**
  * 毒雾系统配置接口
@@ -15,6 +16,12 @@ export interface PoisonSystemConfig {
   onAddFloatingText?: (x: number, y: number, text: string, color: string) => void;
   /** 屏幕震动回调 */
   onScreenShake?: (amount: number) => void;
+  /** 添加火焰/毒雾区域回调（避免直接修改外部数组） */
+  onAddZone?: (zone: FireZone) => void;
+  /** 伤害回调（统一伤害入口，避免分散在模块内） */
+  onDamageRoach?: (roach: Roach, damage: number) => void;
+  /** 生成毒雾爆炸粒子回调 */
+  onSpawnPoisonExplosion?: (x: number, y: number) => void;
 }
 
 /**
@@ -37,28 +44,29 @@ export class PoisonSystem {
 
   /**
    * 生成毒雾爆炸粒子
+   * 修复 P2：移除未使用的 _radius 参数
+   * 修复 P1：maxLife 与 life 统一使用随机值
    * @param particles 粒子数组（会被直接修改）
    * @param x X坐标
    * @param y Y坐标
-   * @param _radius 爆炸半径（当前未使用）
    */
   static spawnPoisonExplosion(
     particles: Particle[],
     x: number,
-    y: number,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _radius: number
+    y: number
   ): void {
-    for (let i = 0; i < BALANCE_CONFIG.poisonCloud.particleCount; i++) {
+    const cfg = BALANCE_CONFIG.poisonCloud;
+    for (let i = 0; i < cfg.particleCount; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const speed = BALANCE_CONFIG.poisonCloud.speedMin + Math.random() * BALANCE_CONFIG.poisonCloud.speedMax;
+      const speed = cfg.speedMin + Math.random() * cfg.speedMax;
+      const life = cfg.lifeMin + Math.random() * cfg.lifeMax;
       particles.push({
         x, y,
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed - 20,
-        life: BALANCE_CONFIG.poisonCloud.lifeMin + Math.random() * BALANCE_CONFIG.poisonCloud.lifeMax,
-        maxLife: BALANCE_CONFIG.poisonCloud.maxLife,
-        size: BALANCE_CONFIG.poisonCloud.sizeMin + Math.random() * BALANCE_CONFIG.poisonCloud.sizeMax,
+        life,
+        maxLife: life, // 修复 P1：统一使用随机值
+        size: cfg.sizeMin + Math.random() * cfg.sizeMax,
         color: `hsl(${260 + Math.random() * 30}, 80%, ${50 + Math.random() * 20}%)`,
         type: ParticleType.POISON_CLOUD,
       });
@@ -69,25 +77,26 @@ export class PoisonSystem {
 
   /**
    * 应用毒雾效果到指定位置
-   * @param roaches 蟑螂数组（会被直接修改）
-   * @param fireZones 火焰区域数组（会被直接修改）
+   * 修复 P1：中毒效果叠加（延长计时器，取最大伤害）
+   * 修复 P1：通过 onAddZone 回调添加区域，避免直接修改 fireZones
+   * 修复 P2：通过 onDamageRoach 回调统一伤害入口
+   * 修复 P2：浮动文字颜色使用 FLOAT_COLOR.poison
+   * @param roaches 蟑螂数组（会被直接修改 poisonTimer/poisonDamage）
    * @param x X坐标
    * @param y Y坐标
    * @param effectRadiusX X方向效果半径
    * @param effectRadiusY Y方向效果半径
-   * @returns 需要添加的粒子
    */
   applyPoisonEffect(
     roaches: Roach[],
-    fireZones: FireZone[],
     x: number,
     y: number,
     effectRadiusX: number,
     effectRadiusY: number
-  ): Particle[] {
-    const particles: Particle[] = [];
+  ): void {
     const rx = effectRadiusX;
     const ry = effectRadiusY;
+    const poisonCfg = BALANCE_CONFIG.throwable.poison;
     let hitCount = 0;
 
     for (const r of roaches) {
@@ -96,14 +105,22 @@ export class PoisonSystem {
       const dx = (r.x - x) / rx;
       const dy = (r.y - y) / ry;
       if (dx * dx + dy * dy < 1) {
-        r.poisonTimer = BALANCE_CONFIG.throwable.poison.poisonTimer;
-        r.poisonDamage = BALANCE_CONFIG.throwable.poison.poisonDamage;
-        r.hp -= BALANCE_CONFIG.throwable.poison.initialDamage;
+        // 修复 P1：中毒效果叠加 — 延长计时器（上限 maxPoisonTimer），取最大伤害
+        const newTimer = r.poisonTimer + poisonCfg.poisonTimer;
+        r.poisonTimer = Math.min(newTimer, poisonCfg.maxPoisonTimer);
+        r.poisonDamage = Math.max(r.poisonDamage, poisonCfg.poisonDamageMax);
+        // 修复 P2：统一伤害入口
+        if (this.config.onDamageRoach) {
+          this.config.onDamageRoach(r, poisonCfg.initialDamage);
+        } else {
+          r.hp -= poisonCfg.initialDamage;
+        }
         hitCount++;
       }
     }
 
-    fireZones.push({
+    // 修复 P1：通过回调添加区域，避免直接修改 fireZones
+    this.config.onAddZone?.({
       x, y, radius: rx * 0.5,
       damagePerSecond: BALANCE_CONFIG.poisonCloud.fireZoneDps,
       life: BALANCE_CONFIG.poisonCloud.fireZoneLife,
@@ -111,15 +128,15 @@ export class PoisonSystem {
       type: 'poison',
     });
 
-    PoisonSystem.spawnPoisonExplosion(particles, x, y, rx * 0.5);
+    // 修复 P2：通过回调生成粒子，避免直接修改外部粒子数组
+    this.config.onSpawnPoisonExplosion?.(x, y);
 
+    // 修复 P2：使用 FLOAT_COLOR.poison 代替 FLOAT_COLOR.fan
     this.config.onAddFloatingText?.(
       x, y - 20,
-      hitCount > 0 ? `毒雾!(${hitCount}只)` : '毒雾!',
-      '#a78bfa'
+      hitCount > 0 ? TEXT_CONFIG.combat.poisonHit(hitCount) : TEXT_CONFIG.combat.poisonLand,
+      FLOAT_COLOR.poison
     );
     this.config.onScreenShake?.(BALANCE_CONFIG.screenShake.smallExplosion);
-
-    return particles;
   }
 }

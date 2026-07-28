@@ -1,58 +1,140 @@
 /**
  * @fileoverview 粒子生成器 —— 从引擎迁移的粒子生成静态方法
- * @description 提供 10 种粒子类型（fire, smoke, ash, blood, spark, explosion, debris, fireRing, shockwave, lightning）的生成方法
+ * @description 提供 10 种粒子类型的生成方法，所有参数从 BALANCE_CONFIG 读取
  * 所有方法均为纯静态方法，接收目标数组作为参数，不依赖引擎实例
  */
 
 import { ParticleType } from '../../types';
 import type { Particle, FireZone } from '../../types';
+import { BALANCE_CONFIG } from '../../data';
+
+/** 锥形火焰粒子参数 */
+export interface ConeFireParams {
+  particles: Particle[];
+  fireZones: FireZone[];
+  deltaTime: number;
+  /** 枪口 X 坐标 */
+  x: number;
+  /** 枪口 Y 坐标 */
+  y: number;
+  /** 喷射角度 */
+  angle: number;
+  /** 喷射范围 */
+  range: number;
+  /** 基础伤害 */
+  baseDamage: number;
+  /** 火焰类型 */
+  type?: 'fire' | 'ice' | 'poison';
+}
+
+/** RGBA 颜色配置（用于粒子颜色生成） */
+interface ParticleColorCfg {
+  r?: number; rMin?: number; rMax?: number;
+  g?: number; gMin?: number; gMax?: number;
+  b?: number; bMin?: number; bMax?: number;
+  a?: number; aMin?: number; aMax?: number;
+}
 
 /**
  * 粒子生成器 —— 静态方法集合
  */
 export class ParticleSpawner {
 
+  // ========== 内部辅助 ==========
+
+  /** 根据颜色配置生成随机 rgba 字符串 */
+  private static randomRgba(c: ParticleColorCfg): string {
+    const r = c.r ?? (c.rMin! + Math.random() * (c.rMax! - c.rMin!));
+    const g = c.g ?? (c.gMin! + Math.random() * (c.gMax! - c.gMin!));
+    const b = c.b ?? (c.bMin! + Math.random() * (c.bMax! - c.bMin!));
+    const a = c.a ?? (c.aMin! + Math.random() * (c.aMax! - c.aMin!));
+    return `rgba(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)}, ${a.toFixed(2)})`;
+  }
+
+  /**
+   * 生成径向散射粒子（统一 ash/blood/spark/explosion 等方法的公共逻辑）
+   */
+  private static spawnRadial(
+    particles: Particle[],
+    count: number,
+    x: number,
+    y: number,
+    speedMin: number,
+    speedRange: number,
+    vyBias: number,
+    lifeMin: number,
+    lifeRange: number,
+    sizeMin: number,
+    sizeRange: number,
+    colorFn: () => string,
+    type: ParticleType,
+    offsetXY: number = 0
+  ): void {
+    for (let i = 0; i < count; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = speedMin + Math.random() * speedRange;
+      const life = lifeMin + Math.random() * lifeRange;
+      particles.push({
+        x: x + (offsetXY ? (Math.random() - 0.5) * offsetXY : 0),
+        y: y + (offsetXY ? (Math.random() - 0.5) * offsetXY : 0),
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed + vyBias,
+        life,
+        maxLife: life,
+        size: sizeMin + Math.random() * sizeRange,
+        color: colorFn(),
+        type,
+      });
+    }
+  }
+
   // ========== 锥形火焰粒子 ==========
 
-  static spawnConeFire(
-    particles: Particle[],
-    fireZones: FireZone[],
-    deltaTime: number,
-    gx: number, gy: number, angle: number, range: number, _spread: number, baseDamage: number, type: 'fire' | 'ice' | 'poison' = 'fire'
-  ): void {
-    const count = Math.floor(3 + Math.random() * 3);
+  /**
+   * 生成锥形火焰粒子
+   * 修复 P0：damagePerSecond 公式使用命名常量，表达清晰
+   * 修复 P0：fireZones 截断保留最新而非最旧
+   * 修复 P1：参数对象化（10 个参数 → 1 个对象）
+   * 修复 P1：颜色公式从 BALANCE_CONFIG.particle 读取
+   * 修复 P2：移除未使用的 _spread 参数
+   */
+  static spawnConeFire(params: ConeFireParams): void {
+    const { particles, fireZones, deltaTime, x, y, angle, range, baseDamage, type = 'fire' } = params;
+    const cfg = BALANCE_CONFIG.particle.coneFire;
+    const wpnCfg = BALANCE_CONFIG.weaponDamage;
     const isIce = type === 'ice';
     const isPoison = type === 'poison';
 
+    const count = Math.floor(cfg.countMin + Math.random() * cfg.countMax);
     for (let i = 0; i < count; i++) {
       const rDist = Math.random() * range;
-      const rAngle = angle + (Math.random() - 0.5) * 0.5;
-      const px = gx + Math.cos(rAngle) * rDist;
-      const py = gy + Math.sin(rAngle) * rDist;
-      const life = 0.06 + Math.random() * 0.08;
-      const flowSpeed = 100 + Math.random() * 60;
-      let color = '';
+      const rAngle = angle + (Math.random() - 0.5) * cfg.angleSpread;
+      const px = x + Math.cos(rAngle) * rDist;
+      const py = y + Math.sin(rAngle) * rDist;
+      const life = cfg.lifeMin + Math.random() * cfg.lifeMax;
+      const flowSpeed = cfg.flowSpeedMin + Math.random() * cfg.flowSpeedMax;
+      let color: string;
       let particleType: ParticleType;
-      let size = 0;
+      let size: number;
 
       if (isIce) {
-        color = `rgba(${180 + Math.random() * 40}, ${220 + Math.random() * 20}, 255, ${0.5 + Math.random() * 0.5})`;
+        color = ParticleSpawner.randomRgba(cfg.iceColor);
         particleType = ParticleType.ICE;
         size = 2 + Math.random() * 4;
       } else if (isPoison) {
-        color = `rgba(${100 + Math.random() * 40}, ${220 + Math.random() * 30}, ${100 + Math.random() * 40}, ${0.4 + Math.random() * 0.4})`;
+        color = ParticleSpawner.randomRgba(cfg.poisonColor);
         particleType = ParticleType.POISON_CLOUD;
         size = 3 + Math.random() * 5;
       } else {
         const temp = Math.random();
         if (temp < 0.5) {
-          color = `rgba(255, ${100 + Math.random() * 80}, ${Math.random() * 40}, ${0.7 + Math.random() * 0.3})`;
+          color = ParticleSpawner.randomRgba(cfg.fireColor);
           particleType = ParticleType.FIRE;
-          size = 2 + Math.random() * 5;
+          size = cfg.fireSizeMin + Math.random() * cfg.fireSizeMax;
         } else {
-          color = `rgba(255, ${200 + Math.random() * 55}, ${50 + Math.random() * 50}, ${0.5 + Math.random() * 0.5})`;
+          color = ParticleSpawner.randomRgba(cfg.emberColor);
           particleType = ParticleType.EMBER;
-          size = 1 + Math.random() * 3;
+          size = cfg.emberSizeMin + Math.random() * cfg.emberSizeMax;
         }
       }
 
@@ -66,44 +148,55 @@ export class ParticleSpawner {
       });
     }
 
-    // Single spark at gun muzzle
+    // 枪口火花（参数从配置读取）
+    const ms = cfg.muzzleSpark;
     particles.push({
-      x: gx, y: gy,
-      vx: (Math.random() - 0.5) * 60,
-      vy: -60 - Math.random() * 40,
-      life: 0.08,
-      maxLife: 0.08,
-      size: 2 + Math.random() * 3,
-      color: '#fff',
+      x, y,
+      vx: (Math.random() - 0.5) * ms.vxRange,
+      vy: ms.vyMin + Math.random() * (ms.vyMax - ms.vyMin),
+      life: ms.life,
+      maxLife: ms.life,
+      size: cfg.sparkSizeMin + Math.random() * cfg.sparkSizeMax,
+      color: ms.color,
       type: ParticleType.SPARK,
     });
 
-    // Add fire zone
+    // 修复 P0：damagePerSecond = baseDamage * 乘数 / deltaTime
+    // 碰撞系统每帧应用 damagePerSecond * deltaTime，所以每帧实际伤害 = baseDamage * multiplier
+    const fireZoneLife = wpnCfg.fireZoneMaxLife;
+    const damagePerSecond = baseDamage * wpnCfg.fireZoneDpsMultiplier / deltaTime;
+
     fireZones.push({
-      x: gx + Math.cos(angle) * range / 2,
-      y: gy + Math.sin(angle) * range / 2,
+      x: x + Math.cos(angle) * range / 2,
+      y: y + Math.sin(angle) * range / 2,
       radius: range * 0.8,
-      damagePerSecond: baseDamage / deltaTime * 3,
-      life: 0.5, maxLife: 0.5,
+      damagePerSecond,
+      life: fireZoneLife,
+      maxLife: fireZoneLife,
       type,
     });
-    if (fireZones.length > 25) {
-      fireZones.length = 25;
+
+    // 修复 P0：截断保留最新的（移除最旧的）
+    const maxFireZones = wpnCfg.fireZoneMaxCount;
+    if (fireZones.length > maxFireZones) {
+      fireZones.splice(0, fireZones.length - maxFireZones);
     }
   }
 
   // ========== 烟雾粒子 ==========
 
   static spawnSmokeParticles(particles: Particle[], x: number, y: number, count: number): void {
+    const cfg = BALANCE_CONFIG.particle.smoke;
     for (let i = 0; i < count; i++) {
+      const life = cfg.lifeMin + Math.random() * cfg.lifeMax;
       particles.push({
-        x: x + (Math.random() - 0.5) * 30,
-        y: y + (Math.random() - 0.5) * 30,
-        vx: (Math.random() - 0.5) * 40,
-        vy: -30 - Math.random() * 50,
-        life: 1 + Math.random() * 2, maxLife: 1 + Math.random() * 2,
-        size: 6 + Math.random() * 16,
-        color: `hsl(0, 0%, ${35 + Math.random() * 35}%)`,
+        x: x + (Math.random() - 0.5) * cfg.offsetX,
+        y: y + (Math.random() - 0.5) * cfg.offsetY,
+        vx: (Math.random() - 0.5) * cfg.vxRange,
+        vy: cfg.vyBase - Math.random() * cfg.vyRange,
+        life, maxLife: life,
+        size: cfg.sizeMin + Math.random() * cfg.sizeMax,
+        color: `hsl(${cfg.hue}, ${cfg.saturation}%, ${cfg.lightnessMin + Math.random() * cfg.lightnessMax}%)`,
         type: ParticleType.SMOKE,
       });
     }
@@ -112,109 +205,89 @@ export class ParticleSpawner {
   // ========== 灰烬粒子 ==========
 
   static spawnAshParticles(particles: Particle[], x: number, y: number, count: number): void {
-    for (let i = 0; i < count; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const speed = 30 + Math.random() * 80;
-      particles.push({
-        x, y,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed - 40,
-        life: 0.6 + Math.random() * 1.0, maxLife: 0.6 + Math.random() * 1.0,
-        size: 2 + Math.random() * 6,
-        color: `hsl(0, 0%, ${5 + Math.random() * 20}%)`,
-        type: ParticleType.ASH,
-      });
-    }
+    const cfg = BALANCE_CONFIG.particle.ash;
+    ParticleSpawner.spawnRadial(
+      particles, count, x, y,
+      cfg.speedMin, cfg.speedMax, cfg.vyBias,
+      cfg.lifeMin, cfg.lifeMax,
+      cfg.sizeMin, cfg.sizeMax,
+      () => `hsl(${cfg.hue}, ${cfg.saturation}%, ${cfg.lightnessMin + Math.random() * cfg.lightnessMax}%)`,
+      ParticleType.ASH,
+    );
   }
 
   // ========== 血粒子 ==========
 
   static spawnBloodParticles(particles: Particle[], x: number, y: number, count: number): void {
-    for (let i = 0; i < count; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const speed = 80 + Math.random() * 200;
-      particles.push({
-        x, y,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed + 40,
-        life: 0.5, maxLife: 0.5,
-        size: 4 + Math.random() * 10,
-        color: `rgba(${20 + Math.random() * 40}, ${120 + Math.random() * 60}, ${20 + Math.random() * 40}, ${0.5 + Math.random() * 0.5})`,
-        type: ParticleType.BLOOD,
-      });
-    }
+    const cfg = BALANCE_CONFIG.particle.blood;
+    ParticleSpawner.spawnRadial(
+      particles, count, x, y,
+      cfg.speedMin, cfg.speedMax, cfg.vyBias,
+      cfg.life, 0,
+      cfg.sizeMin, cfg.sizeMax,
+      () => `rgba(${cfg.rMin + Math.random() * cfg.rMax}, ${cfg.gMin + Math.random() * cfg.gMax}, ${cfg.bMin + Math.random() * cfg.bMax}, ${cfg.alphaMin + Math.random() * cfg.alphaMax})`,
+      ParticleType.BLOOD,
+    );
   }
 
   // ========== 火花粒子 ==========
 
   static spawnSparkParticles(particles: Particle[], x: number, y: number, count: number): void {
-    for (let i = 0; i < count; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const speed = 60 + Math.random() * 120;
-      particles.push({
-        x, y,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
-        life: 0.2 + Math.random() * 0.4, maxLife: 0.2 + Math.random() * 0.4,
-        size: 1 + Math.random() * 3,
-        color: `hsl(${30 + Math.random() * 30}, 100%, 75%)`,
-        type: ParticleType.SPARK,
-      });
-    }
+    const cfg = BALANCE_CONFIG.particle.spark;
+    ParticleSpawner.spawnRadial(
+      particles, count, x, y,
+      cfg.speedMin, cfg.speedMax, 0,
+      cfg.lifeMin, cfg.lifeMax,
+      cfg.sizeMin, cfg.sizeMax,
+      () => `hsl(${cfg.hueMin + Math.random() * cfg.hueMax}, ${cfg.saturation}%, ${cfg.lightness}%)`,
+      ParticleType.SPARK,
+    );
   }
 
   // ========== 爆炸粒子 ==========
 
   static spawnExplosionParticles(particles: Particle[], x: number, y: number, count: number): void {
-    for (let i = 0; i < count; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const speed = 50 + Math.random() * 150;
-      particles.push({
-        x, y,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed - 30,
-        life: 0.3 + Math.random() * 0.5, maxLife: 0.3 + Math.random() * 0.5,
-        size: 3 + Math.random() * 12,
-        color: `hsl(${10 + Math.random() * 30}, 100%, ${50 + Math.random() * 25}%)`,
-        type: ParticleType.EXPLOSION,
-      });
-    }
+    const cfg = BALANCE_CONFIG.particle.explosion;
+    ParticleSpawner.spawnRadial(
+      particles, count, x, y,
+      cfg.speedMin, cfg.speedMax, cfg.vyBias,
+      cfg.lifeMin, cfg.lifeMax,
+      cfg.sizeMin, cfg.sizeMax,
+      () => `hsl(${cfg.hueMin + Math.random() * cfg.hueMax}, ${cfg.saturation}%, ${cfg.lightnessMin + Math.random() * cfg.lightnessMax}%)`,
+      ParticleType.EXPLOSION,
+    );
   }
 
   // ========== 碎片粒子（自爆蟑螂爆炸） ==========
 
   static spawnDebrisParticles(particles: Particle[], x: number, y: number, count: number): void {
-    for (let i = 0; i < count; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const speed = 40 + Math.random() * 120;
-      particles.push({
-        x: x + (Math.random() - 0.5) * 10,
-        y: y + (Math.random() - 0.5) * 10,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed - 50,
-        life: 3 + Math.random() * 2,
-        maxLife: 3 + Math.random() * 2,
-        size: 4 + Math.random() * 10,
-        color: `hsl(${15 + Math.random() * 20}, 80%, ${30 + Math.random() * 20}%)`,
-        type: ParticleType.ASH,
-      });
-    }
+    const cfg = BALANCE_CONFIG.particle.debris;
+    ParticleSpawner.spawnRadial(
+      particles, count, x, y,
+      cfg.speedMin, cfg.speedMax, cfg.vyBias,
+      cfg.lifeMin, cfg.lifeMax,
+      cfg.sizeMin, cfg.sizeMax,
+      () => `hsl(${cfg.hueMin + Math.random() * cfg.hueMax}, ${cfg.saturation}%, ${cfg.lightnessMin + Math.random() * cfg.lightnessMax}%)`,
+      ParticleType.ASH,
+      cfg.offsetXY,
+    );
   }
 
   // ========== 火环粒子 ==========
 
   static spawnFireRingParticles(particles: Particle[], x: number, y: number, count: number): void {
+    const cfg = BALANCE_CONFIG.particle.fireRing;
     for (let i = 0; i < count; i++) {
       const angle = (i / count) * Math.PI * 2;
-      const speed = 60 + Math.random() * 80;
+      const speed = cfg.speedMin + Math.random() * cfg.speedMax;
+      const life = cfg.lifeMin + Math.random() * cfg.lifeMax;
       particles.push({
         x, y,
         vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed - 20,
-        life: 1.5 + Math.random() * 1.5,
-        maxLife: 1.5 + Math.random() * 1.5,
-        size: 8 + Math.random() * 16,
-        color: `hsl(${10 + Math.random() * 25}, 100%, 55%)`,
+        vy: Math.sin(angle) * speed + cfg.vyBias,
+        life, maxLife: life,
+        size: cfg.sizeMin + Math.random() * cfg.sizeMax,
+        color: `hsl(${cfg.hueMin + Math.random() * cfg.hueMax}, ${cfg.saturation}%, ${cfg.lightness}%)`,
         type: ParticleType.EXPLOSION,
       });
     }
@@ -223,32 +296,34 @@ export class ParticleSpawner {
   // ========== 冲击波环 ==========
 
   static spawnShockwaveRing(particles: Particle[], x: number, y: number, count: number): void {
+    const cfg = BALANCE_CONFIG.particle.shockwave;
+    // 外层冲击波环
     for (let i = 0; i < count; i++) {
       const angle = (i / count) * Math.PI * 2;
-      const speed = 150 + Math.random() * 200;
+      const speed = cfg.outerSpeedMin + Math.random() * cfg.outerSpeedMax;
+      const life = cfg.outerLifeMin + Math.random() * cfg.outerLifeMax;
       particles.push({
         x, y,
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed,
-        life: 0.8 + Math.random() * 0.4,
-        maxLife: 0.8 + Math.random() * 0.4,
-        size: 12 + Math.random() * 20,
-        color: `rgba(255, ${200 + Math.random() * 55}, ${100 + Math.random() * 50}, 0.9)`,
+        life, maxLife: life,
+        size: cfg.outerSizeMin + Math.random() * cfg.outerSizeMax,
+        color: ParticleSpawner.randomRgba(cfg.outerColor),
         type: ParticleType.EXPLOSION,
       });
     }
-    // Inner white core burst
-    for (let i = 0; i < 10; i++) {
+    // 内层白色核心爆发
+    for (let i = 0; i < cfg.innerCount; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const speed = 80 + Math.random() * 150;
+      const speed = cfg.innerSpeedMin + Math.random() * cfg.innerSpeedMax;
+      const life = cfg.innerLifeMin + Math.random() * cfg.innerLifeMax;
       particles.push({
         x, y,
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed,
-        life: 0.5 + Math.random() * 0.3,
-        maxLife: 0.5 + Math.random() * 0.3,
-        size: 6 + Math.random() * 12,
-        color: 'rgba(255, 255, 255, 0.95)',
+        life, maxLife: life,
+        size: cfg.innerSizeMin + Math.random() * cfg.innerSizeMax,
+        color: ParticleSpawner.randomRgba(cfg.innerColor),
         type: ParticleType.SPARK,
       });
     }
@@ -256,29 +331,40 @@ export class ParticleSpawner {
 
   // ========== 闪电粒子（电蚊拍） ==========
 
-  static spawnLightningParticles(particles: Particle[], centerX: number, topY: number, width: number, height: number): void {
-    for (let i = 0; i < 20; i++) {
-      const x = centerX + (Math.random() - 0.5) * width * 0.8;
+  static spawnLightningParticles(
+    particles: Particle[],
+    x: number,
+    y: number,
+    width: number,
+    height: number
+  ): void {
+    const cfg = BALANCE_CONFIG.particle.lightning;
+    // 顶部闪电弧
+    for (let i = 0; i < cfg.topCount; i++) {
+      const px = x + (Math.random() - 0.5) * width * cfg.topWidthRatio;
+      const life = cfg.topLifeMin + Math.random() * cfg.topLifeMax;
       particles.push({
-        x, y: topY + Math.random() * 50,
-        vx: (Math.random() - 0.5) * 60,
-        vy: 100 + Math.random() * 200,
-        life: 0.4 + Math.random() * 0.4, maxLife: 0.4 + Math.random() * 0.4,
-        size: 3 + Math.random() * 6,
-        color: `rgba(150, 220, 255, ${0.6 + Math.random() * 0.4})`,
+        x: px, y: y + Math.random() * cfg.topYRange,
+        vx: (Math.random() - 0.5) * cfg.topVxRange,
+        vy: cfg.topVyMin + Math.random() * cfg.topVyMax,
+        life, maxLife: life,
+        size: cfg.topSizeMin + Math.random() * cfg.topSizeMax,
+        color: ParticleSpawner.randomRgba(cfg.topColor),
         type: ParticleType.LIGHTNING,
       });
     }
-    for (let i = 0; i < 30; i++) {
-      const x = centerX + (Math.random() - 0.5) * width;
-      const y = Math.random() * height;
+    // 全屏闪电
+    for (let i = 0; i < cfg.fullCount; i++) {
+      const px = x + (Math.random() - 0.5) * width;
+      const py = Math.random() * height;
+      const life = cfg.fullLifeMin + Math.random() * cfg.fullLifeMax;
       particles.push({
-        x, y,
-        vx: (Math.random() - 0.5) * 100,
-        vy: (Math.random() - 0.5) * 100,
-        life: 0.2 + Math.random() * 0.3, maxLife: 0.2 + Math.random() * 0.3,
-        size: 2 + Math.random() * 4,
-        color: `rgba(200, 240, 255, ${0.5 + Math.random() * 0.5})`,
+        x: px, y: py,
+        vx: (Math.random() - 0.5) * cfg.fullVxRange,
+        vy: (Math.random() - 0.5) * cfg.fullVyRange,
+        life, maxLife: life,
+        size: cfg.fullSizeMin + Math.random() * cfg.fullSizeMax,
+        color: ParticleSpawner.randomRgba(cfg.fullColor),
         type: ParticleType.LIGHTNING,
       });
     }

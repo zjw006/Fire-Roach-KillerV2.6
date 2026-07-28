@@ -6,6 +6,60 @@
 import { type ThrowableProjectile } from '../../types';
 import { BALANCE_CONFIG, TEXT_CONFIG, FLOAT_COLOR } from '../../data';
 
+// =============================================================================
+// 类型定义
+// =============================================================================
+
+/** 投掷武器类型（单一数据源，新增武器只需扩展此类型和 THROW_WEAPON_META） */
+type ThrowWeapon = 'sticky' | 'poison' | 'molotov';
+
+/** 投掷武器元数据：名称、颜色、音效等（逻辑与渲染共用，消除重复定义） */
+interface ThrowWeaponMeta {
+  /** 武器显示名称（修复问题 P2：消除 TEXT_CONFIG.items[weapon] 类型不安全） */
+  name: string;
+  /** 轨迹线颜色 */
+  trajectoryColor: string;
+  /** 目标圆圈颜色前缀（拼接透明度） */
+  targetColorPrefix: string;
+  /** 投掷音效名称 */
+  sound: string;
+}
+
+// =============================================================================
+// 武器元数据（单一数据源）
+// =============================================================================
+
+const THROW_WEAPON_META: Record<ThrowWeapon, ThrowWeaponMeta> = {
+  sticky: {
+    name: '蟑螂贴板',
+    trajectoryColor: 'rgba(250, 200, 50, 0.6)',
+    targetColorPrefix: 'rgba(250, 200, 50, ',
+    sound: 'sticky_throw',
+  },
+  poison: {
+    name: '杀虫剂',
+    trajectoryColor: 'rgba(180, 130, 255, 0.6)',
+    targetColorPrefix: 'rgba(180, 130, 255, ',
+    sound: 'poison_throw',
+  },
+  molotov: {
+    name: '燃烧瓶',
+    trajectoryColor: 'rgba(255, 100, 80, 0.6)',
+    targetColorPrefix: 'rgba(255, 100, 80, ',
+    sound: 'molotov_throw',
+  },
+};
+
+// =============================================================================
+// 模块级兜底计数器（修复问题 P1：替代静态字段，避免多实例冲突）
+// =============================================================================
+
+let _fallbackIdCounter = 100000;
+
+// =============================================================================
+// 配置接口
+// =============================================================================
+
 /**
  * 瞄准系统配置接口
  */
@@ -14,12 +68,18 @@ export interface AimingSystemConfig {
   onAddFloatingText?: (x: number, y: number, text: string, color: string) => void;
   /** 播放音效回调 */
   onPlaySound?: (soundName: string) => void;
+  /** 获取下一个投掷物 ID */
+  getNextThrowableId?: () => number;
+  /** 获取画布宽度 */
+  getCanvasWidth?: () => number;
+  /** 获取防线 Y 坐标 */
+  getDefenseLineY?: () => number;
 }
 
-/**
- * 瞄准系统类
- * @description 管理游戏中投掷武器的瞄准逻辑，包括蓄力计算、抛物线轨迹、投掷执行等
- */
+// =============================================================================
+// 瞄准系统
+// =============================================================================
+
 export class AimingSystem {
   /** 系统配置 */
   private config: AimingSystemConfig;
@@ -28,113 +88,148 @@ export class AimingSystem {
   private isAiming: boolean = false;
 
   /** 瞄准的武器类型 */
-  private aimWeapon: 'sticky' | 'poison' | 'molotov' | null = null;
+  private aimWeapon: ThrowWeapon | null = null;
 
   /** 瞄准力量（0-1） */
   private aimPower: number = 0;
 
-  /** 瞄准目标X坐标 */
+  /** 瞄准目标 X 坐标 */
   private aimTargetX: number = 0;
 
-  /** 瞄准目标Y坐标 */
+  /** 瞄准目标 Y 坐标 */
   private aimTargetY: number = 0;
 
   /** 瞄准开始时间 */
   private aimStartTime: number = 0;
 
-  /** 最大蓄力时间（秒） */
-  private aimMaxPowerTime: number = BALANCE_CONFIG.aiming.maxPowerTime;
-
-  /** 最小瞄准距离 */
-  private aimMinDist: number = BALANCE_CONFIG.aiming.minDist;
-
-  /** 最大瞄准距离 */
-  private aimMaxDist: number = BALANCE_CONFIG.aiming.maxDist;
-
-  /**
-   * 构造函数
-   * @param config 系统配置
-   */
   constructor(config: AimingSystemConfig) {
     this.config = config;
   }
 
   /**
    * 更新系统配置
-   * @param config 新的配置
    */
   updateConfig(config: Partial<AimingSystemConfig>): void {
     this.config = { ...this.config, ...config };
   }
 
+  // ========== 辅助方法 ==========
+
+  /**
+   * 获取投掷起点坐标（静态方法，逻辑和渲染共用）
+   */
+  static getThrowStartPoint(playerX: number, playerY: number): { x: number; y: number } {
+    return {
+      x: playerX,
+      y: playerY - BALANCE_CONFIG.player.nozzleOffsetY,
+    };
+  }
+
+  /**
+   * 边界钳制（修复问题 P1：消除 4 处重复的边界检查代码）
+   */
+  private clampAimTarget(x: number, y: number, canvasWidth: number, defenseLineY: number): { x: number; y: number } {
+    const cfg = BALANCE_CONFIG.aiming;
+    const mx = cfg.borderMarginX;
+    return {
+      x: Math.max(mx, Math.min(canvasWidth - mx, x)),
+      y: Math.max(cfg.borderMarginTop, Math.min(defenseLineY - cfg.borderMarginFromDefense, y)),
+    };
+  }
+
+  /**
+   * 获取画布宽度（回调优先，兜底用配置）
+   */
+  private getCanvasWidth(): number {
+    return this.config.getCanvasWidth?.() ?? BALANCE_CONFIG.aiming.defaultCanvasWidth;
+  }
+
+  /**
+   * 获取防线 Y 坐标（回调优先，兜底用配置）
+   */
+  private getDefenseLineY(): number {
+    return this.config.getDefenseLineY?.() ?? BALANCE_CONFIG.aiming.defaultDefenseLineY;
+  }
+
   // ========== 瞄准控制 ==========
 
   /**
-   * 开始瞄准
+   * 开始瞄准（修复问题 P1：弹药参数改为必传，防止漏检）
    * @param weapon 武器类型
    * @param gameTime 当前游戏时间
-   * @param playerX 玩家X坐标
-   * @param playerY 玩家Y坐标
+   * @param playerX 玩家 X 坐标
+   * @param playerY 玩家 Y 坐标
+   * @param playerWeaponAmmo 玩家武器弹药（必传）
+   * @param playerIsTempWeapon 是否临时武器（必传）
+   * @returns 是否成功开始瞄准
    */
   startAiming(
-    weapon: 'sticky' | 'poison' | 'molotov',
+    weapon: ThrowWeapon,
     gameTime: number,
     playerX: number,
-    playerY: number
-  ): void {
-    if (this.isAiming) return;
+    playerY: number,
+    playerWeaponAmmo: Record<string, number>,
+    playerIsTempWeapon: boolean,
+  ): boolean {
+    if (this.isAiming) return false;
+
+    // 弹药预检：无弹药时不开始瞄准
+    if (playerIsTempWeapon) {
+      const ammo = playerWeaponAmmo[weapon] ?? 0;
+      if (ammo <= 0) return false;
+    }
+
     this.isAiming = true;
     this.aimWeapon = weapon;
     this.aimPower = 0;
     this.aimStartTime = gameTime;
-    // 初始目标：正上方最小距离
-    this.aimTargetX = playerX;
-    this.aimTargetY = playerY - 322 - this.aimMinDist;
+    const start = AimingSystem.getThrowStartPoint(playerX, playerY);
+    this.aimTargetX = start.x;
+    this.aimTargetY = start.y - BALANCE_CONFIG.aiming.minDist;
+    return true;
   }
 
   /**
-   * 更新瞄准逻辑
-   * @param gameTime 当前游戏时间
-   * @param canvasWidth 画布宽度
-   * @param defenseLineY 防线Y坐标
-   * @param playerY 玩家Y坐标
+   * 更新瞄准逻辑（直接从 BALANCE_CONFIG 读取，支持热更新）
    */
-  updateAiming(
-    gameTime: number,
-    canvasWidth: number,
-    defenseLineY: number,
-    playerY: number
-  ): void {
+  updateAiming(gameTime: number, canvasWidth: number, defenseLineY: number, playerY: number): void {
     if (!this.isAiming) return;
-    // 力量随按住时间增加（0到1）
     const holdDuration = gameTime - this.aimStartTime;
-    this.aimPower = Math.min(1, holdDuration / this.aimMaxPowerTime);
-    // Y距离：基于力量从最小到最大
-    const dist = this.aimMinDist + (this.aimMaxDist - this.aimMinDist) * this.aimPower;
-    // 限制目标位置
-    this.aimTargetX = Math.max(40, Math.min(canvasWidth - 40, this.aimTargetX));
-    this.aimTargetY = Math.max(60, Math.min(defenseLineY - 20, playerY - 322 - dist));
+    this.aimPower = Math.min(1, holdDuration / BALANCE_CONFIG.aiming.maxPowerTime);
+    const dist = BALANCE_CONFIG.aiming.minDist + (BALANCE_CONFIG.aiming.maxDist - BALANCE_CONFIG.aiming.minDist) * this.aimPower;
+    const clamped = this.clampAimTarget(this.aimTargetX, playerY - BALANCE_CONFIG.player.nozzleOffsetY - dist, canvasWidth, defenseLineY);
+    this.aimTargetX = clamped.x;
+    this.aimTargetY = clamped.y;
   }
 
   /**
-   * 调整瞄准
-   * @param dx X方向调整量（屏幕像素）
-   * @param canvasWidth 画布宽度
+   * 调整 X 轴瞄准
    */
-  adjustAim(dx: number, canvasWidth: number): void {
+  adjustAimX(dx: number, canvasWidth: number): void {
     if (!this.isAiming) return;
-    // dx来自输入是屏幕像素，转换为游戏坐标
-    this.aimTargetX += dx * 1.5;
-    this.aimTargetX = Math.max(40, Math.min(canvasWidth - 40, this.aimTargetX));
+    const sensitivity = BALANCE_CONFIG.aiming.adjustSensitivity;
+    this.aimTargetX += dx * sensitivity;
+    const defenseLineY = this.getDefenseLineY();
+    const clamped = this.clampAimTarget(this.aimTargetX, this.aimTargetY, canvasWidth, defenseLineY);
+    this.aimTargetX = clamped.x;
+    this.aimTargetY = clamped.y;
+  }
+
+  /**
+   * 调整 Y 轴瞄准
+   */
+  adjustAimY(dy: number, defenseLineY: number): void {
+    if (!this.isAiming) return;
+    const sensitivity = BALANCE_CONFIG.aiming.adjustSensitivity;
+    this.aimTargetY += dy * sensitivity;
+    const canvasWidth = this.getCanvasWidth();
+    const clamped = this.clampAimTarget(this.aimTargetX, this.aimTargetY, canvasWidth, defenseLineY);
+    this.aimTargetX = clamped.x;
+    this.aimTargetY = clamped.y;
   }
 
   /**
    * 投掷瞄准的武器
-   * @param playerIsTempWeapon 玩家是否使用临时武器
-   * @param playerWeaponAmmo 玩家武器弹药
-   * @param playerX 玩家X坐标
-   * @param playerY 玩家Y坐标
-   * @returns 生成的投掷物和更新后的弹药
    */
   throwAimedWeapon(
     playerIsTempWeapon: boolean,
@@ -150,25 +245,36 @@ export class AimingSystem {
     }
 
     const weapon = this.aimWeapon;
-    const startX = playerX;
-    const startY = playerY - 322;
+    const start = AimingSystem.getThrowStartPoint(playerX, playerY);
     const targetX = this.aimTargetX;
     const targetY = this.aimTargetY;
 
-    // 计算抛物线轨迹的速度
-    const dx = targetX - startX;
-    const dy = targetY - startY;
+    // 弹药检查
+    const updatedAmmo = { ...playerWeaponAmmo };
+    if (playerIsTempWeapon) {
+      const currentAmmo = updatedAmmo[weapon] ?? 0;
+      if (currentAmmo <= 0) {
+        this.cancelAiming();
+        return { throwable: null, updatedAmmo };
+      }
+      updatedAmmo[weapon] = currentAmmo - 1;
+    }
+
+    // 计算抛物线速度
+    const dx = targetX - start.x;
+    const dy = targetY - start.y;
     const travelTime = BALANCE_CONFIG.aiming.travelTimeBase + this.aimPower * BALANCE_CONFIG.aiming.travelTimePowerMult;
     const vx = dx / travelTime;
-    // vy计算考虑重力到达targetY
-    // y = vy * t + 0.5 * g * t^2 => vy = (dy - 0.5 * g * t^2) / t
     const gravity = BALANCE_CONFIG.aiming.gravity;
     const vy = (dy - 0.5 * gravity * travelTime * travelTime) / travelTime;
 
+    // 模块级兜底计数器（修复问题 P1：避免静态字段多实例冲突）
+    const throwableId = this.config.getNextThrowableId?.() ?? ++_fallbackIdCounter;
+
     const throwable: ThrowableProjectile = {
-      id: 0, // 由引擎分配
-      x: startX,
-      y: startY,
+      id: throwableId,
+      x: start.x,
+      y: start.y,
       vx,
       vy,
       type: weapon,
@@ -180,30 +286,17 @@ export class AimingSystem {
       targetY,
     };
 
-    // 如果使用临时武器，扣除弹药
-    const updatedAmmo = { ...playerWeaponAmmo };
-    if (playerIsTempWeapon && weapon in updatedAmmo) {
-      updatedAmmo[weapon] = Math.max(0, updatedAmmo[weapon] - 1);
-    }
+    // 播放投掷音效
+    this.config.onPlaySound?.(THROW_WEAPON_META[weapon].sound);
 
-    // 播放燃烧瓶投掷音效
-    if (weapon === 'molotov') {
-      this.config.onPlaySound?.('molotov_throw');
-    }
+    // 浮动文字（修复问题 P2：使用元数据 name，类型安全）
+    this.config.onAddFloatingText?.(
+      start.x, start.y - 30,
+      TEXT_CONFIG.combat.throwWeapon(THROW_WEAPON_META[weapon].name),
+      FLOAT_COLOR.gold
+    );
 
-    // 浮动文字
-    const names: Record<string, string> = {
-      sticky: TEXT_CONFIG.items.sticky,
-      poison: TEXT_CONFIG.items.poison,
-      molotov: TEXT_CONFIG.items.molotov,
-    };
-    this.config.onAddFloatingText?.(startX, startY - 30, TEXT_CONFIG.combat.throwWeapon(names[weapon]), FLOAT_COLOR.gold);
-
-    // 重置瞄准状态
-    this.isAiming = false;
-    this.aimWeapon = null;
-    this.aimPower = 0;
-
+    this.cancelAiming();
     return { throwable, updatedAmmo };
   }
 
@@ -214,17 +307,18 @@ export class AimingSystem {
     this.isAiming = false;
     this.aimWeapon = null;
     this.aimPower = 0;
+    this.aimTargetX = 0;
+    this.aimTargetY = 0;
   }
 
   // ========== 状态查询 ==========
 
   /**
    * 获取当前瞄准状态
-   * @returns 瞄准状态
    */
   getAimingState(): {
     isAiming: boolean;
-    aimWeapon: 'sticky' | 'poison' | 'molotov' | null;
+    aimWeapon: ThrowWeapon | null;
     aimPower: number;
     aimTargetX: number;
     aimTargetY: number;
@@ -239,47 +333,42 @@ export class AimingSystem {
   }
 
   /**
-   * 设置瞄准目标
-   * @param targetX 目标X坐标
-   * @param targetY 目标Y坐标
+   * 设置瞄准目标（修复问题 P2：回调兜底值从配置读取）
    */
   setAimTarget(targetX: number, targetY: number): void {
-    this.aimTargetX = targetX;
-    this.aimTargetY = targetY;
+    const canvasWidth = this.getCanvasWidth();
+    const defenseLineY = this.getDefenseLineY();
+    const clamped = this.clampAimTarget(targetX, targetY, canvasWidth, defenseLineY);
+    this.aimTargetX = clamped.x;
+    this.aimTargetY = clamped.y;
   }
 
   /**
-   * 检查是否在瞄准范围内
-   * @param x X坐标
-   * @param y Y坐标
-   * @param playerX 玩家X坐标
-   * @param playerY 玩家Y坐标
+   * 检查是否在瞄准范围内（修复问题 P2：参数恢复为直觉设计，调用方传玩家位置即可）
+   * @param targetX 目标 X 坐标
+   * @param targetY 目标 Y 坐标
+   * @param playerX 玩家 X 坐标
+   * @param playerY 玩家 Y 坐标
    * @returns 是否在范围内
    */
-  isInAimingRange(x: number, y: number, playerX: number, playerY: number): boolean {
-    const startX = playerX;
-    const startY = playerY - 322;
-    const dx = x - startX;
-    const dy = y - startY;
+  isInAimingRange(targetX: number, targetY: number, playerX: number, playerY: number): boolean {
+    const start = AimingSystem.getThrowStartPoint(playerX, playerY);
+    const dx = targetX - start.x;
+    const dy = targetY - start.y;
     const distance = Math.sqrt(dx * dx + dy * dy);
-    return distance >= this.aimMinDist && distance <= this.aimMaxDist;
+    return distance >= BALANCE_CONFIG.aiming.minDist && distance <= BALANCE_CONFIG.aiming.maxDist;
   }
 
   // ========== 静态渲染 ==========
 
   /**
    * 渲染瞄准线（虚线抛物线 + 目标圆圈 + 十字准星）
-   * @param ctx Canvas渲染上下文
-   * @param state 瞄准状态
-   * @param playerX 玩家X坐标
-   * @param playerY 玩家Y坐标
-   * @param gameTime 当前游戏时间（用于脉冲动画）
    */
   static renderThrowableAim(
     ctx: CanvasRenderingContext2D,
     state: {
       isAiming: boolean;
-      aimWeapon: 'sticky' | 'poison' | 'molotov' | null;
+      aimWeapon: ThrowWeapon | null;
       aimPower: number;
       aimTargetX: number;
       aimTargetY: number;
@@ -290,32 +379,28 @@ export class AimingSystem {
   ): void {
     if (!state.isAiming || !state.aimWeapon) return;
 
-    const startX = playerX;
-    const startY = playerY - 322;
+    const start = AimingSystem.getThrowStartPoint(playerX, playerY);
+    const startX = start.x;
+    const startY = start.y;
     const targetX = state.aimTargetX;
     const targetY = state.aimTargetY;
 
-    // 计算弧线控制点
+    const meta = THROW_WEAPON_META[state.aimWeapon];
+
+    // 弧线控制点
     const midX = (startX + targetX) / 2;
     const arcHeight = BALANCE_CONFIG.aiming.arcHeightBase + state.aimPower * BALANCE_CONFIG.aiming.arcHeightPowerMult;
     const controlX = midX;
     const controlY = Math.min(startY, targetY) - arcHeight;
 
-    // 绘制抛物线轨迹线（虚线）
+    // 抛物线轨迹线（虚线）
     ctx.save();
     ctx.setLineDash([6, 6]);
     ctx.lineWidth = 2;
-
-    const colors: Record<string, string> = {
-      sticky: 'rgba(250, 200, 50, 0.6)',
-      poison: 'rgba(180, 130, 255, 0.6)',
-      molotov: 'rgba(255, 100, 80, 0.6)',
-    };
-    ctx.strokeStyle = colors[state.aimWeapon];
+    ctx.strokeStyle = meta.trajectoryColor;
 
     ctx.beginPath();
     ctx.moveTo(startX, startY);
-    // 绘制二次贝塞尔曲线
     const steps = BALANCE_CONFIG.aiming.trajectorySteps;
     for (let i = 1; i <= steps; i++) {
       const t = i / steps;
@@ -326,30 +411,23 @@ export class AimingSystem {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // 绘制目标圆圈（脉冲）
+    // 目标圆圈（脉冲）
     const pulse = (Math.sin(gameTime * 8) + 1) * 0.5;
     const targetRadius = 30 + state.aimPower * 20;
 
-    const targetColors: Record<string, string> = {
-      sticky: 'rgba(250, 200, 50, ',
-      poison: 'rgba(180, 130, 255, ',
-      molotov: 'rgba(255, 100, 80, ',
-    };
-    const tc = targetColors[state.aimWeapon];
-
-    ctx.fillStyle = `${tc}${0.15 + pulse * 0.1})`;
+    ctx.fillStyle = `${meta.targetColorPrefix}${0.15 + pulse * 0.1})`;
     ctx.beginPath();
     ctx.arc(targetX, targetY, targetRadius, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.strokeStyle = `${tc}${0.5 + pulse * 0.3})`;
+    ctx.strokeStyle = `${meta.targetColorPrefix}${0.5 + pulse * 0.3})`;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.arc(targetX, targetY, targetRadius * (0.7 + pulse * 0.3), 0, Math.PI * 2);
     ctx.stroke();
 
     // 十字准星
-    ctx.strokeStyle = `${tc}0.8)`;
+    ctx.strokeStyle = `${meta.targetColorPrefix}0.8)`;
     ctx.lineWidth = 1.5;
     const crossSize = 8;
     ctx.beginPath();
@@ -361,19 +439,14 @@ export class AimingSystem {
 
     // 力度指示文字
     const powerPercent = Math.round(state.aimPower * 100);
-    ctx.fillStyle = `${tc}0.9)`;
+    ctx.fillStyle = `${meta.targetColorPrefix}0.9)`;
     ctx.font = 'bold 12px sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText(`力度 ${powerPercent}%`, targetX, targetY - targetRadius - 10);
 
-    // 武器名称
-    const names: Record<string, string> = {
-      sticky: TEXT_CONFIG.items.sticky,
-      poison: TEXT_CONFIG.items.poison,
-      molotov: TEXT_CONFIG.items.molotov,
-    };
+    // 武器名称（修复问题 P2：使用元数据 name，类型安全）
     ctx.fillStyle = '#fff';
-    ctx.fillText(names[state.aimWeapon], startX, startY - 40);
+    ctx.fillText(THROW_WEAPON_META[state.aimWeapon].name, startX, startY - 40);
 
     ctx.restore();
   }
@@ -381,14 +454,10 @@ export class AimingSystem {
   // ========== 重置 ==========
 
   /**
-   * 重置瞄准系统
+   * 重置瞄准系统（修复问题 P2：调用 cancelAiming 消除重复代码）
    */
   reset(): void {
-    this.isAiming = false;
-    this.aimWeapon = null;
-    this.aimPower = 0;
-    this.aimTargetX = 0;
-    this.aimTargetY = 0;
+    this.cancelAiming();
     this.aimStartTime = 0;
   }
 }

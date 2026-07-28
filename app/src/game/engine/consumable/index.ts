@@ -3,4 +3,4 @@
  * @description 导出消耗品系统的所有相关类和接口
  */
 
-export { ConsumableSystem, type ConsumableSystemConfig, type ConsumableEffect } from './ConsumableSystem';
+export { ConsumableSystem, type ConsumableSystemConfig, type ConsumableEffectCallbacks, type ConsumableStateCallbacks, type ConsumableUICallbacks } from './ConsumableSystem';

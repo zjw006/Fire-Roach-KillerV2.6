@@ -1,12 +1,14 @@
 /**
  * @fileoverview 背景渲染模块
- * @description 提供背景、火焰区域、天气效果、火焰墙的静态渲染方法
+ * @description 提供背景、火焰区域、天气效果、火焰墙的静态渲染方法。
+ *              所有数值参数从 BALANCE_CONFIG.render 读取。
  */
 
 import { SceneType, WeatherType } from '../../types';
 import type { Player, FireWall } from '../../types';
 import { WeatherSystem } from '../weather/WeatherSystem';
 import { ParticleSystem } from '../particle/ParticleSystem';
+import { BALANCE_CONFIG } from '../../data';
 
 // =============================================================================
 // 配置接口
@@ -18,27 +20,11 @@ export interface BackgroundRenderConfig {
   difficulty: string;
   sceneConfig: { bgImage?: boolean; bgColor: string; tileColors: [string, string]; weather: WeatherType; };
   imagesLoaded: boolean;
+  /** 新场景系统：bgImage 路径映射的图片 */
   bgSceneImages: Record<string, HTMLImageElement>;
+  /** 旧场景系统：key='{scene}_{difficulty}' 或 '{scene}' */
+  bgImages: Record<string, HTMLImageElement>;
   lightningFlash: number;
-  // 场景专属背景图
-  bgKitchenHardImg?: HTMLImageElement;
-  bgKitchenEasyImg?: HTMLImageElement;
-  bgImg?: HTMLImageElement;
-  bgSewerHardImg?: HTMLImageElement;
-  bgSewerEasyImg?: HTMLImageElement;
-  bgSewerImg?: HTMLImageElement;
-  bgDumpHardImg?: HTMLImageElement;
-  bgDumpEasyImg?: HTMLImageElement;
-  bgDumpImg?: HTMLImageElement;
-  bgBasementHardImg?: HTMLImageElement;
-  bgBasementEasyImg?: HTMLImageElement;
-  bgBasementImg?: HTMLImageElement;
-  bgRooftopHardImg?: HTMLImageElement;
-  bgRooftopEasyImg?: HTMLImageElement;
-  bgRooftopImg?: HTMLImageElement;
-  bgStreetHardImg?: HTMLImageElement;
-  bgStreetEasyImg?: HTMLImageElement;
-  bgStreetImg?: HTMLImageElement;
 }
 
 /** 火焰区域渲染配置 */
@@ -57,28 +43,28 @@ function getFlameColor(t: number, weapon: string = 'flamethrower'): string {
   let r: number, g: number, b: number;
 
   if (weapon === 'sticky') {
-    r = Math.floor(250);
-    g = Math.floor(200 + t * 55);
-    b = Math.floor(50 + t * 50);
+    r = 250;
+    g = 200 + t * 55;
+    b = 50 + t * 50;
   } else if (weapon === 'poison') {
-    r = Math.floor(150 - t * 100);
-    g = Math.floor(100 + t * 100);
-    b = Math.floor(200 - t * 50);
+    r = 150 - t * 100;
+    g = 100 + t * 100;
+    b = 200 - t * 50;
   } else if (weapon === 'shotgun') {
     r = 255;
-    g = Math.floor(150 + t * 105);
-    b = Math.floor(50 + t * 100);
+    g = 150 + t * 105;
+    b = 50 + t * 100;
   } else {
     if (t < 0.5) {
       const s = t * 2;
-      r = Math.floor(60 + s * 140);
-      g = Math.floor(140 - s * 80);
-      b = Math.floor(255 - s * 100);
+      r = 60 + s * 140;
+      g = 140 - s * 80;
+      b = 255 - s * 100;
     } else {
       const s = (t - 0.5) * 2;
-      r = Math.floor(200 + s * 55);
-      g = Math.floor(60 - s * 60);
-      b = Math.floor(155 - s * 155);
+      r = 200 + s * 55;
+      g = 60 - s * 60;
+      b = 155 - s * 155;
     }
   }
 
@@ -93,13 +79,12 @@ function getFlameColor(t: number, weapon: string = 'flamethrower'): string {
 export class BackgroundRenderer {
   /** 渲染场景背景 */
   static renderBackground(ctx: CanvasRenderingContext2D, w: number, h: number, cfg: BackgroundRenderConfig): void {
-    const { currentScene, difficulty, sceneConfig: scene } = cfg;
-    const isHard = difficulty === 'hard';
-    const isEasy = difficulty === 'easy';
+    const { currentScene, difficulty, sceneConfig: scene, bgSceneImages, bgImages } = cfg;
+    const cfgBg = BALANCE_CONFIG.render.background;
 
     // GENERIC bgImage support for new scenes
-    if (scene.bgImage && cfg.bgSceneImages[currentScene]) {
-      const bgImg = cfg.bgSceneImages[currentScene];
+    if (scene.bgImage && bgSceneImages[currentScene]) {
+      const bgImg = bgSceneImages[currentScene];
       if (bgImg.complete && bgImg.naturalWidth > 0) {
         const imgRatio = bgImg.naturalWidth / bgImg.naturalHeight;
         const canvasRatio = w / h;
@@ -115,60 +100,24 @@ export class BackgroundRenderer {
           drawX = 0;
           drawY = (h - drawH) / 2;
         }
-        ctx.globalAlpha = 0.8;
+        ctx.globalAlpha = cfgBg.bgImageAlpha;
         ctx.drawImage(bgImg, drawX, drawY, drawW, drawH);
         ctx.globalAlpha = 1;
         return;
       }
     }
 
-    // KITCHEN
-    if (currentScene === SceneType.KITCHEN && isHard && cfg.bgKitchenHardImg && cfg.imagesLoaded) {
-      ctx.drawImage(cfg.bgKitchenHardImg, 0, 0, w, h);
-    } else if (currentScene === SceneType.KITCHEN && isEasy && cfg.bgKitchenEasyImg && cfg.imagesLoaded) {
-      ctx.drawImage(cfg.bgKitchenEasyImg, 0, 0, w, h);
-    } else if (currentScene === SceneType.KITCHEN && cfg.bgImg && cfg.imagesLoaded) {
-      ctx.drawImage(cfg.bgImg, 0, 0, w, h);
-    // SEWER
-    } else if (currentScene === SceneType.SEWER && isHard && cfg.bgSewerHardImg && cfg.imagesLoaded) {
-      ctx.drawImage(cfg.bgSewerHardImg, 0, 0, w, h);
-    } else if (currentScene === SceneType.SEWER && isEasy && cfg.bgSewerEasyImg && cfg.imagesLoaded) {
-      ctx.drawImage(cfg.bgSewerEasyImg, 0, 0, w, h);
-    } else if (currentScene === SceneType.SEWER && cfg.bgSewerImg && cfg.imagesLoaded) {
-      ctx.drawImage(cfg.bgSewerImg, 0, 0, w, h);
-    // DUMP
-    } else if (currentScene === SceneType.DUMP && isHard && cfg.bgDumpHardImg && cfg.imagesLoaded) {
-      ctx.drawImage(cfg.bgDumpHardImg, 0, 0, w, h);
-    } else if (currentScene === SceneType.DUMP && isEasy && cfg.bgDumpEasyImg && cfg.imagesLoaded) {
-      ctx.drawImage(cfg.bgDumpEasyImg, 0, 0, w, h);
-    } else if (currentScene === SceneType.DUMP && cfg.bgDumpImg && cfg.imagesLoaded) {
-      ctx.drawImage(cfg.bgDumpImg, 0, 0, w, h);
-    // BASEMENT
-    } else if (currentScene === SceneType.BASEMENT && isHard && cfg.bgBasementHardImg && cfg.imagesLoaded) {
-      ctx.drawImage(cfg.bgBasementHardImg, 0, 0, w, h);
-    } else if (currentScene === SceneType.BASEMENT && isEasy && cfg.bgBasementEasyImg && cfg.imagesLoaded) {
-      ctx.drawImage(cfg.bgBasementEasyImg, 0, 0, w, h);
-    } else if (currentScene === SceneType.BASEMENT && cfg.bgBasementImg && cfg.imagesLoaded) {
-      ctx.drawImage(cfg.bgBasementImg, 0, 0, w, h);
-    // ROOFTOP
-    } else if (currentScene === SceneType.ROOFTOP && isHard && cfg.bgRooftopHardImg && cfg.imagesLoaded) {
-      ctx.drawImage(cfg.bgRooftopHardImg, 0, 0, w, h);
-    } else if (currentScene === SceneType.ROOFTOP && isEasy && cfg.bgRooftopEasyImg && cfg.imagesLoaded) {
-      ctx.drawImage(cfg.bgRooftopEasyImg, 0, 0, w, h);
-    } else if (currentScene === SceneType.ROOFTOP && cfg.bgRooftopImg && cfg.imagesLoaded) {
-      ctx.drawImage(cfg.bgRooftopImg, 0, 0, w, h);
-    // STREET
-    } else if (currentScene === SceneType.STREET && isHard && cfg.bgStreetHardImg && cfg.imagesLoaded) {
-      ctx.drawImage(cfg.bgStreetHardImg, 0, 0, w, h);
-    } else if (currentScene === SceneType.STREET && isEasy && cfg.bgStreetEasyImg && cfg.imagesLoaded) {
-      ctx.drawImage(cfg.bgStreetEasyImg, 0, 0, w, h);
-    } else if (currentScene === SceneType.STREET && cfg.bgStreetImg && cfg.imagesLoaded) {
-      ctx.drawImage(cfg.bgStreetImg, 0, 0, w, h);
+    // 修复 P0：哈希查找替代巨型 if-else 链
+    // 优先级：{scene}_{difficulty} > {scene}
+    const bgKey = `${currentScene}_${difficulty}`;
+    const img = bgImages[bgKey] || bgImages[currentScene];
+    if (img && cfg.imagesLoaded) {
+      ctx.drawImage(img, 0, 0, w, h);
     } else {
       // Fallback: tile-based background
       ctx.fillStyle = scene.bgColor;
       ctx.fillRect(0, 0, w, h);
-      const tileSize = 48;
+      const tileSize = cfgBg.tileSize;
       for (let x = 0; x < w; x += tileSize) {
         for (let y = 0; y < h; y += tileSize) {
           const isEven = ((x / tileSize) + (y / tileSize)) % 2 === 0;
@@ -178,24 +127,22 @@ export class BackgroundRenderer {
       }
     }
 
-    // Night overlay
+    // 修复 P2：夜晚叠加移到暗角之前（避免覆盖暗角）
     if (scene.weather === WeatherType.NIGHT) {
-      const nightAlpha = 0.4 + (cfg.lightningFlash > 0 ? 0.2 : 0);
-      ctx.fillStyle = `rgba(0, 0, 20, ${nightAlpha})`;
+      const nightAlpha = cfgBg.nightBaseAlpha + (cfg.lightningFlash > 0 ? cfgBg.nightFlashAlpha : 0);
+      ctx.fillStyle = cfgBg.nightColor.replace('{alpha}', String(nightAlpha));
       ctx.fillRect(0, 0, w, h);
     }
 
     // Vignette gradient
-    const grad = ctx.createRadialGradient(w / 2, h / 2, h * 0.4, w / 2, h / 2, h * 0.8);
-    grad.addColorStop(0, 'rgba(0,0,0,0)');
-    grad.addColorStop(1, 'rgba(0,0,0,0.5)');
+    const grad = ctx.createRadialGradient(
+      w / 2, h / 2, h * cfgBg.vignetteInnerRadius,
+      w / 2, h / 2, h * cfgBg.vignetteOuterRadius
+    );
+    grad.addColorStop(0, cfgBg.vignetteInnerColor);
+    grad.addColorStop(1, cfgBg.vignetteOuterColor);
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, w, h);
-  }
-
-  /** 渲染天气背景（委托给 WeatherSystem） */
-  static renderWeatherBackground(ctx: CanvasRenderingContext2D, w: number, h: number, lightningFlash: number): void {
-    WeatherSystem.renderWeatherBackground(ctx, w, h, lightningFlash);
   }
 
   /** 渲染火焰区域（玩家武器火焰特效） */
@@ -204,8 +151,10 @@ export class BackgroundRenderer {
     if (!p.isFiring || p.isOverheated || p.isReloading || p.gas <= 0) return;
     if (p.currentWeapon === 'molotov') return;
 
-    const maxRange = p.fireRange * 0.5;
-    const nozzleY = p.y - 322;
+    const rcfg = BALANCE_CONFIG.render.fireZone;
+    const maxRange = p.fireRange * rcfg.rangeRatio;
+    // 修复 P1：使用 BALANCE_CONFIG.player.nozzleOffsetY 替代硬编码 322
+    const nozzleY = p.y - BALANCE_CONFIG.player.nozzleOffsetY;
     const endY = nozzleY - maxRange;
 
     const gunXs: number[] = [p.x];
@@ -220,24 +169,26 @@ export class BackgroundRenderer {
     for (let gi = 0; gi < gunXs.length; gi++) {
       const gunX = gunXs[gi];
       const isSideGun = gi > 0;
-      const flameScale = isSideGun ? 0.6 : 1.0;
-      const nozzleYOffset = isSideGun ? 50 : 0;
+      const flameScale = isSideGun ? rcfg.sideGunScale : 1.0;
+      // 修复 P2：侧枪喷嘴偏移改用配置值
+      const nozzleYOffset = isSideGun ? rcfg.sideGunNozzleOffset : 0;
       const gunNozzleY = nozzleY + nozzleYOffset;
       const gunEndY = endY + nozzleYOffset;
 
-      const segments = 50;
+      // 修复 P0：段数从50降至20，使用纯色填充替代每段创建渐变
+      const segments = rcfg.segments;
       for (let i = 0; i < segments; i++) {
         const t0 = i / segments;
         const t1 = (i + 1) / segments;
         const y0 = gunNozzleY + (gunEndY - gunNozzleY) * t0;
         const y1 = gunNozzleY + (gunEndY - gunNozzleY) * t1;
 
-        const baseWidth = 32 * flameScale;
-        const w0 = baseWidth * (1 - t0 * 0.94) + Math.sin(t0 * Math.PI * 6 + cfg.time * 30 + gi) * 5;
-        const w1 = baseWidth * (1 - t1 * 0.94) + Math.sin(t1 * Math.PI * 6 + cfg.time * 30 + gi) * 5;
+        const baseWidth = rcfg.baseWidth * flameScale;
+        const w0 = baseWidth * (1 - t0 * rcfg.widthTaper) + Math.sin(t0 * Math.PI * rcfg.wiggleFreq + cfg.time * rcfg.wiggleTimeScale + gi) * rcfg.wiggleAmplitude;
+        const w1 = baseWidth * (1 - t1 * rcfg.widthTaper) + Math.sin(t1 * Math.PI * rcfg.wiggleFreq + cfg.time * rcfg.wiggleTimeScale + gi) * rcfg.wiggleAmplitude;
 
-        const c0 = getFlameColor(t0, p.currentWeapon);
-        const c1 = getFlameColor(t1, p.currentWeapon);
+        // 修复 P0：使用纯色填充（段间颜色差异极小，视觉效果无差别）
+        ctx.fillStyle = getFlameColor(t0, p.currentWeapon);
 
         ctx.beginPath();
         ctx.moveTo(gunX - w0, y0);
@@ -245,20 +196,15 @@ export class BackgroundRenderer {
         ctx.lineTo(gunX + w1, y1);
         ctx.lineTo(gunX + w0, y0);
         ctx.closePath();
-
-        const grad = ctx.createLinearGradient(gunX, y0, gunX, y1);
-        grad.addColorStop(0, c0);
-        grad.addColorStop(1, c1);
-        ctx.fillStyle = grad;
         ctx.fill();
       }
 
       // Core glow
-      let coreColor = '160, 210, 255';
-      if (p.currentWeapon === 'sticky') coreColor = '250, 200, 50';
-      else if (p.currentWeapon === 'poison') coreColor = '200, 160, 255';
+      let coreColor: string = rcfg.coreColorDefault;
+      if (p.currentWeapon === 'sticky') coreColor = rcfg.coreColorSticky;
+      else if (p.currentWeapon === 'poison') coreColor = rcfg.coreColorPoison;
 
-      const glowSize = 36 * flameScale;
+      const glowSize = rcfg.coreGlowSize * flameScale;
       const coreGrad = ctx.createRadialGradient(gunX, gunNozzleY, 0, gunX, gunNozzleY, glowSize);
       coreGrad.addColorStop(0, `rgba(${coreColor}, 0.9)`);
       coreGrad.addColorStop(0.3, `rgba(${coreColor}, 0.5)`);
@@ -271,13 +217,13 @@ export class BackgroundRenderer {
 
       // Power Boost: air disturbance ripples
       if (p.powerBoostTimer > 0) {
-        const boostAlpha = Math.min(1, p.powerBoostTimer / 0.5) * 0.25;
-        for (let ri = 0; ri < 3; ri++) {
-          const ripplePhase = (cfg.time * 4 + ri * 2.1) % 3;
-          const rippleRadius = 30 + ripplePhase * 25;
-          const rippleAlpha = boostAlpha * (1 - ripplePhase / 3);
+        const boostAlpha = Math.min(1, p.powerBoostTimer / rcfg.boostAlphaFade) * rcfg.boostAlphaMax;
+        for (let ri = 0; ri < rcfg.boostRippleCount; ri++) {
+          const ripplePhase = (cfg.time * rcfg.boostRippleFreq + ri * rcfg.boostRippleSpacing) % rcfg.boostRippleMaxPhase;
+          const rippleRadius = rcfg.boostRippleRadiusBase + ripplePhase * rcfg.boostRippleRadiusGrowth;
+          const rippleAlpha = boostAlpha * (1 - ripplePhase / rcfg.boostRippleMaxPhase);
           ctx.strokeStyle = `rgba(255, 255, 255, ${rippleAlpha})`;
-          ctx.lineWidth = 1.5;
+          ctx.lineWidth = rcfg.boostRippleLineWidth;
           ctx.beginPath();
           ctx.arc(gunX, gunNozzleY, rippleRadius * flameScale, 0, Math.PI * 2);
           ctx.stroke();
@@ -286,10 +232,5 @@ export class BackgroundRenderer {
     }
 
     ctx.restore();
-  }
-
-  /** 渲染火焰墙（委托给 ParticleSystem 静态方法） */
-  static renderFireWalls(ctx: CanvasRenderingContext2D, fireWalls: FireWall[], time: number): void {
-    ParticleSystem.renderFireWalls(ctx, fireWalls, time);
   }
 }

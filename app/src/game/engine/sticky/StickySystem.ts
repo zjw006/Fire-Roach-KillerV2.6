@@ -3,7 +3,7 @@
  * @description 负责管理粘性板（legacy）和粘液弹（auto-targeting）的完整生命周期
  */
 
-import { RoachState, ParticleType, type StickyBoard, type StickyDrop, type Roach, type Particle } from '../../types';
+import { RoachState, RoachType, ParticleType, type StickyBoard, type StickyDrop, type Roach, type Particle } from '../../types';
 import { ENEMY_DEFS, BALANCE_CONFIG, TEXT_CONFIG, FLOAT_COLOR } from '../../data';
 
 /**
@@ -32,6 +32,10 @@ export interface StickySystemConfig {
 
 /**
  * 粘板/粘液弹系统类
+ * @description
+ *   粘板（legacy）：固定位置放置，捕获范围内的蟑螂
+ *   粘液弹（auto-targeting）：追踪水滴，击中后包裹蟑螂
+ *   两类功能职责相近，后续可考虑拆分为独立模块
  */
 export class StickySystem {
   private config: StickySystemConfig;
@@ -41,7 +45,9 @@ export class StickySystem {
   /** 粘液弹数组（auto-targeting） */
   stickyDrops: StickyDrop[] = [];
   /** 下一个粘液弹ID */
-  nextStickyDropId: number = 1;
+  private nextStickyDropId: number = 1;
+  /** 下一个粘板ID */
+  private nextBoardId: number = 1;
 
   constructor(config: StickySystemConfig) {
     this.config = config;
@@ -66,11 +72,10 @@ export class StickySystem {
   activateStickySpray(): void {
     const cx = this.config.canvasWidth / 2;
     const cy = this.config.getDefenseLineY();
-    const DROP_COUNT = BALANCE_CONFIG.sticky.dropCount;
-    const FIRE_INTERVAL = BALANCE_CONFIG.sticky.fireInterval;
+    const cfg = BALANCE_CONFIG.sticky;
 
-    for (let i = 0; i < DROP_COUNT; i++) {
-      const delay = i * FIRE_INTERVAL;
+    for (let i = 0; i < cfg.dropCount; i++) {
+      const delay = i * cfg.fireInterval;
       this.scheduleStickyDrop(cx, cy, delay);
     }
 
@@ -82,18 +87,19 @@ export class StickySystem {
   }
 
   /** 调度一个延迟激活的粘液弹 */
-  scheduleStickyDrop(cx: number, cy: number, delay: number): void {
+  private scheduleStickyDrop(cx: number, cy: number, delay: number): void {
+    const cfg = BALANCE_CONFIG.sticky;
     this.stickyDrops.push({
       id: this.nextStickyDropId++,
       x: cx,
       y: cy,
       vx: 0,
-      vy: -(BALANCE_CONFIG.sticky.dropInitialVy + Math.random() * BALANCE_CONFIG.sticky.dropInitialVyRandom),
+      vy: -(cfg.dropInitialVy + Math.random() * cfg.dropInitialVyRandom),
       targetId: null,
-      speed: BALANCE_CONFIG.sticky.dropSpeed + Math.random() * BALANCE_CONFIG.sticky.dropSpeedRandom,
-      life: delay + BALANCE_CONFIG.sticky.dropMaxLife,
-      maxLife: BALANCE_CONFIG.sticky.dropMaxLife,
-      size: BALANCE_CONFIG.sticky.dropSize + Math.random() * BALANCE_CONFIG.sticky.dropSizeRandom,
+      speed: cfg.dropSpeed + Math.random() * cfg.dropSpeedRandom,
+      life: delay + cfg.dropMaxLife,
+      maxLife: cfg.dropMaxLife,
+      size: cfg.dropSize + Math.random() * cfg.dropSizeRandom,
       hit: false,
     });
   }
@@ -113,167 +119,188 @@ export class StickySystem {
 
       // 弹丸过期
       if (drop.life <= 0) {
-        if (drop.targetId !== null) {
-          const r = roaches.find(r => r.id === drop.targetId);
-          if (r && r.state === RoachState.ALIVE) {
-            r.wrappedByDropId = null;
-            r.wrapTimer = 0;
-            r.speed = r.baseSpeed;
-          }
-        }
-        this.stickyDrops.splice(i, 1);
+        this.cleanupExpiredDrop(drop, i, roaches);
         continue;
       }
 
       // 已击中蟑螂，保持粘附
       if (drop.hit && drop.targetId !== null) {
-        const target = roaches.find(r => r.id === drop.targetId);
-        if (target && target.state === RoachState.ALIVE) {
-          drop.x = target.x;
-          drop.y = target.y;
-          // Boss 免疫
-          if (target.isBoss) {
-            this.stickyDrops.splice(i, 1);
-            continue;
-          } else {
-            target.vx = 0;
-            target.vy = 0;
-            target.speed = 0;
-            target.wrappedByDropId = drop.id;
-            target.wrapTimer = drop.life;
-          }
-          // 周期性伤害（无护甲且不在放置炸弹时）
-          const isTimedPlacing = (target as any).type === 'timed_suicide' && (target as any).placeTimer && (target as any).placeTimer > 0;
-          if (Math.random() < deltaTime * 2 && !isTimedPlacing) {
-            if (target.armorHp > 0) {
-              if (Math.random() < 0.1) {
-                this.config.onAddFloatingText?.(target.x, target.y - 15, TEXT_CONFIG.combat.armorImmune, FLOAT_COLOR.armorImmune);
-              }
-            } else {
-              target.hp -= BALANCE_CONFIG.sticky.damagePerTick;
-              target.damageFlash = BALANCE_CONFIG.sticky.damageFlash;
-            }
-          }
-          // 黄色粒子
-          if (Math.random() < 0.1) {
-            this.config.onAddParticle?.({
-              x: target.x + (Math.random() - 0.5) * 20,
-              y: target.y + (Math.random() - 0.5) * 20,
-              vx: (Math.random() - 0.5) * 20,
-              vy: -10 - Math.random() * 20,
-              life: 0.3, maxLife: 0.3,
-              size: 2 + Math.random() * 3,
-              color: `rgba(250, 200, 50, ${0.5 + Math.random() * 0.3})`,
-              type: ParticleType.ICE,
-            });
-          }
-        } else {
-          if (target) {
-            target.wrappedByDropId = null;
-            target.wrapTimer = 0;
-          }
-          this.stickyDrops.splice(i, 1);
-        }
+        this.updateAttachedDrop(drop, i, deltaTime, roaches);
         continue;
       }
 
-      // 飞行阶段 - 寻找最近的未包裹蟑螂
-      let target: Roach | null = null;
-      let minDist = Infinity;
-      for (const r of roaches) {
-        if (r.state !== RoachState.ALIVE) continue;
-        if (r.wrappedByDropId !== null) continue;
-        const dx = r.x - drop.x;
-        const dy = r.y - drop.y;
-        const d = Math.sqrt(dx * dx + dy * dy);
-        if (d < minDist && d < BALANCE_CONFIG.sticky.trackRange) {
-          minDist = d;
-          target = r;
-        }
+      // 飞行阶段 - 追踪最近的未包裹蟑螂
+      this.updateFlyingDrop(drop, i, deltaTime, gameTime, roaches);
+    }
+  }
+
+  /** 清理过期的粘液弹并恢复目标蟑螂状态 */
+  private cleanupExpiredDrop(drop: StickyDrop, index: number, roaches: Roach[]): void {
+    if (drop.targetId !== null) {
+      const r = roaches.find(r => r.id === drop.targetId);
+      if (r && r.state === RoachState.ALIVE) {
+        r.wrappedByDropId = null;
+        r.wrapTimer = 0;
+        r.speed = r.baseSpeed;
       }
+    }
+    this.stickyDrops.splice(index, 1);
+  }
 
+  /** 更新已附着在蟑螂上的粘液弹 */
+  private updateAttachedDrop(drop: StickyDrop, index: number, deltaTime: number, roaches: Roach[]): void {
+    const target = roaches.find(r => r.id === drop.targetId);
+    if (!target || target.state !== RoachState.ALIVE) {
+      // 目标已死亡或消失，清理残留
       if (target) {
-        // 追踪行为（平滑转向）
-        const dx = target.x - drop.x;
-        const dy = target.y - drop.y;
-        const d = Math.sqrt(dx * dx + dy * dy);
-        if (d > 1) {
-          const targetVx = (dx / d) * drop.speed;
-          const targetVy = (dy / d) * drop.speed;
-          drop.vx += (targetVx - drop.vx) * BALANCE_CONFIG.sticky.trackSteerFactor * deltaTime;
-          drop.vy += (targetVy - drop.vy) * BALANCE_CONFIG.sticky.trackSteerFactor * deltaTime;
-        }
-        drop.targetId = target.id;
+        target.wrappedByDropId = null;
+        target.wrapTimer = 0;
+      }
+      this.stickyDrops.splice(index, 1);
+      return;
+    }
 
-        // 碰撞检测
-        const targetSize = (target.size ?? ENEMY_DEFS[target.type]?.size ?? 30) * this.getPerspectiveScale(target.y);
-        if (d < targetSize * 0.5 + drop.size) {
-          // 击中
-          if (target.isBoss) {
-            drop.hit = true;
-            drop.life = 0;
-            continue;
-          } else {
-            drop.hit = true;
-            drop.life = BALANCE_CONFIG.sticky.dropLife;
-            drop.x = target.x;
-            drop.y = target.y;
-            target.wrappedByDropId = drop.id;
-            target.wrapTimer = BALANCE_CONFIG.sticky.wrapTimer;
-            target.speed = 0;
-            target.vx = 0;
-            target.vy = 0;
-            this.config.onAddFloatingText?.(target.x, target.y - 20, TEXT_CONFIG.combat.stickyCapture, FLOAT_COLOR.switch);
-          }
-          // 击中粒子
-          for (let p = 0; p < BALANCE_CONFIG.sticky.hitParticleCount; p++) {
-            this.config.onAddParticle?.({
-              x: target.x + (Math.random() - 0.5) * 15,
-              y: target.y + (Math.random() - 0.5) * 15,
-              vx: (Math.random() - 0.5) * 60,
-              vy: (Math.random() - 0.5) * 60,
-              life: 0.3, maxLife: 0.3,
-              size: 2 + Math.random() * 4,
-              color: `rgba(250, 220, 50, ${0.6 + Math.random() * 0.4})`,
-              type: ParticleType.ICE,
-            });
-          }
+    // Boss 免疫：立即移除
+    if (target.isBoss) {
+      this.stickyDrops.splice(index, 1);
+      return;
+    }
+
+    drop.x = target.x;
+    drop.y = target.y;
+    target.vx = 0;
+    target.vy = 0;
+    target.speed = 0;
+    target.wrappedByDropId = drop.id;
+    target.wrapTimer = drop.life;
+
+    // 周期性伤害（无护甲且不在放置炸弹时）
+    const isTimedPlacing = target.type === RoachType.TIMED_SUICIDE && target.placeTimer && target.placeTimer > 0;
+    if (Math.random() < deltaTime * 2 && !isTimedPlacing) {
+      if (target.armorHp > 0) {
+        if (Math.random() < 0.1) {
+          this.config.onAddFloatingText?.(target.x, target.y - 15, TEXT_CONFIG.combat.armorImmune, FLOAT_COLOR.armorImmune);
         }
       } else {
-        // 无目标，向上飞行并微弯
-        drop.vy -= 20 * deltaTime;
-        drop.vx += Math.sin(gameTime * 3 + drop.id) * 30 * deltaTime;
+        target.hp -= BALANCE_CONFIG.sticky.damagePerTick;
+        target.damageFlash = BALANCE_CONFIG.sticky.damageFlash;
       }
+    }
 
-      // 移动弹丸
-      drop.x += drop.vx * deltaTime;
-      drop.y += drop.vy * deltaTime;
+    // 黄色粒子
+    if (Math.random() < 0.1) {
+      this.config.onAddParticle?.({
+        x: target.x + (Math.random() - 0.5) * 20,
+        y: target.y + (Math.random() - 0.5) * 20,
+        vx: (Math.random() - 0.5) * 20,
+        vy: -10 - Math.random() * 20,
+        life: 0.3, maxLife: 0.3,
+        size: 2 + Math.random() * 3,
+        color: `rgba(250, 200, 50, ${0.5 + Math.random() * 0.3})`,
+        type: ParticleType.ICE,
+      });
+    }
+  }
 
-      // 边界检查
-      if (drop.y < -50 || drop.y > this.config.canvasHeight + 50 || drop.x < -50 || drop.x > this.config.canvasWidth + 50) {
-        this.stickyDrops.splice(i, 1);
+  /** 更新飞行中的粘液弹（追踪目标） */
+  private updateFlyingDrop(drop: StickyDrop, index: number, deltaTime: number, gameTime: number, roaches: Roach[]): void {
+    const cfg = BALANCE_CONFIG.sticky;
+
+    // 寻找最近的未包裹蟑螂
+    let target: Roach | null = null;
+    let minDist = Infinity;
+    for (const r of roaches) {
+      if (r.state !== RoachState.ALIVE) continue;
+      if (r.wrappedByDropId !== null) continue;
+      const dx = r.x - drop.x;
+      const dy = r.y - drop.y;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      if (d < minDist && d < cfg.trackRange) {
+        minDist = d;
+        target = r;
       }
+    }
+
+    if (target) {
+      // 追踪行为（平滑转向）
+      const dx = target.x - drop.x;
+      const dy = target.y - drop.y;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      if (d > 1) {
+        const targetVx = (dx / d) * drop.speed;
+        const targetVy = (dy / d) * drop.speed;
+        drop.vx += (targetVx - drop.vx) * cfg.trackSteerFactor * deltaTime;
+        drop.vy += (targetVy - drop.vy) * cfg.trackSteerFactor * deltaTime;
+      }
+      drop.targetId = target.id;
+
+      // 碰撞检测
+      const targetSize = (target.size ?? ENEMY_DEFS[target.type]?.size ?? 30) * this.getPerspectiveScale(target.y);
+      if (d < targetSize * 0.5 + drop.size) {
+        // Boss 被击中：立即移除粘液弹
+        if (target.isBoss) {
+          this.stickyDrops.splice(index, 1);
+          return;
+        }
+        // 普通蟑螂：附着
+        drop.hit = true;
+        drop.life = cfg.dropLife;
+        drop.x = target.x;
+        drop.y = target.y;
+        target.wrappedByDropId = drop.id;
+        target.wrapTimer = cfg.wrapTimer;
+        target.speed = 0;
+        target.vx = 0;
+        target.vy = 0;
+        this.config.onAddFloatingText?.(target.x, target.y - 20, TEXT_CONFIG.combat.stickyCapture, FLOAT_COLOR.switch);
+
+        // 击中粒子
+        for (let p = 0; p < cfg.hitParticleCount; p++) {
+          this.config.onAddParticle?.({
+            x: target.x + (Math.random() - 0.5) * 15,
+            y: target.y + (Math.random() - 0.5) * 15,
+            vx: (Math.random() - 0.5) * 60,
+            vy: (Math.random() - 0.5) * 60,
+            life: 0.3, maxLife: 0.3,
+            size: 2 + Math.random() * 4,
+            color: `rgba(250, 220, 50, ${0.6 + Math.random() * 0.4})`,
+            type: ParticleType.ICE,
+          });
+        }
+      }
+    } else {
+      // 无目标，向上飞行并微弯
+      drop.vy -= 20 * deltaTime;
+      drop.vx += Math.sin(gameTime * 3 + drop.id) * 30 * deltaTime;
+    }
+
+    // 移动弹丸
+    drop.x += drop.vx * deltaTime;
+    drop.y += drop.vy * deltaTime;
+
+    // 边界检查
+    if (drop.y < -50 || drop.y > this.config.canvasHeight + 50 || drop.x < -50 || drop.x > this.config.canvasWidth + 50) {
+      this.stickyDrops.splice(index, 1);
     }
   }
 
   // ========== 粘性板（legacy） ==========
   /** 应用粘性板效果（在指定位置放置粘板） */
   applyStickyBoardEffect(x: number, y: number): void {
-    const BASE_W = BALANCE_CONFIG.sticky.boardBaseW;
-    const BASE_H = BALANCE_CONFIG.sticky.boardBaseH;
+    const cfg = BALANCE_CONFIG.sticky;
     const scale = this.getPerspectiveScale(y);
 
     this.stickyBoards.push({
-      id: Date.now() + Math.random(),
+      id: this.nextBoardId++,
       x, y,
-      width: Math.round(BASE_W * scale),
-      height: Math.round(BASE_H * scale),
-      hitWidth: 240,
-      hitHeight: 240,
-      life: BALANCE_CONFIG.sticky.boardLife,
-      maxLife: BALANCE_CONFIG.sticky.boardLife,
+      width: Math.round(cfg.boardBaseW * scale),
+      height: Math.round(cfg.boardBaseH * scale),
+      hitWidth: cfg.boardBaseW,
+      hitHeight: cfg.boardBaseH,
+      life: cfg.boardLife,
+      maxLife: cfg.boardLife,
       stuckRoaches: [],
-      maxStuck: BALANCE_CONFIG.sticky.boardMaxStuck,
+      maxStuck: cfg.boardMaxStuck,
     });
 
     this.config.onSpawnSpark?.(x, y, 4);
@@ -298,40 +325,52 @@ export class StickySystem {
         continue;
       }
 
-      const hitHalfW = board.hitWidth / 2;
-      const hitHalfH = board.hitHeight / 2;
+      this.updateBoardCapture(board, roaches);
+    }
+  }
 
-      for (const r of roaches) {
-        if (r.state !== RoachState.ALIVE) continue;
-        if (board.stuckRoaches.includes(r.id)) {
-          r.x = Math.max(board.x - hitHalfW + 10, Math.min(board.x + hitHalfW - 10, r.x));
-          r.y = Math.max(board.y - hitHalfH + 10, Math.min(board.y + hitHalfH - 10, r.y));
-          r.vx = 0;
-          r.vy = 0;
-          r.speed = 0;
-          continue;
-        }
-        if (board.stuckRoaches.length >= board.maxStuck) continue;
-        if (r.x > board.x - hitHalfW && r.x < board.x + hitHalfW &&
-            r.y > board.y - hitHalfH && r.y < board.y + hitHalfH) {
-          board.stuckRoaches.push(r.id);
-          r.speed = 0;
-          r.vx = 0;
-          r.vy = 0;
-          if (board.stuckRoaches.length === 1) {
-            this.config.onAddFloatingText?.(r.x, r.y - 20, TEXT_CONFIG.combat.stickyStuck, FLOAT_COLOR.switch);
-          }
+  /** 更新粘板对蟑螂的捕获逻辑 */
+  private updateBoardCapture(board: StickyBoard, roaches: Roach[]): void {
+    const hitHalfW = board.hitWidth / 2;
+    const hitHalfH = board.hitHeight / 2;
+    const edgeMargin = 10;
+
+    for (const r of roaches) {
+      if (r.state !== RoachState.ALIVE) continue;
+      if (board.stuckRoaches.includes(r.id)) {
+        // 已捕获：限制在板内
+        r.x = Math.max(board.x - hitHalfW + edgeMargin, Math.min(board.x + hitHalfW - edgeMargin, r.x));
+        r.y = Math.max(board.y - hitHalfH + edgeMargin, Math.min(board.y + hitHalfH - edgeMargin, r.y));
+        r.vx = 0;
+        r.vy = 0;
+        r.speed = 0;
+        continue;
+      }
+      if (board.stuckRoaches.length >= board.maxStuck) continue;
+      if (r.x > board.x - hitHalfW && r.x < board.x + hitHalfW &&
+          r.y > board.y - hitHalfH && r.y < board.y + hitHalfH) {
+        board.stuckRoaches.push(r.id);
+        r.speed = 0;
+        r.vx = 0;
+        r.vy = 0;
+        if (board.stuckRoaches.length === 1) {
+          this.config.onAddFloatingText?.(r.x, r.y - 20, TEXT_CONFIG.combat.stickyStuck, FLOAT_COLOR.switch);
         }
       }
     }
   }
 
   // ========== 查询方法 ==========
-  /** 检查蟑螂是否被粘板或粘液弹困住 */
-  isStuckByBoard(roachId: number, roaches: Roach[]): boolean {
+  /**
+   * 检查蟑螂是否被粘板或粘液弹困住
+   * @param roachId 蟑螂ID
+   * @returns 是否被困住
+   */
+  isStuckByBoard(roachId: number): boolean {
+    // 粘板检查
     if (this.stickyBoards.some(b => b.stuckRoaches.includes(roachId))) return true;
-    const r = roaches.find(r => r.id === roachId);
-    return r !== undefined && r.wrappedByDropId !== null;
+    // 粘液弹检查：通过系统内部状态判断，不依赖外部 roaches 数组
+    return this.stickyDrops.some(d => d.targetId === roachId && d.hit);
   }
 
   /** 清理蟑螂死亡时的粘液弹包裹 */
@@ -351,5 +390,6 @@ export class StickySystem {
     this.stickyBoards = [];
     this.stickyDrops = [];
     this.nextStickyDropId = 1;
+    this.nextBoardId = 1;
   }
 }

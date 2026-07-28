@@ -4,7 +4,7 @@
  */
 
 export { WaveManager } from './WaveManager';
-import { TEXT_CONFIG } from '../../data';
+import { BALANCE_CONFIG, TEXT_CONFIG } from '../../data';
 
 /**
  * 波次系统工具函数
