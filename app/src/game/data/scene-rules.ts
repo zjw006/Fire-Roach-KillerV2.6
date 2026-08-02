@@ -1,8 +1,21 @@
 import { SceneType, RoachType } from '../types';
 
+/**
+ * @fileoverview 场景规则配置
+ * @description 定义场景解锁顺序、每关可用的道具和蟑螂类型、地面边界、以及战后奖励。
+ * 这些规则控制游戏的渐进式解锁机制——玩家在每个新场景会遇到新敌人和新道具。
+ */
+
+// 场景索引顺序（用于 UI 显示和排序）
 export const SCENE_ORDER: SceneType[] = ['kitchen', 'sewer', 'dump', 'basement', 'street', 'rooftop', 'hospital', 'subway', 'supermarket', 'school', 'nest'];
 
 // 每关解锁道具顺序（由弱到强）：粘板 → 风扇 → 燃烧瓶 → 散弹 → 雷达
+/**
+ * 场景道具解锁表
+ * @description 定义每个场景可掉落的武器道具类型。
+ * 道具按从弱到强的顺序逐步解锁，保证游戏难度曲线平滑。
+ * 医院场景额外包含专属蟑螂类型的道具掉落。
+ */
 export const SCENE_ITEM_UNLOCKS: Record<SceneType, string[]> = {
   // Kitchen: sticky board only (tutorial scene, fewer drops)
   [SceneType.KITCHEN]: ['sticky'],
@@ -28,7 +41,11 @@ export const SCENE_ITEM_UNLOCKS: Record<SceneType, string[]> = {
   [SceneType.NEST]: ['sticky', 'poison', 'fan', 'molotov', 'shotgun', 'radar', 'swatter'],
 };
 
-// 每关可用蟑螂类型
+/**
+ * 场景可用蟑螂类型表
+ * @description 定义每个场景中可以出现的蟑螂类型。
+ * 蟑螂类型按场景逐步解锁：厨房只有小、大、飞行蟑螂 → 下水道加入装甲 → 垃圾场加入自爆 → 地下室加入分裂和飞行自爆 → 医院加入护士、变异、定时自爆、女王
+ */
 export const SCENE_ROACH_TYPES: Record<SceneType, RoachType[]> = {
   [SceneType.KITCHEN]: [RoachType.SMALL, RoachType.LARGE, RoachType.FLYING],
   [SceneType.SEWER]: [RoachType.SMALL, RoachType.LARGE, RoachType.FLYING, RoachType.ARMORED],
@@ -43,7 +60,11 @@ export const SCENE_ROACH_TYPES: Record<SceneType, RoachType[]> = {
   [SceneType.NEST]: [RoachType.SMALL, RoachType.LARGE, RoachType.FLYING, RoachType.ARMORED, RoachType.SPLITTING, RoachType.SUICIDE, RoachType.FLYING_SUICIDE, RoachType.QUEEN],
 };
 
-// 场景解锁链：通关当前场景后解锁下一关
+/**
+ * 场景解锁链
+ * @description 定义关卡解锁顺序。通关当前场景后自动解锁下一关。
+ * 解锁链：厨房 → 下水道 → 垃圾场 → 地下室 → 街道 → 天台 → 医院 → 地铁 → 超市 → 学校 → 巢穴
+ */
 export const SCENE_UNLOCK_CHAIN: SceneType[] = [
   SceneType.KITCHEN,
   SceneType.SEWER,
@@ -67,6 +88,19 @@ export const SCENE_UNLOCK_CHAIN: SceneType[] = [
 //   nearL/nearR = nearest pair (bottom, close to camera)
 //   nearY = bottom horizontal line Y
 // Each side forms a 2-segment broken line: far→mid→near
+/**
+ * 场景地面边界配置
+ * @description 定义每个场景中地面蟑螂可移动的 6 点透视区域。
+ * 格式：[farL, farLY, farR, farRY, midL, midLY, midR, midRY, nearL, nearR, nearY]
+ * - farL/farLY: 左侧远点坐标（远离相机，屏幕上方）
+ * - farR/farRY: 右侧远点坐标
+ * - midL/midLY: 左侧中点坐标
+ * - midR/midRY: 右侧中点坐标
+ * - nearL: 左侧近点 X 坐标（靠近相机，屏幕下方）
+ * - nearR: 右侧近点 X 坐标
+ * - nearY: 近点 Y 坐标（两侧共用）
+ * 每侧形成 2 段折线：far→mid→near，产生透视效果。
+ */
 export const SCENE_GROUND_BOUNDS: Record<SceneType, [number, number, number, number, number, number, number, number, number, number, number]> = {
   // Kitchen: straight line (mid = far→near midpoint)
   [SceneType.KITCHEN]: [200,450, 400,450,  100,625, 465,625,  0,530,800],
@@ -80,20 +114,25 @@ export const SCENE_GROUND_BOUNDS: Record<SceneType, [number, number, number, num
   [SceneType.ROOFTOP]: [150,400, 380,400,   75,600, 455,600,  0,530,800],
   // Street: straight line (mid = far→near midpoint)
   [SceneType.STREET]:  [250,450, 300,450,  125,625, 425,625,  0,530,800],
-  // Hospital: narrow corridor
+  // Hospital: narrow corridor (窄走廊，增强沉浸感)
   [SceneType.HOSPITAL]: [232,416, 333,449, 141,512, 401,486, 50,490,810],
-  // Subway: wide platform
+  // Subway: wide platform (宽平台)
   [SceneType.SUBWAY]:   [220,440, 340,440,  100,620, 460,620,  0,530,800],
-  // Supermarket: aisles
+  // Supermarket: aisles (货架通道)
   [SceneType.SUPERMARKET]: [200,430, 380,430,  90,610, 450,610,  0,530,800],
-  // School: classroom
+  // School: classroom (教室)
   [SceneType.SCHOOL]:   [210,435, 370,435,  95,615, 455,615,  0,530,800],
-  // Nest: organic tunnel
+  // Nest: organic tunnel (有机隧道)
   [SceneType.NEST]:     [170,410, 370,410,  70,590, 470,590,  0,530,800],
 };
 
 // ========== 战后道具奖励揭示 ==========
 // 每关通关后奖励下一关的新道具，附带蟑叔的搞笑说明
+/**
+ * 场景战后道具奖励
+ * @description 定义每关通关后揭示的新道具，包含蟑叔的搞笑介绍。
+ * 奖励道具在下一关可用，奖励揭示在通关结算界面展示。
+ */
 export const SCENE_REWARD_ITEMS: Record<SceneType, { type: string; name: string; icon: string; desc: string }[]> = {
   [SceneType.KITCHEN]: [
     { type: 'fan', name: '强力风扇', icon: '/assets/drop_fan.png', desc: '嘿嘿嘿，听说过"风神降临"吗？按下开关，全场蟑螂秒变慢动作回放！扇叶一转，小强的腿都跑软了，你就站那儿看着它们爬，跟看纪录片似的。关键是——这风扇不用你扛着，自动全场覆盖！蟑叔我亲自改装的，风速三档可调，第三档能把蟑螂吹成背头造型！' },

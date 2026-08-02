@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @fileoverview 天气系统模块
  * @description 负责管理游戏中的天气效果，包括雨、雾、夜晚闪电等
  *   粒子由外部（engine.ts）统一管理，通过 onAddParticle 回调注入
@@ -6,7 +6,7 @@
 
 import { ParticleType, WeatherType } from '../../types';
 import type { Particle } from '../../types';
-import { BALANCE_CONFIG, TEXT_CONFIG, FLOAT_COLOR } from '../../data';
+import { BALANCE_CONFIG, TEXT_CONFIG } from '../../data';
 
 /**
  * 天气系统配置接口
@@ -182,8 +182,8 @@ export class WeatherSystem {
       this.config.onAddFloatingText(
         this.config.canvasWidth / 2,
         this.config.canvasHeight / 2 - 100,
-        TEXT_CONFIG.combat.lightning,
-        FLOAT_COLOR.gold
+        TEXT_CONFIG.combat.lightning.text,
+        TEXT_CONFIG.combat.lightning.color
       );
       this.lightningTextCooldown = BALANCE_CONFIG.lightning.textCooldown;
     }

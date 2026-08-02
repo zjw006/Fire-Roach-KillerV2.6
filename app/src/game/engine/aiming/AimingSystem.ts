@@ -4,7 +4,7 @@
  */
 
 import { type ThrowableProjectile } from '../../types';
-import { BALANCE_CONFIG, TEXT_CONFIG, FLOAT_COLOR } from '../../data';
+import { BALANCE_CONFIG, TEXT_CONFIG } from '../../data';
 
 // =============================================================================
 // 类型定义
@@ -292,8 +292,8 @@ export class AimingSystem {
     // 浮动文字（修复问题 P2：使用元数据 name，类型安全）
     this.config.onAddFloatingText?.(
       start.x, start.y - 30,
-      TEXT_CONFIG.combat.throwWeapon(THROW_WEAPON_META[weapon].name),
-      FLOAT_COLOR.gold
+      TEXT_CONFIG.combat.throwWeapon.text(THROW_WEAPON_META[weapon].name),
+      TEXT_CONFIG.combat.throwWeapon.color
     );
 
     this.cancelAiming();

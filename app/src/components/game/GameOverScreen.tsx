@@ -5,7 +5,7 @@
  */
 
 import React, { useRef, useState, useEffect } from 'react';
-import { RotateCcw, Home, Skull, Trophy, Flame, Sparkles, Map, ChevronRight, Lightbulb } from 'lucide-react';
+import { RotateCcw, Home, Skull, Trophy, Flame, Sparkles, Map, ChevronRight, Lightbulb, Award } from 'lucide-react';
 import { TEXT_CONFIG } from '@/game/data';
 import type { Economy, GameMode, SceneType } from '@/game/types';
 import type { AudioManager } from '@/game/audio';
@@ -31,9 +31,13 @@ interface GameOverScreenProps {
   victoryGoldReward?: number;
   /** 结算动画完成后回调（发放金币到经济系统） */
   onSettleGold?: () => void;
+  /** 未领取金币的成就数量 */
+  unclaimedAchievementCount?: number;
+  /** 打开成就界面回调 */
+  onOpenAchievements?: () => void;
 }
 
-export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, gameMode, currentScene, isVictory, hasNextScene, nextSceneName, onRestart, onQuit, onNextScene, talentPoints, bossDefeated, onOpenTalentTree, audio, victoryGoldReward, onSettleGold}) => {
+export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, gameMode, currentScene, isVictory, hasNextScene, nextSceneName, onRestart, onQuit, onNextScene, talentPoints, bossDefeated, onOpenTalentTree, audio, victoryGoldReward, onSettleGold, unclaimedAchievementCount, onOpenAchievements}) => {
   /** 判断当前场景和模式类型 */
   const isBasement = currentScene === 'basement';
   const isBossMode = bossDefeated;
@@ -105,7 +109,7 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, g
               <div className="w-16 h-16 mx-auto rounded-full bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center mb-3 shadow-lg shadow-yellow-500/30 ring-2 ring-yellow-400/50">
                 <Trophy size={32} className="text-white" />
               </div>
-              <h2 className="text-3xl font-black text-yellow-400 text-center drop-shadow-lg">{isBossMode ? TEXT_CONFIG.ui.gameOver.bossDefeatedShort : TEXT_CONFIG.combat.victory}</h2>
+              <h2 className="text-3xl font-black text-yellow-400 text-center drop-shadow-lg">{isBossMode ? TEXT_CONFIG.ui.gameOver.bossDefeatedShort : TEXT_CONFIG.combat.victory.text}</h2>
               <p className="text-stone-300 text-center text-sm mt-1 drop-shadow">{isBossMode ? TEXT_CONFIG.ui.gameOver.bossVictoryDesc : TEXT_CONFIG.ui.gameOver.victoryDesc}</p>
             </>
           ) : (
@@ -231,6 +235,24 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, g
             >
               <Sparkles size={12} />
               {TEXT_CONFIG.ui.gameOver.goAddPoints}
+            </button>
+          </div>
+        )}
+
+        {/* Achievement notification */}
+        {isVictory && (unclaimedAchievementCount ?? 0) > 0 && onOpenAchievements && (
+          <div className="bg-gradient-to-r from-amber-900/60 to-yellow-900/60 border border-yellow-500/40 rounded-xl p-3 mb-4 flex items-center gap-3">
+            <Award size={24} className="text-yellow-400 shrink-0" />
+            <div className="flex-1">
+              <div className="text-yellow-300 text-sm font-bold">成就奖励待领取</div>
+              <div className="text-yellow-400/70 text-xs">{unclaimedAchievementCount} 个成就金币未领取</div>
+            </div>
+            <button
+              onClick={() => { audio?.playClick(); onOpenAchievements(); }}
+              className="shrink-0 bg-yellow-600 hover:bg-yellow-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1"
+            >
+              <Award size={12} />
+              查看成就
             </button>
           </div>
         )}

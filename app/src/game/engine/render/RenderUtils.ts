@@ -277,7 +277,7 @@ export class RenderUtils {
     ctx.fillStyle = RENDER_COLOR.groundBounds;
     ctx.font = RENDER_FONT.normal;
     ctx.textAlign = 'center';
-    ctx.fillText(TEXT_CONFIG.combat.insecticideTimer(spray.timer.toFixed(1)), cx, cy + cfg.timerOffsetY);
+    ctx.fillText(TEXT_CONFIG.combat.insecticideTimer.text(spray.timer.toFixed(1)), cx, cy + cfg.timerOffsetY);
 
     ctx.restore();
   }
@@ -592,7 +592,7 @@ export class RenderUtils {
     ctx.fillStyle = `rgba(255, 255, 255, ${cfg.labelAlpha})`;
     ctx.font = cfg.labelFont;
     ctx.textAlign = 'center';
-    ctx.fillText(TEXT_CONFIG.combat.defenseLine, w / 2, dl + cfg.labelOffsetY);
+    ctx.fillText(TEXT_CONFIG.combat.defenseLine.text, w / 2, dl + cfg.labelOffsetY);
 
     // 护盾
     if (shieldTimer > 0) {
@@ -624,10 +624,11 @@ export class RenderUtils {
     ctx: CanvasRenderingContext2D,
     currentScene: SceneType,
     defenseLineY: number,
-    getGroundBoundsAtY: (y: number) => [number, number]
+    getGroundBoundsAtY: (y: number) => [number, number],
+    scaledBounds?: [number, number, number, number, number, number, number, number, number, number, number]
   ): void {
     const cfg = BALANCE_CONFIG.render.renderUtils.movementRange;
-    const [farL, farLY, farR, farRY, midL, midLY, midR, midRY, nearL, nearR, nearY] = SCENE_GROUND_BOUNDS[currentScene];
+    const [farL, farLY, farR, farRY, midL, midLY, midR, midRY, nearL, nearR, nearY] = scaledBounds || SCENE_GROUND_BOUNDS[currentScene];
 
     ctx.save();
 
@@ -723,7 +724,7 @@ export class RenderUtils {
     ctx.textAlign = 'center';
     const lblX = (farL + farR) / 2;
     const lblY = Math.min(farLY, farRY);
-    ctx.fillText(TEXT_CONFIG.combat.groundBounds, lblX, lblY + cfg.labelOffsetY);
+    ctx.fillText(TEXT_CONFIG.combat.groundBounds.text, lblX, lblY + cfg.labelOffsetY);
 
     ctx.restore();
   }

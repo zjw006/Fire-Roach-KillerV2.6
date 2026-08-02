@@ -18,7 +18,7 @@ import { BALANCE_CONFIG } from '../../data';
 export interface BackgroundRenderConfig {
   currentScene: SceneType;
   difficulty: string;
-  sceneConfig: { bgImage?: boolean; bgColor: string; tileColors: [string, string]; weather: WeatherType; };
+  sceneConfig: { bgImage?: string; bgColor: string; tileColors: [string, string]; weather: WeatherType; };
   imagesLoaded: boolean;
   /** 新场景系统：bgImage 路径映射的图片 */
   bgSceneImages: Record<string, HTMLImageElement>;
@@ -111,8 +111,22 @@ export class BackgroundRenderer {
     // 优先级：{scene}_{difficulty} > {scene}
     const bgKey = `${currentScene}_${difficulty}`;
     const img = bgImages[bgKey] || bgImages[currentScene];
-    if (img && cfg.imagesLoaded) {
-      ctx.drawImage(img, 0, 0, w, h);
+    if (img && cfg.imagesLoaded && img.complete && img.naturalWidth > 0) {
+      const imgRatio = img.naturalWidth / img.naturalHeight;
+      const canvasRatio = w / h;
+      let drawW: number, drawH: number, drawX: number, drawY: number;
+      if (imgRatio > canvasRatio) {
+        drawH = h;
+        drawW = h * imgRatio;
+        drawX = (w - drawW) / 2;
+        drawY = 0;
+      } else {
+        drawW = w;
+        drawH = w / imgRatio;
+        drawX = 0;
+        drawY = (h - drawH) / 2;
+      }
+      ctx.drawImage(img, drawX, drawY, drawW, drawH);
     } else {
       // Fallback: tile-based background
       ctx.fillStyle = scene.bgColor;

@@ -13,7 +13,7 @@ import {
   SceneType
 } from '../../types';
 import { BOSS_ANIMATIONS } from '../../bossAnimation';
-import { TEXT_CONFIG, FLOAT_COLOR, RENDER_COLOR, RENDER_FONT } from '../../data';
+import { TEXT_CONFIG, RENDER_COLOR, RENDER_FONT } from '../../data';
 import { BALANCE_CONFIG } from '../../data';
 
 // =============================================================================
@@ -317,7 +317,7 @@ export class BossBattleSystem {
     const bossCfg = BALANCE_CONFIG.boss;
     this.bossBattle = this.resetBossState(true);
     // 修复 P0：bossHp 使用配置统一计算
-    this.bossBattle.phaseName = TEXT_CONFIG.combat.bossPhase1;
+    this.bossBattle.phaseName = TEXT_CONFIG.combat.bossPhase1.text;
     this.bossBattle.bossHp = bossCfg.totalLayers;
     this.bossBattle.bossMaxHp = bossCfg.totalLayers;
 
@@ -326,10 +326,10 @@ export class BossBattleSystem {
 
     this.bossBattle.phaseJustChanged = true;
     this.bossBattle.phaseChangeTimer = bossCfg.phaseChangeTimer;
-    this.bossBattle.phaseChangeText = TEXT_CONFIG.combat.bossAppearTitle;
-    this.bossBattle.phaseChangeSub = TEXT_CONFIG.combat.bossDefendLine;
-    this.cb.onAddFloatingText(this.cfg.width / 2, this.cfg.height / 3, TEXT_CONFIG.combat.bossAppear, FLOAT_COLOR.danger);
-    this.cb.onAddFloatingText(this.cfg.width / 2, this.cfg.height / 3 + 30, TEXT_CONFIG.combat.bossSpawnEggs, FLOAT_COLOR.gold);
+    this.bossBattle.phaseChangeText = TEXT_CONFIG.combat.bossAppearTitle.text;
+    this.bossBattle.phaseChangeSub = TEXT_CONFIG.combat.bossDefendLine.text;
+    this.cb.onAddFloatingText(this.cfg.width / 2, this.cfg.height / 3, TEXT_CONFIG.combat.bossAppear.text, TEXT_CONFIG.combat.bossAppear.color);
+    this.cb.onAddFloatingText(this.cfg.width / 2, this.cfg.height / 3 + 30, TEXT_CONFIG.combat.bossSpawnEggs.text, TEXT_CONFIG.combat.bossSpawnEggs.color);
     this.cb.onScreenShake(BALANCE_CONFIG.screenShake.bossDeath);
   }
 
@@ -360,7 +360,7 @@ export class BossBattleSystem {
     this.bossAnimState.timer = 0;
 
     // 死亡效果（修复 P1：硬编码值 → 配置）
-    this.cb.onAddFloatingText(this.cfg.width / 2, this.cfg.height / 3, TEXT_CONFIG.combat.bossDefeatedText, FLOAT_COLOR.danger);
+    this.cb.onAddFloatingText(this.cfg.width / 2, this.cfg.height / 3, TEXT_CONFIG.combat.bossDefeatedText.text, TEXT_CONFIG.combat.bossDefeatedText.color);
     this.cb.onSpawnExplosionParticles(boss.x, boss.y, bossCfg.deathExplosionParticles);
     this.cb.onSpawnShockwaveRing(boss.x, boss.y, bossCfg.deathShockwaveRadius);
     this.cb.onScreenShake(BALANCE_CONFIG.screenShake.queenDeath);
@@ -392,7 +392,7 @@ export class BossBattleSystem {
     // 死亡动画结束 → 开始尸体停留
     if (bb.deathAnimTimer <= 0 && bb.corpseStayTimer <= 0 && this.cfg.state === GameState.PLAYING) {
       bb.corpseStayTimer = bossCfg.corpseStayTimer;
-      this.cb.onAddFloatingText(this.cfg.width / 2, this.cfg.height / 2, TEXT_CONFIG.combat.victory, FLOAT_COLOR.victory);
+      this.cb.onAddFloatingText(this.cfg.width / 2, this.cfg.height / 2, TEXT_CONFIG.combat.victory.text, TEXT_CONFIG.combat.victory.color);
     }
 
     // 尸体停留倒计时
@@ -577,7 +577,7 @@ export class BossBattleSystem {
         if (bb.currentWave <= totalLayers) {
           bb.phase = bb.currentWave as 1 | 2 | 3 | 4;
         }
-        this.cb.onAddFloatingText(this.cfg.width / 2, this.cfg.height / 3, TEXT_CONFIG.combat.waveClearedN(bb.currentWave), FLOAT_COLOR.victory);
+        this.cb.onAddFloatingText(this.cfg.width / 2, this.cfg.height / 3, TEXT_CONFIG.combat.waveClearedN.text(bb.currentWave), TEXT_CONFIG.combat.waveClearedN.color);
 
         // 检查是否所有波次完成
         if (bb.currentWave > totalLayers) {
@@ -619,12 +619,12 @@ export class BossBattleSystem {
     const bossCfg = BALANCE_CONFIG.boss;
     bb.summonCastTimer = bossCfg.summonCastTimer;
 
-    bb.phaseChangeText = TEXT_CONFIG.combat.bossWaveTitle(wave, TEXT_CONFIG.combat.bossWaveNames[wave]);
-    bb.phaseChangeSub = TEXT_CONFIG.combat.bossSummoning;
+    bb.phaseChangeText = TEXT_CONFIG.combat.bossWaveTitle.text(wave, TEXT_CONFIG.combat.bossWaveNames.text[wave]);
+    bb.phaseChangeSub = TEXT_CONFIG.combat.bossSummoning.text;
     bb.phaseJustChanged = true;
     bb.phaseChangeTimer = bossCfg.summonPhaseChangeTimer;
 
-    this.cb.onAddFloatingText(castX, castY - bossCfg.dialogueTextOffsets.line3, TEXT_CONFIG.combat.bossSummon, FLOAT_COLOR.backlash);
+    this.cb.onAddFloatingText(castX, castY - bossCfg.dialogueTextOffsets.line3, TEXT_CONFIG.combat.bossSummon.text, TEXT_CONFIG.combat.bossSummon.color);
   }
 
   // ========== Boss 对话与逃跑 ==========
@@ -646,31 +646,31 @@ export class BossBattleSystem {
     // 修复 P0：清除旧计时器，防止内存泄漏
     this.clearDialogueTimers();
 
-    bb.bossDialogue = TEXT_CONFIG.combat.bossDialogueShort;
+    bb.bossDialogue = TEXT_CONFIG.combat.bossDialogueShort.text;
     bb.dialogueTimer = bossCfg.dialogueTimer;
     bb.dialogueIndex = 0;
 
     const offsets = bossCfg.dialogueTextOffsets;
     const delays = bossCfg.dialogueDelays;
 
-    this.cb.onAddFloatingText(boss.x, boss.y - offsets.line1, TEXT_CONFIG.combat.bossDialogue1, FLOAT_COLOR.danger);
+    this.cb.onAddFloatingText(boss.x, boss.y - offsets.line1, TEXT_CONFIG.combat.bossDialogue1.text, TEXT_CONFIG.combat.bossDialogue1.color);
 
     // 修复 P0：计时器存入数组，支持清理
     this.dialogueTimers.push(setTimeout(() => {
       if (!bb.active) return;
-      this.cb.onAddFloatingText(boss.x, boss.y - offsets.line1, TEXT_CONFIG.combat.bossDialogue2, FLOAT_COLOR.danger);
+      this.cb.onAddFloatingText(boss.x, boss.y - offsets.line1, TEXT_CONFIG.combat.bossDialogue2.text, TEXT_CONFIG.combat.bossDialogue2.color);
     }, delays[0]));
 
     this.dialogueTimers.push(setTimeout(() => {
       if (!bb.active) return;
-      this.cb.onAddFloatingText(boss.x, boss.y - offsets.line1, TEXT_CONFIG.combat.bossDialogue3, FLOAT_COLOR.gold);
+      this.cb.onAddFloatingText(boss.x, boss.y - offsets.line1, TEXT_CONFIG.combat.bossDialogue3.text, TEXT_CONFIG.combat.bossDialogue3.color);
     }, delays[1]));
 
     this.dialogueTimers.push(setTimeout(() => {
       if (!bb.active) return;
       bb.bossFleeing = true;
       bb.bossFleeTimer = bossCfg.fleeTimer;
-      this.cb.onAddFloatingText(boss.x, boss.y - offsets.line2, TEXT_CONFIG.combat.bossFlee, FLOAT_COLOR.expired);
+      this.cb.onAddFloatingText(boss.x, boss.y - offsets.line2, TEXT_CONFIG.combat.bossFlee.text, TEXT_CONFIG.combat.bossFlee.color);
     }, delays[2]));
   }
 
@@ -711,7 +711,7 @@ export class BossBattleSystem {
     ctx.textAlign = 'center';
     ctx.shadowColor = 'rgba(0,0,0,0.8)';
     ctx.shadowBlur = 4;
-    ctx.fillText(TEXT_CONFIG.combat.bossPhaseTitle(bb.phaseName), w / 2, barY - 8);
+    ctx.fillText(TEXT_CONFIG.combat.bossPhaseTitle.text(bb.phaseName), w / 2, barY - 8);
     ctx.shadowBlur = 0;
 
     // 4层HP条
@@ -754,11 +754,11 @@ export class BossBattleSystem {
     }
 
     // 波次进度文字
-    let waveDisplay = TEXT_CONFIG.combat.preparing;
+    let waveDisplay = TEXT_CONFIG.combat.preparing.text;
     if (bb.currentWave >= 1 && bb.currentWave <= totalLayers) {
-      waveDisplay = TEXT_CONFIG.combat.bossWaveProgress(bb.currentWave);
+      waveDisplay = TEXT_CONFIG.combat.bossWaveProgress.text(bb.currentWave);
     } else if (bb.currentWave > totalLayers) {
-      waveDisplay = TEXT_CONFIG.combat.bossFleeing;
+      waveDisplay = TEXT_CONFIG.combat.bossFleeing.text;
     }
     ctx.fillStyle = RENDER_COLOR.bossLayerActive;
     ctx.font = RENDER_FONT.normal;
@@ -769,7 +769,7 @@ export class BossBattleSystem {
     ctx.shadowBlur = 0;
 
     // 剩余时间
-    const timeText = TEXT_CONFIG.combat.bossTimeRemaining(Math.ceil(bb.timeRemaining));
+    const timeText = TEXT_CONFIG.combat.bossTimeRemaining.text(Math.ceil(bb.timeRemaining));
     ctx.fillStyle = bb.timeRemaining < 30 ? RENDER_COLOR.bossTimeDanger : RENDER_COLOR.bossTimeNormal;
     ctx.font = RENDER_FONT.medium;
     ctx.textAlign = 'right';

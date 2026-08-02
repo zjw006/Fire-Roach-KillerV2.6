@@ -4,7 +4,7 @@
  */
 
 import type { TripleFlameState } from '../../types';
-import { TEXT_CONFIG, FLOAT_COLOR, BALANCE_CONFIG } from '../../data';
+import { TEXT_CONFIG, BALANCE_CONFIG } from '../../data';
 
 /**
  * 三重火焰系统配置接口
@@ -61,7 +61,7 @@ export class TripleFlameSystem {
       this.tripleFlame.timer = this.tripleFlame.duration;
       this.config.onAddFloatingText?.(
         this.config.canvasWidth / 2, this.config.canvasHeight / 2 - 60,
-        TEXT_CONFIG.combat.tripleFlameRefresh, FLOAT_COLOR.gold
+        TEXT_CONFIG.combat.tripleFlameRefresh.text(BALANCE_CONFIG.tripleFlame.duration), TEXT_CONFIG.combat.tripleFlameRefresh.color
       );
       return;
     }
@@ -71,7 +71,7 @@ export class TripleFlameSystem {
     this.config.onVibrateItemUse?.();
     this.config.onAddFloatingText?.(
       this.config.canvasWidth / 2, this.config.canvasHeight / 2 - 60,
-      TEXT_CONFIG.combat.tripleFlameActivate, FLOAT_COLOR.gold
+      TEXT_CONFIG.combat.tripleFlameActivate.text(BALANCE_CONFIG.tripleFlame.duration), TEXT_CONFIG.combat.tripleFlameActivate.color
     );
   }
 
@@ -87,7 +87,7 @@ export class TripleFlameSystem {
     if (prevTimer > tfCfg.warningThreshold && this.tripleFlame.timer <= tfCfg.warningThreshold) {
       this.config.onAddFloatingText?.(
         this.config.canvasWidth / 2, this.config.canvasHeight / 2 - 80,
-        TEXT_CONFIG.combat.tripleFlameWarning, FLOAT_COLOR.danger
+        TEXT_CONFIG.combat.tripleFlameWarning.text(BALANCE_CONFIG.tripleFlame.warningThreshold), TEXT_CONFIG.combat.tripleFlameWarning.color
       );
     }
 
@@ -100,7 +100,7 @@ export class TripleFlameSystem {
         for (let sec = prevFloor - 1; sec >= Math.max(currFloor, 1); sec--) {
           this.config.onAddFloatingText?.(
             this.config.canvasWidth / 2, this.config.canvasHeight / 2 - 50,
-            `${sec}...`, sec === 1 ? FLOAT_COLOR.danger : FLOAT_COLOR.warning
+            `${sec}...`, sec === 1 ? TEXT_CONFIG.combat.defenseBreach.color : TEXT_CONFIG.combat.fireWall.color
           );
         }
       }
@@ -111,7 +111,7 @@ export class TripleFlameSystem {
       this.tripleFlame.timer = 0;
       this.config.onAddFloatingText?.(
         this.config.canvasWidth / 2, this.config.canvasHeight / 2 - 50,
-        TEXT_CONFIG.combat.tripleFlameEnd, FLOAT_COLOR.expired
+        TEXT_CONFIG.combat.tripleFlameEnd.text, TEXT_CONFIG.combat.tripleFlameEnd.color
       );
     }
   }

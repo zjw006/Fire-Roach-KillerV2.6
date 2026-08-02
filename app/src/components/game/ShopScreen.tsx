@@ -150,7 +150,7 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
   return (
     <div className="absolute inset-0 flex items-center justify-center">
       {/* Fixed background image */}
-      <div className="fixed inset-0 bg-cover bg-center" style={{ backgroundImage: 'url(/assets/achieve_bg.jpg)' }} />
+      <div className="fixed inset-0 bg-cover bg-center" style={{ backgroundImage: 'url(/assets/bg_rooftop_easy.jpg)' }} />
       {/* Dark overlay */}
       <div className="fixed inset-0 bg-black/70" />
 

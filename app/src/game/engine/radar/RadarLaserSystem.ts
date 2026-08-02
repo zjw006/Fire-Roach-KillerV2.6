@@ -1,4 +1,4 @@
-﻿﻿﻿﻿/**
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿/**
  * @fileoverview 雷达激光系统模块
  * @description 负责管理雷达激光武器的激活、自动追踪、射击和过期清理。
  *              所有数值参数从 BALANCE_CONFIG.radarLaser 读取。
@@ -6,7 +6,7 @@
 
 import { RoachState, RoachType, ParticleType } from '../../types';
 import type { RadarLaser, Roach, Particle } from '../../types';
-import { BALANCE_CONFIG, TEXT_CONFIG, FLOAT_COLOR } from '../../data';
+import { BALANCE_CONFIG, TEXT_CONFIG } from '../../data';
 
 /**
  * 雷达激光系统配置接口
@@ -96,8 +96,8 @@ export class RadarLaserSystem {
 
     this.config.onPlayRadarActivate?.();
     this.config.onVibrateItemUse?.();
-    this.config.onAddFloatingText?.(cx, cy + offsetY.activate, TEXT_CONFIG.combat.radarActivate, FLOAT_COLOR.shield);
-    this.config.onAddFloatingText?.(cx, cy + offsetY.desc, TEXT_CONFIG.combat.radarDesc, FLOAT_COLOR.radarDesc);
+    this.config.onAddFloatingText?.(cx, cy + offsetY.activate, TEXT_CONFIG.combat.radarActivate.text, TEXT_CONFIG.combat.radarActivate.color);
+    this.config.onAddFloatingText?.(cx, cy + offsetY.desc, TEXT_CONFIG.combat.radarDesc.text(BALANCE_CONFIG.radarLaser.shotsRemaining), TEXT_CONFIG.combat.radarDesc.color);
   }
 
   // ========== 更新 ==========
@@ -133,9 +133,9 @@ export class RadarLaserSystem {
       if (!this._countdownWarned.has(warnTime) && this.radarLaser.timer <= warnTime) {
         this._countdownWarned.add(warnTime);
         if (warnTime === 3) {
-          this.config.onAddFloatingText?.(cx, cy + offsetY.countdown, TEXT_CONFIG.combat.radarCountdown(3), FLOAT_COLOR.shield);
+          this.config.onAddFloatingText?.(cx, cy + offsetY.countdown, TEXT_CONFIG.combat.radarCountdown.text(3), TEXT_CONFIG.combat.radarCountdown.color);
         } else if (warnTime === 1) {
-          this.config.onAddFloatingText?.(cx, cy + offsetY.closing, TEXT_CONFIG.combat.radarClosing, FLOAT_COLOR.warning);
+          this.config.onAddFloatingText?.(cx, cy + offsetY.closing, TEXT_CONFIG.combat.radarClosing.text, TEXT_CONFIG.combat.radarClosing.color);
         }
       }
     }
@@ -144,7 +144,7 @@ export class RadarLaserSystem {
       this.radarLaser.active = false;
       this.radarLaser.timer = 0;
       this.radarLaser.laserAlpha = 0;
-      this.config.onAddFloatingText?.(cx, cy + offsetY.closed, TEXT_CONFIG.combat.radarClosed, FLOAT_COLOR.expired);
+      this.config.onAddFloatingText?.(cx, cy + offsetY.closed, TEXT_CONFIG.combat.radarClosed.text, TEXT_CONFIG.combat.radarClosed.color);
       return;
     }
 
@@ -188,18 +188,18 @@ export class RadarLaserSystem {
         x: target.x, y: target.y,
         vx: 0, vy: cfg.impactParticle.vy,
         life: cfg.impactParticle.life, maxLife: cfg.impactParticle.life,
-        size: cfg.impactParticle.size, color: FLOAT_COLOR.shield,
+        size: cfg.impactParticle.size, color: TEXT_CONFIG.combat.shieldBlock.color,
         type: ParticleType.EXPLOSION,
       });
 
       if (this.radarLaser.shotsRemaining > 0) {
         this.config.onAddFloatingText?.(
           playerX + cfg.shotTextOffsetX, playerY + offsetY.shot,
-          TEXT_CONFIG.combat.radarShot(this.radarLaser.shotsRemaining), FLOAT_COLOR.shield
+          TEXT_CONFIG.combat.radarShot.text(this.radarLaser.shotsRemaining), TEXT_CONFIG.combat.radarShot.color
         );
       } else {
         // 修复 P2：弹药耗尽后渐隐退出，而不是立即关闭
-        this.config.onAddFloatingText?.(cx, cy + offsetY.exhausted, TEXT_CONFIG.combat.radarExhausted, FLOAT_COLOR.expired);
+        this.config.onAddFloatingText?.(cx, cy + offsetY.exhausted, TEXT_CONFIG.combat.radarExhausted.text, TEXT_CONFIG.combat.radarExhausted.color);
         this._fadeOutTimer = cfg.fadeOutDuration;
         return;
       }
@@ -208,10 +208,10 @@ export class RadarLaserSystem {
         // 修复 P1：使用 findIndex 基于 id 查找，避免 indexOf 引用比较
         const index = roaches.findIndex(r => r.id === target!.id);
         this.config.onKillRoach?.(target, index);
-        this.config.onAddFloatingText?.(target.x, target.y + offsetY.kill, TEXT_CONFIG.combat.radarKill, FLOAT_COLOR.shield);
+        this.config.onAddFloatingText?.(target.x, target.y + offsetY.kill, TEXT_CONFIG.combat.radarKill.text, TEXT_CONFIG.combat.radarKill.color);
         this.radarLaser.targetId = null;
       } else {
-        this.config.onAddFloatingText?.(target.x, target.y + offsetY.damage, TEXT_CONFIG.combat.radarDamage(damage), FLOAT_COLOR.shield);
+        this.config.onAddFloatingText?.(target.x, target.y + offsetY.damage, TEXT_CONFIG.combat.radarDamage.text(damage), TEXT_CONFIG.combat.radarDamage.color);
       }
     }
   }

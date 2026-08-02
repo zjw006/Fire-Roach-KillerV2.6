@@ -40,4 +40,4 @@ export {
 export { ENCYCLOPEDIA_DEFS } from './data/encyclopedia';
 export { BALANCE_CONFIG } from './data/balance';
 export { TEXT_CONFIG } from './data/text-config';
-export { FLOAT_COLOR, RENDER_COLOR, RENDER_FONT } from './data/render';
+export { RENDER_COLOR, RENDER_FONT } from './data/render';

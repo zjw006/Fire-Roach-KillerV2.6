@@ -1,8 +1,14 @@
 import { SceneType, type DialogConfig } from '../types';
 
-// 每个场景引入新蟑螂类型和新道具
+/**
+ * 场景对话配置
+ * @description 定义每个场景关卡开始前的剧情对话。
+ * 对话以搞笑风格呈现，讲述蟑叔和玩家一起消灭蟑螂的故事。
+ * 每个场景引入新蟑螂类型和新道具。
+ * 对话线中包含 speaker（说话者）、text（对话内容）、emotion（表情）字段。
+ */
 export const DIALOG_CONFIGS: DialogConfig[] = [
-  // Scene 1: Kitchen
+  // Scene 1: Kitchen - 教程关卡，介绍火焰喷射器
   {
     sceneType: SceneType.KITCHEN,
     title: '第一关：厨房',
@@ -13,7 +19,7 @@ export const DIALOG_CONFIGS: DialogConfig[] = [
       { speaker: '蟑叔', text: '油是小事！给你【火焰喷射器】，一喷变烧烤！……客户没买保险，所以快打！', emotion: 'excited' },
     ],
   },
-  // Scene 2: Sewer
+  // Scene 2: Sewer - 下水道，介绍粘板陷阱
   {
     sceneType: SceneType.SEWER,
     title: '第二关：下水道',
@@ -22,11 +28,11 @@ export const DIALOG_CONFIGS: DialogConfig[] = [
       { speaker: '蟑叔', text: '这地方像我二舅诊所，就是没这么多腿毛。下雨天蟑螂冲浪，速度贼快！', emotion: 'normal' },
       { speaker: '你', text: '你在发抖。' },
       { speaker: '蟑叔', text: '冷！给你【贴板陷阱】，铺水流必经之地，冲浪板变停尸板！', emotion: 'excited' },
-      { speaker: '螂老大（管道回声）', text: '张螂……本皇听见你了……' },
+      { speaker: '螂老大（管道回声）', text: '张螂……本皇听见你了……' }, // Boss 首次出现
       { speaker: '蟑叔', text: '别理，下水道广播坏了，继续铺！', emotion: 'normal' },
     ],
   },
-  // Scene 3: Dump
+  // Scene 3: Dump - 垃圾场，介绍燃烧瓶
   {
     sceneType: SceneType.DUMP,
     title: '第三关：垃圾场',
@@ -39,7 +45,7 @@ export const DIALOG_CONFIGS: DialogConfig[] = [
       { speaker: '蟑叔', text: '不，他在里面找到了过期可乐，现在还在厕所。', emotion: 'happy' },
     ],
   },
-  // Scene 4: Basement
+  // Scene 4: Basement - 地下室，介绍夜视仪
   {
     sceneType: SceneType.BASEMENT,
     title: '第四关：地下室',
@@ -52,7 +58,7 @@ export const DIALOG_CONFIGS: DialogConfig[] = [
       { speaker: '蟑叔', text: '7号楼？那单客户只给了80，我还嫌少。你谁啊？', emotion: 'normal' },
     ],
   },
-  // Scene 5: Street
+  // Scene 5: Street - 街道，螂老大正式登场
   {
     sceneType: SceneType.STREET,
     title: '第五关：街道',
@@ -65,7 +71,7 @@ export const DIALOG_CONFIGS: DialogConfig[] = [
       { speaker: '你', text: '……它好像哭了。' },
     ],
   },
-  // Scene 6: Rooftop
+  // Scene 6: Rooftop - 天台决战，Boss 战前奏
   {
     sceneType: SceneType.ROOFTOP,
     title: '第六关：天台',
@@ -81,7 +87,7 @@ export const DIALOG_CONFIGS: DialogConfig[] = [
       { speaker: '螂老大', text: '又是报销！！！' },
     ],
   },
-  // Scene 7: Hospital - New roach types + egg pool system
+  // Scene 7: Hospital - 废弃医院，新蟑螂类型 + 虫卵孵化池
   {
     sceneType: SceneType.HOSPITAL,
     title: '第七关：废弃医院',

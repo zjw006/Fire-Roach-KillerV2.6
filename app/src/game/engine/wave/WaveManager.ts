@@ -5,7 +5,7 @@
 
 import { SceneType, RoachType, GameMode, GameState } from '../../types';
 import type { WaveConfig } from '../../types';
-import { SCENE_WAVE_CONFIGS, SCENE_ROACH_TYPES, BALANCE_CONFIG, TEXT_CONFIG, FLOAT_COLOR, RENDER_COLOR, RENDER_FONT } from '../../data';
+import { SCENE_WAVE_CONFIGS, SCENE_ROACH_TYPES, BALANCE_CONFIG, TEXT_CONFIG, RENDER_COLOR, RENDER_FONT } from '../../data';
 
 // ===== 波次管理器配置接口 =====
 export interface WaveManagerConfig {
@@ -165,7 +165,7 @@ export class WaveManager {
           this.cb.onKillAllNurseRoaches?.();
           this.cb.onAddFloatingText(
             this.cfg.width / 2, this.cfg.height * 0.35,
-            TEXT_CONFIG.combat.waveCleared, FLOAT_COLOR.gold
+            TEXT_CONFIG.combat.waveCleared.text, TEXT_CONFIG.combat.waveCleared.color
           );
         }
       }

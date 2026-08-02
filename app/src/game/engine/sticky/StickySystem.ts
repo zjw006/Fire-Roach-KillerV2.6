@@ -4,7 +4,7 @@
  */
 
 import { RoachState, RoachType, ParticleType, type StickyBoard, type StickyDrop, type Roach, type Particle } from '../../types';
-import { ENEMY_DEFS, BALANCE_CONFIG, TEXT_CONFIG, FLOAT_COLOR } from '../../data';
+import { ENEMY_DEFS, BALANCE_CONFIG, TEXT_CONFIG } from '../../data';
 
 /**
  * 粘板/粘液弹系统配置接口
@@ -81,8 +81,8 @@ export class StickySystem {
 
     this.config.onPlayStickySpray?.();
     this.config.onVibrateItemUse?.();
-    this.config.onAddFloatingText?.(cx, cy - 60, TEXT_CONFIG.combat.stickyLaunch, FLOAT_COLOR.switch);
-    this.config.onAddFloatingText?.(cx, cy - 40, TEXT_CONFIG.combat.stickyTracking, FLOAT_COLOR.bestTime);
+    this.config.onAddFloatingText?.(cx, cy - 60, TEXT_CONFIG.combat.stickyLaunch.text, TEXT_CONFIG.combat.stickyLaunch.color);
+    this.config.onAddFloatingText?.(cx, cy - 40, TEXT_CONFIG.combat.stickyTracking.text(BALANCE_CONFIG.sticky.dropCount), TEXT_CONFIG.combat.stickyTracking.color);
     this.config.onScreenShake?.(BALANCE_CONFIG.screenShake.smallExplosion);
   }
 
@@ -179,7 +179,7 @@ export class StickySystem {
     if (Math.random() < deltaTime * 2 && !isTimedPlacing) {
       if (target.armorHp > 0) {
         if (Math.random() < 0.1) {
-          this.config.onAddFloatingText?.(target.x, target.y - 15, TEXT_CONFIG.combat.armorImmune, FLOAT_COLOR.armorImmune);
+          this.config.onAddFloatingText?.(target.x, target.y - 15, TEXT_CONFIG.combat.armorImmune.text, TEXT_CONFIG.combat.armorImmune.color);
         }
       } else {
         target.hp -= BALANCE_CONFIG.sticky.damagePerTick;
@@ -252,7 +252,7 @@ export class StickySystem {
         target.speed = 0;
         target.vx = 0;
         target.vy = 0;
-        this.config.onAddFloatingText?.(target.x, target.y - 20, TEXT_CONFIG.combat.stickyCapture, FLOAT_COLOR.switch);
+        this.config.onAddFloatingText?.(target.x, target.y - 20, TEXT_CONFIG.combat.stickyCapture.text(BALANCE_CONFIG.sticky.wrapTimer), TEXT_CONFIG.combat.stickyCapture.color);
 
         // 击中粒子
         for (let p = 0; p < cfg.hitParticleCount; p++) {
@@ -304,7 +304,7 @@ export class StickySystem {
     });
 
     this.config.onSpawnSpark?.(x, y, 4);
-    this.config.onAddFloatingText?.(x, y - 30, TEXT_CONFIG.combat.stickyBoard, FLOAT_COLOR.switch);
+    this.config.onAddFloatingText?.(x, y - 30, TEXT_CONFIG.combat.stickyBoard.text, TEXT_CONFIG.combat.stickyBoard.color);
   }
 
   /** 更新粘性板（含生命周期和蟑螂捕获） */
@@ -354,7 +354,7 @@ export class StickySystem {
         r.vx = 0;
         r.vy = 0;
         if (board.stuckRoaches.length === 1) {
-          this.config.onAddFloatingText?.(r.x, r.y - 20, TEXT_CONFIG.combat.stickyStuck, FLOAT_COLOR.switch);
+          this.config.onAddFloatingText?.(r.x, r.y - 20, TEXT_CONFIG.combat.stickyStuck.text, TEXT_CONFIG.combat.stickyStuck.color);
         }
       }
     }

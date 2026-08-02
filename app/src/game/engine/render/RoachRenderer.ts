@@ -600,7 +600,7 @@ export class RoachRenderer {
       ctx.font = RENDER_FONT.large;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(TEXT_CONFIG.combat.transformCountdown(secsLeft), 0, -swirlR - 10);
+      ctx.fillText(TEXT_CONFIG.combat.transformCountdown.text(secsLeft), 0, -swirlR - 10);
       ctx.restore();
     }
 
@@ -1044,7 +1044,7 @@ export class RoachRenderer {
       ctx.fillStyle = RENDER_COLOR.bossName;
       ctx.font = RENDER_FONT.large;
       ctx.textAlign = 'center';
-      ctx.fillText(TEXT_CONFIG.combat.roachQueen, r.x, r.y - size - 25);
+      ctx.fillText(TEXT_CONFIG.combat.roachQueen.text, r.x, r.y - size - 25);
     }
   }
 }

@@ -6,7 +6,7 @@
 
 import { RoachState, RoachType, ParticleType } from '../../types';
 import type { Particle, Roach, FireZone } from '../../types';
-import { BALANCE_CONFIG, TEXT_CONFIG, FLOAT_COLOR } from '../../data';
+import { BALANCE_CONFIG, TEXT_CONFIG } from '../../data';
 
 /**
  * 毒雾系统配置接口
@@ -80,7 +80,7 @@ export class PoisonSystem {
    * 修复 P1：中毒效果叠加（延长计时器，取最大伤害）
    * 修复 P1：通过 onAddZone 回调添加区域，避免直接修改 fireZones
    * 修复 P2：通过 onDamageRoach 回调统一伤害入口
-   * 修复 P2：浮动文字颜色使用 FLOAT_COLOR.poison
+   * 修复 P2：浮动文字颜色使用 TEXT_CONFIG.combat.poisonHit.color
    * @param roaches 蟑螂数组（会被直接修改 poisonTimer/poisonDamage）
    * @param x X坐标
    * @param y Y坐标
@@ -131,11 +131,11 @@ export class PoisonSystem {
     // 修复 P2：通过回调生成粒子，避免直接修改外部粒子数组
     this.config.onSpawnPoisonExplosion?.(x, y);
 
-    // 修复 P2：使用 FLOAT_COLOR.poison 代替 FLOAT_COLOR.fan
+    // 修复 P2：使用 TEXT_CONFIG.combat.poisonHit.color
     this.config.onAddFloatingText?.(
       x, y - 20,
-      hitCount > 0 ? TEXT_CONFIG.combat.poisonHit(hitCount) : TEXT_CONFIG.combat.poisonLand,
-      FLOAT_COLOR.poison
+      hitCount > 0 ? TEXT_CONFIG.combat.poisonHit.text(hitCount) : TEXT_CONFIG.combat.poisonLand.text,
+      TEXT_CONFIG.combat.poisonHit.color
     );
     this.config.onScreenShake?.(BALANCE_CONFIG.screenShake.smallExplosion);
   }

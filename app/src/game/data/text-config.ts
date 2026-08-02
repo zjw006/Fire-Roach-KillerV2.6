@@ -1,219 +1,246 @@
+/**
+ * @fileoverview 文案与浮动文字颜色配置
+ * @description 集中管理游戏内所有 UI 文案、战斗特效文字内容，以及对应的浮动文字颜色。
+ * 每个 combat 条目为 { text, color } 对象，颜色紧跟在对应文字下方。
+ * 使用方式：import { TEXT_CONFIG } from './data';
+ *          this.addFloatingText(x, y, TEXT_CONFIG.combat.xxx.text, TEXT_CONFIG.combat.xxx.color);
+ */
+
 // ========== 文案配置 ==========
 export const TEXT_CONFIG = {
   // ===== 战斗特效文字 =====
+  // 战斗中出现的浮动文字，包含 text 内容和 color 颜色
   combat: {
     // 防线/碰撞
-    defenseBreach: '防线突破!',
-    shieldBlock: '护盾抵消!',
-    armorBreak: '破甲!',
-    armorShatter: '护甲碎裂!',
-    armorImmune: '护甲免疫',
+    defenseBreach: { text: '防线突破!', color: '#ef4444' },     // 红色警告
+    shieldBlock: { text: '护盾抵消!', color: '#22d3ee' },       // 青色护盾
+    armorBreak: { text: '破甲!', color: '#fbbf24' },            // 金色破甲
+    armorShatter: { text: '护甲碎裂!', color: '#fbbf24' },      // 金色碎裂
+    armorImmune: { text: '护甲免疫', color: '#60a5fa' },         // 蓝色免疫
 
     // 投掷物落地
-    stickyLand: '冰冻!',
-    poisonLand: '毒雾!',
-    molotovLand: '燃烧!',
+    stickyLand: { text: '冰冻!', color: '#facc15' },             // 金色冰冻
+    poisonLand: { text: '毒雾!', color: '#a78bfa' },             // 紫色毒雾
+    molotovLand: { text: '燃烧!', color: '#f87171' },             // 红色燃烧
 
     // 蟑螂贴板
-    stickyLaunch: '蟑螂贴板发射!',
-    stickyTracking: '10个追踪水滴',
-    stickyCapture: '粘住12秒!',
-    stickyBoard: '贴板!',
-    stickyStuck: '粘住!',
+    stickyLaunch: { text: '蟑螂贴板发射!', color: '#facc15' },
+    stickyTracking: { text: (n: number) => `${n}个追踪水滴`, color: '#fde047' },
+    stickyCapture: { text: (d: number) => `粘住${d}秒!`, color: '#facc15' },
+    stickyBoard: { text: '贴板!', color: '#facc15' },
+    stickyStuck: { text: '粘住!', color: '#facc15' },
 
     // 雷达激光
-    radarActivate: '雷达激光启动! 自动追踪目标',
-    radarDesc: '5发激光，伤害与小蟑螂一致',
-    radarCountdown: (s: number) => `雷达激光 ${s}秒...`,
-    radarClosing: '雷达激光即将关闭!',
-    radarClosed: '雷达激光关闭',
-    radarShot: (n: number) => `激光 x${n}`,
-    radarExhausted: '激光发射完毕!',
-    radarKill: '激光击杀!',
+    radarActivate: { text: '雷达激光启动! 自动追踪目标', color: '#22d3ee' },
+    radarDesc: { text: (n: number) => `${n}发激光，伤害与小蟑螂一致`, color: '#67e8f9' },
+    radarCountdown: { text: (s: number) => `雷达激光 ${s}秒...`, color: '#22d3ee' },
+    radarClosing: { text: '雷达激光即将关闭!', color: '#f87171' },
+    radarClosed: { text: '雷达激光关闭', color: '#9ca3af' },
+    radarShot: { text: (n: number) => `激光 x${n}`, color: '#22d3ee' },
+    radarExhausted: { text: '激光发射完毕!', color: '#9ca3af' },
+    radarKill: { text: '激光击杀!', color: '#22d3ee' },
 
     // 电蚊拍
-    swatterReady: '⚡ 电蚊拍就绪!',
-    swatterHit: (hit: number, armor: number) => `⚡电蚊拍全屏!命中${hit}只!破甲${armor}!`,
-    swatterHitParalyze: (hit: number) => `⚡电蚊拍全屏!命中${hit}只!麻痹!`,
-    swatterMiss: '⚡电蚊拍!未命中',
-    swatterNoItem: '没有电蚊拍!',
-    swatterCooldown: (s: string) => `电蚊拍冷却中... (${s}s)`,
-    globalCooldown: (s: string) => `道具冷却中... (${s}s)`,
-    swatterPickup: '获得电蚊拍!',
+    swatterReady: { text: '⚡ 电蚊拍就绪!', color: '#4ade80' },
+    swatterHit: { text: (hit: number, armor: number) => `⚡电蚊拍全屏!命中${hit}只!破甲${armor}!`, color: '#4ade80' },
+    swatterHitParalyze: { text: (hit: number) => `⚡电蚊拍全屏!命中${hit}只!麻痹!`, color: '#4ade80' },
+    swatterMiss: { text: '⚡电蚊拍!未命中', color: '#9ca3af' },
+    swatterNoItem: { text: '没有电蚊拍!', color: '#9ca3af' },
+    swatterCooldown: { text: (s: string) => `电蚊拍冷却中... (${s}s)`, color: '#94a3b8' },
+    globalCooldown: { text: (s: string) => `道具冷却中... (${s}s)`, color: '#94a3b8' },
+    swatterPickup: { text: '获得电蚊拍!', color: '#4ade80' },
 
     // 强力风扇
-    fanActivate: '强力风扇启动!',
-    fanDesc: '蟑螂被吹退8秒!',
-    fanRefresh: '风扇已续期!',
-    fanDurationWithTalent: (baseDuration: number, mult: number) => `蟑螂被吹退${(baseDuration * mult).toFixed(1)}秒!(+天赋)`,
-    fanStop: '风扇停止',
+    fanActivate: { text: '强力风扇启动!', color: '#a78bfa' },
+    fanDesc: { text: (d: number) => `蟑螂被吹退${d}秒!`, color: '#c4b5fd' },
+    fanRefresh: { text: '风扇已续期!', color: '#a78bfa' },
+    fanDurationWithTalent: { text: (baseDuration: number, mult: number) => `蟑螂被吹退${(baseDuration * mult).toFixed(1)}秒!(+天赋)`, color: '#c4b5fd' },
+    fanStop: { text: '风扇停止', color: '#9ca3af' },
 
     // 毒气喷射
-    insecticideActivate: '双侧毒气喷射!',
-    insecticideDesc: '两侧横向毒雾3秒',
-    insecticideClosing: '毒气喷射即将结束!',
-    insecticideEnd: '毒气喷射结束',
-    insecticideHit: (n: number) => `毒气命中${n}只!`,
+    insecticideActivate: { text: '双侧毒气喷射!', color: '#4ade80' },
+    insecticideDesc: { text: (d: number) => `两侧横向毒雾${d}秒`, color: '#86efac' },
+    insecticideClosing: { text: '毒气喷射即将结束!', color: '#f87171' },
+    insecticideEnd: { text: '毒气喷射结束', color: '#9ca3af' },
+    insecticideHit: { text: (n: number) => `毒气命中${n}只!`, color: '#4ade80' },
 
     // 蟑螂AI
-    queenSummon: '女王召唤了小蟑螂!',
-    bombPlaced: '炸弹已安放!',
-    transformBig: '变身大蟑螂!',
-    nurseCasting: '【施法中】',
-    nurseIllegal: '非法行医!',
-    bombFailed: '炸弹没响...',
-    corpseBomb: (s: number) => `尸体炸弹 ${s}秒!`,
-    bossDefeated: 'BOSS 击败!',
-    killReward: (reward: number) => `+¥${reward}`,
+    queenSummon: { text: '女王召唤了小蟑螂!', color: '#ff44aa' },
+    bombPlaced: { text: '炸弹已安放!', color: '#ef4444' },
+    transformBig: { text: '变身大蟑螂!', color: '#fbbf24' },
+    nurseCasting: { text: '【施法中】', color: '#4ade80' },
+    nurseIllegal: { text: '非法行医!', color: '#5a8a5a' },
+    bombFailed: { text: '炸弹没响...', color: '#666666' },
+    corpseBomb: { text: (s: number) => `尸体炸弹 ${s}秒!`, color: '#ff4444' },
+    bossDefeated: { text: 'BOSS 击败!', color: '#fbbf24' },
+    killReward: { text: (reward: number) => `+¥${reward}`, color: '#4ade80' },
 
     // Boss
-    bossAppear: '螂老大出现了!',
-    bossSpawnEggs: '它正在产卵!消灭虫卵!',
-    bossDefeatedText: '螂老大被消灭了!',
-    victory: '胜利!',
-    bossSummon: '召唤虫卵!',
-    bossDialogue1: '螂老大: "不...不可能!"',
-    bossDialogue2: '螂老大: "我的虫卵大军...全灭了..."',
+    bossAppear: { text: '螂老大出现了!', color: '#ef4444' },
+    bossSpawnEggs: { text: '它正在产卵!消灭虫卵!', color: '#fbbf24' },
+    bossDefeatedText: { text: '螂老大被消灭了!', color: '#ef4444' },
+    victory: { text: '胜利!', color: '#22c55e' },
+    bossSummon: { text: '召唤虫卵!', color: '#a855f7' },
+    bossDialogue1: { text: '螂老大: "不...不可能!"', color: '#ef4444' },
+    bossDialogue2: { text: '螂老大: "我的虫卵大军...全灭了..."', color: '#ef4444' },
 
     // 波次
-    waveCleared: '支援单位已清除，推进下一波!',
-    waveClearedN: (wave: number) => `第${wave}波清除!`,
-    gameVictory: '游戏胜利',
-    countdown: '倒计时3-2-1...',
+    waveCleared: { text: '支援单位已清除，推进下一波!', color: '#fbbf24' },
+    waveClearedN: { text: (wave: number) => `第${wave}波清除!`, color: '#22c55e' },
+    gameVictory: { text: '游戏胜利', color: '#22c55e' },
+    countdown: { text: '倒计时3-2-1...', color: '#fbbf24' },
 
     // 消耗品
-    gasRefill: '燃气已回满!',
-    powerBoost: (s: number) => `>>> 火力全开 ${s}秒 <<<`,
-    shieldActive: (s: number) => `>>> 防线护盾 ${s}秒 <<<`,
+    gasRefill: { text: '燃气已回满!', color: '#fbbf24' },
+    powerBoost: { text: (s: number) => `>>> 火力全开 ${s}秒 <<<`, color: '#ef4444' },
+    shieldActive: { text: (s: number) => `>>> 防线护盾 ${s}秒 <<<`, color: '#06b6d4' },
 
     // 渲染器
-    transformCountdown: (s: number) => `变身! ${s}s`,
-    spawnCount: (n: number) => `生成${n}只!`,
-    roachQueen: '蟑螂女王',
-    defenseLine: '防 线',
-    groundBounds: '蟑螂地面边界(6点折线)',
+    transformCountdown: { text: (s: number) => `变身! ${s}s`, color: '#fbbf24' },
+    spawnCount: { text: (n: number) => `生成${n}只!`, color: '#ff0040' },
+    roachQueen: { text: '蟑螂女王', color: '#ef4444' },
+    defenseLine: { text: '防 线', color: '#e5e7eb' },
+    groundBounds: { text: '蟑螂地面边界(6点折线)', color: '#e5e7eb' },
 
     // 蟑螂AI - 更多
-    nurseSpray: '治疗喷射!',
-    bigExplosion: (n: number) => `大爆炸!(${n}只受波及)`,
-    deathExplosion: (n: number) => `死亡爆炸!(${n}只受波及)`,
-    boom: '轰!',
-    splitSpawn: '分裂x5!',
-    disintegrate: '解体!',
-    explode: (n: number) => `爆炸!(${n}只受波及)`,
-    embryoBurst: '【胚胎暴走】',
-    acidSplash: '酸液飞溅!',
-    acidCorrode: (n: number) => `${n}只受腐蚀`,
-    suicideDamage: (dmg: number) => `自爆伤害! -${dmg}`,
-    bombExplode: (dmg: number) => `炸弹爆炸! -${dmg}`,
-    backlash: (dmg: number) => `反噬 -${dmg}`,
-    spawnBirth: (name: string) => `【诞生】${name}!`,
+    nurseSpray: { text: '治疗喷射!', color: '#5a8a5a' },
+    bigExplosion: { text: (n: number) => `大爆炸!(${n}只受波及)`, color: '#ff4400' },
+    deathExplosion: { text: (n: number) => `死亡爆炸!(${n}只受波及)`, color: '#ff4400' },
+    boom: { text: '轰!', color: '#8b2020' },
+    splitSpawn: { text: '分裂x5!', color: '#ff8800' },
+    disintegrate: { text: '解体!', color: '#88ccff' },
+    explode: { text: (n: number) => `爆炸!(${n}只受波及)`, color: '#ff6600' },
+    embryoBurst: { text: '【胚胎暴走】', color: '#ff0040' },
+    acidSplash: { text: '酸液飞溅!', color: '#84cc16' },
+    acidCorrode: { text: (n: number) => `${n}只受腐蚀`, color: '#a3e635' },
+    suicideDamage: { text: (dmg: number) => `自爆伤害! -${dmg}`, color: '#ef4444' },
+    bombExplode: { text: (dmg: number) => `炸弹爆炸! -${dmg}`, color: '#ef4444' },
+    backlash: { text: (dmg: number) => `反噬 -${dmg}`, color: '#a855f7' },
+    spawnBirth: { text: (name: string) => `【诞生】${name}!`, color: '#00ff80' },
 
     // 消耗品 - 更多
-    baitPlaced: '>>> 蟑螂诱饵已投放 <<<',
-    baitEnd: '诱饵效果 消失',
-    powerBoostEnd: '火力全开 结束',
-    shieldEnd: '防线护盾 消失',
+    baitPlaced: { text: '>>> 蟑螂诱饵已投放 <<<', color: '#fbbf24' },
+    baitEnd: { text: '诱饵效果 消失', color: '#fbbf24' },
+    powerBoostEnd: { text: '火力全开 结束', color: '#f87171' },
+    shieldEnd: { text: '防线护盾 消失', color: '#22d3ee' },
 
     // 天气
-    lightning: '⚡ 闪电 ⚡',
+    lightning: { text: '⚡ 闪电 ⚡', color: '#fbbf24' },
 
     // 三喷火枪
-    tripleFlameActivate: '三喷火枪模式! 持续15秒',
-    tripleFlameRefresh: '三喷火枪已刷新! 持续15秒',
-    tripleFlameWarning: '⚠ 三喷火枪即将消失! 5秒 ⚠',
-    tripleFlameEnd: '三喷火枪模式结束',
+    tripleFlameActivate: { text: (d: number) => `三喷火枪模式! 持续${d}秒`, color: '#fbbf24' },
+    tripleFlameRefresh: { text: (d: number) => `三喷火枪已刷新! 持续${d}秒`, color: '#fbbf24' },
+    tripleFlameWarning: { text: (d: number) => `⚠ 三喷火枪即将消失! ${d}秒 ⚠`, color: '#ef4444' },
+    tripleFlameEnd: { text: '三喷火枪模式结束', color: '#9ca3af' },
 
     // 风扇
-    fanBlowing: '吹退中',
+    fanBlowing: { text: '吹退中', color: '#a78bfa' },
 
     // Boss - 更多
-    bossDialogue3: '螂老大: "这次算你赢了!我会回来的!"',
-    bossFlee: '螂老大飞走了...',
-    bossPhase1: '第一波:虫卵',
-    bossAppearTitle: '【螂老大来袭】',
-    bossDefendLine: '消灭虫卵和蟑螂!保卫防线!',
-    bossDialogueShort: '不...不可能!我的虫卵大军...',
-    bossSummoning: 'BOSS正在召唤虫卵...',
-    preparing: '准备中',
-    bossFleeing: 'BOSS逃跑中',
+    bossDialogue3: { text: '螂老大: "这次算你赢了!我会回来的!"', color: '#fbbf24' },
+    bossFlee: { text: '螂老大飞走了...', color: '#9ca3af' },
+    bossPhase1: { text: '第一波:虫卵', color: '#ef4444' },
+    bossAppearTitle: { text: '【螂老大来袭】', color: '#ef4444' },
+    bossDefendLine: { text: '消灭虫卵和蟑螂!保卫防线!', color: '#fbbf24' },
+    bossDialogueShort: { text: '不...不可能!我的虫卵大军...', color: '#ef4444' },
+    bossSummoning: { text: 'BOSS正在召唤虫卵...', color: '#a855f7' },
+    preparing: { text: '准备中', color: '#9ca3af' },
+    bossFleeing: { text: 'BOSS逃跑中', color: '#9ca3af' },
 
     // 投掷物 - 更多
-    poisonHit: (n: number) => `毒雾!(${n}只)`,
+    poisonHit: { text: (n: number) => `毒雾!(${n}只)`, color: '#a78bfa' },
 
     // 放置
-    placeItem: (name: string) => `点击放置 ${name}`,
+    placeItem: { text: (name: string) => `点击放置 ${name}`, color: '#fbbf24' },
 
     // 波次/虫卵
-    waveEggRelease: (wave: number) => `第${wave}波虫卵释放!`,
-    eggHatchPending: (count: number) => `${count}个虫卵即将孵化`,
+    waveEggRelease: { text: (wave: number) => `第${wave}波虫卵释放!`, color: '#ef4444' },
+    eggHatchPending: { text: (count: number) => `${count}个虫卵即将孵化`, color: '#fbbf24' },
 
     // 结算
-    itemRecycle: (amount: number) => `道具回收 +¥${amount}`,
-    talentReward: (points: number) => `+${points} 天赋点!`,
-    starRating: ['', '通关!', '优秀!', '完美!'],
-    breachCount: (count: number) => `防线突破: ${count}次`,
-    defeat: '防线被攻破! 战斗失败!',
+    itemRecycle: { text: (amount: number) => `道具回收 +¥${amount}`, color: '#fbbf24' },
+    talentReward: { text: (points: number) => `+${points} 天赋点!`, color: '#fbbf24' },
+    starRating: { text: ['', '通关!', '优秀!', '完美!'] as readonly string[], color: '#fbbf24' },
+    breachCount: { text: (count: number) => `防线突破: ${count}次`, color: '#f87171' },
+    defeat: { text: '防线被攻破! 战斗失败!', color: '#ef4444' },
 
     // 无尽模式
-    newRecord: '你创造了新纪录!',
-    bestTimeRefreshed: '历史最高时长已刷新!',
+    newRecord: { text: '你创造了新纪录!', color: '#fbbf24' },
+    bestTimeRefreshed: { text: '历史最高时长已刷新!', color: '#fde047' },
 
     // 武器/道具拾取
-    weaponPickup: (name: string, bonus: string) => `拾取: ${name}!${bonus}`,
-    weaponSwitch: (name: string) => `切换到: ${name}`,
-    weaponExpired: '武器已过期',
-    barrelCooldown: '⚠️ 枪管冷却中!',
-    openFire: '>>> 开 火 <<<',
-    itemCooldown: (s: string) => `道具冷却中... (${s}s)`,
-    namedCooldown: (name: string, s: string) => `${name}冷却中... (${s}s)`,
+    weaponPickup: { text: (name: string, bonus: string) => `拾取: ${name}!${bonus}`, color: '#4ade80' },
+    weaponSwitch: { text: (name: string) => `切换到: ${name}`, color: '#facc15' },
+    weaponExpired: { text: '武器已过期', color: '#9ca3af' },
+    barrelCooldown: { text: '⚠️ 枪管冷却中!', color: '#fbbf24' },
+    openFire: { text: '>>> 开 火 <<<', color: '#22c55e' },
+    itemCooldown: { text: (s: string) => `道具冷却中... (${s}s)`, color: '#94a3b8' },
+    namedCooldown: { text: (name: string, s: string) => `${name}冷却中... (${s}s)`, color: '#94a3b8' },
 
     // 火焰墙
-    fireWall: (count: number) => `火焰墙!(${count}只)`,
-    fireWallSimple: '火焰墙!',
+    fireWall: { text: (count: number) => `火焰墙!(${count}只)`, color: '#f87171' },
+    fireWallSimple: { text: '火焰墙!', color: '#f87171' },
 
     // 尸体炸弹
-    corpseBombExplode: '尸体炸弹爆炸!',
-    corpseBombDamage: (dmg: number) => `尸体炸弹! -${dmg}`,
+    corpseBombExplode: { text: '尸体炸弹爆炸!', color: '#ff4400' },
+    corpseBombDamage: { text: (dmg: number) => `尸体炸弹! -${dmg}`, color: '#ef4444' },
 
     // 定时自爆
-    timedSuicideNext: '定时自爆蟑螂出现! 下一只8秒后',
-    timedSuicideAll: '定时自爆蟑螂全部出现!',
-    bombWarning: '!!',
+    timedSuicideNext: { text: '定时自爆蟑螂出现! 下一只8秒后', color: '#f59e0b' },
+    timedSuicideAll: { text: '定时自爆蟑螂全部出现!', color: '#f59e0b' },
+    bombWarning: { text: '!!', color: '#ff0000' },
 
     // 场景解锁
-    sceneUnlock: (name: string) => `解锁新场景: ${name}!`,
+    sceneUnlock: { text: (name: string) => `解锁新场景: ${name}!`, color: '#fbbf24' },
 
     // 投掷武器
-    throwWeapon: (name: string) => `投掷${name}!`,
+    throwWeapon: { text: (name: string) => `投掷${name}!`, color: '#fbbf24' },
 
     // 雷达激光伤害
-    radarDamage: (dmg: number) => `-${dmg}`,
+    radarDamage: { text: (dmg: number) => `-${dmg}`, color: '#22d3ee' },
 
     // 消耗品 - 冷却相关
-    combatStartCooldown: (s: string) => `冷却中... (${s}s)`,
-    consumableGlobalCooldown: (s: string) => `全局冷却中... (${s}s)`,
-    defenseRepair: (heal: number) => `防线修复 +${heal}`,
-    emergencyCoolAdd: (n: number) => `紧急冷却 +1 (共${n}次)`,
-    emergencyCoolUse: (n: number) => `紧急冷却! (剩余${n}次)`,
-    powerBoostCountdown: (s: number) => `火力全开 ${s}秒`,
+    combatStartCooldown: { text: (s: string) => `冷却中... (${s}s)`, color: '#94a3b8' },
+    consumableGlobalCooldown: { text: (s: string) => `全局冷却中... (${s}s)`, color: '#94a3b8' },
+    defenseRepair: { text: (heal: number) => `防线修复 +${heal}`, color: '#4ade80' },
+    emergencyCoolAdd: { text: (n: number) => `紧急冷却 +1 (共${n}次)`, color: '#60a5fa' },
+    emergencyCoolUse: { text: (n: number) => `紧急冷却! (剩余${n}次)`, color: '#60a5fa' },
+    powerBoostCountdown: { text: (s: number) => `火力全开 ${s}秒`, color: '#ef4444' },
 
     // Boss - 更多
-    bossWaveNames: ['', '虫卵入侵', '大蟑螂卵', '飞行蟑螂卵', '精英蟑螂卵'] as readonly string[],
-    bossWaveTitle: (wave: number, name: string) => `【第${wave}波: ${name}】`,
-    bossPhaseTitle: (phaseName: string) => `螂老大 - ${phaseName}`,
-    bossWaveProgress: (wave: number) => `第${wave}/4波`,
-    bossTimeRemaining: (secs: number) => `剩余时间: ${secs}秒`,
+    bossWaveNames: { text: ['', '虫卵入侵', '大蟑螂卵', '飞行蟑螂卵', '精英蟑螂卵'] as readonly string[], color: '#fbbf24' },
+    bossWaveTitle: { text: (wave: number, name: string) => `【第${wave}波: ${name}】`, color: '#fbbf24' },
+    bossPhaseTitle: { text: (phaseName: string) => `螂老大 - ${phaseName}`, color: '#ef4444' },
+    bossWaveProgress: { text: (wave: number) => `第${wave}/4波`, color: '#fbbf24' },
+    bossTimeRemaining: { text: (secs: number) => `剩余时间: ${secs}秒`, color: '#9ca3af' },
 
     // 成就
-    achievementUnlock: (name: string, reward: number) => `成就: ${name} +¥${reward}`,
+    achievementUnlock: { text: (name: string, reward: number) => `成就: ${name} +¥${reward}`, color: '#fbbf24' },
 
     // 定时器显示
-    fanTimer: (timer: string) => `风扇 ${timer}s`,
-    insecticideTimer: (timer: string) => `杀虫剂 ${timer}s`,
+    fanTimer: { text: (timer: string) => `风扇 ${timer}s`, color: '#c4b5fd' },
+    insecticideTimer: { text: (timer: string) => `杀虫剂 ${timer}s`, color: '#86efac' },
+
+    // 爆炸通用回退
+    explosionFallback: { text: '爆炸!', color: '#ff6600' },
+    bigExplosionFallback: { text: '大爆炸!', color: '#ff4400' },
+    deathExplosionFallback: { text: '死亡爆炸!', color: '#ff4400' },
+
+    // 炸弹倒计时
+    bombCountdown: { text: (s: number) => `${s}`, color: '#ff0000' },
+
+    // 过热警告 HUD 覆盖层
+    overheatWarningHud: { text: (s: number) => `⚠️ 过热警告 ${s}秒`, color: '#ef4444' },
+
+    // 换气罐中
+    reloadingText: { text: '更换气罐中', color: '#fbbf24' },
+
+    // Boss 阶段名称
+    bossPhaseNames: { text: ['虫卵入侵', '大蟑螂卵', '飞行蟑螂卵', '精英蟑螂卵'] as readonly string[], color: '#ef4444' },
   },
 
   // ===== 道具名称 =====
+  // 道具的中文简称，用于 UI 显示
   items: {
     sticky: '蟑螂贴板',
     poison: '杀虫剂',
@@ -226,14 +253,16 @@ export const TEXT_CONFIG = {
   },
 
   // ===== 武器名称 =====
+  // 武器模式的中文名称
   weapons: {
     flamethrower: '火焰',
     shotgun: '散弹',
   },
 
   // ===== UI 组件文字 =====
+  // 所有 UI 界面的文案，包括标题、菜单、HUD、成就、图鉴、结算等
   ui: {
-    // 标题屏幕
+    // 标题屏幕 - 游戏启动时的加载/标题界面
     title: {
       title: '蟑螂猎手',
       subtitle: 'ROACH BLASTER',
@@ -254,7 +283,7 @@ export const TEXT_CONFIG = {
       ],
     },
 
-    // 主菜单
+    // 主菜单 - 模式选择、难度选择、场景选择
     menu: {
       title: '烈焰除蟑',
       subtitle: '火线守卫',
@@ -288,7 +317,7 @@ export const TEXT_CONFIG = {
       storyDifficultySelect: (difficulty: string) => `${difficulty} — 选择一个场景`,
     },
 
-    // HUD
+    // HUD - 战斗中显示的信息（燃气、波次、金币、击杀、防线等）
     hud: {
       gas: '燃气',
       wave: '波次',
@@ -309,7 +338,7 @@ export const TEXT_CONFIG = {
       itemCooldown: (name: string) => `${name} 冷却中...`,
     },
 
-    // 倒计时
+    // 倒计时 - 战斗开始前的 3-2-1 倒计时
     countdown: {
       battleStart: '战斗开始！',
       prepare: '准备战斗',
@@ -345,7 +374,7 @@ export const TEXT_CONFIG = {
       back: '返回',
     },
 
-    // 漫画
+    // 漫画 - 关卡开始的漫画过场
     comic: {
       skip: '跳过',
       syncing: '同步数据中...',
@@ -355,7 +384,7 @@ export const TEXT_CONFIG = {
       comicPanelAlt: (n: number) => `漫画 ${n}`,
     },
 
-    // 对话
+    // 对话 - 关卡开始的对话过场
     dialog: {
       skip: '跳过',
       clickToSkip: '点击跳过打字',
@@ -363,7 +392,7 @@ export const TEXT_CONFIG = {
       clickToContinue: '点击继续',
     },
 
-    // 商店
+    // 商店 - 关卡间的道具商店
     shop: {
       title: '补给站',
       buy: '购买',
@@ -392,7 +421,7 @@ export const TEXT_CONFIG = {
       newRecord: '你创造了新纪录!',
     },
 
-    // 游戏结束
+    // 游戏结束 - 胜利/失败结算界面
     gameOver: {
       bossDefeatedShort: '螂老大被消灭!',
       bossVictoryDesc: '下水道重获安宁',
@@ -422,7 +451,7 @@ export const TEXT_CONFIG = {
       endlessMode: '无尽模式',
     },
 
-    // 通用
+    // 通用 - 共用按钮文字
     common: {
       back: '返回',
       close: '关闭',
@@ -472,6 +501,7 @@ export const TEXT_CONFIG = {
     },
 
     // ===== 道具揭示 =====
+    // 通关后解锁新道具的揭示界面
     itemReveal: {
       newUnlock: '战斗胜利！解锁新道具',
       zhangshuSays: '蟑叔说：',
@@ -479,6 +509,7 @@ export const TEXT_CONFIG = {
     },
 
     // ===== 道具回收 =====
+    // 关卡结束时的道具回收界面
     itemRecycle: {
       title: '道具回收',
     },
@@ -499,6 +530,7 @@ export const TEXT_CONFIG = {
     },
 
     // ===== 道具准备 =====
+    // 战斗开始前的道具选择界面
     preparation: {
       title: '道具选择',
       selectHint: '选择',

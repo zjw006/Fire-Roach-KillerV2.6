@@ -5,7 +5,7 @@
 
 import { GameState, ParticleType } from '../../types';
 import type { Player, Particle, ConsumableDef } from '../../types';
-import { BALANCE_CONFIG, TEXT_CONFIG, FLOAT_COLOR, RENDER_COLOR } from '../../data';
+import { BALANCE_CONFIG, TEXT_CONFIG, RENDER_COLOR } from '../../data';
 
 // =============================================================================
 // 回调接口拆分（修复 P1：20+ 回调按职责分组）
@@ -147,15 +147,15 @@ export class ConsumableSystem {
 
     if (id !== 'emergency_cool') {
       if (this.combatStartTimer > 0) {
-        this.cfg.onAddFloatingText(player.x, player.y - BALANCE_CONFIG.consumable.floatTextOffset.player, TEXT_CONFIG.combat.combatStartCooldown(this.combatStartTimer.toFixed(1)), FLOAT_COLOR.cooldown, 800);
+        this.cfg.onAddFloatingText(player.x, player.y - BALANCE_CONFIG.consumable.floatTextOffset.player, TEXT_CONFIG.combat.combatStartCooldown.text(this.combatStartTimer.toFixed(1)), TEXT_CONFIG.combat.combatStartCooldown.color, 800);
         return false;
       }
       if ((this.consumableCooldowns[id] || 0) > 0) {
-        this.cfg.onAddFloatingText(player.x, player.y - BALANCE_CONFIG.consumable.floatTextOffset.player, TEXT_CONFIG.combat.namedCooldown(this.cfg.consumableDefs.find(c => c.id === id)?.name || '', this.consumableCooldowns[id].toFixed(1)), FLOAT_COLOR.cooldown, 800);
+        this.cfg.onAddFloatingText(player.x, player.y - BALANCE_CONFIG.consumable.floatTextOffset.player, TEXT_CONFIG.combat.namedCooldown.text(this.cfg.consumableDefs.find(c => c.id === id)?.name || '', this.consumableCooldowns[id].toFixed(1)), TEXT_CONFIG.combat.namedCooldown.color, 800);
         return false;
       }
       if (this.globalConsumableCooldown > 0) {
-        this.cfg.onAddFloatingText(player.x, player.y - BALANCE_CONFIG.consumable.floatTextOffset.player, TEXT_CONFIG.combat.consumableGlobalCooldown(this.globalConsumableCooldown.toFixed(1)), FLOAT_COLOR.cooldown, 800);
+        this.cfg.onAddFloatingText(player.x, player.y - BALANCE_CONFIG.consumable.floatTextOffset.player, TEXT_CONFIG.combat.consumableGlobalCooldown.text(this.globalConsumableCooldown.toFixed(1)), TEXT_CONFIG.combat.consumableGlobalCooldown.color, 800);
         return false;
       }
     }
@@ -167,7 +167,7 @@ export class ConsumableSystem {
       case 'gas_refill': {
         player.gas = player.maxGas;
         this.buffFlashTimers['gas_refill'] = BALANCE_CONFIG.consumable.buffFlashDuration;
-        this.cfg.onAddFloatingText(player.x, player.y - BALANCE_CONFIG.consumable.floatTextOffset.player, TEXT_CONFIG.combat.gasRefill, FLOAT_COLOR.gold, 1500);
+        this.cfg.onAddFloatingText(player.x, player.y - BALANCE_CONFIG.consumable.floatTextOffset.player, TEXT_CONFIG.combat.gasRefill.text, TEXT_CONFIG.combat.gasRefill.color, 1500);
         break;
       }
       case 'defense_repair': {
@@ -180,7 +180,7 @@ export class ConsumableSystem {
         this.cfg.setDefenseHp(newHp);
         this.buffFlashTimers['defense_repair'] = BALANCE_CONFIG.consumable.buffFlashDuration;
         if (actualHeal > 0) {
-          this.cfg.onAddFloatingText(this.cfg.getCanvasWidth() / 2, this.cfg.getDefenseLineY() - BALANCE_CONFIG.consumable.floatTextOffset.defenseRepair, TEXT_CONFIG.combat.defenseRepair(actualHeal), FLOAT_COLOR.reward, 1500);
+          this.cfg.onAddFloatingText(this.cfg.getCanvasWidth() / 2, this.cfg.getDefenseLineY() - BALANCE_CONFIG.consumable.floatTextOffset.defenseRepair, TEXT_CONFIG.combat.defenseRepair.text(actualHeal), TEXT_CONFIG.combat.defenseRepair.color, 1500);
         }
         this.cfg.onDefenseUpdate?.(newHp, maxDefenseHp);
         break;
@@ -188,19 +188,19 @@ export class ConsumableSystem {
       case 'emergency_cool': {
         this.emergencyCoolInventory++;
         this.cfg.onEmergencyCoolUpdate?.(this.emergencyCoolInventory);
-        this.cfg.onAddFloatingText(player.x, player.y - BALANCE_CONFIG.consumable.floatTextOffset.player, TEXT_CONFIG.combat.emergencyCoolAdd(this.emergencyCoolInventory), FLOAT_COLOR.armorImmune, 1500);
+        this.cfg.onAddFloatingText(player.x, player.y - BALANCE_CONFIG.consumable.floatTextOffset.player, TEXT_CONFIG.combat.emergencyCoolAdd.text(this.emergencyCoolInventory), TEXT_CONFIG.combat.emergencyCoolAdd.color, 1500);
         break;
       }
       case 'power_boost': {
         player.powerBoostTimer = BALANCE_CONFIG.consumable.powerBoostDuration;
-        this.cfg.onAddFloatingText(this.cfg.getCanvasWidth() / 2, this.cfg.getCanvasHeight() / 2, TEXT_CONFIG.combat.powerBoost(BALANCE_CONFIG.consumable.powerBoostDuration), FLOAT_COLOR.danger, 2000, 32);
+        this.cfg.onAddFloatingText(this.cfg.getCanvasWidth() / 2, this.cfg.getCanvasHeight() / 2, TEXT_CONFIG.combat.powerBoost.text(BALANCE_CONFIG.consumable.powerBoostDuration), TEXT_CONFIG.combat.powerBoost.color, 2000, 32);
         break;
       }
       case 'shield': {
         player.shieldTimer = BALANCE_CONFIG.consumable.shieldDuration;
         player.shieldActive = true;
         this.buffFlashTimers['shield'] = BALANCE_CONFIG.consumable.shieldDuration;
-        this.cfg.onAddFloatingText(this.cfg.getCanvasWidth() / 2, this.cfg.getCanvasHeight() / 2 - BALANCE_CONFIG.consumable.floatTextOffset.shield, TEXT_CONFIG.combat.shieldActive(BALANCE_CONFIG.consumable.shieldDuration), FLOAT_COLOR.shieldActive, 2000);
+        this.cfg.onAddFloatingText(this.cfg.getCanvasWidth() / 2, this.cfg.getCanvasHeight() / 2 - BALANCE_CONFIG.consumable.floatTextOffset.shield, TEXT_CONFIG.combat.shieldActive.text(BALANCE_CONFIG.consumable.shieldDuration), TEXT_CONFIG.combat.shieldActive.color, 2000);
         break;
       }
       case 'bait': {
@@ -218,7 +218,7 @@ export class ConsumableSystem {
           targetY,
           timer: BALANCE_CONFIG.consumable.baitThrowAnimDuration,
         };
-        this.cfg.onAddFloatingText(targetX, targetY - BALANCE_CONFIG.consumable.floatTextOffset.bait, TEXT_CONFIG.combat.baitPlaced, FLOAT_COLOR.gold, 2000);
+        this.cfg.onAddFloatingText(targetX, targetY - BALANCE_CONFIG.consumable.floatTextOffset.bait, TEXT_CONFIG.combat.baitPlaced.text, TEXT_CONFIG.combat.baitPlaced.color, 2000);
         break;
       }
     }
@@ -299,7 +299,7 @@ export class ConsumableSystem {
       player.overheatTimer = 0;
       player.heat = 0;
       this.cfg.onSpawnSmokeParticles(player.x, player.y, 20);
-      this.cfg.onAddFloatingText(player.x, player.y - BALANCE_CONFIG.consumable.floatTextOffset.emergencyCool, TEXT_CONFIG.combat.emergencyCoolUse(this.emergencyCoolInventory), FLOAT_COLOR.armorImmune);
+      this.cfg.onAddFloatingText(player.x, player.y - BALANCE_CONFIG.consumable.floatTextOffset.emergencyCool, TEXT_CONFIG.combat.emergencyCoolUse.text(this.emergencyCoolInventory), TEXT_CONFIG.combat.emergencyCoolUse.color);
       this.cfg.onEmergencyCoolUpdate?.(this.emergencyCoolInventory);
       this._needsNotify = true;
       return true;
@@ -331,12 +331,12 @@ export class ConsumableSystem {
       const secondsLeft = Math.ceil(player.powerBoostTimer);
       if (secondsLeft > 0 && secondsLeft !== this._lastPowerBoostCountdown) {
         this._lastPowerBoostCountdown = secondsLeft;
-        this.cfg.onAddFloatingText(this.cfg.getCanvasWidth() / 2, this.cfg.getCanvasHeight() / 2, TEXT_CONFIG.combat.powerBoostCountdown(secondsLeft), FLOAT_COLOR.danger, 800, 32);
+        this.cfg.onAddFloatingText(this.cfg.getCanvasWidth() / 2, this.cfg.getCanvasHeight() / 2, TEXT_CONFIG.combat.powerBoostCountdown.text(secondsLeft), TEXT_CONFIG.combat.powerBoostCountdown.color, 800, 32);
       }
       if (player.powerBoostTimer <= 0) {
         player.powerBoostTimer = 0;
         this._lastPowerBoostCountdown = -1;
-        this.cfg.onAddFloatingText(this.cfg.getCanvasWidth() / 2, this.cfg.getCanvasHeight() / 2, TEXT_CONFIG.combat.powerBoostEnd, FLOAT_COLOR.warning, 1500, 32);
+        this.cfg.onAddFloatingText(this.cfg.getCanvasWidth() / 2, this.cfg.getCanvasHeight() / 2, TEXT_CONFIG.combat.powerBoostEnd.text, TEXT_CONFIG.combat.powerBoostEnd.color, 1500, 32);
       }
     }
 
@@ -347,7 +347,7 @@ export class ConsumableSystem {
         player.shieldTimer = 0;
         player.shieldActive = false;
         delete this.buffFlashTimers['shield'];
-        this.cfg.onAddFloatingText(this.cfg.getCanvasWidth() / 2, this.cfg.getCanvasHeight() / 2 - BALANCE_CONFIG.consumable.floatTextOffset.shield, TEXT_CONFIG.combat.shieldEnd, FLOAT_COLOR.shield, 1500);
+        this.cfg.onAddFloatingText(this.cfg.getCanvasWidth() / 2, this.cfg.getCanvasHeight() / 2 - BALANCE_CONFIG.consumable.floatTextOffset.shield, TEXT_CONFIG.combat.shieldEnd.text, TEXT_CONFIG.combat.shieldEnd.color, 1500);
       }
     }
 
@@ -372,7 +372,7 @@ export class ConsumableSystem {
       if (player.baitTimer <= 0) {
         player.baitTimer = 0;
         this.baitTarget.active = false;
-        this.cfg.onAddFloatingText(this.baitTarget.x, this.baitTarget.y - BALANCE_CONFIG.consumable.floatTextOffset.baitEnd, TEXT_CONFIG.combat.baitEnd, FLOAT_COLOR.gold, 1500);
+        this.cfg.onAddFloatingText(this.baitTarget.x, this.baitTarget.y - BALANCE_CONFIG.consumable.floatTextOffset.baitEnd, TEXT_CONFIG.combat.baitEnd.text, TEXT_CONFIG.combat.baitEnd.color, 1500);
       }
     }
   }

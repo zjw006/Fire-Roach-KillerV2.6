@@ -3,8 +3,6 @@
  * @description 负责管理游戏中的成就解锁、奖励发放和进度跟踪
  */
 
-import { TEXT_CONFIG, FLOAT_COLOR } from '../../data';
-
 /**
  * 成就数据接口
  */
@@ -64,6 +62,8 @@ export interface PlayerProgress {
     /** 已学习天赋 */
     talents: Record<string, number>;
   };
+  /** 未领取金币的成就 ID 列表（持久化） */
+  unclaimedRewards?: string[];
 }
 
 /**
@@ -80,10 +80,6 @@ export interface AchievementSystemConfig {
   canvasHeight: number;
   /** 添加浮动文字回调 */
   onAddFloatingText?: (x: number, y: number, text: string, color: string) => void;
-  /** 添加金钱回调（成就奖励） */
-  onAddMoney?: (amount: number) => void;
-  /** 添加关卡内待结算金币回调（成就奖励计入关卡金币） */
-  onAddPendingReward?: (amount: number) => void;
   /** 更新经济数据回调 */
   onEconomyUpdate?: (economy: any) => void;
   /** 保存进度回调 */
@@ -99,6 +95,8 @@ export class AchievementSystem {
   private config: AchievementSystemConfig;
   /** 自上次查看成就界面以来新解锁的成就 ID 集合（用于解锁动画） */
   private newlyUnlockedIds: Set<string> = new Set();
+  /** 未领取金币的成就 ID 集合（跨局持久化，进入成就界面时领取） */
+  private unclaimedRewards: Set<string> = new Set();
 
   /**
    * 构造函数
@@ -106,6 +104,10 @@ export class AchievementSystem {
    */
   constructor(config: AchievementSystemConfig) {
     this.config = config;
+    // 从存档恢复未领取金币的成就
+    if (config.playerProgress.unclaimedRewards) {
+      this.unclaimedRewards = new Set(config.playerProgress.unclaimedRewards);
+    }
   }
 
   /**
@@ -175,23 +177,14 @@ export class AchievementSystem {
 
   /**
    * 发放成就奖励（提取公共逻辑，消除 checkAchievements 和 unlockAchievement 中的重复代码）
+   * @description 成就解锁时不再直接加钱，而是标记为"待领取"。金币在玩家打开成就界面、动画点亮后发放。
    * @param ach 成就数据
    */
   private grantAchievementReward(ach: AchievementData): void {
-    // 发放奖励金币：优先使用关卡内待结算（仅在关卡内时），否则直接加钱
-    if (this.config.onAddPendingReward) {
-      this.config.onAddPendingReward(ach.reward);
-    } else if (this.config.onAddMoney) {
-      this.config.onAddMoney(ach.reward);
-    }
+    // 标记为待领取金币（进入成就界面后点亮动画时领取）
+    this.unclaimedRewards.add(ach.id);
 
-    // 显示成就解锁浮动文字
-    this.config.onAddFloatingText?.(
-      this.config.canvasWidth / 2,
-      this.config.canvasHeight / 2 - 50,
-      TEXT_CONFIG.combat.achievementUnlock(ach.name, ach.reward),
-      FLOAT_COLOR.gold
-    );
+    // 战斗中不再显示浮动文字，统一在成就界面中展示
   }
 
   /**
@@ -262,6 +255,41 @@ export class AchievementSystem {
   }
 
   /**
+   * 领取单个成就的金币奖励
+   * @param id 成就 ID
+   * @returns 奖励金额，如果已领取或成就未解锁则返回 0
+   */
+  claimReward(id: string): number {
+    if (!this.unclaimedRewards.has(id)) return 0;
+    const ach = this.config.playerProgress.achievements.find(a => a.id === id);
+    if (!ach || !ach.unlocked) return 0;
+
+    this.unclaimedRewards.delete(id);
+    // 同步到存档
+    this.config.playerProgress.unclaimedRewards = [...this.unclaimedRewards];
+    this.config.onSaveProgress?.();
+    return ach.reward;
+  }
+
+  /**
+   * 获取未领取金币的成就列表
+   * @returns 未领取金币的成就列表
+   */
+  getUnclaimedAchievements(): AchievementData[] {
+    return this.config.playerProgress.achievements
+      .filter(a => this.unclaimedRewards.has(a.id));
+  }
+
+  /**
+   * 获取未领取金币总数
+   * @returns 未领取金币总数
+   */
+  getTotalUnclaimedRewards(): number {
+    return this.getUnclaimedAchievements()
+      .reduce((total, ach) => total + ach.reward, 0);
+  }
+
+  /**
    * 获取未解锁成就列表
    * @returns 未解锁成就列表
    */
@@ -306,6 +334,10 @@ export class AchievementSystem {
     if (progress.weaponsUnlocked) {
       this.config.playerProgress.weaponsUnlocked = [...progress.weaponsUnlocked];
     }
+    if (progress.unclaimedRewards) {
+      this.unclaimedRewards = new Set(progress.unclaimedRewards);
+      this.config.playerProgress.unclaimedRewards = [...progress.unclaimedRewards];
+    }
 
     if (progress.talentTree) {
       Object.assign(this.config.playerProgress.talentTree, progress.talentTree);
@@ -318,6 +350,7 @@ export class AchievementSystem {
   reset(): void {
     // 清空新解锁动画队列
     this.newlyUnlockedIds.clear();
+    // 不重置 unclaimedRewards — 未领取金币跨局保持
 
     // 重置经济统计数据（单局数据）
     this.config.economyStats = {

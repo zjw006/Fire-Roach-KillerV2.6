@@ -5,7 +5,7 @@
 
 import { RoachType, RoachState } from '../../types';
 import type { FanState, Roach } from '../../types';
-import { TEXT_CONFIG, FLOAT_COLOR, RENDER_COLOR, RENDER_FONT, BALANCE_CONFIG } from '../../data';
+import { TEXT_CONFIG, RENDER_COLOR, RENDER_FONT, BALANCE_CONFIG } from '../../data';
 
 /**
  * 风扇系统配置接口（修复 P2：统一为 getter 函数，消除函数/值不一致）
@@ -95,18 +95,18 @@ export class FanSystem {
 
     if (wasActive) {
       // 修复 P1：重复激活给予反馈
-      this.config.onAddFloatingText?.(W / 2, textY, TEXT_CONFIG.combat.fanRefresh, FLOAT_COLOR.fan);
-      this.config.onAddFloatingText?.(W / 2, textY + fanCfg.activationTextYOffset, TEXT_CONFIG.combat.fanTimer(this.fanState.timer.toFixed(1)), FLOAT_COLOR.fanSecondary);
+      this.config.onAddFloatingText?.(W / 2, textY, TEXT_CONFIG.combat.fanRefresh.text, TEXT_CONFIG.combat.fanRefresh.color);
+      this.config.onAddFloatingText?.(W / 2, textY + fanCfg.activationTextYOffset, TEXT_CONFIG.combat.fanTimer.text(this.fanState.timer.toFixed(1)), TEXT_CONFIG.combat.fanTimer.color);
     } else {
       this.config.onStartFanLoop?.();
 
       // 修复 P2：使用配置值替代硬编码 8
       const durationText = fanDurationMult > 1
-        ? TEXT_CONFIG.combat.fanDurationWithTalent(fanCfg.defaultDuration, fanDurationMult)
-        : TEXT_CONFIG.combat.fanDesc;
+        ? TEXT_CONFIG.combat.fanDurationWithTalent.text(fanCfg.defaultDuration, fanDurationMult)
+        : TEXT_CONFIG.combat.fanDesc.text(fanCfg.defaultDuration);
 
-      this.config.onAddFloatingText?.(W / 2, textY, TEXT_CONFIG.combat.fanActivate, FLOAT_COLOR.fan);
-      this.config.onAddFloatingText?.(W / 2, textY + fanCfg.activationTextYOffset, durationText, FLOAT_COLOR.fanSecondary);
+      this.config.onAddFloatingText?.(W / 2, textY, TEXT_CONFIG.combat.fanActivate.text, TEXT_CONFIG.combat.fanActivate.color);
+      this.config.onAddFloatingText?.(W / 2, textY + fanCfg.activationTextYOffset, durationText, TEXT_CONFIG.combat.fanActivate.color);
       this.config.onScreenShake?.(fanCfg.activationScreenShake);
     }
 
@@ -166,8 +166,8 @@ export class FanSystem {
       this.config.onAddFloatingText?.(
         this.config.getCanvasWidth() / 2,
         this.config.getCanvasHeight() * fanCfg.activationTextYRatio,
-        TEXT_CONFIG.combat.fanStop,
-        FLOAT_COLOR.expired,
+        TEXT_CONFIG.combat.fanStop.text,
+        TEXT_CONFIG.combat.fanStop.color,
       );
       for (const r of roaches) {
         r.fanSlowTimer = 0;
@@ -389,11 +389,11 @@ export class FanSystem {
     ctx.fillStyle = RENDER_COLOR.fanIconPrimary;
     ctx.font = RENDER_FONT.boldMedium;
     ctx.textAlign = 'center';
-    ctx.fillText(TEXT_CONFIG.combat.fanTimer(fan.timer.toFixed(1)), iconCX, iconCY - iconSize - fanCfg.iconTimerYOffset);
+    ctx.fillText(TEXT_CONFIG.combat.fanTimer.text(fan.timer.toFixed(1)), iconCX, iconCY - iconSize - fanCfg.iconTimerYOffset);
 
     ctx.fillStyle = 'rgba(167, 139, 250, 0.7)';
     ctx.font = RENDER_FONT.small;
-    ctx.fillText(TEXT_CONFIG.combat.fanBlowing, iconCX, iconCY - iconSize - fanCfg.iconBlowingYOffset);
+    ctx.fillText(TEXT_CONFIG.combat.fanBlowing.text, iconCX, iconCY - iconSize - fanCfg.iconBlowingYOffset);
 
     ctx.restore();
   }

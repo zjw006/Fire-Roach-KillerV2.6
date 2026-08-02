@@ -46,7 +46,7 @@ export const GameMenu: React.FC<GameMenuProps> = ({
   useEffect(() => {
     const img = new Image();
     img.onload = () => setBgLoaded(true);
-    img.src = '/assets/menu_bg.jpg';
+    img.src = '/assets/bg_kitchen_easy.jpg';
   }, []);
 
   const scenesUnlocked = progress?.scenesUnlocked || [SceneType.KITCHEN];
@@ -87,7 +87,7 @@ export const GameMenu: React.FC<GameMenuProps> = ({
   if (showModes && selectedMode === GameMode.STORY) {
     return (
       <div className="absolute inset-0 flex items-center justify-center overflow-y-auto py-4 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-stone-700/50 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-stone-600/60">
-        <div className="absolute inset-0 bg-cover bg-center transition-opacity duration-700" style={{ backgroundImage: 'url(/assets/menu_bg.jpg)', opacity: bgLoaded ? 1 : 0 }} />
+        <div className="absolute inset-0 bg-cover bg-center transition-opacity duration-700" style={{ backgroundImage: 'url(/assets/bg_kitchen_easy.jpg)', opacity: bgLoaded ? 1 : 0 }} />
         <div className="absolute inset-0 bg-black/70" />
         <div className="relative z-10 text-center max-w-sm w-full mx-4 my-auto">
           {/* Talent tree button */}
@@ -191,7 +191,7 @@ export const GameMenu: React.FC<GameMenuProps> = ({
 
   return (
     <div className="absolute inset-0 flex items-start justify-center overflow-y-auto py-8">
-      <div className="absolute inset-0 bg-cover bg-center transition-opacity duration-700" style={{ backgroundImage: 'url(/assets/menu_bg.jpg)', opacity: bgLoaded ? 1 : 0 }} />
+      <div className="absolute inset-0 bg-cover bg-center transition-opacity duration-700" style={{ backgroundImage: 'url(/assets/bg_kitchen_easy.jpg)', opacity: bgLoaded ? 1 : 0 }} />
       <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/50 to-black/80" />
 
       <div className="relative z-10 text-center max-w-sm w-full mx-4 flex flex-col items-center pb-28 mt-[30px]">

@@ -74,6 +74,10 @@
     /* 防止 iOS Safari 橡皮筋效果（页面整体回弹） */
     overscroll-behavior: none;
   }
+  /* 游戏容器填满视口，隐藏溢出（Fixed Width 适配） */
+  #game-container {
+    overflow: hidden;
+  }
 }
 
 /* Power Boost: border glow pulse animation (blue-purple) */

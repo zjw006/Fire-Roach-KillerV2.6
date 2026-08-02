@@ -1,14 +1,56 @@
 import { SceneType, SAVE_VERSION, type Achievement, type GameProgress } from '../types';
 import { ENCYCLOPEDIA_DEFS } from './encyclopedia';
 
+// ========== 樟叔成就对话框文字模板 ==========
+/**
+ * 成就解锁时樟叔对话框的文字模板
+ * @description 集中管理成就解锁弹窗中樟叔的对话文案，方便统一修改而无需改动组件代码。
+ * 使用方式：import { ACHIEVEMENT_DIALOG_TEXT } from '@/game/data/achievements';
+ */
+export const ACHIEVEMENT_DIALOG_TEXT = {
+  /** 解锁标题 */
+  unlockTitle: '🎉 恭喜！解锁成就',
+  /** 成就名称左括号 */
+  namePrefix: '「',
+  /** 成就名称右括号 */
+  nameSuffix: '」',
+  /** 金币奖励模板 */
+  rewardTemplate: (reward: number) => `💰 奖励 ¥${reward} 已存入账户`,
+  /** 点击继续提示 */
+  clickToContinue: '点击继续 ▸',
+  /** 最后一项点击继续提示 */
+  clickToFinish: '点击完成 ✓',
+  /** 战斗中浮动文字（成就解锁时画面中央提示） */
+  floatingText: (name: string, reward: number) => `成就: ${name} +¥${reward}`,
+  /** 浮动文字颜色 */
+  floatingColor: '#fbbf24',
+  /** 进度指示器模板 */
+  progressIndicator: (current: number, total: number) => `${current} / ${total}`,
+} as const;
+
+/**
+ * 成就定义列表
+ * @description 定义游戏中所有可解锁的成就，包含 id、名称、描述、解锁条件表达式和奖励金币。
+ * 条件表达式在 AchievementSystem 中通过动态求值（eval）检查，支持 `totalKills`、`highestWave`、
+ * `totalMoneyEarned` 等经济统计字段，以及 `allWeaponsUnlocked`、`talentPointsSpent` 等特殊条件。
+ * 每个成就的 reward 金币在玩家打开成就界面、动画点亮后发放到总金币池。
+ * 
+ * 成就分类：
+ * - 击杀类：first_blood, roach_slayer, roach_exterminator, kill_queen, kill_flying, kill_armored
+ * - 波次类：wave_5, wave_10, endless_20, endless_50
+ * - 经济类：money_1000
+ * - 完美类：perfect_wave, no_breach
+ * - 解锁类：weapon_master, talent_first
+ */
 export const ACHIEVEMENT_DEFS: Omit<Achievement, 'unlocked'>[] = [
+  // ===== 击杀类成就 =====
   {
     id: 'first_blood',
     name: '首杀',
     description: '消灭第一只蟑螂',
     condition: 'totalKills >= 1',
     conditionDescription: '击杀第1只蟑螂',
-    reward: 50,
+    reward: 50,      // 入门成就，奖励较低
   },
   {
     id: 'roach_slayer',
@@ -16,7 +58,7 @@ export const ACHIEVEMENT_DEFS: Omit<Achievement, 'unlocked'>[] = [
     description: '累计消灭100只蟑螂',
     condition: 'totalKills >= 100',
     conditionDescription: '累计击杀100只蟑螂',
-    reward: 200,
+    reward: 200,     // 中等门槛
   },
   {
     id: 'roach_exterminator',
@@ -24,15 +66,16 @@ export const ACHIEVEMENT_DEFS: Omit<Achievement, 'unlocked'>[] = [
     description: '累计消灭1000只蟑螂',
     condition: 'totalKills >= 1000',
     conditionDescription: '累计击杀1000只蟑螂',
-    reward: 1000,
+    reward: 1000,    // 高门槛，高奖励
   },
+  // ===== 波次类成就 =====
   {
     id: 'wave_5',
     name: '坚守阵地',
     description: '到达第5波',
     condition: 'highestWave >= 5',
     conditionDescription: '通关第5波',
-    reward: 100,
+    reward: 100,     // 中期里程碑
   },
   {
     id: 'wave_10',
@@ -40,7 +83,7 @@ export const ACHIEVEMENT_DEFS: Omit<Achievement, 'unlocked'>[] = [
     description: '通关全部10波',
     condition: 'highestWave >= 10',
     conditionDescription: '通关第10波',
-    reward: 500,
+    reward: 500,     // 通关奖励
   },
   {
     id: 'endless_20',
@@ -48,7 +91,7 @@ export const ACHIEVEMENT_DEFS: Omit<Achievement, 'unlocked'>[] = [
     description: '无尽模式到达20波',
     condition: 'highestEndlessWave >= 20',
     conditionDescription: '无尽模式达到20波',
-    reward: 500,
+    reward: 500,     // 无尽模式中期奖励
   },
   {
     id: 'endless_50',
@@ -56,23 +99,25 @@ export const ACHIEVEMENT_DEFS: Omit<Achievement, 'unlocked'>[] = [
     description: '无尽模式到达50波',
     condition: 'highestEndlessWave >= 50',
     conditionDescription: '无尽模式达到50波',
-    reward: 2000,
+    reward: 2000,    // 无尽模式最高成就
   },
+  // ===== 经济类成就 =====
   {
     id: 'money_1000',
     name: '小有积蓄',
     description: '累计获得1000资金',
     condition: 'totalMoneyEarned >= 1000',
     conditionDescription: '累计获得1000金钱',
-    reward: 200,
+    reward: 200,     // 自然积累可达成
   },
+  // ===== 完美类成就 =====
   {
     id: 'perfect_wave',
     name: '完美防御',
     description: '完成一波 without any breach',
     condition: 'perfectWaves >= 1',
     conditionDescription: '完成1次完美波次（无防线突破）',
-    reward: 100,
+    reward: 100,     // 鼓励完美防守
   },
   {
     id: 'no_breach',
@@ -80,15 +125,16 @@ export const ACHIEVEMENT_DEFS: Omit<Achievement, 'unlocked'>[] = [
     description: '通关10波 without any breach',
     condition: 'breaches == 0 and highestWave >= 10',
     conditionDescription: '连续10波无防线突破',
-    reward: 1000,
+    reward: 1000,    // 高难度成就
   },
+  // ===== Boss 击杀类成就 =====
   {
     id: 'kill_queen',
     name: '女王终结者',
     description: '消灭蟑螂女王',
     condition: 'queenKills >= 1',
     conditionDescription: '击杀1只女王蟑螂',
-    reward: 500,
+    reward: 500,     // Boss 击杀奖励
   },
   {
     id: 'kill_flying',
@@ -96,7 +142,7 @@ export const ACHIEVEMENT_DEFS: Omit<Achievement, 'unlocked'>[] = [
     description: '消灭50只飞行蟑螂',
     condition: 'flyingKills >= 50',
     conditionDescription: '累计击杀50只飞行蟑螂',
-    reward: 300,
+    reward: 300,     // 飞行蟑螂较难命中
   },
   {
     id: 'kill_armored',
@@ -104,15 +150,16 @@ export const ACHIEVEMENT_DEFS: Omit<Achievement, 'unlocked'>[] = [
     description: '消灭30只装甲蟑螂',
     condition: 'armoredKills >= 30',
     conditionDescription: '累计击杀30只装甲蟑螂',
-    reward: 400,
+    reward: 400,     // 装甲蟑螂血量高
   },
+  // ===== 解锁类成就 =====
   {
     id: 'weapon_master',
     name: '武器大师',
     description: '解锁所有特殊武器',
     condition: 'allWeaponsUnlocked',
     conditionDescription: '解锁5种武器',
-    reward: 1000,
+    reward: 1000,    // 全武器收集奖励
   },
   {
     id: 'talent_first',
@@ -120,30 +167,37 @@ export const ACHIEVEMENT_DEFS: Omit<Achievement, 'unlocked'>[] = [
     description: '第一次升级天赋',
     condition: 'talentPointsSpent >= 1',
     conditionDescription: '学习第1个天赋',
-    reward: 100,
+    reward: 100,     // 入门引导奖励
   },
 ];
 
 // ========== 默认游戏进度 ==========
+/**
+ * 创建默认游戏进度对象
+ * @description 初始化一个全新的存档，包含所有成就（未解锁）、初始场景解锁（厨房）、
+ * 默认武器（火焰喷射器+蟑螂贴板）、空的天赋树和消耗品库存。
+ * 由 SaveSystem 在首次游戏或重置进度时调用。
+ * @returns 全新的 GameProgress 对象
+ */
 export function createDefaultProgress(): GameProgress {
   return {
-    saveVersion: SAVE_VERSION,
+    saveVersion: SAVE_VERSION,                           // 存档版本号，用于兼容性检查
     talentTree: {
-      points: 0,
-      talents: {},
+      points: 0,                                         // 初始天赋点 = 0
+      talents: {},                                       // 空天赋树
     },
-    achievements: ACHIEVEMENT_DEFS.map(a => ({ ...a, unlocked: false })),
-    highestWave: 0,
-    highestEndlessWave: 0,
-    totalKills: 0,
-    scenesUnlocked: [SceneType.KITCHEN],
-    scenesCompleted: [],
-    weaponsUnlocked: ['flamethrower', 'sticky'],
+    achievements: ACHIEVEMENT_DEFS.map(a => ({ ...a, unlocked: false })), // 所有成就初始未解锁
+    highestWave: 0,                                      // 最高波次 = 0
+    highestEndlessWave: 0,                               // 无尽模式最高波次 = 0
+    totalKills: 0,                                       // 总击杀 = 0
+    scenesUnlocked: [SceneType.KITCHEN],                 // 初始仅解锁厨房
+    scenesCompleted: [],                                 // 无已完成场景
+    weaponsUnlocked: ['flamethrower', 'sticky'],         // 初始武器：火焰喷射器 + 粘板
     encyclopedia: {
-      entries: ENCYCLOPEDIA_DEFS.map(e => ({ ...e })),
+      entries: ENCYCLOPEDIA_DEFS.map(e => ({ ...e })),   // 复制图鉴数据
     },
-    shopUpgrades: [],
-    consumableInventory: {},
-    autoUseEnabled: {},
+    shopUpgrades: [],                                    // 无商店升级
+    consumableInventory: {},                             // 空消耗品库存
+    autoUseEnabled: {},                                  // 无自动使用设置
   };
 }

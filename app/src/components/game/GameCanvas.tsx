@@ -11,7 +11,7 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { createGameEngine } from '@/game/engine/index';
 import { GameState, GameMode, SceneType, type Player, type Economy, type GameProgress, type DialogConfig, type BossBattleState, type InventoryItem } from '@/game/types';
-import { DIALOG_CONFIGS, SCENE_CONFIGS, SCENE_UNLOCK_CHAIN } from '@/game/data';
+import { BALANCE_CONFIG, DIALOG_CONFIGS, SCENE_CONFIGS, SCENE_UNLOCK_CHAIN } from '@/game/data';
 import * as Vibration from '@/game/vibration';
 import { trpc } from '@/providers/trpc';
 import { GameHUD } from './GameHUD';
@@ -89,6 +89,8 @@ export const GameCanvas: React.FC = () => {
   // ── UI 覆盖层状态 ──
   const [showTalentTree, setShowTalentTree] = useState(false);
   const [showAchievements, setShowAchievements] = useState(false);
+  /** 是否从结算界面打开成就（关闭时返回结算界面而非主菜单） */
+  const [achievementsFromGameOver, setAchievementsFromGameOver] = useState(false);
   const [showSceneSelect, setShowSceneSelect] = useState(false);
   const [showEncyclopedia, setShowEncyclopedia] = useState(false);
   const [talentPoints, setTalentPoints] = useState(0);
@@ -369,8 +371,8 @@ export const GameCanvas: React.FC = () => {
   const [menuShopMoney, setMenuShopMoney] = useState(() => {
     try {
       const saved = localStorage.getItem('roach_blaster_menu_money');
-      return saved ? parseInt(saved, 10) : 200; // default starting money
-    } catch { return 200; }
+      return saved ? parseInt(saved, 10) : BALANCE_CONFIG.economy.initialMoney.normal;
+    } catch { return BALANCE_CONFIG.economy.initialMoney.normal; }
   });
 
   const handleToggleMute = useCallback(() => {
@@ -660,6 +662,7 @@ export const GameCanvas: React.FC = () => {
     engineRef.current?.stop();
     setShowTalentTree(false);
     setShowAchievements(false);
+    setAchievementsFromGameOver(false);
     setShowSceneSelect(false);
     setShowEncyclopedia(false);
     setGameState(GameState.MENU);
@@ -1237,10 +1240,16 @@ export const GameCanvas: React.FC = () => {
           pendingAnimations={engineRef.current?.getAchievementPendingAnimations?.() ?? []}
           onAnimationComplete={(id) => engineRef.current?.markAchievementAnimationPlayed?.(id)}
           onAllAnimationsComplete={() => engineRef.current?.clearAchievementAnimations?.()}
+          unclaimedAchievements={engineRef.current?.getUnclaimedAchievements?.() ?? []}
+          onClaimReward={(id) => engineRef.current?.claimAchievementReward?.(id)}
           onClose={() => {
             engineRef.current?.clearAchievementAnimations?.();
             setShowAchievements(false);
-            setGameState(GameState.MENU);
+            if (achievementsFromGameOver) {
+              setAchievementsFromGameOver(false);
+            } else {
+              setGameState(GameState.MENU);
+            }
           }}
         />
       )}
@@ -1283,7 +1292,7 @@ export const GameCanvas: React.FC = () => {
       )}
 
       {/* ═══ 游戏结束结算界面（失败）═══ */}
-      {gameState === GameState.GAME_OVER && economy && (
+      {gameState === GameState.GAME_OVER && economy && !achievementsFromGameOver && (
         <GameOverScreen
           economy={economy}
           wave={finalWave}
@@ -1298,6 +1307,8 @@ export const GameCanvas: React.FC = () => {
           onOpenTalentTree={() => setShowTalentTree(true)}
           audio={engineRef.current?.audio}
           menuMoney={menuShopMoney}
+          unclaimedAchievementCount={engineRef.current?.getUnclaimedAchievementCount?.() ?? 0}
+          onOpenAchievements={() => { setAchievementsFromGameOver(true); setShowAchievements(true); }}
         />
       )}
 
@@ -1313,7 +1324,7 @@ export const GameCanvas: React.FC = () => {
       )}
 
       {/* ═══ 波次通关结算界面（胜利）═══ */}
-      {gameState === GameState.WAVE_CLEAR && economy && (
+      {gameState === GameState.WAVE_CLEAR && economy && !achievementsFromGameOver && (
         <GameOverScreen
           economy={economy}
           wave={wave}
@@ -1340,6 +1351,8 @@ export const GameCanvas: React.FC = () => {
           menuMoney={menuShopMoney}
           victoryGoldReward={victoryGoldReward}
           onSettleGold={handleSettleGold}
+          unclaimedAchievementCount={engineRef.current?.getUnclaimedAchievementCount?.() ?? 0}
+          onOpenAchievements={() => { setAchievementsFromGameOver(true); setShowAchievements(true); }}
         />
       )}
 

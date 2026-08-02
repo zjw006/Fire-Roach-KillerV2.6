@@ -11,7 +11,7 @@ import {
   RoachState,
   ParticleType,
 } from '../../types';
-import { BALANCE_CONFIG, TEXT_CONFIG, FLOAT_COLOR, RENDER_COLOR } from '../../data';
+import { BALANCE_CONFIG, TEXT_CONFIG, RENDER_COLOR } from '../../data';
 
 /** 火区类型常量 */
 const FZ_ICE = 'ice' as const;
@@ -187,7 +187,7 @@ export class ThrowableSystem {
       type: FZ_ICE,
     });
     this.config.onSpawnIceExplosion?.(t.x, t.y, cfg.radius);
-    this.config.onAddFloatingText?.(t.x, t.y - 20, TEXT_CONFIG.combat.stickyLand, FLOAT_COLOR.switch);
+    this.config.onAddFloatingText?.(t.x, t.y - 20, TEXT_CONFIG.combat.stickyLand.text, TEXT_CONFIG.combat.stickyLand.color);
   }
 
   /** 毒投掷物落地：中毒 + 毒区域 */
@@ -205,7 +205,7 @@ export class ThrowableSystem {
       type: FZ_POISON,
     });
     this.config.onSpawnPoisonExplosion?.(t.x, t.y);
-    this.config.onAddFloatingText?.(t.x, t.y - 20, TEXT_CONFIG.combat.poisonLand, FLOAT_COLOR.fan);
+    this.config.onAddFloatingText?.(t.x, t.y - 20, TEXT_CONFIG.combat.poisonLand.text, TEXT_CONFIG.combat.poisonLand.color);
   }
 
   /** 燃烧瓶落地：爆炸 + 火区域 */
@@ -228,7 +228,7 @@ export class ThrowableSystem {
     });
     this.config.onSpawnExplosionParticles?.(t.x, t.y, BALANCE_CONFIG.throwable.explosionParticleCount);
     this.config.onScreenShake?.(BALANCE_CONFIG.screenShake.biggerExplosion);
-    this.config.onAddFloatingText?.(t.x, t.y - 20, TEXT_CONFIG.combat.molotovLand, FLOAT_COLOR.warning);
+    this.config.onAddFloatingText?.(t.x, t.y - 20, TEXT_CONFIG.combat.molotovLand.text, TEXT_CONFIG.combat.molotovLand.color);
   }
 
   // ========== 静态渲染 ==========

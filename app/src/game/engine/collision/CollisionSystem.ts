@@ -4,7 +4,7 @@
  */
 
 import { GameState, RoachType, RoachState, type Roach, type Player, type TripleFlameState } from '../../types';
-import { ENEMY_DEFS, BALANCE_CONFIG, TEXT_CONFIG, FLOAT_COLOR } from '../../data';
+import { ENEMY_DEFS, BALANCE_CONFIG, TEXT_CONFIG } from '../../data';
 
 /**
  * 碰撞检测系统配置接口
@@ -317,7 +317,7 @@ export class CollisionSystem {
       }
 
       if (player.shieldTimer > 0) {
-        this.config.onAddFloatingText?.(r.x, defenseLineY - colCfg.breachTextYOffset, TEXT_CONFIG.combat.shieldBlock, FLOAT_COLOR.shield);
+        this.config.onAddFloatingText?.(r.x, defenseLineY - colCfg.breachTextYOffset, TEXT_CONFIG.combat.shieldBlock.text, TEXT_CONFIG.combat.shieldBlock.color);
       } else {
         hp = this.applyBreachDamage(r, dmg, hp, defenseLineY, player);
         totalDefenseDamage += dmg;
@@ -349,13 +349,13 @@ export class CollisionSystem {
   ): number {
     const colCfg = BALANCE_CONFIG.collision;
     if (player.shieldTimer > 0) {
-      this.config.onAddFloatingText?.(r.x, defenseLineY - colCfg.breachTextYOffset, TEXT_CONFIG.combat.shieldBlock, FLOAT_COLOR.shield);
+      this.config.onAddFloatingText?.(r.x, defenseLineY - colCfg.breachTextYOffset, TEXT_CONFIG.combat.shieldBlock.text, TEXT_CONFIG.combat.shieldBlock.color);
       return defenseHp;
     }
     this.config.onPlayBreach?.();
     this.config.onVibrateBreach?.();
     this.config.onScreenShake?.(BALANCE_CONFIG.screenShake.breach);
-    this.config.onAddFloatingText?.(r.x, defenseLineY - colCfg.breachTextYOffset, TEXT_CONFIG.combat.defenseBreach, FLOAT_COLOR.danger);
+    this.config.onAddFloatingText?.(r.x, defenseLineY - colCfg.breachTextYOffset, TEXT_CONFIG.combat.defenseBreach.text, TEXT_CONFIG.combat.defenseBreach.color);
     return defenseHp - dmg;
   }
 
@@ -386,8 +386,8 @@ export class CollisionSystem {
       damage *= colCfg.armorDamageReduction;
       if (r.armorHp <= 0) {
         this.config.onSpawnSpark?.(r.x, r.y, colCfg.armorBreakSparkCount);
-        const label = r.type === RoachType.NURSE || r.type === RoachType.TIMED_SUICIDE ? TEXT_CONFIG.combat.armorShatter : TEXT_CONFIG.combat.armorBreak;
-        this.config.onAddFloatingText?.(r.x, r.y - colCfg.armorBreakTextYOffset, label, FLOAT_COLOR.gold);
+        const label = r.type === RoachType.NURSE || r.type === RoachType.TIMED_SUICIDE ? TEXT_CONFIG.combat.armorShatter.text : TEXT_CONFIG.combat.armorBreak.text;
+        this.config.onAddFloatingText?.(r.x, r.y - colCfg.armorBreakTextYOffset, label, TEXT_CONFIG.combat.armorBreak.color);
       }
     }
     r.hp -= damage;

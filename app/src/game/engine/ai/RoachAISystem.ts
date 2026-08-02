@@ -6,7 +6,7 @@
 
 import { RoachType, RoachState, SceneType, GameMode, GameState, ParticleType } from '../../types';
 import type { Roach, Player, Particle, FireWall, Economy, GameProgress, BossBattleState, WaveConfig } from '../../types';
-import { ENEMY_DEFS, BOSS_CONFIG, SCENE_GROUND_BOUNDS, TEXT_CONFIG, FLOAT_COLOR, BALANCE_CONFIG } from '../../data';
+import { ENEMY_DEFS, BOSS_CONFIG, SCENE_GROUND_BOUNDS, TEXT_CONFIG, BALANCE_CONFIG } from '../../data';
 import { ParticleSpawner } from '../particle/ParticleSpawner';
 import type { StickySystem } from '../sticky/StickySystem';
 import type { BossBattleSystem } from '../boss/BossBattleSystem';
@@ -525,7 +525,7 @@ export class RoachAISystem {
         y: r.y + (Math.random() - 0.5) * 10,
         vx: 0, vy: -20,
         life: 0.3, maxLife: 0.3,
-        size: 3, color: FLOAT_COLOR.explosion,
+        size: 3, color: TEXT_CONFIG.combat.bigExplosion.color,
         type: ParticleType.SPARK,
       });
     }
@@ -551,7 +551,7 @@ export class RoachAISystem {
       for (let m = 0; m < BOSS_CONFIG.queen.minionCount; m++) {
         this.cfg.onSpawnRoach(RoachType.SMALL);
       }
-      this.cfg.onAddFloatingText(r.x, r.y - 50, TEXT_CONFIG.combat.queenSummon, FLOAT_COLOR.queenSummon);
+      this.cfg.onAddFloatingText(r.x, r.y - 50, TEXT_CONFIG.combat.queenSummon.text, TEXT_CONFIG.combat.queenSummon.color);
     }
   }
 
@@ -613,7 +613,7 @@ export class RoachAISystem {
           y: r.y + (Math.random() - 0.5) * 15,
           vx: 0, vy: -10,
           life: 0.5, maxLife: 0.5,
-          size: 4, color: FLOAT_COLOR.fan,
+          size: 4, color: TEXT_CONFIG.combat.fanActivate.color,
           type: ParticleType.POISON_CLOUD,
         });
       }
@@ -684,8 +684,8 @@ export class RoachAISystem {
             r.healPhase = 'charging';
             r.healPhaseTimer = 1.0;
             this.cfg.audio.playNurseCast();
-            this.cfg.onAddFloatingText(r.x, r.y - 50, TEXT_CONFIG.combat.nurseCasting, FLOAT_COLOR.reward, 1500);
-            this.cfg.onAddFloatingText(r.x, r.y - 60, TEXT_CONFIG.combat.nurseIllegal, FLOAT_COLOR.nurseHeal);
+            this.cfg.onAddFloatingText(r.x, r.y - 50, TEXT_CONFIG.combat.nurseCasting.text, TEXT_CONFIG.combat.nurseCasting.color, 1500);
+    this.cfg.onAddFloatingText(r.x, r.y - 60, TEXT_CONFIG.combat.nurseIllegal.text, TEXT_CONFIG.combat.nurseIllegal.color);
           } else {
             r.healTimer! = 1;
           }
@@ -707,12 +707,12 @@ export class RoachAISystem {
               other.hp += actualHeal;
               other.healBuffTimer = 2.0;
               healedCount++;
-              this.cfg.onAddFloatingText(other.x, other.y - 30, `+${actualHeal}`, FLOAT_COLOR.nurseHeal, 1200);
+              this.cfg.onAddFloatingText(other.x, other.y - 30, `+${actualHeal}`, TEXT_CONFIG.combat.nurseSpray.color, 1200);
             }
           }
         }
         if (healedCount > 0) {
-          this.cfg.onAddFloatingText(r.x, r.y - 50, TEXT_CONFIG.combat.nurseSpray, FLOAT_COLOR.nurseHeal);
+          this.cfg.onAddFloatingText(r.x, r.y - 50, TEXT_CONFIG.combat.nurseSpray.text, TEXT_CONFIG.combat.nurseSpray.color);
         }
 
         r.healPhaseTimer! -= deltaTime;
@@ -782,7 +782,7 @@ export class RoachAISystem {
       r.deathTimer = tCfg.deathTimer;
       r.breachPhase = 'residue';
       r.residueTimer = tCfg.residueTimer;
-      this.cfg.onAddFloatingText(r.x, r.y - 30, TEXT_CONFIG.combat.bombFailed, FLOAT_COLOR.bombFail);
+      this.cfg.onAddFloatingText(r.x, r.y - 30, TEXT_CONFIG.combat.bombFailed.text, TEXT_CONFIG.combat.bombFailed.color);
       return;
     }
 
@@ -811,7 +811,7 @@ export class RoachAISystem {
           this.cfg.placedBombs.push({
             id: r.id, x: r.x, y: placeY, timer: tCfg.bombTimer,
           });
-          this.cfg.onAddFloatingText(r.x, placeY - 30, TEXT_CONFIG.combat.bombPlaced, FLOAT_COLOR.danger);
+          this.cfg.onAddFloatingText(r.x, placeY - 30, TEXT_CONFIG.combat.bombPlaced.text, TEXT_CONFIG.combat.bombPlaced.color);
 
           // Spawn placement particles
           const particles = this.cfg.particles;
@@ -837,7 +837,7 @@ export class RoachAISystem {
           // Reset breach state so the roach continues as a normal large roach
           r.breachPhase = undefined;
           r.placeTimer = undefined;
-          this.cfg.onAddFloatingText(r.x, r.y - 45, TEXT_CONFIG.combat.transformBig, FLOAT_COLOR.gold);
+          this.cfg.onAddFloatingText(r.x, r.y - 45, TEXT_CONFIG.combat.transformBig.text, TEXT_CONFIG.combat.transformBig.color);
         }
         break;
       }
@@ -934,11 +934,11 @@ export class RoachAISystem {
       const dmg = this.cfg.getDifficulty() === 'hard'
         ? cfg.defenseDamage.hard : cfg.defenseDamage.easy;
       if (this.cfg.player.shieldTimer > 0) {
-        this.cfg.onAddFloatingText(r.x, defenseLineY - 20, TEXT_CONFIG.combat.shieldBlock, FLOAT_COLOR.shield);
+        this.cfg.onAddFloatingText(r.x, defenseLineY - 20, TEXT_CONFIG.combat.shieldBlock.text, TEXT_CONFIG.combat.shieldBlock.color);
       } else {
         const newHp = this.cfg.getDefenseHp() - dmg;
         this.cfg.setDefenseHp(newHp);
-        this.cfg.onAddFloatingText(r.x, defenseLineY - 20, TEXT_CONFIG.combat.suicideDamage(dmg), FLOAT_COLOR.danger);
+        this.cfg.onAddFloatingText(r.x, defenseLineY - 20, TEXT_CONFIG.combat.suicideDamage.text(dmg), TEXT_CONFIG.combat.suicideDamage.color);
       }
       if (r.type === RoachType.FLYING_SUICIDE) {
         this.cfg.audio.playSuicideBreachFlying();
@@ -955,9 +955,9 @@ export class RoachAISystem {
     this.cfg.onAddFloatingText(
       r.x, r.y - 30,
       hitCount > 0
-        ? (isFuseTriggered ? TEXT_CONFIG.combat.bigExplosion(hitCount) : TEXT_CONFIG.combat.deathExplosion(hitCount))
+        ? (isFuseTriggered ? TEXT_CONFIG.combat.bigExplosion.text(hitCount) : TEXT_CONFIG.combat.deathExplosion.text(hitCount))
         : (isFuseTriggered ? '大爆炸!' : '死亡爆炸!'),
-      FLOAT_COLOR.explosion
+      TEXT_CONFIG.combat.bigExplosion.color
     );
   }
 
@@ -1031,14 +1031,14 @@ export class RoachAISystem {
       const defDmg = this.cfg.getDifficulty() === 'hard'
         ? bombCfg.bombDefenseDamage.hard : bombCfg.bombDefenseDamage.easy;
       if (this.cfg.player.shieldTimer > 0) {
-        this.cfg.onAddFloatingText(r.x, defenseLineY - 20, TEXT_CONFIG.combat.shieldBlock, FLOAT_COLOR.shield);
+        this.cfg.onAddFloatingText(r.x, defenseLineY - 20, TEXT_CONFIG.combat.shieldBlock.text, TEXT_CONFIG.combat.shieldBlock.color);
       } else {
         const newHp = this.cfg.getDefenseHp() - defDmg;
         this.cfg.setDefenseHp(newHp);
-        this.cfg.onAddFloatingText(r.x, defenseLineY - 20, TEXT_CONFIG.combat.bombExplode(defDmg), FLOAT_COLOR.danger);
+        this.cfg.onAddFloatingText(r.x, defenseLineY - 20, TEXT_CONFIG.combat.bombExplode.text(defDmg), TEXT_CONFIG.combat.bombExplode.color);
       }
 
-      this.cfg.onAddFloatingText(r.x, r.y - 50, TEXT_CONFIG.combat.boom, FLOAT_COLOR.boom);
+      this.cfg.onAddFloatingText(r.x, r.y - 50, TEXT_CONFIG.combat.boom.text, TEXT_CONFIG.combat.boom.color);
     } finally {
       this._deathChainDepth--;
     }
@@ -1120,7 +1120,7 @@ export class RoachAISystem {
         };
         roaches.push(small);
       }
-      this.cfg.onAddFloatingText(r.x, r.y - 30, TEXT_CONFIG.combat.splitSpawn, FLOAT_COLOR.split);
+      this.cfg.onAddFloatingText(r.x, r.y - 30, TEXT_CONFIG.combat.splitSpawn.text, TEXT_CONFIG.combat.splitSpawn.color);
     }
 
     // Flying roach disintegrate
@@ -1158,7 +1158,7 @@ export class RoachAISystem {
         });
       }
       ParticleSpawner.spawnSparkParticles(particles, r.x, r.y, flyDeathCfg.sparkParticles);
-      this.cfg.onAddFloatingText(r.x, r.y - 20, TEXT_CONFIG.combat.disintegrate, FLOAT_COLOR.disintegrate);
+      this.cfg.onAddFloatingText(r.x, r.y - 20, TEXT_CONFIG.combat.disintegrate.text, TEXT_CONFIG.combat.disintegrate.color);
     }
 
     this.cfg.audio.playKill();
@@ -1206,7 +1206,7 @@ export class RoachAISystem {
         const backlashDmg = backlashCfg[r.type as keyof typeof backlashCfg] ?? 0;
         if (backlashDmg > 0) {
           boss.hp -= backlashDmg;
-          this.cfg.onAddFloatingText(boss.x + (Math.random() - 0.5) * 40, boss.y - 30, TEXT_CONFIG.combat.backlash(backlashDmg), FLOAT_COLOR.backlash);
+          this.cfg.onAddFloatingText(boss.x + (Math.random() - 0.5) * 40, boss.y - 30, TEXT_CONFIG.combat.backlash.text(backlashDmg), TEXT_CONFIG.combat.backlash.color);
           boss.damageFlash = 1;
           for (let k = 0; k < 3; k++) {
             particles.push({
@@ -1215,7 +1215,7 @@ export class RoachAISystem {
               vx: (Math.random() - 0.5) * 60,
               vy: (Math.random() - 0.5) * 60 - 30,
               life: 0.6, maxLife: 0.6,
-              size: 4, color: FLOAT_COLOR.backlash,
+              size: 4, color: TEXT_CONFIG.combat.backlash.color,
               type: ParticleType.SPARK,
             });
           }
@@ -1225,13 +1225,13 @@ export class RoachAISystem {
 
     economy.totalKills++;
     this.cfg.onAddPendingReward(reward);
-    this.cfg.onAddFloatingText(r.x, r.y - 20, TEXT_CONFIG.combat.killReward(reward), FLOAT_COLOR.reward);
+    this.cfg.onAddFloatingText(r.x, r.y - 20, TEXT_CONFIG.combat.killReward.text(reward), TEXT_CONFIG.combat.killReward.color);
     this.cfg.setScreenShake(r.isBoss ? BALANCE_CONFIG.screenShake.bossDeath : (r.type === RoachType.LARGE ? BALANCE_CONFIG.screenShake.largeExplosion : BALANCE_CONFIG.screenShake.smallExplosion));
 
     // Boss death
     if (r.isBoss) {
       this.cfg.bossSystem.activeBosses--;
-      this.cfg.onAddFloatingText(this.cfg.getCanvasWidth() / 2, this.cfg.getCanvasHeight() / 2, TEXT_CONFIG.combat.bossDefeated, FLOAT_COLOR.gold);
+      this.cfg.onAddFloatingText(this.cfg.getCanvasWidth() / 2, this.cfg.getCanvasHeight() / 2, TEXT_CONFIG.combat.bossDefeated.text, TEXT_CONFIG.combat.bossDefeated.color);
       for (const other of roaches) {
         if (other.state === RoachState.ALIVE && other.id !== r.id) {
           other.hp = 0;
@@ -1248,7 +1248,7 @@ export class RoachAISystem {
         timer: 3.0,
         flashPhase: 0,
       });
-      this.cfg.onAddFloatingText(r.x, r.y - 40, TEXT_CONFIG.combat.corpseBomb(3), FLOAT_COLOR.corpseBomb);
+      this.cfg.onAddFloatingText(r.x, r.y - 40, TEXT_CONFIG.combat.corpseBomb.text(3), TEXT_CONFIG.combat.corpseBomb.color);
       this.cfg.audio.playTimedBombDrop();
     }
 
@@ -1310,7 +1310,7 @@ export class RoachAISystem {
 
     this.cfg.setScreenShake(12);
     this.cfg.audio.playMutantTransform();
-    this.cfg.onAddFloatingText(r.x, r.y - 70, TEXT_CONFIG.combat.embryoBurst, FLOAT_COLOR.embryoBurst, 2000);
+    this.cfg.onAddFloatingText(r.x, r.y - 70, TEXT_CONFIG.combat.embryoBurst.text, TEXT_CONFIG.combat.embryoBurst.color, 2000);
     this.cfg.particles.push({
       x: r.x, y: r.y, vx: 0, vy: 0,
       life: 0.4, maxLife: 0.4,
@@ -1352,14 +1352,14 @@ export class RoachAISystem {
       roaches.push(newRoach);
 
       const typeName = spawnType === RoachType.SMALL ? '小蟑螂' : spawnType === RoachType.FLYING ? '飞行蟑螂' : '自爆蟑螂';
-      this.cfg.onAddFloatingText(newRoach.x, newRoach.y - 50, TEXT_CONFIG.combat.spawnBirth(typeName), FLOAT_COLOR.spawnBirth, 1500);
+      this.cfg.onAddFloatingText(newRoach.x, newRoach.y - 50, TEXT_CONFIG.combat.spawnBirth.text(typeName), TEXT_CONFIG.combat.spawnBirth.color, 1500);
     }
 
     this.slimeBurstTimer = 1.2;
     this.slimeBurstX = sx;
     this.slimeBurstY = sy;
 
-    this.cfg.onAddFloatingText(sx, sy - 40, TEXT_CONFIG.combat.spawnCount(spawnedCount), FLOAT_COLOR.embryoBurst, 2000);
+    this.cfg.onAddFloatingText(sx, sy - 40, TEXT_CONFIG.combat.spawnCount.text(spawnedCount), TEXT_CONFIG.combat.spawnCount.color, 2000);
   }
 
   // =========================================================================
@@ -1396,9 +1396,9 @@ export class RoachAISystem {
       }
 
       if (this._deathChainDepth <= 1) {
-        this.cfg.onAddFloatingText(r.x, r.y - 40, TEXT_CONFIG.combat.acidSplash, FLOAT_COLOR.acidSplash);
+        this.cfg.onAddFloatingText(r.x, r.y - 40, TEXT_CONFIG.combat.acidSplash.text, TEXT_CONFIG.combat.acidSplash.color);
         if (hitCount > 0) {
-          this.cfg.onAddFloatingText(r.x, r.y - 55, TEXT_CONFIG.combat.acidCorrode(hitCount), FLOAT_COLOR.acidCorrode);
+          this.cfg.onAddFloatingText(r.x, r.y - 55, TEXT_CONFIG.combat.acidCorrode.text(hitCount), TEXT_CONFIG.combat.acidCorrode.color);
         }
       }
     } finally {

@@ -474,7 +474,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       {player.isOverheated && (
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
           <div className="bg-red-900/80 backdrop-blur-sm rounded-lg px-4 py-2 text-center animate-pulse">
-            <div className="text-red-400 font-bold text-lg">{TEXT_CONFIG.ui.hud.overheating}</div>
+            <div className="text-red-400 font-bold text-lg">{TEXT_CONFIG.combat.barrelCooldown.text}</div>
             <div className="text-red-300 text-sm">{Math.ceil(player.overheatTimer)}s</div>
           </div>
         </div>

@@ -1,8 +1,16 @@
 import { SceneType, type WaveConfig } from '../types';
 
+/**
+ * @fileoverview 波次配置
+ * @description 定义每个场景关卡的波次安排，包括每波出现的蟑螂类型、数量、速度和生成间隔。
+ * 每个场景有 6-8 波，波次递增难度。厨房场景用于入门教学，仅 6 波。
+ * 医院场景使用 8 波特殊配置，包含专属蟑螂类型（护士/变异/定时自爆）。
+ */
+
 // 每个场景引入新蟑螂类型 + 新道具，难度逐关递增
 
 // 场景 1：厨房 —— 仅小蟑螂 + 大蟑螂，速度慢，数量少
+// 6 波，新手教程场景，波次较少
 export const WAVE_CONFIGS_KITCHEN: WaveConfig[] = [
   { wave: 1, smallCount: 8,  largeCount: 0, flyingCount: 0, armoredCount: 0, splittingCount: 0, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 0.35, interval: 14, clusterChance: 0 },
   { wave: 2, smallCount: 14, largeCount: 1, flyingCount: 0, armoredCount: 0, splittingCount: 0, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 0.38, interval: 12, clusterChance: 0 },
@@ -66,6 +74,7 @@ export const WAVE_CONFIGS_STREET: WaveConfig[] = [
 // ========== 新场景波次配置（v2.4） ==========
 // ========== 医院 8 波配置 ==========
 // 所有自爆蟑螂替换为定时自爆蟑螂
+// 每波最多 2 只 timed_suicide，mutant 数量从 1 递增到 6
 export const WAVE_CONFIGS_HOSPITAL: WaveConfig[] = [
   // Wave 1: Intro - 1 mutant + 1 timed suicide (gentle intro)
   { wave: 1, smallCount: 6, largeCount: 2, flyingCount: 0, armoredCount: 0, splittingCount: 0, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 0.65, interval: 9, clusterChance: 0.15, nurseCount: 0, mutantCount: 1, timedSuicideCount: 1, eggPoolActiveCount: 0 },
@@ -85,15 +94,17 @@ export const WAVE_CONFIGS_HOSPITAL: WaveConfig[] = [
   { wave: 8, smallCount: 4, largeCount: 4, flyingCount: 5, armoredCount: 3, splittingCount: 2, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 1.0, interval: 4, clusterChance: 0.5, nurseCount: 3, mutantCount: 6, timedSuicideCount: 2, eggPoolActiveCount: 2 },
 ];
 
+// 地铁 6 波（包含女王）
 export const WAVE_CONFIGS_SUBWAY: WaveConfig[] = [
   { wave: 1, smallCount: 18, largeCount: 4, flyingCount: 4, armoredCount: 3, splittingCount: 3, suicideCount: 2, flyingSuicideCount: 2, queenCount: 0, speed: 0.75, interval: 7, clusterChance: 0.25 },
   { wave: 2, smallCount: 26, largeCount: 5, flyingCount: 5, armoredCount: 4, splittingCount: 4, suicideCount: 3, flyingSuicideCount: 3, queenCount: 0, speed: 0.79, interval: 6, clusterChance: 0.3 },
   { wave: 3, smallCount: 34, largeCount: 6, flyingCount: 6, armoredCount: 4, splittingCount: 4, suicideCount: 3, flyingSuicideCount: 4, queenCount: 0, speed: 0.83, interval: 6, clusterChance: 0.35 },
   { wave: 4, smallCount: 42, largeCount: 7, flyingCount: 7, armoredCount: 5, splittingCount: 5, suicideCount: 4, flyingSuicideCount: 4, queenCount: 0, speed: 0.87, interval: 5, clusterChance: 0.4 },
   { wave: 5, smallCount: 50, largeCount: 8, flyingCount: 8, armoredCount: 5, splittingCount: 5, suicideCount: 4, flyingSuicideCount: 5, queenCount: 0, speed: 0.91, interval: 5, clusterChance: 0.45 },
-  { wave: 6, smallCount: 48, largeCount: 7, flyingCount: 7, armoredCount: 5, splittingCount: 4, suicideCount: 4, flyingSuicideCount: 4, queenCount: 1, speed: 0.95, interval: 4, clusterChance: 0.5 },
+  { wave: 6, smallCount: 48, largeCount: 7, flyingCount: 7, armoredCount: 5, splittingCount: 4, suicideCount: 4, flyingSuicideCount: 4, queenCount: 1, speed: 0.95, interval: 4, clusterChance: 0.5 }, // 最后一波含女王
 ];
 
+// 超市 6 波（包含女王）
 export const WAVE_CONFIGS_SUPERMARKET: WaveConfig[] = [
   { wave: 1, smallCount: 20, largeCount: 5, flyingCount: 5, armoredCount: 4, splittingCount: 3, suicideCount: 3, flyingSuicideCount: 2, queenCount: 0, speed: 0.78, interval: 6, clusterChance: 0.3 },
   { wave: 2, smallCount: 28, largeCount: 6, flyingCount: 6, armoredCount: 4, splittingCount: 4, suicideCount: 3, flyingSuicideCount: 3, queenCount: 0, speed: 0.82, interval: 6, clusterChance: 0.35 },
@@ -103,6 +114,7 @@ export const WAVE_CONFIGS_SUPERMARKET: WaveConfig[] = [
   { wave: 6, smallCount: 50, largeCount: 7, flyingCount: 7, armoredCount: 5, splittingCount: 5, suicideCount: 4, flyingSuicideCount: 4, queenCount: 1, speed: 0.98, interval: 4, clusterChance: 0.55 },
 ];
 
+// 学校 6 波（包含女王）
 export const WAVE_CONFIGS_SCHOOL: WaveConfig[] = [
   { wave: 1, smallCount: 22, largeCount: 5, flyingCount: 5, armoredCount: 4, splittingCount: 4, suicideCount: 3, flyingSuicideCount: 3, queenCount: 0, speed: 0.80, interval: 6, clusterChance: 0.3 },
   { wave: 2, smallCount: 30, largeCount: 6, flyingCount: 6, armoredCount: 5, splittingCount: 5, suicideCount: 4, flyingSuicideCount: 4, queenCount: 0, speed: 0.84, interval: 5, clusterChance: 0.35 },
@@ -112,6 +124,7 @@ export const WAVE_CONFIGS_SCHOOL: WaveConfig[] = [
   { wave: 6, smallCount: 52, largeCount: 8, flyingCount: 8, armoredCount: 5, splittingCount: 5, suicideCount: 5, flyingSuicideCount: 5, queenCount: 1, speed: 1.0, interval: 3, clusterChance: 0.55 },
 ];
 
+// 巢穴 6 波（最高难度，包含女王）
 export const WAVE_CONFIGS_NEST: WaveConfig[] = [
   { wave: 1, smallCount: 25, largeCount: 6, flyingCount: 6, armoredCount: 5, splittingCount: 5, suicideCount: 4, flyingSuicideCount: 4, queenCount: 0, speed: 0.82, interval: 6, clusterChance: 0.35 },
   { wave: 2, smallCount: 34, largeCount: 7, flyingCount: 7, armoredCount: 5, splittingCount: 5, suicideCount: 4, flyingSuicideCount: 5, queenCount: 0, speed: 0.86, interval: 5, clusterChance: 0.4 },
@@ -121,6 +134,10 @@ export const WAVE_CONFIGS_NEST: WaveConfig[] = [
   { wave: 6, smallCount: 55, largeCount: 8, flyingCount: 8, armoredCount: 6, splittingCount: 5, suicideCount: 5, flyingSuicideCount: 5, queenCount: 1, speed: 1.05, interval: 3, clusterChance: 0.6 },
 ];
 
+/**
+ * 场景波次配置映射表
+ * 将每个场景类型映射到对应的波次配置数组
+ */
 export const SCENE_WAVE_CONFIGS: Record<SceneType, WaveConfig[]> = {
   [SceneType.KITCHEN]: WAVE_CONFIGS_KITCHEN,
   [SceneType.SEWER]: WAVE_CONFIGS_SEWER,
@@ -134,3 +151,47 @@ export const SCENE_WAVE_CONFIGS: Record<SceneType, WaveConfig[]> = {
   [SceneType.SCHOOL]: WAVE_CONFIGS_SCHOOL,
   [SceneType.NEST]: WAVE_CONFIGS_NEST,
 };
+
+// ========== 波次系统数值平衡（从 balance.ts 拆分合并） ==========
+/**
+ * 波次系统平衡参数
+ * @description 控制波次切换、敌人生成间隔、奖励倍率、难度缩放等核心逻辑。
+ */
+export const BALANCE_WAVE = {
+  wave: {
+    clearDelay: 2,           // 波次清除后延迟（秒），显示"波次清除"文字
+    clearTimer: 6,           // 波次清除计时器（秒），等待下一波
+    baseReward: 50,          // 基础波次奖励金币
+    rewardPerWave: 10,       // 每波额外奖励（波次 * 10）
+    rewardMultiplier: { easy: 0.8, hard: 1.5 }, // 难度奖励倍率
+    perfectMultiplier: 1.5,  // 完美波次（无突破）奖励倍率
+    baseInterval: 0.8,       // 基础敌人生成间隔（秒）
+    intervalMultiplier: { easy: 1.2, hard: 0.7 }, // 难度生成间隔倍率
+    intervalReductionPerWave: 0.05, // 每波间隔减少量
+    intervalMin: 0.2,        // 最小生成间隔（秒）
+    difficultyMultiplier: { easy: 0.7, hard: 1.5 }, // 难度系数
+    difficultyPerWave: 0.1,  // 每波难度增量
+    // 默认波次配置（用于无尽模式或未定义场景的回退）
+    defaultConfig: {
+      smallCount: 10, largeCount: 5, flyingCount: 3, armoredCount: 2,
+      splittingCount: 1, suicideCount: 1, flyingSuicideCount: 0, queenCount: 0,
+      speed: 1.0, interval: 1.0, spawnInterval: 0.5, clusterChance: 0.3,
+    },
+    spawnTimerMin: 0.3,      // 最小生成计时器（秒）
+    spawnTimerMax: 0.8,      // 最大生成计时器（秒）
+    phase1Ratio: 0.3,        // 第一阶段占比（30% 的蟑螂先生成）
+    phase2Ratio: 0.5,        // 第二阶段占比（50% 的蟑螂生成）
+    countdownDuration: 3.0,  // 倒计时总时长（秒）
+    countdownPhases: 3,      // 倒计时阶段数（3-2-1）
+    // 虫卵孵化池配置（医院场景）
+    eggPod: {
+      baseW: 72, baseH: 96,  // 虫卵基础尺寸（像素）
+      yMin: 361, yMax: 612,  // 虫卵 Y 坐标范围（从屏幕顶部）
+      hatchTime: 5,          // 孵化时间（秒）
+      barW: 60, barH: 6,     // 进度条尺寸（像素）
+      barOffsetY: 10,        // 进度条 Y 偏移（像素）
+      pulseFreq: 6,          // 虫卵脉冲频率
+      pulseRadius: 8,        // 虫卵脉冲半径（像素）
+    },
+  },
+} as const;

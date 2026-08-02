@@ -16,21 +16,16 @@ const trpcClient = trpc.createClient({
       url: "/api/trpc",
       transformer: superjson,
       fetch(input, init) {
+        if (isDev) {
+          // 开发模式下不发起网络请求，直接返回空响应（无后端服务器）
+          return Promise.resolve(new Response(JSON.stringify([]), { status: 200, headers: { 'content-type': 'application/json' } }));
+        }
         return globalThis.fetch(input, {
           ...(init ?? {}),
           credentials: "include",
-        }).then((res) => {
-          if (isDev && !res.ok) {
-            // 开发模式下静默处理非 2xx 响应（无后端服务器）
-            return new Response(JSON.stringify([]), { status: 200, headers: { 'content-type': 'application/json' } });
-          }
-          return res;
         }).catch((err) => {
-          if (isDev) {
-            // 开发模式下静默处理 tRPC 网络错误（无后端服务器）
-            return new Response(JSON.stringify([]), { status: 200, headers: { 'content-type': 'application/json' } });
-          }
-          throw err;
+          // 生产模式下静默处理网络错误
+          return new Response(JSON.stringify([]), { status: 200, headers: { 'content-type': 'application/json' } });
         });
       },
     }),

@@ -109,7 +109,7 @@
 import { GameState, RoachType, RoachState, SceneType, WeatherType, ParticleType, FlameMode, GameMode, SAVE_VERSION, type Roach, type Player, type Particle, type FireZone, type FireWall, type Economy, type WeaponDrop, type GameProgress, type WaveConfig, type ThrowableProjectile, type InventoryItem, type TripleFlameState, type BossBattleState, type RadarLaser, type StickyBoard, type StickyDrop, type FanState } from './types';
 import * as Vibration from './vibration';
 import { AudioManager } from './audio';
-import { SCENE_CONFIGS, ENEMY_DEFS, TALENT_DEFS, WEAPON_DROP_DEFS, INVENTORY_SELL_PRICES, BOSS_CONFIG, SCENE_WAVE_CONFIGS, SCENE_ITEM_UNLOCKS, SCENE_ROACH_TYPES, SCENE_UNLOCK_CHAIN, SCENE_REWARD_ITEMS, SCENE_GROUND_BOUNDS, createDefaultProgress, ENCYCLOPEDIA_DEFS, CONSUMABLE_DEFS, BALANCE_CONFIG, TEXT_CONFIG, FLOAT_COLOR } from './data';
+import { SCENE_CONFIGS, ENEMY_DEFS, TALENT_DEFS, WEAPON_DROP_DEFS, INVENTORY_SELL_PRICES, BOSS_CONFIG, SCENE_WAVE_CONFIGS, SCENE_ITEM_UNLOCKS, SCENE_ROACH_TYPES, SCENE_UNLOCK_CHAIN, SCENE_REWARD_ITEMS, SCENE_GROUND_BOUNDS, createDefaultProgress, ENCYCLOPEDIA_DEFS, CONSUMABLE_DEFS, BALANCE_CONFIG, TEXT_CONFIG } from './data';
 import { BOSS_ANIMATIONS } from './bossAnimation';
 import { SaveSystem } from './engine/save/SaveSystem';
 import { EconomyManager } from './engine/economy/EconomyManager';
@@ -538,7 +538,6 @@ export class GameEngine {
       canvasWidth: this.width,
       canvasHeight: this.height,
       onAddFloatingText: (x, y, text, color) => { this.addFloatingText(x, y, text, color); },
-      onAddPendingReward: (amount) => { this.pendingRewards += amount; this.onPendingRewardUpdate?.(this.pendingRewards); },
       onSaveProgress: () => { this.saveProgress(); },
       onEconomyUpdate: (e) => { this.onEconomyUpdate?.(this.economy); },
     });
@@ -585,12 +584,12 @@ export class GameEngine {
         // 浮动文字和屏幕震动
         const def = WEAPON_DROP_DEFS[drop.type];
         if (def) {
-          this.addFloatingText(this.player.x, this.player.y - 80, TEXT_CONFIG.combat.weaponPickup(def.name, bonusText), FLOAT_COLOR.reward);
+          this.addFloatingText(this.player.x, this.player.y - 80, TEXT_CONFIG.combat.weaponPickup.text(def.name, bonusText), TEXT_CONFIG.combat.weaponPickup.color);
         }
         this.screenShake = BALANCE_CONFIG.screenShake.weaponHit;
       },
       onSwitchWeapon: (weapon, weaponName) => {
-        this.addFloatingText(this.player.x, this.player.y - 60, TEXT_CONFIG.combat.weaponSwitch(weaponName), FLOAT_COLOR.switch);
+        this.addFloatingText(this.player.x, this.player.y - 60, TEXT_CONFIG.combat.weaponSwitch.text(weaponName), TEXT_CONFIG.combat.weaponSwitch.color);
       },
     });
     this.stickySystem = new StickySystem({
@@ -700,7 +699,7 @@ export class GameEngine {
         r.burnDamage = burnDamage;
       },
       onShowArmorImmune: (r) => {
-        this.addFloatingText(r.x, r.y - 15, TEXT_CONFIG.combat.armorImmune, FLOAT_COLOR.armorImmune);
+        this.addFloatingText(r.x, r.y - 15, TEXT_CONFIG.combat.armorImmune.text, TEXT_CONFIG.combat.armorImmune.color);
       },
     });
     this.poisonSystem = new PoisonSystem({
@@ -885,19 +884,17 @@ export class GameEngine {
 
   /** 根据 game-container 容器调整画布大小与 DPR */
   resize() {
-    // 优先使用 #game-container（全屏容器），确保画布填满屏幕高度
+    // 优先使用 #game-container（全屏容器），确保画布填满屏幕
     const container = document.getElementById('game-container') || this.canvas.parentElement;
     if (!container) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const rect = container.getBoundingClientRect();
-    let displayWidth = rect.width;
-    let displayHeight = rect.height;
-    // Contain 模式：画布等比缩放，始终完整显示在容器内，不裁剪任何内容
-    const scaleX = rect.width / 540;
-    const scaleY = rect.height / 960;
-    const scale = Math.min(scaleX, scaleY);
-    displayWidth = 540 * scale;
-    displayHeight = 960 * scale;
+    const displayWidth = rect.width;
+    const displayHeight = rect.height;
+    // Fixed Width 模式：宽度固定 540，高度按设备自适配，画布填满容器无黑边
+    const scale = rect.width / 540;
+    this.width = 540;
+    this.height = rect.height / scale;
     this.canvas.style.width = `${displayWidth}px`;
     this.canvas.style.height = `${displayHeight}px`;
     this.canvas.width = Math.floor(displayWidth * dpr);
@@ -925,7 +922,7 @@ export class GameEngine {
     };
     load('/assets/gun.png', (img) => this.gunImg = img);
     load('/assets/roach.png', (img) => this.roachImg = img);
-    load('/assets/bg.jpg', (img) => this.bgImg = img);
+    load('/assets/bg_kitchen_easy.jpg', (img) => this.bgImg = img);
     load('/assets/roach_suicide.png', (img) => this.roachSuicideImg = img);
     load('/assets/roach_timed_suicide.png', (img) => this.roachTimedSuicideImg = img);
     load('/assets/roach_flying.png', (img) => this.roachFlyingImg = img);
@@ -969,22 +966,21 @@ export class GameEngine {
     for (const action of fallbackActions) {
       this.bossAnimFrames.set(action, []); // empty - renderer will fallback to idle
     }
-    // 粘板图片加载由 DropRenderer 模块处理
     load('/assets/bg_kitchen_hard.jpg?v=3', (img) => this.bgKitchenHardImg = img);
     load('/assets/bg_kitchen_easy.jpg?v=5', (img) => this.bgKitchenEasyImg = img);
-    load('/assets/sewer_bg.jpg', (img) => this.bgSewerImg = img);
+    load('/assets/sewer_bg_easy.jpg', (img) => this.bgSewerImg = img);
     load('/assets/sewer_bg_easy.jpg?v=3', (img) => this.bgSewerEasyImg = img);
-    load('/assets/sewer_bg_hard.jpg?v=5', (img) => this.bgSewerHardImg = img);
-    load('/assets/bg_dump.jpg', (img) => this.bgDumpImg = img);
+    load('/assets/sewer_bg_hard.png?v=5', (img) => this.bgSewerHardImg = img);
+    load('/assets/bg_dump_easy.jpg', (img) => this.bgDumpImg = img);
     load('/assets/bg_dump_easy.jpg?v=4', (img) => this.bgDumpEasyImg = img);
     load('/assets/bg_dump_hard.jpg?v=5', (img) => this.bgDumpHardImg = img);
-    load('/assets/bg_basement.jpg', (img) => this.bgBasementImg = img);
+    load('/assets/bg_basement_easy.jpg', (img) => this.bgBasementImg = img);
     load('/assets/bg_basement_easy.jpg?v=3', (img) => this.bgBasementEasyImg = img);
     load('/assets/bg_basement_hard.jpg?v=5', (img) => this.bgBasementHardImg = img);
-    load('/assets/bg_rooftop.jpg', (img) => this.bgRooftopImg = img);
+    load('/assets/bg_rooftop_easy.jpg', (img) => this.bgRooftopImg = img);
     load('/assets/bg_rooftop_easy.jpg?v=4', (img) => this.bgRooftopEasyImg = img);
     load('/assets/bg_rooftop_hard.jpg?v=5', (img) => this.bgRooftopHardImg = img);
-    load('/assets/bg_street.jpg', (img) => this.bgStreetImg = img);
+    load('/assets/bg_street_easy.jpg', (img) => this.bgStreetImg = img);
     load('/assets/bg_street_easy.jpg?v=6', (img) => this.bgStreetEasyImg = img);
     load('/assets/bg_street_hard.jpg?v=6', (img) => this.bgStreetHardImg = img);
     // 加载场景背景图片（从 SCENE_CONFIGS 中配置的新场景）
@@ -995,6 +991,21 @@ export class GameEngine {
         this.bgSceneImages[sceneType] = img;
       }
     }
+    // 掉落道具图片预加载（用于 renderWeaponDrops 和 renderItemDropOnField）
+    this._dropImages = {};
+    const dropImgDefs: [string, string][] = [
+      ['/assets/drop_sticky.png', 'sticky'],
+      ['/assets/drop_poison.png', 'poison'],
+      ['/assets/drop_molotov.png', 'molotov'],
+      ['/assets/drop_shotgun.png', 'shotgun'],
+      ['/assets/drop_radar.png', 'radar'],
+      ['/assets/drop_fan.png', 'fan'],
+      ['/assets/drop_swatter.png', 'swatter'],
+    ];
+    for (const [src, type] of dropImgDefs) {
+      load(src, (img) => { if (this._dropImages) this._dropImages[type] = img; });
+    }
+
     // 修复 P1：使用 Promise.all 等待所有图片实际加载完成后再设置标志
     Promise.all(loadPromises).then(() => {
       this.imagesLoaded = true;
@@ -1009,6 +1020,8 @@ export class GameEngine {
   playerBaseY() { return this.height + 100; }
   /** 防线 Y 坐标 */
   defenseLineY() { return this.height - 130; }
+  /** 高度缩放比例（相对于 960 设计高度，用于缩放地面边界 Y 坐标） */
+  heightRatio() { return this.height / 960; }
 
   getSceneConfig() {
     return SCENE_CONFIGS[this.currentScene];
@@ -1106,6 +1119,10 @@ export class GameEngine {
     // 同步消耗品库存到进度后再保存
     this.progress.consumableInventory = { ...this.consumableSystem!.consumableInventory };
     this.progress.autoUseEnabled = { ...this.consumableSystem!.autoUseEnabled };
+    // 同步未领取成就金币到存档
+    this.progress.unclaimedRewards = this.achievementSystem
+      ? [...this.achievementSystem.getUnclaimedAchievements().map(a => a.id)]
+      : [];
     SaveSystem.saveProgress(this.progress);
   }
 
@@ -1510,7 +1527,7 @@ export class GameEngine {
     if (!config) return;
 
     // 更新阶段名称
-    const phaseNames = ['虫卵入侵', '大蟑螂卵', '飞行蟑螂卵', '精英蟑螂卵'];
+    const phaseNames = TEXT_CONFIG.combat.bossPhaseNames.text;
     bb.phaseName = phaseNames[wave - 1] || '';
     bb.phaseJustChanged = true;
     bb.phaseChangeTimer = 3;
@@ -1535,8 +1552,8 @@ export class GameEngine {
       // Wave egg release: count display only, actual spawning handled by WaveManager
     }
 
-    this.addFloatingText(this.width / 2, this.height / 3, TEXT_CONFIG.combat.waveEggRelease(wave), FLOAT_COLOR.danger);
-    this.addFloatingText(this.width / 2, this.height / 3 + 25, TEXT_CONFIG.combat.eggHatchPending(config.count), FLOAT_COLOR.gold);
+    this.addFloatingText(this.width / 2, this.height / 3, TEXT_CONFIG.combat.waveEggRelease.text(wave), TEXT_CONFIG.combat.waveEggRelease.color);
+    this.addFloatingText(this.width / 2, this.height / 3 + 25, TEXT_CONFIG.combat.eggHatchPending.text(config.count), TEXT_CONFIG.combat.eggHatchPending.color);
     this.screenShake = BALANCE_CONFIG.screenShake.largeExplosion;
   }
 
@@ -1624,6 +1641,26 @@ export class GameEngine {
     this.achievementSystem?.clearAnimationQueue();
   }
 
+  /** 领取单个成就的金币奖励（成就界面动画点亮后调用） */
+  claimAchievementReward(id: string): number {
+    const reward = this.achievementSystem?.claimReward(id) ?? 0;
+    if (reward > 0) {
+      this.economy.money += reward;
+      this.onEconomyUpdate?.(this.economy);
+    }
+    return reward;
+  }
+
+  /** 获取未领取金币的成就列表 */
+  getUnclaimedAchievements() {
+    return this.achievementSystem?.getUnclaimedAchievements() ?? [];
+  }
+
+  /** 获取未领取成就金币数量 */
+  getUnclaimedAchievementCount(): number {
+    return this.achievementSystem?.getUnclaimedAchievements().length ?? 0;
+  }
+
   /** 在回收动画完成后调用 — 实际清空库存 */
   clearRecycledInventory() {
     this.inventory = [];
@@ -1641,7 +1678,7 @@ export class GameEngine {
     // 在胜利界面之前出售未使用的库存道具
     const sellTotal = this.sellUnusedInventory();
     if (sellTotal > 0) {
-      this.addFloatingText(this.width / 2, this.height * 0.3, TEXT_CONFIG.combat.itemRecycle(sellTotal), FLOAT_COLOR.gold);
+      this.addFloatingText(this.width / 2, this.height * 0.3, TEXT_CONFIG.combat.itemRecycle.text(sellTotal), TEXT_CONFIG.combat.itemRecycle.color);
     }
 
     this.screenShake = BALANCE_CONFIG.screenShake.biggerExplosion;
@@ -1672,7 +1709,7 @@ export class GameEngine {
     this.addTalentPoints(talentReward);
     this.saveProgress();
     // 显示天赋点奖励浮动文字
-    this.addFloatingText(this.width / 2, this.height * 0.35, TEXT_CONFIG.combat.talentReward(talentReward), FLOAT_COLOR.gold);
+    this.addFloatingText(this.width / 2, this.height * 0.35, TEXT_CONFIG.combat.talentReward.text(talentReward), TEXT_CONFIG.combat.talentReward.color);
 
     // ===== 医院专属：三星评级系统 =====
     if (this.currentScene === SceneType.HOSPITAL) {
@@ -1687,11 +1724,11 @@ export class GameEngine {
 
       // 显示星级评定浮动文字
       const starText = '⭐'.repeat(stars);
-      const ratingTexts = TEXT_CONFIG.combat.starRating;
-      this.addFloatingText(this.width / 2, this.height * 0.45, starText, FLOAT_COLOR.gold);
-      this.addFloatingText(this.width / 2, this.height * 0.5, ratingTexts[stars], stars === 3 ? FLOAT_COLOR.gold : (stars === 2 ? FLOAT_COLOR.star2 : FLOAT_COLOR.expired));
+      const ratingTexts = TEXT_CONFIG.combat.starRating.text;
+      this.addFloatingText(this.width / 2, this.height * 0.45, starText, TEXT_CONFIG.combat.starRating.color);
+      this.addFloatingText(this.width / 2, this.height * 0.5, ratingTexts[stars], stars === 3 ? TEXT_CONFIG.combat.waveCleared.color : (stars === 2 ? TEXT_CONFIG.combat.starRating.color : TEXT_CONFIG.combat.weaponExpired.color));
       if (this.hospitalBreaches > 0) {
-        this.addFloatingText(this.width / 2, this.height * 0.55, TEXT_CONFIG.combat.breachCount(this.hospitalBreaches), FLOAT_COLOR.warning);
+        this.addFloatingText(this.width / 2, this.height * 0.55, TEXT_CONFIG.combat.breachCount.text(this.hospitalBreaches), TEXT_CONFIG.combat.breachCount.color);
       }
     }
 
@@ -1763,7 +1800,7 @@ export class GameEngine {
     this.pendingRewards = 0;
     this.onPendingRewardUpdate?.(0);
     this.state = GameState.GAME_OVER;
-    this.addFloatingText(this.width / 2, this.height / 2, TEXT_CONFIG.combat.defeat, FLOAT_COLOR.danger);
+    this.addFloatingText(this.width / 2, this.height / 2, TEXT_CONFIG.combat.defeat.text, TEXT_CONFIG.combat.defeat.color);
     this.screenShake = BALANCE_CONFIG.screenShake.bossDeath;
     this.audio.stopBGM();
     this.audio.stopFire();
@@ -1877,8 +1914,8 @@ export class GameEngine {
       if (this.endlessBestTime > 0 && this.endlessElapsedTime > this.endlessBestTime && !this.endlessNewRecordShown) {
         this.endlessNewRecordShown = true;
         this.endlessNewRecordTimer = BALANCE_CONFIG.endless.newRecordTimer; // 3 seconds
-        this.addFloatingText(this.width * 0.75, 60, TEXT_CONFIG.combat.newRecord, FLOAT_COLOR.gold);
-        this.addFloatingText(this.width * 0.75, 80, TEXT_CONFIG.combat.bestTimeRefreshed, FLOAT_COLOR.bestTime);
+        this.addFloatingText(this.width * 0.75, 60, TEXT_CONFIG.combat.newRecord.text, TEXT_CONFIG.combat.newRecord.color);
+    this.addFloatingText(this.width * 0.75, 80, TEXT_CONFIG.combat.bestTimeRefreshed.text, TEXT_CONFIG.combat.bestTimeRefreshed.color);
         this.screenShake = BALANCE_CONFIG.screenShake.largeExplosion;
         Vibration.vibrateNewRecord();
       }
@@ -1984,7 +2021,7 @@ export class GameEngine {
       if (p.weaponTimer <= 0) {
         p.currentWeapon = 'flamethrower';
         p.isTempWeapon = false;
-        this.addFloatingText(p.x, p.y - 60, TEXT_CONFIG.combat.weaponExpired, FLOAT_COLOR.expired);
+        this.addFloatingText(p.x, p.y - 60, TEXT_CONFIG.combat.weaponExpired.text, TEXT_CONFIG.combat.weaponExpired.color);
       }
     }
 
@@ -1992,8 +2029,8 @@ export class GameEngine {
     // heatGain*100 = 100/秒，3秒 = 剩余300热量
     const warnThreshold = p.overheatThreshold - 300; // 1500 for default overheatThreshold=1800
     if (p.heat >= warnThreshold && p.heatWarningTimer <= 0 && !p.isOverheated) {
-      p.heatWarningTimer = 3;
-      this.addFloatingText(p.x, p.y - 60, TEXT_CONFIG.combat.barrelCooldown, FLOAT_COLOR.gold, 1500, 18);
+      p.heatWarningTimer = BALANCE_CONFIG.player.heatWarningDuration;
+      this.addFloatingText(p.x, p.y - 60, TEXT_CONFIG.combat.barrelCooldown.text, TEXT_CONFIG.combat.barrelCooldown.color, 1500, 18);
     }
 
     // 射击逻辑：基于当前武器
@@ -2045,7 +2082,7 @@ export class GameEngine {
         p.isOverheated = false;
         p.heat = 0;
         // Show "FIRE" text at screen center (same position as overheat countdown)
-        this.addFloatingText(this.width / 2, this.height / 2, TEXT_CONFIG.combat.openFire, FLOAT_COLOR.openFire, 2000, 28);
+        this.addFloatingText(this.width / 2, this.height / 2, TEXT_CONFIG.combat.openFire.text, TEXT_CONFIG.combat.openFire.color, 2000, 28);
       }
     }
 
@@ -2061,7 +2098,7 @@ export class GameEngine {
         p.isReloading = false;
         p.gas = p.maxGas;
         // 装弹完成，在屏幕中央显示"开火"文字
-        this.addFloatingText(this.width / 2, this.height / 2, TEXT_CONFIG.combat.openFire, FLOAT_COLOR.openFire, 2000, 28);
+        this.addFloatingText(this.width / 2, this.height / 2, TEXT_CONFIG.combat.openFire.text, TEXT_CONFIG.combat.openFire.color, 2000, 28);
       }
     }
 
@@ -2102,7 +2139,7 @@ export class GameEngine {
     if (p.heat >= p.overheatThreshold) {
       p.heat = p.overheatThreshold;
       p.isOverheated = true;
-      p.overheatTimer = 10;
+      p.overheatTimer = BALANCE_CONFIG.player.overheatCooldown.cone;
       p.heatWarningTimer = 0; // Clear warning on actual overheat
       ParticleSpawner.spawnSmokeParticles(this.particles,p.x, p.y, 30);
       this.screenShake = BALANCE_CONFIG.screenShake.smallExplosion;
@@ -2120,7 +2157,7 @@ export class GameEngine {
     if (p.heat >= p.overheatThreshold) {
       p.heat = p.overheatThreshold;
       p.isOverheated = true;
-      p.overheatTimer = 6;
+      p.overheatTimer = BALANCE_CONFIG.player.overheatCooldown.poison;
     }
   }
 
@@ -2139,7 +2176,7 @@ export class GameEngine {
     if (p.heat >= p.overheatThreshold) {
       p.heat = p.overheatThreshold;
       p.isOverheated = true;
-      p.overheatTimer = 8;
+      p.overheatTimer = BALANCE_CONFIG.player.overheatCooldown.shotgun;
     }
   }
 
@@ -2263,12 +2300,12 @@ export class GameEngine {
 
     // Check picked-up item cooldown (shares globalConsumableCooldown with shop consumables)
     if (this.consumableSystem!.globalConsumableCooldown > 0) {
-      this.addFloatingText(this.player.x, this.player.y - 40, TEXT_CONFIG.combat.itemCooldown(this.consumableSystem!.globalConsumableCooldown.toFixed(1)), FLOAT_COLOR.cooldown, 800);
+      this.addFloatingText(this.player.x, this.player.y - 40, TEXT_CONFIG.combat.itemCooldown.text(this.consumableSystem!.globalConsumableCooldown.toFixed(1)), TEXT_CONFIG.combat.itemCooldown.color, 800);
       return;
     }
     if ((this.consumableSystem!.itemCooldowns[item.type] || 0) > 0) {
       const def = WEAPON_DROP_DEFS[item.type as keyof typeof WEAPON_DROP_DEFS];
-      this.addFloatingText(this.player.x, this.player.y - 40, TEXT_CONFIG.combat.namedCooldown(def?.name || '', this.consumableSystem!.itemCooldowns[item.type].toFixed(1)), FLOAT_COLOR.cooldown, 800);
+      this.addFloatingText(this.player.x, this.player.y - 40, TEXT_CONFIG.combat.namedCooldown.text(def?.name || '', this.consumableSystem!.itemCooldowns[item.type].toFixed(1)), TEXT_CONFIG.combat.namedCooldown.color, 800);
       return;
     }
 
@@ -2278,7 +2315,7 @@ export class GameEngine {
       if (def && def.cooldown > 0) {
         this.consumableSystem!.itemCooldowns[type] = def.cooldown;
       }
-      this.consumableSystem!.globalConsumableCooldown = 1; // 1 second global cooldown (shared with shop consumables)
+      this.consumableSystem!.globalConsumableCooldown = BALANCE_CONFIG.consumable.globalCooldown;
     };
 
     // Shotgun is instant-use (activates triple flame), not placement
@@ -2520,15 +2557,30 @@ export class GameEngine {
     }
     this.screenShake = BALANCE_CONFIG.screenShake.biggerExplosion;
 
-    const label = target ? TEXT_CONFIG.combat.fireWall(hitCount) : TEXT_CONFIG.combat.fireWallSimple;
-    this.addFloatingText((wallX1 + wallX2) / 2, wallY - 20, label, FLOAT_COLOR.fireWall);
+    const label = target ? TEXT_CONFIG.combat.fireWall.text(hitCount) : TEXT_CONFIG.combat.fireWallSimple.text;
+    this.addFloatingText((wallX1 + wallX2) / 2, wallY - 20, label, TEXT_CONFIG.combat.fireWall.color);
   }
 
   // ===== PERSPECTIVE GROUND BOUNDS: get left/right x boundaries at a given Y =====
   // The ground boundary is a 2-segment polyline per side (far→mid→near).
   // For a given Y, find which segment Y falls in and interpolate.
+
+  /** 获取按高度缩放后的地面边界（Y 值乘以 heightRatio，X 值不变） */
+  getScaledGroundBounds(): [number, number, number, number, number, number, number, number, number, number, number] {
+    const ratio = this.heightRatio();
+    const bounds = SCENE_GROUND_BOUNDS[this.currentScene];
+    return [
+      bounds[0],  bounds[1]  * ratio,  // farL, farLY
+      bounds[2],  bounds[3]  * ratio,  // farR, farRY
+      bounds[4],  bounds[5]  * ratio,  // midL, midLY
+      bounds[6],  bounds[7]  * ratio,  // midR, midRY
+      bounds[8],  bounds[9],           // nearL, nearR (X 值不变)
+      bounds[10] * ratio,              // nearY
+    ];
+  }
+
   getGroundBoundsAtY(y: number): [number, number] {
-    const [farL, farLY, farR, farRY, midL, midLY, midR, midRY, nearL, nearR, nearY] = SCENE_GROUND_BOUNDS[this.currentScene];
+    const [farL, farLY, farR, farRY, midL, midLY, midR, midRY, nearL, nearR, nearY] = this.getScaledGroundBounds();
     const clampedY = Math.min(nearY, Math.max(Math.min(farLY, farRY), y));
 
     // Left side: 2 segments (far→mid→near)
@@ -2561,7 +2613,7 @@ export class GameEngine {
   // Get the center point of the perspective ground bounds quad for the current scene
   // Used for bait landing target (center of roach walkable area)
   getGroundCenter(): [number, number] {
-    const [farL, farLY, farR, farRY, , , , , nearL, nearR, nearY] = SCENE_GROUND_BOUNDS[this.currentScene];
+    const [farL, farLY, farR, farRY, , , , , nearL, nearR, nearY] = this.getScaledGroundBounds();
     const centerX = (farL + farR + nearL + nearR) / 4;
     const centerY = (farLY + farRY + nearY + nearY) / 4;
     return [centerX, centerY];
@@ -2595,13 +2647,13 @@ export class GameEngine {
       baseY = this.height * 0.45;
     } else if (type === RoachType.NURSE && this.currentScene === SceneType.HOSPITAL) {
       // ===== HOSPITAL EXCLUSIVE: Nurse spawns at the FAR end of ground bounds =====
-      const [, farLY, , ] = SCENE_GROUND_BOUNDS[this.currentScene];
+      const [, farLY, , ] = this.getScaledGroundBounds();
       baseY = farLY + 10; // Slightly below far line to be visible
       const [gLeft, gRight] = this.getGroundBoundsAtY(baseY);
       baseX = gLeft + Math.random() * (gRight - gLeft);
     } else {
       // Ground roaches: spawn within 6-point perspective ground bounds
-      const [, farLY, , farRY, , midLY, , midRY, , , nearY] = SCENE_GROUND_BOUNDS[this.currentScene];
+      const [, farLY, , farRY, , midLY, , midRY, , , nearY] = this.getScaledGroundBounds();
       const farY = Math.min(farLY, farRY, midLY, midRY); // use highest point as spawn top
       // Random Y within the bounds (biased toward far end for spawning)
       baseY = farY + Math.random() * (nearY - farY) * 0.6;
@@ -2818,10 +2870,10 @@ export class GameEngine {
     if (roachBottom > this.defenseLineY() - defenseDamageRange) {
       const dmg = this.difficulty === 'hard' ? 15 : 5;
       if (this.player.shieldTimer > 0) {
-        this.addFloatingText(r.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.shieldBlock, FLOAT_COLOR.shield);
+        this.addFloatingText(r.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.shieldBlock.text, TEXT_CONFIG.combat.shieldBlock.color);
       } else {
         this.defenseHp -= dmg;
-        this.addFloatingText(r.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.suicideDamage(dmg), FLOAT_COLOR.danger);
+        this.addFloatingText(r.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.suicideDamage.text(dmg), TEXT_CONFIG.combat.suicideDamage.color);
       }
       if (r.type === RoachType.FLYING_SUICIDE) {
         this.audio.playSuicideBreachFlying();
@@ -2851,7 +2903,7 @@ export class GameEngine {
       }
     }
 
-    this.addFloatingText(r.x, r.y - 30, hitCount > 0 ? TEXT_CONFIG.combat.bigExplosion(hitCount) : '大爆炸!', FLOAT_COLOR.explosion);
+    this.addFloatingText(r.x, r.y - 30, hitCount > 0 ? TEXT_CONFIG.combat.bigExplosion.text(hitCount) : TEXT_CONFIG.combat.bigExplosionFallback.text, TEXT_CONFIG.combat.bigExplosion.color);
   }
 
   // Suicide roach: explode when killed by flame (before reaching defense line)
@@ -2902,10 +2954,10 @@ export class GameEngine {
     if (roachBottom > this.defenseLineY() - defenseDamageRange) {
       const dmg = this.difficulty === 'hard' ? 15 : 5;
       if (this.player.shieldTimer > 0) {
-        this.addFloatingText(r.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.shieldBlock, FLOAT_COLOR.shield);
+        this.addFloatingText(r.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.shieldBlock.text, TEXT_CONFIG.combat.shieldBlock.color);
       } else {
         this.defenseHp -= dmg;
-        this.addFloatingText(r.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.suicideDamage(dmg), FLOAT_COLOR.danger);
+        this.addFloatingText(r.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.suicideDamage.text(dmg), TEXT_CONFIG.combat.suicideDamage.color);
       }
       if (r.type === RoachType.FLYING_SUICIDE) {
         this.audio.playSuicideBreachFlying();
@@ -2914,7 +2966,7 @@ export class GameEngine {
       }
     }
 
-    this.addFloatingText(r.x, r.y - 30, hitCount > 0 ? TEXT_CONFIG.combat.deathExplosion(hitCount) : '死亡爆炸!', FLOAT_COLOR.explosion);
+    this.addFloatingText(r.x, r.y - 30, hitCount > 0 ? TEXT_CONFIG.combat.deathExplosion.text(hitCount) : TEXT_CONFIG.combat.deathExplosionFallback.text, TEXT_CONFIG.combat.deathExplosion.color);
   }
 
   // spawnDebrisParticles, spawnFireRingParticles, spawnShockwaveRing — migrated to ParticleSpawner
@@ -2989,13 +3041,13 @@ export class GameEngine {
       // Damage defense line
       const defDmg = this.difficulty === 'hard' ? 20 : 8;
       if (this.player.shieldTimer > 0) {
-        this.addFloatingText(r.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.shieldBlock, FLOAT_COLOR.shield);
+        this.addFloatingText(r.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.shieldBlock.text, TEXT_CONFIG.combat.shieldBlock.color);
       } else {
         this.defenseHp -= defDmg;
-        this.addFloatingText(r.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.bombExplode(defDmg), FLOAT_COLOR.danger);
+        this.addFloatingText(r.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.bombExplode.text(defDmg), TEXT_CONFIG.combat.bombExplode.color);
       }
 
-      this.addFloatingText(r.x, r.y - 50, TEXT_CONFIG.combat.boom, FLOAT_COLOR.boom);
+      this.addFloatingText(r.x, r.y - 50, TEXT_CONFIG.combat.boom.text, TEXT_CONFIG.combat.boom.color);
     } finally {
       this._deathChainDepth--;
     }
@@ -3051,7 +3103,7 @@ export class GameEngine {
         };
         this.roaches.push(small);
       }
-      this.addFloatingText(r.x, r.y - 30, TEXT_CONFIG.combat.splitSpawn, FLOAT_COLOR.split);
+      this.addFloatingText(r.x, r.y - 30, TEXT_CONFIG.combat.splitSpawn.text, TEXT_CONFIG.combat.splitSpawn.color);
     }
 
     // 飞行蟑螂：死亡时解体并坠落
@@ -3091,7 +3143,7 @@ export class GameEngine {
       }
       // 羽毛/火花粒子
       ParticleSpawner.spawnSparkParticles(this.particles,r.x, r.y, 20);
-      this.addFloatingText(r.x, r.y - 20, TEXT_CONFIG.combat.disintegrate, FLOAT_COLOR.disintegrate);
+      this.addFloatingText(r.x, r.y - 20, TEXT_CONFIG.combat.disintegrate.text, TEXT_CONFIG.combat.disintegrate.color);
     }
     // 自爆/飞行自爆蟑螂：死亡时增强爆炸
     if (r.type === RoachType.SUICIDE || r.type === RoachType.FLYING_SUICIDE) {
@@ -3120,7 +3172,7 @@ export class GameEngine {
       this.screenShake = BALANCE_CONFIG.screenShake.bossDeath;
       this.audio.playSuicideExplode();
       Vibration.vibrateSuicideExplode();
-      this.addFloatingText(r.x, r.y - 30, hitCount > 0 ? TEXT_CONFIG.combat.explode(hitCount) : '爆炸!', FLOAT_COLOR.explosionOrange);
+      this.addFloatingText(r.x, r.y - 30, hitCount > 0 ? TEXT_CONFIG.combat.explode.text(hitCount) : TEXT_CONFIG.combat.explosionFallback.text, TEXT_CONFIG.combat.explode.color);
     }
 
     this.audio.playKill();
@@ -3176,7 +3228,7 @@ export class GameEngine {
           boss.hp -= backlashDmg;
           // bossHp is now purely for 4-layer UI display - updated by wave clears only
           // Visual feedback for backlash
-          this.addFloatingText(boss.x + (Math.random() - 0.5) * 40, boss.y - 30, TEXT_CONFIG.combat.backlash(backlashDmg), FLOAT_COLOR.backlash);
+          this.addFloatingText(boss.x + (Math.random() - 0.5) * 40, boss.y - 30, TEXT_CONFIG.combat.backlash.text(backlashDmg), TEXT_CONFIG.combat.backlash.color);
           boss.damageFlash = 1;
           // 紫色反噬粒子
           for (let k = 0; k < 3; k++) {
@@ -3197,13 +3249,13 @@ export class GameEngine {
     this.economy.totalKills++;
     this.pendingRewards += reward;
     this.onPendingRewardUpdate?.(this.pendingRewards);
-    this.addFloatingText(r.x, r.y - 20, TEXT_CONFIG.combat.killReward(reward), FLOAT_COLOR.reward);
+    this.addFloatingText(r.x, r.y - 20, TEXT_CONFIG.combat.killReward.text(reward), TEXT_CONFIG.combat.killReward.color);
     this.screenShake = r.isBoss ? 12 : (r.type === RoachType.LARGE ? 6 : 3);
 
     // Boss 死亡清除所有剩余蟑螂
     if (r.isBoss) {
       this.bossSystem!.activeBosses--;
-      this.addFloatingText(this.width / 2, this.height / 2, TEXT_CONFIG.combat.bossDefeated, FLOAT_COLOR.gold);
+      this.addFloatingText(this.width / 2, this.height / 2, TEXT_CONFIG.combat.bossDefeated.text, TEXT_CONFIG.combat.bossDefeated.color);
       // Kill all remaining roaches
       for (const other of this.roaches) {
         if (other.state === RoachState.ALIVE && other.id !== r.id) {
@@ -3222,7 +3274,7 @@ export class GameEngine {
         timer: 3.0, // 3 second countdown
         flashPhase: 0,
       });
-      this.addFloatingText(r.x, r.y - 40, TEXT_CONFIG.combat.corpseBomb(3), FLOAT_COLOR.corpseBomb);
+      this.addFloatingText(r.x, r.y - 40, TEXT_CONFIG.combat.corpseBomb.text(3), TEXT_CONFIG.combat.corpseBomb.color);
       this.audio.playTimedBombDrop();
     }
 
@@ -3387,9 +3439,9 @@ export class GameEngine {
         this.timedSuicideSpawnRemaining--;
         this.timedSuicideSpawnTimer = this.timedSuicideSpawnRemaining > 0 ? 8.0 : 0;
         if (this.timedSuicideSpawnRemaining > 0) {
-          this.addFloatingText(this.width / 2, 150, TEXT_CONFIG.combat.timedSuicideNext, FLOAT_COLOR.timedSuicide);
+          this.addFloatingText(this.width / 2, 150, TEXT_CONFIG.combat.timedSuicideNext.text, TEXT_CONFIG.combat.timedSuicideNext.color);
         } else {
-          this.addFloatingText(this.width / 2, 150, TEXT_CONFIG.combat.timedSuicideAll, FLOAT_COLOR.timedSuicide);
+          this.addFloatingText(this.width / 2, 150, TEXT_CONFIG.combat.timedSuicideAll.text, TEXT_CONFIG.combat.timedSuicideAll.color);
         }
       }
     }
@@ -3402,7 +3454,7 @@ export class GameEngine {
       // Countdown floating text
       const secs = Math.ceil(bomb.timer);
       if (bomb.timer > 0 && Math.abs(bomb.timer - secs) < 0.05 && secs <= 3) {
-        this.addFloatingText(bomb.x, bomb.y - 25, `${secs}`, secs <= 1 ? FLOAT_COLOR.danger : FLOAT_COLOR.gold);
+        this.addFloatingText(bomb.x, bomb.y - 25, TEXT_CONFIG.combat.bombCountdown.text(secs), secs <= 1 ? TEXT_CONFIG.combat.defenseBreach.color : TEXT_CONFIG.combat.waveCleared.color);
       }
       // Red flash pulse during countdown (last 3 seconds)
       if (bomb.timer <= 3 && bomb.timer > 0) {
@@ -3435,7 +3487,7 @@ export class GameEngine {
       }
       // 0.5s warning pulse
       if (bomb.timer <= 0.5 && Math.floor(bomb.timer * 6) % 2 === 0) {
-        this.addFloatingText(bomb.x, bomb.y - 40, TEXT_CONFIG.combat.bombWarning, FLOAT_COLOR.warningFlash);
+        this.addFloatingText(bomb.x, bomb.y - 40, TEXT_CONFIG.combat.bombWarning.text, TEXT_CONFIG.combat.bombWarning.color);
       }
       // EXPLOSION!
       if (bomb.timer <= 0) {
@@ -3466,15 +3518,15 @@ export class GameEngine {
         if (defenseDist < 120) {
           const defenseDmg = 12;
           if (this.player.shieldTimer > 0) {
-            this.addFloatingText(bomb.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.shieldBlock, FLOAT_COLOR.shield);
+            this.addFloatingText(bomb.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.shieldBlock.text, TEXT_CONFIG.combat.shieldBlock.color);
           } else {
             this.defenseHp -= defenseDmg;
-            this.addFloatingText(bomb.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.corpseBombDamage(defenseDmg), FLOAT_COLOR.danger);
+            this.addFloatingText(bomb.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.corpseBombDamage.text(defenseDmg), TEXT_CONFIG.combat.corpseBombDamage.color);
           }
         }
         ParticleSpawner.spawnExplosionParticles(this.particles,bomb.x, bomb.y, 20);
         ParticleSpawner.spawnSmokeParticles(this.particles,bomb.x, bomb.y, 10);
-        this.addFloatingText(bomb.x, bomb.y - 40, TEXT_CONFIG.combat.corpseBombExplode, FLOAT_COLOR.explosion);
+        this.addFloatingText(bomb.x, bomb.y - 40, TEXT_CONFIG.combat.corpseBombExplode.text, TEXT_CONFIG.combat.corpseBombExplode.color);
         this.deadTimedBombs.splice(i, 1);
       }
     }
@@ -3486,7 +3538,7 @@ export class GameEngine {
         bomb.timer -= this.deltaTime;
         const secs = Math.ceil(bomb.timer);
         if (bomb.timer > 0 && Math.abs(bomb.timer - secs) < 0.05 && secs <= 3) {
-          this.addFloatingText(bomb.x, bomb.y - 20, `${secs}`, secs <= 1 ? FLOAT_COLOR.danger : FLOAT_COLOR.gold);
+          this.addFloatingText(bomb.x, bomb.y - 20, `${secs}`, secs <= 1 ? TEXT_CONFIG.combat.defenseBreach.color : TEXT_CONFIG.combat.waveCleared.color);
         }
         if (bomb.timer <= 0) {
           ParticleSpawner.spawnExplosionParticles(this.particles,bomb.x, bomb.y, 80);
@@ -3533,10 +3585,10 @@ export class GameEngine {
           }
           const defDmg = this.difficulty === 'hard' ? 20 : 8;
           if (this.player.shieldTimer > 0) {
-            this.addFloatingText(bomb.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.shieldBlock, FLOAT_COLOR.shield);
+            this.addFloatingText(bomb.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.shieldBlock.text, TEXT_CONFIG.combat.shieldBlock.color);
           } else {
             this.defenseHp -= defDmg;
-            this.addFloatingText(bomb.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.bombExplode(defDmg), FLOAT_COLOR.danger);
+            this.addFloatingText(bomb.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.bombExplode.text(defDmg), TEXT_CONFIG.combat.bombExplode.color);
           }
           this.placedBombs.splice(bi, 1);
         }
@@ -3581,7 +3633,7 @@ export class GameEngine {
       if (!this.progress.scenesUnlocked.includes(nextScene)) {
         this.progress.scenesUnlocked.push(nextScene);
         this.saveProgress(); // Save immediately after unlocking
-        this.addFloatingText(this.width / 2, this.height / 2 + 50, TEXT_CONFIG.combat.sceneUnlock(SCENE_CONFIGS[nextScene].name), FLOAT_COLOR.gold);
+        this.addFloatingText(this.width / 2, this.height / 2 + 50, TEXT_CONFIG.combat.sceneUnlock.text(SCENE_CONFIGS[nextScene].name), TEXT_CONFIG.combat.sceneUnlock.color);
       }
     }
   }
@@ -3760,7 +3812,7 @@ export class GameEngine {
         if (Math.random() < BALANCE_CONFIG.lightning.chance) {
           this.lightningFlash = BALANCE_CONFIG.lightning.flashDuration;
           if (this.lightningTextCooldown <= 0) {
-            this.addFloatingText(this.width / 2, this.height / 2 - 100, TEXT_CONFIG.combat.lightning, FLOAT_COLOR.gold);
+            this.addFloatingText(this.width / 2, this.height / 2 - 100, TEXT_CONFIG.combat.lightning.text, TEXT_CONFIG.combat.lightning.color);
             this.lightningTextCooldown = BALANCE_CONFIG.lightning.textCooldown;
           }
         }
@@ -3904,7 +3956,7 @@ export class GameEngine {
   // ===== MOVEMENT RANGE VISUALIZATION =====
   // Draws a semi-transparent overlay showing the player's walkable ground area
   renderMovementRange(ctx: CanvasRenderingContext2D) {
-    RenderUtils.renderMovementRange(ctx, this.currentScene, this.defenseLineY(), (y) => this.getGroundBoundsAtY(y));
+    RenderUtils.renderMovementRange(ctx, this.currentScene, this.defenseLineY(), (y) => this.getGroundBoundsAtY(y), this.getScaledGroundBounds());
   }
 
   // ===== 渲染系统 =====
@@ -4268,7 +4320,7 @@ export class GameEngine {
       ctx.shadowColor = 'rgba(0,0,0,0.9)';
       ctx.shadowBlur = 10;
       const secondsLeft = Math.ceil(p2.heatWarningTimer);
-      ctx.fillText(`⚠️ 过热警告 ${secondsLeft}秒`, w / 2, h / 2);
+      ctx.fillText(TEXT_CONFIG.combat.overheatWarningHud.text(secondsLeft), w / 2, h / 2);
       ctx.shadowBlur = 0;
       ctx.restore();
     }
@@ -4350,22 +4402,6 @@ export class GameEngine {
 
   /** 渲染武器掉落物（委托给 DropRenderer 静态方法） */
   renderWeaponDrops(ctx: CanvasRenderingContext2D) {
-    // 懒加载掉落物图片
-    if (!this._dropImages) {
-      this._dropImages = {};
-      const loadDropImg = (src: string, type: string) => {
-        const img = new Image();
-        img.onload = () => { if (this._dropImages) this._dropImages[type] = img; };
-        img.src = src;
-      };
-      loadDropImg('/assets/drop_sticky.png', 'sticky');
-      loadDropImg('/assets/drop_poison.png', 'poison');
-      loadDropImg('/assets/drop_molotov.jpg', 'molotov');
-      loadDropImg('/assets/drop_shotgun.png', 'shotgun');
-      loadDropImg('/assets/drop_radar.png', 'radar');
-      loadDropImg('/assets/drop_fan.png', 'fan');
-      loadDropImg('/assets/drop_swatter.png', 'swatter');
-    }
     DropRenderer.renderWeaponDrops(ctx, this.weaponSystem!.getWeaponDrops(), this.time, this._dropImages);
   }
 
@@ -4472,7 +4508,7 @@ export class GameEngine {
       ctx.textBaseline = 'middle';
       ctx.shadowColor = 'rgba(0,0,0,0.8)';
       ctx.shadowBlur = 8;
-      ctx.fillText('更换气罐中', this.width / 2, this.height / 2 - 20);
+      ctx.fillText(TEXT_CONFIG.combat.reloadingText.text, this.width / 2, this.height / 2 - 20);
       ctx.font = 'bold 48px sans-serif';
       ctx.fillStyle = '#fbbf24';
       ctx.fillText(Math.ceil(p.reloadTimer).toString(), this.width / 2, this.height / 2 + 25);

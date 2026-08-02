@@ -189,7 +189,7 @@ export const TalentTreeScreen: React.FC<TalentTreeScreenProps> = ({ progress, ta
   return (
     <div className="fixed inset-0 z-[100] flex flex-col">
       {/* Fixed background image */}
-      <div className="fixed inset-0 bg-cover bg-center" style={{ backgroundImage: 'url(/assets/achieve_bg.jpg)' }} />
+      <div className="fixed inset-0 bg-cover bg-center" style={{ backgroundImage: 'url(/assets/bg_rooftop_easy.jpg)' }} />
       {/* Dark overlay */}
       <div className="fixed inset-0 bg-black/70" />
 

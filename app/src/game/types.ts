@@ -747,6 +747,8 @@ export interface GameProgress {
   /** 消耗品库存（v3 起从独立 localStorage 移至 GameProgress） */
   consumableInventory?: Record<string, number>;
   autoUseEnabled?: Record<string, boolean>;
+  /** 未领取金币的成就 ID 列表（成就解锁但金币尚未在成就界面领取） */
+  unclaimedRewards?: string[];
 }
 
 /** 图鉴单条条目 */
