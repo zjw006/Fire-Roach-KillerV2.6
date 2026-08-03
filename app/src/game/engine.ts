@@ -128,6 +128,7 @@ import { FanSystem } from './engine/fan/FanSystem';
 import { TripleFlameSystem } from './engine/triple/TripleFlameSystem';
 import { RadarLaserSystem } from './engine/radar/RadarLaserSystem';
 import { SwatterSystem } from './engine/swatter/SwatterSystem';
+import { TrainSystem } from './engine/train/TrainSystem';
 import { AimingSystem } from './engine/aiming/AimingSystem';
 import { InsecticideSystem } from './engine/insecticide/InsecticideSystem';
 import { ThrowableSystem } from './engine/throwable/ThrowableSystem';
@@ -384,6 +385,8 @@ export class GameEngine {
   private radarLaserSystem: RadarLaserSystem | null = null;
   /** 电蚊拍系统模块（委托给 SwatterSystem） */
   swatterSystem: SwatterSystem | null = null;
+  /** 列车系统模块（委托给 TrainSystem，地铁场景专属） */
+  trainSystem: TrainSystem | null = null;
   /** 瞄准系统模块（委托给 AimingSystem） */
   private aimingSystem: AimingSystem | null = null;
   /** 杀虫剂喷雾系统模块（委托给 InsecticideSystem） */
@@ -641,6 +644,27 @@ export class GameEngine {
       onSpawnLightningParticles: (centerX, topY) => { ParticleSpawner.spawnLightningParticles(this.particles, centerX, topY, this.width, this.height); },
       onScreenShake: (amount) => { this.screenShake = amount; },
       onInventoryUpdate: (inventory) => { this.onInventoryUpdate?.(inventory); },
+    });
+    this.trainSystem = new TrainSystem({
+      canvasWidth: this.width,
+      canvasHeight: this.height,
+      isSubwayScene: this.currentScene === SceneType.SUBWAY,
+      onAddFloatingText: (x, y, text, color, duration?) => { this.addFloatingText(x, y, text, color, duration); },
+      onPlayTrain: () => { this.audio.playTrain(); },
+      onScreenShake: (amount) => { this.screenShake = amount; },
+      onSpawnDust: (x, y) => {
+        for (let i = 0; i < 6; i++) {
+          this.particles.push({
+            x, y,
+            vx: (Math.random() - 0.5) * 160,
+            vy: -40 - Math.random() * 120,
+            life: 0.4 + Math.random() * 0.5, maxLife: 0.9,
+            size: 4 + Math.random() * 8,
+            color: `rgba(150, 130, 100, ${0.4 + Math.random() * 0.3})`,
+            type: ParticleType.SMOKE,
+          });
+        }
+      },
     });
     this.aimingSystem = new AimingSystem({
       onAddFloatingText: (x, y, text, color) => { this.addFloatingText(x, y, text, color); },
@@ -1009,6 +1033,7 @@ export class GameEngine {
       ['/assets/drop_radar.png', 'radar'],
       ['/assets/drop_fan.png', 'fan'],
       ['/assets/drop_swatter.png', 'swatter'],
+      ['/assets/drop_train.png', 'train'],
     ];
     for (const [src, type] of dropImgDefs) {
       load(src, (img) => { if (this._dropImages) this._dropImages[type] = img; });
@@ -1276,6 +1301,8 @@ export class GameEngine {
     this.tripleFlameSystem?.reset();
     this.radarLaserSystem?.reset();
     this.swatterSystem?.reset();
+    this.trainSystem?.reset();
+    this.trainSystem?.updateConfig({ isSubwayScene: this.currentScene === SceneType.SUBWAY });
     this.insecticideSystem?.reset();
     const defMult = this.talentMultipliers.defenseMultiplier || 1;
     this.defenseHp = BALANCE_CONFIG.defense.baseHp * defMult;
@@ -1903,6 +1930,7 @@ export class GameEngine {
     const insecticideParticles = this.insecticideSystem!.update(this.deltaTime, this.width, this.height, this.defenseLineY(), this.roaches);
     for (const p of insecticideParticles) { this.particles.push(p); }
     this.fanSystem!.updateFan(this.deltaTime, this.roaches);
+    this.trainSystem!.update(this.deltaTime, this.roaches);
     this.updateWeather();
     this.checkCollisions();
     this.checkDefense();
@@ -2410,8 +2438,7 @@ export class GameEngine {
 
     // Swatter is instant-use (armor break + slow in area around player)
     // useSwatter() handles its own consumption, cooldown check, and cooldown setting
-    if (item.type === 'swatter') {
-      const result = this.swatterSystem!.useSwatter(
+    if (item.type === 'swatter') {      const result = this.swatterSystem!.useSwatter(
         this.consumableSystem!.globalConsumableCooldown,
         this.consumableSystem!.itemCooldowns,
         this.inventory,
@@ -2426,7 +2453,21 @@ export class GameEngine {
       return;
     }
 
-    // Placement items
+    // Train is instant-use (summons a train to crush roaches on the track)
+    if (item.type === 'train') {
+      if (this.trainSystem!.isActive()) {
+        this.addFloatingText(this.player.x, this.player.y - 40, TEXT_CONFIG.combat.trainArriving.text, TEXT_CONFIG.combat.trainArriving.color, 800);
+        return;
+      }
+      item.count--;
+      this.trainSystem!.summonTrain();
+      startItemCooldown('train');
+      if (item.count <= 0) {
+        this.inventory = this.inventory.filter((_, i) => i !== index);
+      }
+      this.onInventoryUpdate?.(this.inventory);
+      return;
+    }
     if (this.selectedItemIndex === index && this.itemPlaceState !== 'idle') {
       this.cancelItemPlacement();
       return;
@@ -4278,6 +4319,7 @@ export class GameEngine {
     // Render danmaku bullets and lasers (above roaches, below player)
     this.renderFloatingTexts(ctx);
     this.renderSwatter(ctx);
+    this.trainSystem!.render(ctx);
     this.renderMuzzleFlash(ctx);
     AimingSystem.renderThrowableAim(ctx, this.aimingSystem!.getAimingState(), this.player.x, this.player.y, this.time);
     ThrowableSystem.renderThrowables(ctx, this.throwableSystem!.getThrowables());

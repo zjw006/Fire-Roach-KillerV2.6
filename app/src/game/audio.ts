@@ -622,6 +622,42 @@ export class AudioManager {
     this.playBreachSound();
   }
 
+  /** 播放列车驶过音效（合成轰鸣：低频锯齿波由远及近再远去，约2秒） */
+  playTrain() {
+    if (!this.audioContext || this.isMuted) return;
+    const ctx = this.audioContext;
+    const now = ctx.currentTime;
+
+    // 低频轰鸣主体
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(55, now);
+    osc.frequency.linearRampToValueAtTime(90, now + 0.8);
+    osc.frequency.linearRampToValueAtTime(45, now + 2.0);
+    gain.gain.setValueAtTime(0.01, now);
+    gain.gain.exponentialRampToValueAtTime(0.5, now + 0.5);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 2.0);
+    osc.start(now);
+    osc.stop(now + 2.0);
+
+    // 轨道"哐当"节奏（两次短促敲击）
+    for (const t of [0.4, 0.9]) {
+      const click = ctx.createOscillator();
+      const clickGain = ctx.createGain();
+      click.connect(clickGain);
+      clickGain.connect(ctx.destination);
+      click.type = 'square';
+      click.frequency.setValueAtTime(160, now + t);
+      clickGain.gain.setValueAtTime(0.25, now + t);
+      clickGain.gain.exponentialRampToValueAtTime(0.01, now + t + 0.09);
+      click.start(now + t);
+      click.stop(now + t + 0.09);
+    }
+  }
+
   /** 播放 UI 点击音效（游戏过程中会被 suppressClickSfx 屏蔽） */
   playClick() {
     if (this.isMuted || this.suppressClickSfx) return;

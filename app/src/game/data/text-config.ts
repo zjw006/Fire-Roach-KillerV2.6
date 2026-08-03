@@ -44,6 +44,10 @@ export const TEXT_CONFIG = {
     swatterReady: { text: '⚡ 电蚊拍就绪!', color: '#4ade80' },
     swatterHit: { text: (hit: number, armor: number) => `⚡电蚊拍全屏!命中${hit}只!破甲${armor}!`, color: '#4ade80' },
     swatterHitParalyze: { text: (hit: number) => `⚡电蚊拍全屏!命中${hit}只!麻痹!`, color: '#4ade80' },
+    trainSummon: { text: '🚇 列车进站!!', color: '#facc15' },
+    trainArriving: { text: '🚇 远处传来轰鸣声……', color: '#94a3b8' },
+    trainHit: { text: (hit: number) => `🚇 列车碾压!撞飞${hit}只蟑螂!`, color: '#facc15' },
+    trainMiss: { text: '🚇 列车呼啸而过……一无所获', color: '#94a3b8' },
     swatterMiss: { text: '⚡电蚊拍!未命中', color: '#9ca3af' },
     swatterNoItem: { text: '没有电蚊拍!', color: '#9ca3af' },
     swatterCooldown: { text: (s: string) => `电蚊拍冷却中... (${s}s)`, color: '#94a3b8' },
@@ -250,6 +254,7 @@ export const TEXT_CONFIG = {
     radar: '雷达激光',
     fan: '强力风扇',
     swatter: '电蚊拍',
+    train: '列车召唤器',
   },
 
   // ===== 武器名称 =====

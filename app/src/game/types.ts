@@ -210,7 +210,7 @@ export interface ThrowableProjectile {
 
 /** 道具栏物品 */
 export interface InventoryItem {
-  type: 'sticky' | 'poison' | 'molotov' | 'shotgun' | 'radar' | 'fan' | 'swatter';
+  type: 'sticky' | 'poison' | 'molotov' | 'shotgun' | 'radar' | 'fan' | 'swatter' | 'train';
   count: number;
 }
 
@@ -460,7 +460,7 @@ export interface WeaponDrop {
   id: number;
   x: number;
   y: number;
-  type: 'sticky' | 'poison' | 'shotgun' | 'molotov' | 'radar' | 'fan' | 'swatter';
+  type: 'sticky' | 'poison' | 'shotgun' | 'molotov' | 'radar' | 'fan' | 'swatter' | 'train';
   life: number;
   maxLife: number;
   bobPhase: number;

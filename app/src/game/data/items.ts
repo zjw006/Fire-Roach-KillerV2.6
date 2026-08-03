@@ -59,6 +59,7 @@ export const WEAPON_DROP_DEFS = {
   radar:   { name: '雷达激光', color: '#22d3ee', ammo: 20, cooldown: 8 },
   fan:     { name: '强力风扇', color: '#a78bfa', ammo: 5,  cooldown: 8 },
   swatter: { name: '电蚊拍',  color: '#fbbf24', type: 'instant' as const, ammo: 1,  cooldown: 10 }, // type='instant' 表示一次性使用，无需持续计时
+  train:   { name: '列车召唤器', color: '#94a3b8', type: 'instant' as const, ammo: 1,  cooldown: 20 }, // 地铁专属：召唤列车碾压全场
 };
 
 // 拾取道具回收价格（关卡结束时未使用的道具折合金币）
@@ -71,6 +72,7 @@ export const INVENTORY_SELL_PRICES: Record<string, number> = {
   radar:   10,  // 自动追踪，稀有
   fan:     8,   // 全场减速控制
   swatter: 15,  // 全屏秒杀，最稀有
+  train:   20,  // 地铁专属列车召唤，场景限定最稀有
 };
 
 // ========== Boss 配置 ==========
@@ -140,6 +142,25 @@ export const BALANCE_ITEMS = {
     stunSpeedRatio: 0.2,         // 麻痹时速度倍率（20% 即减速 80%）
     animTimer: 0.6,              // 拍打动画持续时间（秒）
     maxInventory: 3,             // 最大携带数量
+  },
+
+  // ===== 列车召唤（地铁场景专属） =====
+  // 召唤/环境列车：沿轨道横穿战场，碾压轨道带内的地面蟑螂，气流推退其余蟑螂
+  train: {
+    trackYRatio: 0.52,           // 轨道中心 Y 坐标占屏幕高度比例
+    trackHalfHeight: 60,         // 轨道碾压带半高（像素）
+    summonDamage: 500,           // 召唤列车碾压伤害（可秒杀大部分普通蟑螂）
+    ambientDamage: 150,          // 环境列车碾压伤害（自动驶过，伤害较低）
+    bossDamage: 200,             // 列车对女王/Boss 的固定伤害（不碾压）
+    trainSpeed: 1100,            // 列车行驶速度（像素/秒）
+    trainLengthRatio: 1.7,       // 列车长度 = 屏宽 × 该比例
+    carCount: 4,                 // 车厢节数
+    warningDuration: 1.5,        // 进站预警时长（秒）
+    pushback: 140,               // 气流对轨道带外蟑螂的推退距离（像素）
+    maxInventory: 2,             // 最大携带数量
+    ambientIntervalMin: 35,      // 环境列车最小间隔（秒）
+    ambientIntervalMax: 60,      // 环境列车最大间隔（秒）
+    dustParticleCount: 12,       // 驶过时每帧扬尘粒子数
   },
 
   // ===== 三重火焰 =====

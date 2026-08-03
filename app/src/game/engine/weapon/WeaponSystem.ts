@@ -11,7 +11,7 @@ const FLAMETHROWER = 'flamethrower' as const;
 /** 基础粘板回退类型 */
 const FALLBACK_WEAPON = 'sticky' as const;
 /** 所有武器类型列表 */
-const ALL_WEAPON_TYPES = ['sticky', 'poison', 'fan', 'molotov', 'shotgun', 'radar', 'swatter'] as const;
+const ALL_WEAPON_TYPES = ['sticky', 'poison', 'fan', 'molotov', 'shotgun', 'radar', 'swatter', 'train'] as const;
 
 /**
  * 武器系统配置接口

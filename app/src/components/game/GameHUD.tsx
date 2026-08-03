@@ -37,7 +37,7 @@ interface GameHUDProps {
   onThrow: () => void;
   onCancelAim: () => void;
   // Item system
-  inventory: { type: 'sticky' | 'poison' | 'molotov' | 'shotgun' | 'radar' | 'fan' | 'swatter'; count: number }[];
+  inventory: { type: 'sticky' | 'poison' | 'molotov' | 'shotgun' | 'radar' | 'fan' | 'swatter' | 'train'; count: number }[];
   selectedItemIndex: number;
   isPlacingItem: boolean;
   onSelectItem: (index: number) => void;
@@ -83,6 +83,7 @@ const ITEM_IMAGES: Record<string, string> = {
   radar: '/assets/item_radar.png',
   fan: '/assets/fan.png',
   swatter: '/assets/item_swatter.png',
+  train: '/assets/item_train.png',
 };
 
 /** 掉落道具中文名称映射 */
@@ -94,6 +95,7 @@ const ITEM_NAMES: Record<string, string> = {
   radar: TEXT_CONFIG.items.radar,
   fan: TEXT_CONFIG.items.fan,
   swatter: TEXT_CONFIG.items.swatter,
+  train: TEXT_CONFIG.items.train,
 };
 
 /** Buff 图标子组件：缩略版（约 12×12），带闪烁动画 */

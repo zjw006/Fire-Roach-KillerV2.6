@@ -70,7 +70,7 @@ export const GameCanvas: React.FC = () => {
   const [finalWave, setFinalWave] = useState(0);
   const [bossDefeated, setBossDefeated] = useState(false);
   const [isAiming, setIsAiming] = useState(false);
-  const [inventory, setInventory] = useState<{ type: 'sticky' | 'poison' | 'molotov' | 'shotgun' | 'radar' | 'fan' | 'swatter'; count: number }[]>([]);
+  const [inventory, setInventory] = useState<{ type: 'sticky' | 'poison' | 'molotov' | 'shotgun' | 'radar' | 'fan' | 'swatter' | 'train'; count: number }[]>([]);
   const [selectedItemIndex, setSelectedItemIndex] = useState(-1);
   const [isPlacingItem, setIsPlacingItem] = useState(false);
   const [tripleFlameActive, setTripleFlameActive] = useState(false);

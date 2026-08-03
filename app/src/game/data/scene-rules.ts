@@ -31,8 +31,8 @@ export const SCENE_ITEM_UNLOCKS: Record<SceneType, string[]> = {
   [SceneType.STREET]: ['sticky', 'poison', 'fan', 'molotov', 'shotgun', 'radar', 'swatter'],
   // Hospital: all items + hospital exclusive roaches
   [SceneType.HOSPITAL]: ['sticky', 'poison', 'fan', 'molotov', 'shotgun', 'radar', 'swatter', 'nurse', 'mutant', 'timed_suicide'],
-  // Subway: all items
-  [SceneType.SUBWAY]: ['sticky', 'poison', 'fan', 'molotov', 'shotgun', 'radar', 'swatter'],
+  // Subway: all items + 专属列车召唤器
+  [SceneType.SUBWAY]: ['sticky', 'poison', 'fan', 'molotov', 'shotgun', 'radar', 'swatter', 'train'],
   // Supermarket: all items
   [SceneType.SUPERMARKET]: ['sticky', 'poison', 'fan', 'molotov', 'shotgun', 'radar', 'swatter'],
   // School: all items
@@ -156,9 +156,9 @@ export const SCENE_REWARD_ITEMS: Record<SceneType, { type: string; name: string;
   [SceneType.HOSPITAL]: [
     { type: 'gas_refill', name: '医疗气罐', icon: '/assets/consumable_gas.png', desc: '从医院氧气瓶改装的超级气罐！容量是普通气罐的两倍，持续时间超长。蟑叔我亲自从ICU"借"来的，护士追了我三层楼……但值得！有了这玩意儿，你可以放心大胆地喷火，不用担心气不够用！' },
   ],
-  // Subway reward: track electrifier
+  // Subway reward: train summon beacon
   [SceneType.SUBWAY]: [
-    { type: 'swatter', name: '轨道电击器', icon: '/assets/drop_swatter.png', desc: '地铁第三轨的电流改装版！一炮下去整条轨道带电，蟑螂们踩着铁轨冲过来，结果全部变成烤蟑螂！范围超大，持续时间超长，就是有点费铁轨……别告诉地铁公司是我干的！' },
+    { type: 'train', name: '列车召唤器', icon: '/assets/drop_train.png', desc: '地铁调度室的紧急呼叫按钮！按下去，一列满载的幽灵列车就会从隧道里呼啸而出，把轨道上的一切蟑螂碾成饼！蟑叔我当年在地铁公司上班，偷……呃不，"借用"了一个调度终端。记住，列车不长眼，放的时候离轨道远点！' },
   ],
   // Supermarket reward: shelf domino
   [SceneType.SUPERMARKET]: [
