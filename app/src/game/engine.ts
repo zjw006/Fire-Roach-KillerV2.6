@@ -882,24 +882,32 @@ export class GameEngine {
     window.addEventListener('resize', () => this.resize());
   }
 
-  /** 根据 game-container 容器调整画布大小与 DPR */
+  /** 根据 game-container 容器调整画布大小与 DPR
+   *  @description Fixed Height 模式：高度固定 960，宽度随设备宽高比动态变化。
+   *  窄屏设备（手机）：画布填满屏幕，游戏区域等比缩窄。
+   *  宽屏设备（桌面）：游戏区域限制最大 540 宽，画布居中，两侧留黑。
+   *  相比 Fixed Width 模式，此模式在竖屏手机上视觉效果更一致。
+   */
   resize() {
-    // 优先使用 #game-container（全屏容器），确保画布填满屏幕
+    // 优先使用 #game-container（全屏容器），确保画布填满屏幕高度
     const container = document.getElementById('game-container') || this.canvas.parentElement;
     if (!container) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const rect = container.getBoundingClientRect();
-    const displayWidth = rect.width;
+    // Fixed Height 模式：高度固定 960，缩放比例由高度决定
+    const scale = rect.height / 960;
+    // 逻辑坐标：高度固定 960，宽度最大 540（设计分辨率），窄屏等比缩窄
+    const rawWidth = rect.width / scale;
+    this.width = Math.min(rawWidth, 540);
+    this.height = 960;
+    // 画布 CSS 尺寸：高度填满屏幕，宽度按游戏区域比例
+    const displayWidth = this.width * scale;
     const displayHeight = rect.height;
-    // Fixed Width 模式：宽度固定 540，高度按设备自适配，画布填满容器无黑边
-    const scale = rect.width / 540;
-    this.width = 540;
-    this.height = rect.height / scale;
     this.canvas.style.width = `${displayWidth}px`;
     this.canvas.style.height = `${displayHeight}px`;
     this.canvas.width = Math.floor(displayWidth * dpr);
     this.canvas.height = Math.floor(displayHeight * dpr);
-    this.scale = this.canvas.width / 540;
+    this.scale = this.canvas.width / this.width;
     this.ctx.setTransform(this.scale, 0, 0, this.scale, 0, 0);
   }
 
@@ -1020,8 +1028,6 @@ export class GameEngine {
   playerBaseY() { return this.height + 100; }
   /** 防线 Y 坐标 */
   defenseLineY() { return this.height - 130; }
-  /** 高度缩放比例（相对于 960 设计高度，用于缩放地面边界 Y 坐标） */
-  heightRatio() { return this.height / 960; }
 
   getSceneConfig() {
     return SCENE_CONFIGS[this.currentScene];
@@ -2564,35 +2570,22 @@ export class GameEngine {
   // ===== PERSPECTIVE GROUND BOUNDS: get left/right x boundaries at a given Y =====
   // The ground boundary is a 2-segment polyline per side (far→mid→near).
   // For a given Y, find which segment Y falls in and interpolate.
-
-  /** 获取按高度缩放后的地面边界（Y 值乘以 heightRatio，X 值不变） */
-  getScaledGroundBounds(): [number, number, number, number, number, number, number, number, number, number, number] {
-    const ratio = this.heightRatio();
-    const bounds = SCENE_GROUND_BOUNDS[this.currentScene];
-    return [
-      bounds[0],  bounds[1]  * ratio,  // farL, farLY
-      bounds[2],  bounds[3]  * ratio,  // farR, farRY
-      bounds[4],  bounds[5]  * ratio,  // midL, midLY
-      bounds[6],  bounds[7]  * ratio,  // midR, midRY
-      bounds[8],  bounds[9],           // nearL, nearR (X 值不变)
-      bounds[10] * ratio,              // nearY
-    ];
-  }
-
+  // X values are scaled by widthRatio to adapt to the current canvas width.
   getGroundBoundsAtY(y: number): [number, number] {
-    const [farL, farLY, farR, farRY, midL, midLY, midR, midRY, nearL, nearR, nearY] = this.getScaledGroundBounds();
+    const [farL, farLY, farR, farRY, midL, midLY, midR, midRY, nearL, nearR, nearY] = SCENE_GROUND_BOUNDS[this.currentScene];
     const clampedY = Math.min(nearY, Math.max(Math.min(farLY, farRY), y));
+    const wr = this.width / 540; // Width ratio: scale X values from 540 design to current width
 
     // Left side: 2 segments (far→mid→near)
     let leftX: number;
     if (clampedY >= midLY) {
       // Between mid and near (lower half)
       const t = (clampedY - midLY) / (nearY - midLY);
-      leftX = midL + (nearL - midL) * t;
+      leftX = (midL + (nearL - midL) * t) * wr;
     } else {
       // Between far and mid (upper half)
       const t = (clampedY - farLY) / (midLY - farLY);
-      leftX = farL + (midL - farL) * t;
+      leftX = (farL + (midL - farL) * t) * wr;
     }
 
     // Right side: 2 segments (far→mid→near)
@@ -2600,11 +2593,11 @@ export class GameEngine {
     if (clampedY >= midRY) {
       // Between mid and near (lower half)
       const t = (clampedY - midRY) / (nearY - midRY);
-      rightX = midR + (nearR - midR) * t;
+      rightX = (midR + (nearR - midR) * t) * wr;
     } else {
       // Between far and mid (upper half)
       const t = (clampedY - farRY) / (midRY - farRY);
-      rightX = farR + (midR - farR) * t;
+      rightX = (farR + (midR - farR) * t) * wr;
     }
 
     return [leftX, rightX];
@@ -2613,8 +2606,9 @@ export class GameEngine {
   // Get the center point of the perspective ground bounds quad for the current scene
   // Used for bait landing target (center of roach walkable area)
   getGroundCenter(): [number, number] {
-    const [farL, farLY, farR, farRY, , , , , nearL, nearR, nearY] = this.getScaledGroundBounds();
-    const centerX = (farL + farR + nearL + nearR) / 4;
+    const [farL, farLY, farR, farRY, , , , , nearL, nearR, nearY] = SCENE_GROUND_BOUNDS[this.currentScene];
+    const wr = this.width / 540;
+    const centerX = (farL + farR + nearL + nearR) / 4 * wr;
     const centerY = (farLY + farRY + nearY + nearY) / 4;
     return [centerX, centerY];
   }
@@ -2647,13 +2641,13 @@ export class GameEngine {
       baseY = this.height * 0.45;
     } else if (type === RoachType.NURSE && this.currentScene === SceneType.HOSPITAL) {
       // ===== HOSPITAL EXCLUSIVE: Nurse spawns at the FAR end of ground bounds =====
-      const [, farLY, , ] = this.getScaledGroundBounds();
+      const [, farLY, , ] = SCENE_GROUND_BOUNDS[this.currentScene];
       baseY = farLY + 10; // Slightly below far line to be visible
       const [gLeft, gRight] = this.getGroundBoundsAtY(baseY);
       baseX = gLeft + Math.random() * (gRight - gLeft);
     } else {
       // Ground roaches: spawn within 6-point perspective ground bounds
-      const [, farLY, , farRY, , midLY, , midRY, , , nearY] = this.getScaledGroundBounds();
+      const [, farLY, , farRY, , midLY, , midRY, , , nearY] = SCENE_GROUND_BOUNDS[this.currentScene];
       const farY = Math.min(farLY, farRY, midLY, midRY); // use highest point as spawn top
       // Random Y within the bounds (biased toward far end for spawning)
       baseY = farY + Math.random() * (nearY - farY) * 0.6;
@@ -3956,7 +3950,7 @@ export class GameEngine {
   // ===== MOVEMENT RANGE VISUALIZATION =====
   // Draws a semi-transparent overlay showing the player's walkable ground area
   renderMovementRange(ctx: CanvasRenderingContext2D) {
-    RenderUtils.renderMovementRange(ctx, this.currentScene, this.defenseLineY(), (y) => this.getGroundBoundsAtY(y), this.getScaledGroundBounds());
+    RenderUtils.renderMovementRange(ctx, this.currentScene, this.defenseLineY(), (y) => this.getGroundBoundsAtY(y));
   }
 
   // ===== 渲染系统 =====

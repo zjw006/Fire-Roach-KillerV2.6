@@ -117,7 +117,7 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({
   useEffect(() => {
     if (hasAnimations && !animationsDone) {
       setInitialDelayDone(false);
-      const timer = setTimeout(() => setInitialDelayDone(true), 800);
+      const timer = setTimeout(() => setInitialDelayDone(true), 200);
       return () => clearTimeout(timer);
     }
   }, [hasAnimations, animationsDone]);
@@ -353,7 +353,7 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({
                 <div style={{
                   position: 'relative',
                   background: 'linear-gradient(135deg, #1c1917 0%, #292524 100%)',
-                  border: '2px solid #fbbf24', borderRadius: 14, padding: '10px 16px', maxWidth: 240,
+                  border: '2px solid #fbbf24', borderRadius: 14, padding: '10px 16px', maxWidth: 400,
                   transform: dialogPhase === 'enter' ? 'scale(0)' : 'scale(1)',
                   opacity: dialogPhase === 'enter' ? 0 : 1,
                   transition: 'all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)', transitionDelay: '0.1s',
@@ -365,11 +365,9 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({
                     {ACHIEVEMENT_DIALOG_TEXT.unlockTitle}
                   </div>
                   <div style={{ fontSize: 13, color: '#fff', fontWeight: 800, marginBottom: 1 }}>
-                    {ACHIEVEMENT_DIALOG_TEXT.namePrefix}{currentAnim.name}{ACHIEVEMENT_DIALOG_TEXT.nameSuffix}
+                    {currentAnim.name}
                   </div>
-                  <div style={{ fontSize: 10, color: '#a8a29e', marginBottom: 3 }}>
-                    {currentAnim.description}
-                  </div>
+                  
                   <div style={{ fontSize: 11, color: '#f59e0b', fontWeight: 700, marginBottom: 4 }}>
                     {ACHIEVEMENT_DIALOG_TEXT.rewardTemplate(currentAnim.reward)}
                   </div>

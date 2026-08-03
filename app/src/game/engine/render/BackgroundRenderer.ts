@@ -111,22 +111,18 @@ export class BackgroundRenderer {
     // 优先级：{scene}_{difficulty} > {scene}
     const bgKey = `${currentScene}_${difficulty}`;
     const img = bgImages[bgKey] || bgImages[currentScene];
-    if (img && cfg.imagesLoaded && img.complete && img.naturalWidth > 0) {
+    if (img && cfg.imagesLoaded && img.naturalWidth > 0) {
+      // Fixed Height 模式：始终以画布高度为基准等比缩放背景图
+      // 窄屏设备：背景图居中，两侧裁剪
+      // 宽屏设备：背景图居中，两侧留空（填充场景背景色）
       const imgRatio = img.naturalWidth / img.naturalHeight;
-      const canvasRatio = w / h;
-      let drawW: number, drawH: number, drawX: number, drawY: number;
-      if (imgRatio > canvasRatio) {
-        drawH = h;
-        drawW = h * imgRatio;
-        drawX = (w - drawW) / 2;
-        drawY = 0;
-      } else {
-        drawW = w;
-        drawH = w / imgRatio;
-        drawX = 0;
-        drawY = (h - drawH) / 2;
-      }
-      ctx.drawImage(img, drawX, drawY, drawW, drawH);
+      const drawH = h;
+      const drawW = h * imgRatio;
+      const drawX = (w - drawW) / 2;
+      // 先填充背景色（覆盖宽屏两侧空白区域）
+      ctx.fillStyle = scene.bgColor;
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, drawX, 0, drawW, drawH);
     } else {
       // Fallback: tile-based background
       ctx.fillStyle = scene.bgColor;

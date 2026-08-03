@@ -10,10 +10,6 @@ import { ENCYCLOPEDIA_DEFS } from './encyclopedia';
 export const ACHIEVEMENT_DIALOG_TEXT = {
   /** 解锁标题 */
   unlockTitle: '🎉 恭喜！解锁成就',
-  /** 成就名称左括号 */
-  namePrefix: '「',
-  /** 成就名称右括号 */
-  nameSuffix: '」',
   /** 金币奖励模板 */
   rewardTemplate: (reward: number) => `💰 奖励 ¥${reward} 已存入账户`,
   /** 点击继续提示 */

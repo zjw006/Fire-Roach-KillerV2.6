@@ -624,11 +624,10 @@ export class RenderUtils {
     ctx: CanvasRenderingContext2D,
     currentScene: SceneType,
     defenseLineY: number,
-    getGroundBoundsAtY: (y: number) => [number, number],
-    scaledBounds?: [number, number, number, number, number, number, number, number, number, number, number]
+    getGroundBoundsAtY: (y: number) => [number, number]
   ): void {
     const cfg = BALANCE_CONFIG.render.renderUtils.movementRange;
-    const [farL, farLY, farR, farRY, midL, midLY, midR, midRY, nearL, nearR, nearY] = scaledBounds || SCENE_GROUND_BOUNDS[currentScene];
+    const [farL, farLY, farR, farRY, midL, midLY, midR, midRY, nearL, nearR, nearY] = SCENE_GROUND_BOUNDS[currentScene];
 
     ctx.save();
 
