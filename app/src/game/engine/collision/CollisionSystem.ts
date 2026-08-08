@@ -241,6 +241,8 @@ export class CollisionSystem {
       case RoachType.SPLITTING: return isHard ? dbd.splitting.hard : dbd.splitting.easy;
       case RoachType.TIMED_SUICIDE: return isHard ? dbd.timedSuicide.hard : dbd.timedSuicide.easy;
       case RoachType.QUEEN: return isHard ? dbd.queen.hard : dbd.queen.easy;
+      case RoachType.TUNNEL_WORKER: return isHard ? dbd.tunnelWorker.hard : dbd.tunnelWorker.easy;
+      case RoachType.SUBWAY_ELITE: return isHard ? dbd.subwayElite.hard : dbd.subwayElite.easy;
       default: return 0;
     }
   }

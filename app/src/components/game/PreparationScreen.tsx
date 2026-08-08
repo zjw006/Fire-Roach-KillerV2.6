@@ -5,7 +5,7 @@
  */
 
 import React, { useState } from 'react';
-import { Check, ArrowRight, Bug, Wind, Flame, Droplets, Target, Zap, ScanLine } from 'lucide-react';
+import { Check, ArrowRight, Bug, Wind, Flame, Droplets, Target, Zap, ScanLine, Sword } from 'lucide-react';
 import type { AudioManager } from '@/game/audio';
 import { TEXT_CONFIG } from '@/game/data';
 
@@ -27,6 +27,7 @@ const ALL_ITEMS = [
   { id: 'shotgun', name: '散弹模式', desc: '三方向扇形火焰', icon: Target, category: 'aoe' as const },
   { id: 'swatter', name: '电蚊拍', desc: '全屏秒杀', icon: Zap, category: 'burst' as const },
   { id: 'radar', name: '雷达激光', desc: '自动追踪锁定', icon: ScanLine, category: 'burst' as const },
+  { id: 'knife', name: '斩螂·110', desc: '自动跃向最高威胁目标', icon: Sword, category: 'burst' as const },
 ];
 
 const CATEGORY_LABELS: Record<string, string> = {

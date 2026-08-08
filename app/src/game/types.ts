@@ -59,6 +59,9 @@ export const RoachType = {
   NURSE: 'nurse',
   MUTANT: 'mutant',
   TIMED_SUICIDE: 'timed_suicide',
+  // 地铁场景专属蟑螂
+  TUNNEL_WORKER: 'tunnel_worker',
+  SUBWAY_ELITE: 'subway_elite',
 } as const;
 export type RoachType = typeof RoachType[keyof typeof RoachType];
 
@@ -210,7 +213,7 @@ export interface ThrowableProjectile {
 
 /** 道具栏物品 */
 export interface InventoryItem {
-  type: 'sticky' | 'poison' | 'molotov' | 'shotgun' | 'radar' | 'fan' | 'swatter';
+  type: 'sticky' | 'poison' | 'molotov' | 'shotgun' | 'radar' | 'fan' | 'swatter' | 'knife';
   count: number;
 }
 
@@ -437,6 +440,31 @@ export interface Roach {
   hasTransformed?: boolean;
   // Death explosion guard (prevents duplicate suicide death explosions)
   _deathExploded?: boolean;
+  // ===== SUBWAY EXCLUSIVE =====
+  // Tunnel worker: armor spray cooldown (seconds)
+  armorSprayTimer?: number;
+  // Tunnel worker: 喷涂施法光圈脉冲计时（秒），>0 时显示范围特效
+  armorSprayCastTimer?: number;
+  // Subway elite: charge state ('idle' → 2s 后 'charge'，被火墙/风扇打断回到 'broken')
+  chargeState?: 'idle' | 'charge' | 'broken';
+  // Subway elite: 出场后进入冲刺的延迟计时（秒）
+  chargeDelayTimer?: number;
+  // Subway elite: 冲刺方向（-1 左 / 1 右）
+  chargeDir?: number;
+  // Subway elite: 被列车碾压标记（触发分裂为 2 只小蟑螂）
+  killedByTrain?: boolean;
+}
+
+/** 列车横扫碾压状态（地铁场景专属） */
+export interface TrainSweep {
+  railIndex: number;
+  /** 铁轨中心 Y 坐标 */
+  y: number;
+  /** 曲线参数化进度（0~1） */
+  t: number;
+  /** 序列帧动画计时器（秒） */
+  frameTimer: number;
+  active: boolean;
 }
 
 /** 自动追踪粘板弹丸 */
@@ -460,7 +488,7 @@ export interface WeaponDrop {
   id: number;
   x: number;
   y: number;
-  type: 'sticky' | 'poison' | 'shotgun' | 'molotov' | 'radar' | 'fan' | 'swatter';
+  type: 'sticky' | 'poison' | 'shotgun' | 'molotov' | 'radar' | 'fan' | 'swatter' | 'knife';
   life: number;
   maxLife: number;
   bobPhase: number;
@@ -606,6 +634,9 @@ export interface WaveConfig {
   timedSuicideCount?: number;
   /** 本波激活的虫卵池数量（1~2） */
   eggPoolActiveCount?: number;
+  // 地铁场景专属敌人数目
+  tunnelWorkerCount?: number;
+  eliteCount?: number;
   /** 敌人生成间隔（秒） */
   spawnInterval?: number;
   /** 波次名称 */
@@ -627,6 +658,8 @@ export interface Economy {
   nurseKills: number;
   mutantKills: number;
   timedSuicideKills: number;
+  tunnelWorkerKills: number;
+  subwayEliteKills: number;
   perfectWaves: number;
   gasSavedBonus: number;
   breaches: number;

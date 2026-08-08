@@ -116,6 +116,8 @@ export class EconomyManager {
       case 'nurse':        this.economy.nurseKills++; break;
       case 'mutant':       this.economy.mutantKills++; break;
       case 'timed_suicide': this.economy.timedSuicideKills++; break;
+      case 'tunnel_worker': this.economy.tunnelWorkerKills++; break;
+      case 'subway_elite': this.economy.subwayEliteKills++; break;
     }
 
     // 修复 P0：直接操作 money 和 totalMoneyEarned，不通过 addMoney 避免歧义
@@ -349,6 +351,8 @@ export class EconomyManager {
       nurseKills: 0,
       mutantKills: 0,
       timedSuicideKills: 0,
+      tunnelWorkerKills: 0,
+      subwayEliteKills: 0,
       perfectWaves: 0,
       gasSavedBonus: 0,
       breaches: 0,

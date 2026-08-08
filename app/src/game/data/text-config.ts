@@ -108,6 +108,16 @@ export const TEXT_CONFIG = {
     deathExplosion: { text: (n: number) => `死亡爆炸!(${n}只受波及)`, color: '#ff4400' },
     boom: { text: '轰!', color: '#8b2020' },
     splitSpawn: { text: '分裂x5!', color: '#ff8800' },
+    trainWarning: { text: '列车即将进站！', color: '#fbbf24' },
+    trainIncoming: { text: '列车进站！', color: '#fecaca' },
+    trainKill: { text: '碾压！', color: '#fca5a5' },
+    // 地铁场景：隧道工 / 精英 / 斩螂·110
+    armorSpray: { text: '护甲喷涂!', color: '#a8a29e' },
+    eliteCharge: { text: '轨道冲刺!', color: '#f97316' },
+    eliteBroken: { text: '冲刺被打断!', color: '#fbbf24' },
+    eliteSplit: { text: '分裂x2!', color: '#fb923c' },
+    knifeKill: { text: '一击必杀!', color: '#e2e8f0' },
+    knifeNoTarget: { text: '没有可斩的目标!', color: '#9ca3af' },
     disintegrate: { text: '解体!', color: '#88ccff' },
     explode: { text: (n: number) => `爆炸!(${n}只受波及)`, color: '#ff6600' },
     embryoBurst: { text: '【胚胎暴走】', color: '#ff0040' },
@@ -250,6 +260,7 @@ export const TEXT_CONFIG = {
     radar: '雷达激光',
     fan: '强力风扇',
     swatter: '电蚊拍',
+    knife: '斩螂·110',
   },
 
   // ===== 武器名称 =====
@@ -440,6 +451,8 @@ export const TEXT_CONFIG = {
       armored: '装甲',
       splitting: '分裂',
       queen: '女王',
+      tunnelWorker: '隧道工',
+      subwayElite: '精英',
       breaches: '防线突破',
       talentUnlocked: '获得天赋点！',
       talentDesc: '地下室通关奖励，可用于强化角色能力',

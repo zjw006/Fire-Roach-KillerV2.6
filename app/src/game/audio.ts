@@ -13,6 +13,8 @@ export class AudioManager {
   private swatterSfx: HTMLAudioElement | null = null;
   private reloadSfx: HTMLAudioElement | null = null;
   private clickSfx: HTMLAudioElement | null = null;
+  /** 列车驶过音效（train.mp3） */
+  private trainSfx: HTMLAudioElement | null = null;
   /** 为 true 时静默忽略点击音效（用于游戏过程中屏蔽 UI 点击音） */
   suppressClickSfx: boolean = false;
   private gameOverBgm: HTMLAudioElement | null = null;
@@ -99,6 +101,8 @@ export class AudioManager {
       this.reloadSfx = this.createAudioElement('/assets/sfx_reload.mp3', 0.9);
 
       this.clickSfx = this.createAudioElement('/assets/sfx_click.mp3', 0.5);
+
+      this.trainSfx = this.createAudioElement('/assets/train.mp3', 1.0);
       
       this.gameOverBgm = this.createAudioElement('/assets/bgm_gameover.mp3', 0.7);
       this.gameOverBgm.loop = true;
@@ -136,6 +140,7 @@ export class AudioManager {
       this.swatterSfx,
       this.reloadSfx,
       this.clickSfx,
+      this.trainSfx,
       this.gameOverBgm,
       this.victoryBgm
     ];
@@ -195,6 +200,10 @@ export class AudioManager {
       if (this.clickSfx) {
         this.clickSfx.muted = false;
         console.log('Click SFX unmuted');
+      }
+      if (this.trainSfx) {
+        this.trainSfx.muted = false;
+        console.log('Train SFX unmuted');
       }
       if (this.gameOverBgm) {
         this.gameOverBgm.muted = false;
@@ -606,6 +615,64 @@ export class AudioManager {
       this.swatterSfx.currentTime = 0;
       this.swatterSfx.play().catch(() => {});
     }
+  }
+
+  /** 播放列车驶过音效（train.mp3，从头播放，驶过后需 stopTrainSfx() 停止） */
+  playTrainSfx() {
+    if (!this.trainSfx || this.isMuted) {
+      console.warn('[TrainSfx] 跳过播放:', { hasElement: !!this.trainSfx, isMuted: this.isMuted });
+      return;
+    }
+    this.trainSfx.muted = false; // 确保元素已取消静音（setupAudioUnmute 可能未触发）
+    this.trainSfx.currentTime = 0;
+    this.trainSfx.play().then(() => {
+      console.log('[TrainSfx] 播放成功, duration:', this.trainSfx?.duration);
+    }).catch((err) => {
+      // 不再静默吞错：打印拒绝原因（NotAllowedError=自动播放策略 / NotSupportedError=资源加载失败）
+      console.warn('[TrainSfx] play() 被拒绝:', err?.name, err?.message,
+        '| readyState:', this.trainSfx?.readyState,
+        '| networkState:', this.trainSfx?.networkState,
+        '| src:', this.trainSfx?.currentSrc);
+    });
+  }
+
+  /** 停止列车驶过音效（列车驶出屏幕后调用） */
+  stopTrainSfx() {
+    if (this.trainSfx) {
+      this.trainSfx.pause();
+      this.trainSfx.currentTime = 0;
+    }
+  }
+
+  /** 播放斩螂·110 挥刀音效（高频挥砍呼啸 + 金属斩击，Web Audio 合成） */
+  playKnife() {
+    if (!this.audioContext || this.isMuted) return;
+    const ctx = this.audioContext;
+    const now = ctx.currentTime;
+    // 挥砍呼啸（高频快速下滑）
+    const whoosh = ctx.createOscillator();
+    const whooshGain = ctx.createGain();
+    whoosh.connect(whooshGain);
+    whooshGain.connect(ctx.destination);
+    whoosh.type = 'sawtooth';
+    whoosh.frequency.setValueAtTime(2400, now);
+    whoosh.frequency.exponentialRampToValueAtTime(600, now + 0.12);
+    whooshGain.gain.setValueAtTime(0.2, now);
+    whooshGain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+    whoosh.start(now);
+    whoosh.stop(now + 0.14);
+    // 斩击金属音（延迟到挥砍结束）
+    const clang = ctx.createOscillator();
+    const clangGain = ctx.createGain();
+    clang.connect(clangGain);
+    clangGain.connect(ctx.destination);
+    clang.type = 'square';
+    clang.frequency.setValueAtTime(1800, now + 0.14);
+    clangGain.gain.setValueAtTime(0, now + 0.14);
+    clangGain.gain.linearRampToValueAtTime(0.3, now + 0.16);
+    clangGain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+    clang.start(now + 0.14);
+    clang.stop(now + 0.3);
   }
 
   /** 播放换弹/换罐音效 */

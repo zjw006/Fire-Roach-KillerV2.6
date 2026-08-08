@@ -619,15 +619,29 @@ export class RenderUtils {
 
   /**
    * 渲染移动范围（蟑螂地面边界6点折线可视化）
+   * @param ctx - 画布上下文
+   * @param currentScene - 当前场景
+   * @param defenseLineY - 防线 Y 坐标
+   * @param getGroundBoundsAtY - 获取缩放后地面边界的方法
+   * @param canvasWidth - 画布逻辑宽度（用于 wr 缩放）
    */
   static renderMovementRange(
     ctx: CanvasRenderingContext2D,
     currentScene: SceneType,
     defenseLineY: number,
-    getGroundBoundsAtY: (y: number) => [number, number]
+    getGroundBoundsAtY: (y: number) => [number, number],
+    canvasWidth?: number
   ): void {
     const cfg = BALANCE_CONFIG.render.renderUtils.movementRange;
-    const [farL, farLY, farR, farRY, midL, midLY, midR, midRY, nearL, nearR, nearY] = SCENE_GROUND_BOUNDS[currentScene];
+    const [rawFarL, farLY, rawFarR, farRY, rawMidL, midLY, rawMidR, midRY, rawNearL, rawNearR, nearY] = SCENE_GROUND_BOUNDS[currentScene];
+    // 修复 P0：窄屏适配 - 所有 X 坐标乘以 wr = canvasWidth / 540
+    const wr = canvasWidth ? canvasWidth / 540 : 1;
+    const farL = rawFarL * wr;
+    const farR = rawFarR * wr;
+    const midL = rawMidL * wr;
+    const midR = rawMidR * wr;
+    const nearL = rawNearL * wr;
+    const nearR = rawNearR * wr;
 
     ctx.save();
 
@@ -686,7 +700,7 @@ export class RenderUtils {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // 7. 角标记
+    // 7. 角标记（坐标已缩放）
     const corners = [
       { x: farL,  y: farLY, label: `(${Math.round(farL)},${Math.round(farLY)})`, alignX: 'left', offsetX: cfg.pillOffsetX },
       { x: farR,  y: farRY, label: `(${Math.round(farR)},${Math.round(farRY)})`, alignX: 'right', offsetX: -cfg.pillOffsetX },
@@ -717,7 +731,7 @@ export class RenderUtils {
       ctx.fillText(corner.label, corner.x + corner.offsetX, corner.y + 4);
     }
 
-    // 8. 标签
+    // 8. 标签（X 坐标已缩放）
     ctx.fillStyle = cfg.labelColor;
     ctx.font = RENDER_FONT.small;
     ctx.textAlign = 'center';

@@ -28,6 +28,8 @@ export interface WaveGameplayCallbacks {
   onUnlockNextScene: () => void;
   onPlayBGM: () => void;
   onTutorialPauseChange: (paused: boolean) => void;
+  /** 地铁第5波精英登场教学对话暂停回调 */
+  onEliteTutorialPauseChange?: (paused: boolean) => void;
 }
 
 /** 蟑螂数据访问回调 */
@@ -78,6 +80,8 @@ export class WaveManager {
   waveClearTimer: number = 0;
   /** 教程暂停生成标志 */
   tutorialPauseSpawn: boolean = false;
+  /** 地铁精英教学暂停生成标志（第5波精英登场对话） */
+  eliteTutorialPause: boolean = false;
   /** 倒计时阶段 */
   countdownPhase: number = 0;
   /** 倒计时计时器 */
@@ -105,6 +109,7 @@ export class WaveManager {
     this.waveJustCleared = false;
     this.waveClearTimer = 0;
     this.tutorialPauseSpawn = false;
+    this.eliteTutorialPause = false;
     this.countdownPhase = 0;
     this.countdownTimer = 0;
     this.countdownWavePending = false;
@@ -172,7 +177,7 @@ export class WaveManager {
     }
 
     // 波次完成：检查胜利或自动开始下一波
-    if (!this.tutorialPauseSpawn && !this.waveSpawning &&
+    if (!this.tutorialPauseSpawn && !this.eliteTutorialPause && !this.waveSpawning &&
         this.cb.onGetRoaches().length === 0 && this.spawnQueue.length === 0 && this.wave > 0) {
       this.waveTimer -= deltaTime;
       if (this.waveTimer <= 0) {
@@ -242,6 +247,18 @@ export class WaveManager {
       if (!tutorialSeen) {
         this.tutorialPauseSpawn = true;
         this.cb.onTutorialPauseChange(true);
+        return;
+      }
+    }
+
+    // 地铁第5波：精英蟑螂登场教学对话（暂停生成，仅首次）
+    if (this.cfg.currentScene === SceneType.SUBWAY && this.wave === 5 && this.cfg.gameMode === GameMode.STORY) {
+      const eliteTutorialSeen = (() => {
+        try { return !!localStorage.getItem('subway_elite_tutorial_seen'); } catch { return false; }
+      })();
+      if (!eliteTutorialSeen) {
+        this.eliteTutorialPause = true;
+        this.cb.onEliteTutorialPauseChange?.(true);
         return;
       }
     }
@@ -341,6 +358,15 @@ export class WaveManager {
       addToQueue(phase2, RoachType.MUTANT, mutantCount);
       this.cb.onSetTimedSuicideRemaining(timedSuicideCount);
       this.cb.onSetTimedSuicideTimer(timedSuicideCount > 0 ? 5.0 : 0);
+    }
+
+    // 地铁特殊单位
+    if (this.cfg.currentScene === SceneType.SUBWAY) {
+      const { tunnelWorkerCount = 0, eliteCount = 0 } = config;
+      addToQueue(phase1, RoachType.TUNNEL_WORKER, tunnelWorkerCount);
+      shuffle(phase1);
+      addToQueue(phase2, RoachType.SUBWAY_ELITE, eliteCount);
+      shuffle(phase2);
     }
 
     this.spawnQueue = [...phase1, ...phase2, ...phase3];

@@ -866,36 +866,52 @@ export class ParticleSystem {
       ctx.globalCompositeOperation = 'screen';
 
       const segments = Math.max(10, Math.floor(wallWidth / 15));
+      // 边缘柔化区间占比（两侧各 18% 宽度内火焰逐渐稀疏/降低）
+      const edgeRatio = 0.18;
       for (let i = 0; i < segments; i++) {
         const sx = wall.x1 + (wallWidth / segments) * i;
         const segW = wallWidth / segments;
 
+        // 边缘衰减系数：中心为 1，两端平滑过渡到 0（smoothstep）
+        const t = segments > 1 ? i / (segments - 1) : 0.5;
+        const edgeT = Math.min(1, Math.min(t, 1 - t) / edgeRatio);
+        const edgeFade = edgeT * edgeT * (3 - 2 * edgeT);
+
         const flicker = 0.7 + Math.sin(time * 12 + i * 2.5) * 0.3;
-        const h = wall.height * (2 + flicker);
+        // 边缘火焰更低矮稀疏
+        const h = wall.height * (2 + flicker) * (0.35 + 0.65 * edgeFade);
+        const segAlpha = alpha * edgeFade;
+        if (segAlpha <= 0.01) continue;
 
         const fireGrad = ctx.createLinearGradient(sx, wall.y - h, sx, wall.y + h * 0.3);
-        fireGrad.addColorStop(0, `rgba(255, 255, 100, ${alpha * 0.9})`);
-        fireGrad.addColorStop(0.3, `rgba(255, 180, 20, ${alpha * 0.85})`);
-        fireGrad.addColorStop(0.6, `rgba(255, 80, 10, ${alpha * 0.7})`);
-        fireGrad.addColorStop(1, `rgba(200, 30, 5, ${alpha * 0.3})`);
+        fireGrad.addColorStop(0, `rgba(255, 255, 100, ${segAlpha * 0.9})`);
+        fireGrad.addColorStop(0.3, `rgba(255, 180, 20, ${segAlpha * 0.85})`);
+        fireGrad.addColorStop(0.6, `rgba(255, 80, 10, ${segAlpha * 0.7})`);
+        fireGrad.addColorStop(1, `rgba(200, 30, 5, ${segAlpha * 0.3})`);
 
         ctx.fillStyle = fireGrad;
         ctx.fillRect(sx - segW * 0.1, wall.y - h * 0.5, segW * 1.2, h);
       }
 
-      // Core bright line
-      ctx.strokeStyle = `rgba(255, 255, 220, ${alpha * 0.9})`;
+      // Core bright line (两端渐隐)
+      const coreGrad = ctx.createLinearGradient(wall.x1, wall.y, wall.x2, wall.y);
+      coreGrad.addColorStop(0, 'rgba(255, 255, 220, 0)');
+      coreGrad.addColorStop(edgeRatio, `rgba(255, 255, 220, ${alpha * 0.9})`);
+      coreGrad.addColorStop(1 - edgeRatio, `rgba(255, 255, 220, ${alpha * 0.9})`);
+      coreGrad.addColorStop(1, 'rgba(255, 255, 220, 0)');
+      ctx.strokeStyle = coreGrad;
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(wall.x1, wall.y);
       ctx.lineTo(wall.x2, wall.y);
       ctx.stroke();
 
-      // Outer glow
-      const glowGrad = ctx.createLinearGradient(wall.x1, wall.y - 15, wall.x1, wall.y + 15);
-      glowGrad.addColorStop(0, `rgba(255, 100, 20, 0)`);
-      glowGrad.addColorStop(0.5, `rgba(255, 80, 10, ${alpha * 0.25})`);
-      glowGrad.addColorStop(1, `rgba(255, 100, 20, 0)`);
+      // Outer glow (两端渐隐)
+      const glowGrad = ctx.createLinearGradient(wall.x1, wall.y, wall.x2, wall.y);
+      glowGrad.addColorStop(0, 'rgba(255, 80, 10, 0)');
+      glowGrad.addColorStop(edgeRatio, `rgba(255, 80, 10, ${alpha * 0.25})`);
+      glowGrad.addColorStop(1 - edgeRatio, `rgba(255, 80, 10, ${alpha * 0.25})`);
+      glowGrad.addColorStop(1, 'rgba(255, 80, 10, 0)');
       ctx.fillStyle = glowGrad;
       ctx.fillRect(wall.x1, wall.y - 15, wallWidth, 30);
 

@@ -19,6 +19,10 @@ export interface RoachRendererConfig {
   roachSplittingImg: HTMLImageElement | null;
   roachFlyingSuicideImg: HTMLImageElement | null;
   roachQueenImg: HTMLImageElement | null;
+  /** 地铁场景：隧道工贴图 */
+  roachTunnelWorkerImg: HTMLImageElement | null;
+  /** 地铁场景：地铁精英贴图（独立贴图 roach_subway_elite.png） */
+  roachSubwayEliteImg: HTMLImageElement | null;
   nurseCastFrames: (HTMLImageElement | null)[];
   mutantTransformFrames: (HTMLImageElement | null)[];
   imagesLoaded: boolean;
@@ -182,6 +186,12 @@ export class RoachRenderer {
         }
       } else if (r.type === RoachType.SPLITTING && config.roachSplittingImg) {
         ctx.drawImage(config.roachSplittingImg, -w / 2, -h / 2, w, h);
+      } else if (r.type === RoachType.TUNNEL_WORKER && config.roachTunnelWorkerImg) {
+        // 隧道工使用 roach_tunnel_worker.png 贴图
+        ctx.drawImage(config.roachTunnelWorkerImg, -w / 2, -h / 2, w, h);
+      } else if (r.type === RoachType.SUBWAY_ELITE && config.roachSubwayEliteImg) {
+        // 地铁精英使用独立贴图 roach_subway_elite.png
+        ctx.drawImage(config.roachSubwayEliteImg, -w / 2, -h / 2, w, h);
       } else if (r.type === RoachType.QUEEN && config.roachQueenImg) {
         RoachRenderer.renderBossBody(config, ctx, r, w, h, size);
       } else {
@@ -535,10 +545,10 @@ export class RoachRenderer {
       }
     }
 
-    // Stuck overlay (yellow tint for board-stuck roaches)
-    if (config.isStuckByBoard(r.id)) {
-      ctx.filter = 'brightness(1.3) sepia(0.5)';
-    }
+    // Stuck state check (cheap yellow tint overlay is drawn after body rendering,
+    // replacing the old per-roach ctx.filter which caused heavy GPU offscreen passes
+    // when many roaches were stuck, especially stacked with the armor shield effect)
+    const stuckByBoard = config.isStuckByBoard(r.id);
 
     // Suicide roach: black smoke when HP below 50%
     if ((r.type === RoachType.SUICIDE || r.type === RoachType.FLYING_SUICIDE) && r.hp < r.maxHp * 0.5) {
@@ -565,6 +575,43 @@ export class RoachRenderer {
 
     // ===== BODY RENDERING =====
     RoachRenderer.renderRoachBody(config, ctx, r, def, w, h, size);
+
+    // ===== STUCK TINT OVERLAY (cheap translucent yellow, no ctx.filter) =====
+    if (stuckByBoard) {
+      ctx.fillStyle = 'rgba(240, 210, 60, 0.28)';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, w * 0.55, h * 0.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // ===== SUBWAY EXCLUSIVE: 隧道工施法警示光圈 =====
+    // 注意：隧道工使用独立贴图 roach_tunnel_worker.png，不再叠加灰棕色染色层（避免贴图颜色叠加）
+    if (r.type === RoachType.TUNNEL_WORKER) {
+      // 施法范围光圈（喷涂瞬间一次脉冲，类似护士施法特效）
+      if (r.armorSprayCastTimer !== undefined && r.armorSprayCastTimer > 0 && r.state === RoachState.ALIVE) {
+        const castRange = BALANCE_CONFIG.subway.armorSprayRange;
+        const progress = 1 - r.armorSprayCastTimer / 0.5; // 0→1
+        const ringScale = 0.3 + progress * 0.7;            // 从 30% 扩散到 100%
+        const ringAlpha = (1 - progress) * 0.55;           // 渐隐
+        const rangeR = castRange * ringScale;
+        const grad = ctx.createRadialGradient(0, h * 0.1, rangeR * 0.5, 0, h * 0.1, rangeR);
+        grad.addColorStop(0, 'rgba(148, 163, 184, 0)');
+        grad.addColorStop(0.7, `rgba(148, 163, 184, ${ringAlpha * 0.3})`);
+        grad.addColorStop(0.9, `rgba(203, 213, 225, ${ringAlpha * 0.6})`);
+        grad.addColorStop(1, `rgba(226, 232, 240, ${ringAlpha * 0.2})`);
+        ctx.save();
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.ellipse(0, h * 0.1, rangeR, rangeR * 0.35, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = `rgba(203, 213, 225, ${ringAlpha * 0.8})`;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.ellipse(0, h * 0.1, rangeR * 0.85, rangeR * 0.3, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
 
     // ===== HOSPITAL EXCLUSIVE: MUTANT TRANSFORMATION VISUAL =====
     // Purple swirling glow during the 0.5s pre-transformation pause
@@ -935,7 +982,7 @@ export class RoachRenderer {
     const barW = r.isBoss ? 60 : Math.max(32, (r.size ?? 30) * 0.5);
     const barH = r.isBoss ? 8 : 5;
     // Always show HP bar for armored/shielded roaches, large/boss roaches
-    const showHpBar = r.armorHp > 0 || r.isBoss || r.type === RoachType.SMALL || r.type === RoachType.LARGE || r.type === RoachType.ARMORED || r.type === RoachType.SPLITTING || r.type === RoachType.NURSE || r.type === RoachType.TIMED_SUICIDE;
+    const showHpBar = r.armorHp > 0 || r.isBoss || r.type === RoachType.SMALL || r.type === RoachType.LARGE || r.type === RoachType.ARMORED || r.type === RoachType.SPLITTING || r.type === RoachType.NURSE || r.type === RoachType.TIMED_SUICIDE || r.type === RoachType.TUNNEL_WORKER || r.type === RoachType.SUBWAY_ELITE;
     if (showHpBar) {
       const hpRatio = Math.max(0, r.hp / r.maxHp);
       ctx.fillStyle = 'rgba(0,0,0,0.6)';

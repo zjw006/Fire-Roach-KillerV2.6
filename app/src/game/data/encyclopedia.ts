@@ -87,6 +87,21 @@ const ENCYCLOPEDIA_META: Partial<Record<RoachType, {
     funFact: '它背上的炸弹是从医院手术室偷来的定时器改造的。放置炸弹后它会莫名其妙地变成大蟑螂——大概是辐射后遗症。',
     special: '放置炸弹：到达防线前64px放置炸弹，3秒后爆炸（范围196px）；变身：放置后变成大蟑螂',
   },
+  // ===== 地铁场景专属蟑螂 =====
+  [RoachType.TUNNEL_WORKER]: {
+    id: 'roach_tunnel_worker',
+    image: '/assets/roach_tunnel_worker.png',
+    description: '背着工具箱的地铁蟑螂，会为同伴喷涂护甲，是优先击杀的辅助单位。',
+    funFact: '它在地铁干了三十年维修工，退休金被蟑螂女王克扣了一半。它的工具箱里除了扳手，还有半块发霉的披萨。',
+    special: '护甲喷涂：每6秒为周围血量最高的蟑螂添加护甲150',
+  },
+  [RoachType.SUBWAY_ELITE]: {
+    id: 'roach_subway_elite',
+    image: '/assets/roach_subway_elite.png',
+    description: '沿铁轨高速冲刺的精英蟑螂，冲刺时无视蟑螂贴板。被列车碾压后会分裂为2只普通小蟑螂。',
+    funFact: '它是地铁蟑螂界的短跑冠军，梦想是参加奥运会。可惜每次冲刺的终点不是火墙就是列车。',
+    special: '轨道冲刺：出场2秒后沿铁轨高速冲刺；被列车碾压后分裂为2只小蟑螂；斩螂·110拦截不触发分裂',
+  },
 };
 
 // ========== 图鉴数据（从 ENEMY_DEFS 自动派生 hp/speed/name） ==========

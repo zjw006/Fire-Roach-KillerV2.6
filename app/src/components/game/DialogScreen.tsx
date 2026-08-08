@@ -30,6 +30,8 @@ function getDialogBgImage(sceneType: SceneType, difficulty?: string): string {
       return isHard ? '/assets/bg_street_hard.jpg?v=6' : '/assets/bg_street_easy.jpg?v=6';
     case 'hospital':
       return '/assets/bg_hospital.jpg';
+    case 'subway':
+      return '/assets/bg_subway.jpg';
     default:
       return '/assets/bg.jpg';
   }

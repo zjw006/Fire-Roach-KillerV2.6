@@ -106,3 +106,23 @@ export const DIALOG_CONFIGS: DialogConfig[] = [
     ],
   },
 ];
+
+/**
+ * 地铁第5波：精英蟑螂登场教学对话（战斗中触发，暂停生成）
+ * @description 首次进入地铁第5波时弹出，介绍地铁蟑螂精英的冲刺机制与应对方式。
+ * 通过 localStorage 'subway_elite_tutorial_seen' 标记只显示一次。
+ */
+export const SUBWAY_ELITE_TUTORIAL_DIALOG: DialogConfig = {
+  sceneType: SceneType.SUBWAY,
+  title: '警告：精英出没',
+  bgImage: '/assets/bg_subway.jpg',
+  lines: [
+    { speaker: '蟑叔', text: '注意！铁轨那边来了个大家伙——【地铁蟑螂精英】！', emotion: 'scared' },
+    { speaker: '蟑叔', text: '它出场2秒后会沿着铁轨高速冲刺，横冲直撞，蟑螂贴板根本粘不住它！', emotion: 'serious' },
+    { speaker: '你', text: '那怎么拦？' },
+    { speaker: '蟑叔', text: '火墙烧它、风扇吹它，都能打断冲刺！打断之后它就是只普通蟑螂了。', emotion: 'normal' },
+    { speaker: '蟑叔', text: '还有个更爽的——铁轨上的列车会定时驶过，直接把拦路的蟑螂碾过去！不过它被碾后会"啪"地分裂成两只小蟑螂，记得补刀！', emotion: 'excited' },
+    { speaker: '你', text: '分裂这么麻烦，那我用【斩螂·110】直接斩了它。' },
+    { speaker: '蟑叔', text: '聪明！斩击一击必杀，不触发分裂！去吧，让它知道什么叫"到站不下车"的下场！', emotion: 'happy' },
+  ],
+};

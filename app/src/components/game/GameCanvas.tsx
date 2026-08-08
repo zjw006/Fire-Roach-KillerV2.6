@@ -11,7 +11,7 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { createGameEngine } from '@/game/engine/index';
 import { GameState, GameMode, SceneType, type Player, type Economy, type GameProgress, type DialogConfig, type BossBattleState, type InventoryItem } from '@/game/types';
-import { BALANCE_CONFIG, DIALOG_CONFIGS, SCENE_CONFIGS, SCENE_UNLOCK_CHAIN } from '@/game/data';
+import { BALANCE_CONFIG, DIALOG_CONFIGS, SCENE_CONFIGS, SCENE_UNLOCK_CHAIN, SUBWAY_ELITE_TUTORIAL_DIALOG } from '@/game/data';
 import * as Vibration from '@/game/vibration';
 import { trpc } from '@/providers/trpc';
 import { GameHUD } from './GameHUD';
@@ -70,7 +70,7 @@ export const GameCanvas: React.FC = () => {
   const [finalWave, setFinalWave] = useState(0);
   const [bossDefeated, setBossDefeated] = useState(false);
   const [isAiming, setIsAiming] = useState(false);
-  const [inventory, setInventory] = useState<{ type: 'sticky' | 'poison' | 'molotov' | 'shotgun' | 'radar' | 'fan' | 'swatter'; count: number }[]>([]);
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [selectedItemIndex, setSelectedItemIndex] = useState(-1);
   const [isPlacingItem, setIsPlacingItem] = useState(false);
   const [tripleFlameActive, setTripleFlameActive] = useState(false);
@@ -111,6 +111,7 @@ export const GameCanvas: React.FC = () => {
 
   /** 新手引导暂停出怪状态（厨房第一波） */
   const [tutorialPauseSpawn, setTutorialPauseSpawn] = useState(false);
+  const [eliteTutorialPause, setEliteTutorialPause] = useState(false);
 
   // ── 倒计时状态（波次开始前 3-2-1）──
   const [countdownPhase, setCountdownPhase] = useState(3);
@@ -191,6 +192,10 @@ export const GameCanvas: React.FC = () => {
 
     engine.onTutorialPauseChange = (paused) => {
       setTutorialPauseSpawn(paused);
+    };
+
+    engine.onEliteTutorialPauseChange = (paused) => {
+      setEliteTutorialPause(paused);
     };
 
     engine.onConsumableUpdate = (
@@ -1044,6 +1049,21 @@ export const GameCanvas: React.FC = () => {
         />
       )}
 
+      {/* ═══ 地铁第5波：精英蟑螂登场教学对话 ═══ */}
+      {eliteTutorialPause && (
+        <DialogScreen
+          config={SUBWAY_ELITE_TUTORIAL_DIALOG}
+          difficulty={difficulty}
+          onComplete={() => {
+            engineRef.current?.resumeSpawnAfterEliteTutorial();
+          }}
+          onSkip={() => {
+            engineRef.current?.resumeSpawnAfterEliteTutorial();
+          }}
+          audio={engineRef.current?.audio}
+        />
+      )}
+
       {/* ═══ 游戏 HUD（战斗中显示）═══ */}
       {(gameState === GameState.PLAYING || gameState === GameState.ITEM_DROP) && player && economy && (
         <GameHUD
@@ -1172,53 +1192,6 @@ export const GameCanvas: React.FC = () => {
         />
       )}
 
-      {/* ═══ 菜单商店（道具商店入口）═══ */}
-      {showMenuShop && (
-        <ShopScreen
-          economy={{
-            money: menuShopMoney,
-            totalKills: 0,
-            smallKills: 0,
-            largeKills: 0,
-            flyingKills: 0,
-            armoredKills: 0,
-            splittingKills: 0,
-            suicideKills: 0,
-            flyingSuicideKills: 0,
-            queenKills: 0,
-            nurseKills: 0,
-            mutantKills: 0,
-            timedSuicideKills: 0,
-            perfectWaves: 0,
-            gasSavedBonus: 0,
-            breaches: 0,
-            gasCanistersUsed: 0,
-            highestWave: 0,
-            highestEndlessWave: 0,
-            totalGamesPlayed: 0,
-            totalMoneyEarned: 0,
-            totalDamage: 0,
-            totalMoneySpent: 0,
-            totalConsumablesUsed: 0,
-            totalWeaponsUnlocked: 0,
-            totalUpgradesPurchased: 0,
-            totalAchievements: 0
-          }}
-          onBuy={handleMenuShopBuy}
-          onContinue={() => setShowMenuShop(false)}
-          onQuit={() => setShowMenuShop(false)}
-          talentPoints={talentPoints}
-          difficulty={difficulty}
-          currentScene={currentScene}
-          onOpenTalentTree={() => {
-            setShowMenuShop(false);
-            setShowTalentTree(true);
-          }}
-          isMenuShop
-          audio={engineRef.current?.audio}
-        />
-      )}
-
       {/* ═══ 天赋树界面 ═══ */}
       {showTalentTree && progress && (
         <TalentTreeScreen
@@ -1309,6 +1282,7 @@ export const GameCanvas: React.FC = () => {
           menuMoney={menuShopMoney}
           unclaimedAchievementCount={engineRef.current?.getUnclaimedAchievementCount?.() ?? 0}
           onOpenAchievements={() => { setAchievementsFromGameOver(true); setShowAchievements(true); }}
+          onOpenShop={() => setShowMenuShop(true)}
         />
       )}
 
@@ -1353,6 +1327,56 @@ export const GameCanvas: React.FC = () => {
           onSettleGold={handleSettleGold}
           unclaimedAchievementCount={engineRef.current?.getUnclaimedAchievementCount?.() ?? 0}
           onOpenAchievements={() => { setAchievementsFromGameOver(true); setShowAchievements(true); }}
+          onOpenShop={() => setShowMenuShop(true)}
+        />
+      )}
+
+      {/* ═══ 菜单商店（道具商店入口，渲染在结算界面之后以覆盖其上）═══ */}
+      {showMenuShop && (
+        <ShopScreen
+          economy={{
+            money: menuShopMoney,
+            totalKills: 0,
+            smallKills: 0,
+            largeKills: 0,
+            flyingKills: 0,
+            armoredKills: 0,
+            splittingKills: 0,
+            suicideKills: 0,
+            flyingSuicideKills: 0,
+            queenKills: 0,
+            nurseKills: 0,
+            mutantKills: 0,
+            timedSuicideKills: 0,
+            tunnelWorkerKills: 0,
+            subwayEliteKills: 0,
+            perfectWaves: 0,
+            gasSavedBonus: 0,
+            breaches: 0,
+            gasCanistersUsed: 0,
+            highestWave: 0,
+            highestEndlessWave: 0,
+            totalGamesPlayed: 0,
+            totalMoneyEarned: 0,
+            totalDamage: 0,
+            totalMoneySpent: 0,
+            totalConsumablesUsed: 0,
+            totalWeaponsUnlocked: 0,
+            totalUpgradesPurchased: 0,
+            totalAchievements: 0
+          }}
+          onBuy={handleMenuShopBuy}
+          onContinue={() => setShowMenuShop(false)}
+          onQuit={() => setShowMenuShop(false)}
+          talentPoints={talentPoints}
+          difficulty={difficulty}
+          currentScene={currentScene}
+          onOpenTalentTree={() => {
+            setShowMenuShop(false);
+            setShowTalentTree(true);
+          }}
+          isMenuShop
+          audio={engineRef.current?.audio}
         />
       )}
 

@@ -5,7 +5,7 @@
  */
 
 import React, { useRef, useState, useEffect } from 'react';
-import { RotateCcw, Home, Skull, Trophy, Flame, Sparkles, Map, ChevronRight, Lightbulb, Award } from 'lucide-react';
+import { RotateCcw, Home, Skull, Trophy, Flame, Sparkles, Map, ChevronRight, Lightbulb, Award, ShoppingCart } from 'lucide-react';
 import { TEXT_CONFIG } from '@/game/data';
 import type { Economy, GameMode, SceneType } from '@/game/types';
 import type { AudioManager } from '@/game/audio';
@@ -35,9 +35,11 @@ interface GameOverScreenProps {
   unclaimedAchievementCount?: number;
   /** 打开成就界面回调 */
   onOpenAchievements?: () => void;
+  /** 打开商店回调 */
+  onOpenShop?: () => void;
 }
 
-export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, gameMode, currentScene, isVictory, hasNextScene, nextSceneName, onRestart, onQuit, onNextScene, talentPoints, bossDefeated, onOpenTalentTree, audio, victoryGoldReward, onSettleGold, unclaimedAchievementCount, onOpenAchievements}) => {
+export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, gameMode, currentScene, isVictory, hasNextScene, nextSceneName, onRestart, onQuit, onNextScene, talentPoints, bossDefeated, onOpenTalentTree, audio, victoryGoldReward, onSettleGold, unclaimedAchievementCount, onOpenAchievements, onOpenShop}) => {
   /** 判断当前场景和模式类型 */
   const isBasement = currentScene === 'basement';
   const isBossMode = bossDefeated;
@@ -159,6 +161,10 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, g
               </div>
             </div>
             <div className="text-center">
+              <div className="text-stone-400 text-[10px]">{TEXT_CONFIG.ui.gameOver.breaches}</div>
+              <div className="text-base font-bold text-red-300">{economy.breaches}</div>
+            </div>
+            <div className="text-center">
               <div className="text-stone-400 text-[10px]">{TEXT_CONFIG.ui.gameOver.smallRoach}</div>
               <div className="text-base font-bold text-orange-300">{economy.smallKills}</div>
             </div>
@@ -166,40 +172,25 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, g
               <div className="text-stone-400 text-[10px]">{TEXT_CONFIG.ui.gameOver.largeRoach}</div>
               <div className="text-base font-bold text-orange-300">{economy.largeKills}</div>
             </div>
-            <div className="text-center">
-              <div className="text-stone-400 text-[10px]">{TEXT_CONFIG.ui.gameOver.breaches}</div>
-              <div className="text-base font-bold text-red-300">{economy.breaches}</div>
-            </div>
           </div>
 
           {/* New enemy kills */}
-          {(economy.flyingKills > 0 || economy.armoredKills > 0 || economy.queenKills > 0) && (
-            <div className="mt-2 pt-2 border-t border-white/10 grid grid-cols-4 gap-1">
-              {/** 特殊敌人击杀统计：飞行、装甲、分裂、女王 */}
-              {economy.flyingKills > 0 && (
-                <div className="text-center">
-                  <div className="text-stone-500 text-[9px]">{TEXT_CONFIG.ui.gameOver.flying}</div>
-                  <div className="text-sm font-bold text-amber-300">{economy.flyingKills}</div>
+          {(economy.flyingKills > 0 || economy.armoredKills > 0 || economy.splittingKills > 0 || economy.queenKills > 0 || economy.tunnelWorkerKills > 0 || economy.subwayEliteKills > 0) && (
+            <div className="mt-2 pt-2 border-t border-white/10 grid grid-cols-3 gap-1">
+              {/** 特殊敌人击杀统计：飞行、装甲、分裂、女王、隧道工、精英（固定列位，占位对齐） */}
+              {([
+                { count: economy.flyingKills, label: TEXT_CONFIG.ui.gameOver.flying, color: 'text-amber-300' },
+                { count: economy.armoredKills, label: TEXT_CONFIG.ui.gameOver.armored, color: 'text-stone-300' },
+                { count: economy.splittingKills, label: TEXT_CONFIG.ui.gameOver.splitting, color: 'text-amber-300' },
+                { count: economy.queenKills, label: TEXT_CONFIG.ui.gameOver.queen, color: 'text-rose-300' },
+                { count: economy.tunnelWorkerKills, label: TEXT_CONFIG.ui.gameOver.tunnelWorker, color: 'text-stone-400' },
+                { count: economy.subwayEliteKills, label: TEXT_CONFIG.ui.gameOver.subwayElite, color: 'text-orange-400' },
+              ]).map((item, idx) => (
+                <div key={idx} className={`text-center ${item.count > 0 ? '' : 'invisible'}`}>
+                  <div className="text-stone-500 text-[9px]">{item.label}</div>
+                  <div className={`text-sm font-bold ${item.color}`}>{item.count}</div>
                 </div>
-              )}
-              {economy.armoredKills > 0 && (
-                <div className="text-center">
-                  <div className="text-stone-500 text-[9px]">{TEXT_CONFIG.ui.gameOver.armored}</div>
-                  <div className="text-sm font-bold text-stone-300">{economy.armoredKills}</div>
-                </div>
-              )}
-              {economy.splittingKills > 0 && (
-                <div className="text-center">
-                  <div className="text-stone-500 text-[9px]">{TEXT_CONFIG.ui.gameOver.splitting}</div>
-                  <div className="text-sm font-bold text-amber-300">{economy.splittingKills}</div>
-                </div>
-              )}
-              {economy.queenKills > 0 && (
-                <div className="text-center">
-                  <div className="text-stone-500 text-[9px]">{TEXT_CONFIG.ui.gameOver.queen}</div>
-                  <div className="text-sm font-bold text-rose-300">{economy.queenKills}</div>
-                </div>
-              )}
+              ))}
             </div>
           )}
         </div>
@@ -277,6 +268,16 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, g
             <RotateCcw size={18} />
             {TEXT_CONFIG.ui.gameOver.playAgain}
           </button>
+
+          {onOpenShop && (
+            <button
+              onClick={() => { audio?.playClick(); onOpenShop(); }}
+              className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-500 hover:to-yellow-500 text-white font-bold py-3 px-6 rounded-xl transition-all hover:scale-105 active:scale-95 shadow-lg shadow-amber-900/40"
+            >
+              <ShoppingCart size={18} />
+              {TEXT_CONFIG.ui.menu.shop}
+            </button>
+          )}
 
           <button
             onClick={() => { audio?.playClick(); onQuit(); }}

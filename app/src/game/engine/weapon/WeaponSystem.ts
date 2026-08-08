@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @fileoverview 武器系统模块
  * @description 负责管理游戏中的武器掉落、拾取、切换和弹药系统
  */
@@ -40,6 +40,8 @@ export interface WeaponSystemConfig {
   sceneEnemyModifier?: number;
   /** 拾取武器掉落回调（用于浮动文字、屏幕震动、物品栏管理等） */
   onPickup?: (drop: WeaponDrop, pickupCount: number, bonusText: string) => void;
+  /** 拾取前置检查（返回 false 则不可拾取，掉落物留在场上直至自然消失） */
+  canPickup?: (drop: WeaponDrop) => boolean;
   /** 切换武器回调（用于浮动文字提示） */
   onSwitchWeapon?: (weapon: string, weaponName: string) => void;
 }
@@ -152,6 +154,10 @@ export class WeaponSystem {
       const dx = Math.abs(drop.x - player.x);
       const dy = Math.abs(drop.y - defenseLineY);
       if (dx < pickupRadius && dy < pickupRadius) {
+        // 拾取前置检查（预留给场景专属道具的拾取限制）
+        if (this.config.canPickup && !this.config.canPickup(drop)) {
+          continue;
+        }
         this.pickupWeaponDrop(drop, player);
         this.weaponDrops.splice(i, 1);
       }

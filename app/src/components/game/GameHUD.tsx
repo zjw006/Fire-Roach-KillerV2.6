@@ -9,7 +9,7 @@
  * 所有元素均为 pointer-events-none 容器，仅交互按钮启用 pointer-events-auto。
  */
 import React from 'react';
-import type { Player, Economy, GameProgress, BossBattleState, SceneType } from '@/game/types';
+import type { Player, Economy, GameProgress, BossBattleState, SceneType, InventoryItem } from '@/game/types';
 import { GameMode } from '@/game/types';
 import { SCENE_WAVE_CONFIGS, CONSUMABLE_DEFS, TEXT_CONFIG } from '@/game/data';
 import { Pause, Droplets, Gauge, Target, Flame, ChevronRight } from 'lucide-react';
@@ -37,7 +37,7 @@ interface GameHUDProps {
   onThrow: () => void;
   onCancelAim: () => void;
   // Item system
-  inventory: { type: 'sticky' | 'poison' | 'molotov' | 'shotgun' | 'radar' | 'fan' | 'swatter'; count: number }[];
+  inventory: InventoryItem[];
   selectedItemIndex: number;
   isPlacingItem: boolean;
   onSelectItem: (index: number) => void;
@@ -83,6 +83,7 @@ const ITEM_IMAGES: Record<string, string> = {
   radar: '/assets/item_radar.png',
   fan: '/assets/fan.png',
   swatter: '/assets/item_swatter.png',
+  knife: '/assets/drop_knife.png',
 };
 
 /** 掉落道具中文名称映射 */
@@ -94,6 +95,7 @@ const ITEM_NAMES: Record<string, string> = {
   radar: TEXT_CONFIG.items.radar,
   fan: TEXT_CONFIG.items.fan,
   swatter: TEXT_CONFIG.items.swatter,
+  knife: TEXT_CONFIG.items.knife,
 };
 
 /** Buff 图标子组件：缩略版（约 12×12），带闪烁动画 */

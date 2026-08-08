@@ -191,6 +191,12 @@ export class RoachAISystem {
       // Nurse heal
       this.updateNurseHeal(r, roaches);
 
+      // Subway exclusive: tunnel worker (armor spray)
+      this.updateTunnelWorker(r, roaches);
+
+      // Subway exclusive: elite rail charge
+      this.updateSubwayElite(r, fireWalls);
+
       // Fire dodge triggers (suicide & small roaches)
       this.handleFireDodgeTriggers(r, roaches);
 
@@ -259,8 +265,10 @@ export class RoachAISystem {
     // Status effects
     this.updateStatusEffects(r);
 
-    // Stunned or board-stuck
-    const isImmobilized = r.isStunned || this.cfg.stickySystem.isStuckByBoard(r.id);
+    // Stunned or board-stuck（地铁精英冲刺时无视蟑螂贴板定身）
+    const boardStuck = this.cfg.stickySystem.isStuckByBoard(r.id)
+      && !(r.type === RoachType.SUBWAY_ELITE && r.chargeState === 'charge');
+    const isImmobilized = r.isStunned || boardStuck;
     if (isImmobilized) {
       r.vx = 0; r.vy = 0;
     }
@@ -281,6 +289,15 @@ export class RoachAISystem {
   // 子方法：移动角度计算
   // =========================================================================
 
+  /**
+   * 判断是否按"飞行类"移动处理（不受地面阻挡影响）。
+   * 地铁精英（SUBWAY_ELITE）飞行化改造后，在移动/阻挡层面与飞行蟑螂一致：
+   * 不被火焰墙阻挡、不受地面边界 X 钳制、无最小下移速度、用屏幕边缘 margin 钳制。
+   */
+  private isFlyingLikeMovement(r: Roach): boolean {
+    return r.type === RoachType.FLYING || r.type === RoachType.FLYING_SUICIDE || r.type === RoachType.SUBWAY_ELITE;
+  }
+
   /** 计算蟑螂移动角度（恐慌/正常移动/强制接近防线/飞行冲刺/边缘排斥） */
   private calculateMoveAngle(r: Roach, time: number, defenseLineY: number, canvasWidth: number, deltaTime: number): number {
     const moveCfg = BALANCE_CONFIG.roachAI.movement;
@@ -289,7 +306,7 @@ export class RoachAISystem {
       return r.panicAngle + Math.sin(time * 15 + r.wobbleOffset) * 0.8;
     }
 
-    const isFlying = r.type === RoachType.FLYING || r.type === RoachType.FLYING_SUICIDE;
+    const isFlying = this.isFlyingLikeMovement(r);
     const wanderAmplitude = isFlying ? moveCfg.flyingWanderAmplitude : moveCfg.groundWanderAmplitude;
     const targetX = r.x + Math.sin(r.wobbleOffset + time * r.wobbleSpeed) * wanderAmplitude;
     const dl = defenseLineY;
@@ -400,14 +417,21 @@ export class RoachAISystem {
       r.vx = 0; r.vy = 0;
     } else if (r.spawnImmuneTimer && r.spawnImmuneTimer > 0) {
       r.vx = 0; r.vy = 0;
+    } else if (r.type === RoachType.SUBWAY_ELITE && r.chargeState === 'charge') {
+      // 地铁精英：轨道冲刺（横向高速，无视普通移动角度）
+      r.vx = (r.chargeDir ?? 1) * BALANCE_CONFIG.subway.eliteChargeSpeed;
+      r.vy = 0;
+      r.angle = (r.chargeDir ?? 1) > 0 ? 0 : Math.PI;
     } else {
       r.vx = Math.cos(moveAngle) * effectiveSpeed * 65;
       r.vy = Math.sin(moveAngle) * effectiveSpeed * 65;
     }
 
     // Minimum downward speed
-    if (!isImmobilized && r.type !== RoachType.FLYING && r.type !== RoachType.FLYING_SUICIDE
+    if (!isImmobilized && !this.isFlyingLikeMovement(r)
       && r.type !== RoachType.NURSE
+      && r.type !== RoachType.TUNNEL_WORKER
+      && !(r.type === RoachType.SUBWAY_ELITE && r.chargeState === 'charge')
       && !(r.type === RoachType.TIMED_SUICIDE && r.placeTimer && r.placeTimer > 0)
       && r.vy < moveCfg.minDownwardSpeed) {
       r.vy = moveCfg.minDownwardSpeed;
@@ -467,8 +491,8 @@ export class RoachAISystem {
       r.y = defenseLineY + 50;
     }
 
-    // Fire wall blocks ground roaches
-    if (r.type !== RoachType.FLYING && r.type !== RoachType.FLYING_SUICIDE) {
+    // Fire wall blocks ground roaches（飞行类含地铁精英不被阻挡）
+    if (!this.isFlyingLikeMovement(r)) {
       for (const wall of fireWalls) {
         if (r.x >= wall.x1 && r.x <= wall.x2) {
           const wallTop = wall.y - wall.height * 0.5;
@@ -486,8 +510,8 @@ export class RoachAISystem {
       r.y = Math.max(canvasHeight / 2, r.y);
     }
 
-    // Clamp X
-    if (r.type === RoachType.FLYING || r.type === RoachType.FLYING_SUICIDE) {
+    // Clamp X（飞行类含地铁精英用屏幕边缘 margin，地面类用地面阻挡边界）
+    if (this.isFlyingLikeMovement(r)) {
       const roachSize = r.size ?? ENEMY_DEFS[r.type].size;
       const edgeMargin = Math.max(40, roachSize * 0.8);
       r.x = Math.max(edgeMargin, Math.min(canvasWidth - edgeMargin, r.x));
@@ -759,6 +783,126 @@ export class RoachAISystem {
       }
     }
     r.healTargetId = bestTarget ? bestTarget.id : null;
+  }
+
+  // =========================================================================
+  // 地铁场景：隧道工蟑螂 AI（护甲喷涂）
+  // =========================================================================
+
+  /**
+   * 隧道工蟑螂：
+   * 护甲喷涂 —— 每 6 秒为范围 200px 内血量最高的其他蟑螂 +150 护甲
+   */
+  private updateTunnelWorker(r: Roach, roaches: Roach[]): void {
+    if (r.type !== RoachType.TUNNEL_WORKER || r.state !== RoachState.ALIVE) return;
+
+    const deltaTime = this.cfg.getDeltaTime();
+    const subCfg = BALANCE_CONFIG.subway;
+
+    // ===== 施法光圈脉冲计时衰减 =====
+    if (r.armorSprayCastTimer !== undefined && r.armorSprayCastTimer > 0) {
+      r.armorSprayCastTimer -= deltaTime;
+    }
+
+    // ===== 护甲喷涂 =====
+    r.armorSprayTimer = (r.armorSprayTimer ?? subCfg.armorSprayInterval) - deltaTime;
+    if (r.armorSprayTimer <= 0) {
+      r.armorSprayTimer = subCfg.armorSprayInterval;
+      // 范围内血量最高的其他蟑螂（隧道工不喷自己）
+      let best: Roach | null = null;
+      for (const other of roaches) {
+        if (other.id === r.id) continue;
+        if (other.state !== RoachState.ALIVE) continue;
+        const dx = other.x - r.x;
+        const dy = other.y - r.y;
+        if (dx * dx + dy * dy > subCfg.armorSprayRange * subCfg.armorSprayRange) continue;
+        if (!best || other.hp > best.hp) best = other;
+      }
+      if (best) {
+        best.armorHp += subCfg.armorSprayAmount;
+        best.maxArmorHp = Math.max(best.maxArmorHp, best.armorHp);
+        r.armorSprayCastTimer = 0.5; // 触发施法范围光圈脉冲（0.5 秒）
+        this.cfg.onAddFloatingText(best.x, best.y - 40, `+${subCfg.armorSprayAmount}`, TEXT_CONFIG.combat.armorSpray.color, 1000);
+        this.cfg.onAddFloatingText(r.x, r.y - 50, TEXT_CONFIG.combat.armorSpray.text, TEXT_CONFIG.combat.armorSpray.color);
+        // 灰色喷涂粒子
+        for (let k = 0; k < 8; k++) {
+          const a = Math.atan2(best.y - r.y, best.x - r.x) + (Math.random() - 0.5) * 0.6;
+          const spd = 100 + Math.random() * 120;
+          this.cfg.particles.push({
+            x: r.x, y: r.y,
+            vx: Math.cos(a) * spd,
+            vy: Math.sin(a) * spd,
+            life: 0.3 + Math.random() * 0.2, maxLife: 0.5,
+            size: 3 + Math.random() * 3,
+            color: 'rgba(168, 162, 158, 0.8)',
+            type: ParticleType.SPARK,
+          });
+        }
+      }
+    }
+  }
+
+  // =========================================================================
+  // 地铁场景：地铁蟑螂精英 AI（轨道冲刺）
+  // =========================================================================
+
+  /**
+   * 地铁蟑螂精英：
+   * 1. 出场 2 秒后沿铁轨横向高速冲刺（无视蟑螂贴板定身）
+   * 2. 冲刺可被火墙 / 风扇打断（回到普通移动状态，不再冲刺）
+   * 3. 冲至屏幕边缘停止，恢复普通移动
+   * 4. 被列车碾压后分裂为 2 只小蟑螂（由引擎击杀管线按 killedByTrain 处理）
+   */
+  private updateSubwayElite(r: Roach, fireWalls: FireWall[]): void {
+    if (r.type !== RoachType.SUBWAY_ELITE || r.state !== RoachState.ALIVE) return;
+
+    const deltaTime = this.cfg.getDeltaTime();
+    const subCfg = BALANCE_CONFIG.subway;
+
+    if (r.chargeState === 'idle') {
+      r.chargeDelayTimer = (r.chargeDelayTimer ?? subCfg.eliteChargeDelay) - deltaTime;
+      if (r.chargeDelayTimer <= 0) {
+        // 进入冲刺：朝较远一侧屏幕边缘冲（最大化铁轨横扫距离）
+        const canvasWidth = this.cfg.getCanvasWidth();
+        r.chargeState = 'charge';
+        r.chargeDir = r.x < canvasWidth / 2 ? 1 : -1;
+        this.cfg.onAddFloatingText(r.x, r.y - 50, TEXT_CONFIG.combat.eliteCharge.text, TEXT_CONFIG.combat.eliteCharge.color);
+      }
+      return;
+    }
+
+    if (r.chargeState === 'charge') {
+      // ===== 打断判定：火墙 =====
+      for (const wall of fireWalls) {
+        if (r.x >= wall.x1 && r.x <= wall.x2) {
+          const wallTop = wall.y - wall.height * 0.5;
+          if (r.y > wallTop && r.y < wallTop + wall.height + 5) {
+            r.chargeState = 'broken';
+            this.cfg.onAddFloatingText(r.x, r.y - 50, TEXT_CONFIG.combat.eliteBroken.text, TEXT_CONFIG.combat.eliteBroken.color);
+            return;
+          }
+        }
+      }
+      // ===== 打断判定：风扇（减速或向上推力生效中） =====
+      if (r.fanSlowTimer > 0 || r.fanPushY < 0) {
+        r.chargeState = 'broken';
+        this.cfg.onAddFloatingText(r.x, r.y - 50, TEXT_CONFIG.combat.eliteBroken.text, TEXT_CONFIG.combat.eliteBroken.color);
+        return;
+      }
+      // ===== 到达屏幕边缘：停止冲刺，永久转普通移动（不再重复冲刺，避免在边界往返卡住） =====
+      // 注意：边界余量必须与 applyRoachMovement 的 Clamp X 一致（max(40, size*0.8)），
+      // 否则精英会被位移钳制停在 edgeMargin 处，永远触达不到更小的冲刺边缘检测值，导致 chargeState 卡在 'charge'
+      const canvasWidth = this.cfg.getCanvasWidth();
+      const roachSize = r.size ?? ENEMY_DEFS[r.type].size;
+      const edgeMargin = Math.max(40, roachSize * 0.8);
+      if ((r.chargeDir === -1 && r.x <= edgeMargin + 1) || (r.chargeDir === 1 && r.x >= canvasWidth - edgeMargin - 1)) {
+        // 置为 broken：冲刺已结束，此后按飞行类普通移动移向防线
+        r.chargeState = 'broken';
+        r.chargeDir = 0;
+        // 强制向内推离边界，避免贴着边缘抖动
+        r.x = Math.max(edgeMargin + 2, Math.min(canvasWidth - edgeMargin - 2, r.x));
+      }
+    }
   }
 
   // =========================================================================
@@ -1186,6 +1330,8 @@ export class RoachAISystem {
       case RoachType.QUEEN: economy.queenKills++; break;
       case RoachType.NURSE: break;
       case RoachType.MUTANT: break;
+      case RoachType.TUNNEL_WORKER: economy.tunnelWorkerKills++; break;
+      case RoachType.SUBWAY_ELITE: economy.subwayEliteKills++; break;
     }
 
     // Update encyclopedia

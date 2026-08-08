@@ -132,6 +132,27 @@ export const ENEMY_DEFS: Record<RoachType, {
     size: 60,
     special: ['shield', 'bomb_placement', 'transform_large'], // 护盾 / 放置炸弹 / 变身
   },
+  // ========== 地铁场景专属蟑螂 ==========
+  [RoachType.TUNNEL_WORKER]: {
+    name: '隧道工蟑螂',
+    description: '背着工具箱的蟑螂，定期为周围血量最高的蟑螂添加护甲',
+    hp: 60,          // 较高血量（辅助单位）
+    speed: 0.6,      // 缓慢
+    reward: 30,      // 高奖励（优先击杀目标）
+    color: '#78716c', // 暗灰色（工具箱金属感）
+    size: 84,        // 增大体型（原 60）
+    special: ['armor_spray'], // 护甲喷涂
+  },
+  [RoachType.SUBWAY_ELITE]: {
+    name: '地铁蟑螂精英',
+    description: '飞行化的精英蟑螂，沿铁轨高速冲刺后转为空中移动，不受地面阻挡影响，被列车碾压后分裂为2只小蟑螂',
+    hp: 80,          // 较高血量（精英单位）
+    speed: 1.0,      // 飞行化后速度降低（原 2.0）
+    reward: 45,      // 高奖励（地铁场景精英）
+    color: '#b45309', // 锈迹橙棕色
+    size: 36,        // 缩小体型（原 72 的 50%）
+    special: ['flying', 'rail_charge', 'train_split'], // 飞行 / 轨道冲刺 / 被列车碾压分裂
+  },
 };
 
 // ========== 战斗数值平衡（从 balance.ts 拆分合并） ==========
@@ -200,6 +221,8 @@ export const BALANCE_ENEMIES = {
       splitting: { easy: 4, hard: 10 },
       timedSuicide: { easy: 5, hard: 15 },
       queen: { easy: 12, hard: 35 }, // 女王突破伤害最高
+      tunnelWorker: { easy: 5, hard: 15 },
+      subwayElite: { easy: 6, hard: 18 },
     },
   },
 
@@ -305,7 +328,7 @@ export const BALANCE_ENEMIES = {
       nurseStopDist: 40,           // 护士停止跟随距离（像素）
       baitPullStrength: 0.7,       // 诱饵拉力强度
       baitSpeedMult: 1.3,          // 诱饵吸引时速度倍率
-      enrageHpThreshold: 0.2,      // 狂暴 HP 阈值（20%）
+      enrageHpThreshold: 0.5,      // 狂暴 HP 阈值（50%）
       enrageSpeedMult: 2,          // 狂暴速度倍率（2 倍）
       forceApproachDist: 50,       // 强制接近距离（像素）
       forceApproachMinSin: 0.3,    // 强制接近最小正弦值

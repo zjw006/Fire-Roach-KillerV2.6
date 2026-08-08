@@ -31,14 +31,14 @@ export const SCENE_ITEM_UNLOCKS: Record<SceneType, string[]> = {
   [SceneType.STREET]: ['sticky', 'poison', 'fan', 'molotov', 'shotgun', 'radar', 'swatter'],
   // Hospital: all items + hospital exclusive roaches
   [SceneType.HOSPITAL]: ['sticky', 'poison', 'fan', 'molotov', 'shotgun', 'radar', 'swatter', 'nurse', 'mutant', 'timed_suicide'],
-  // Subway: all items
-  [SceneType.SUBWAY]: ['sticky', 'poison', 'fan', 'molotov', 'shotgun', 'radar', 'swatter'],
-  // Supermarket: all items
-  [SceneType.SUPERMARKET]: ['sticky', 'poison', 'fan', 'molotov', 'shotgun', 'radar', 'swatter'],
-  // School: all items
-  [SceneType.SCHOOL]: ['sticky', 'poison', 'fan', 'molotov', 'shotgun', 'radar', 'swatter'],
-  // Nest: all items (final challenge)
-  [SceneType.NEST]: ['sticky', 'poison', 'fan', 'molotov', 'shotgun', 'radar', 'swatter'],
+  // Subway: all items + knife (hospital reward, usable here)
+  [SceneType.SUBWAY]: ['sticky', 'poison', 'fan', 'molotov', 'shotgun', 'radar', 'swatter', 'knife'],
+  // Supermarket: all items + knife
+  [SceneType.SUPERMARKET]: ['sticky', 'poison', 'fan', 'molotov', 'shotgun', 'radar', 'swatter', 'knife'],
+  // School: all items + knife
+  [SceneType.SCHOOL]: ['sticky', 'poison', 'fan', 'molotov', 'shotgun', 'radar', 'swatter', 'knife'],
+  // Nest: all items + knife (final challenge)
+  [SceneType.NEST]: ['sticky', 'poison', 'fan', 'molotov', 'shotgun', 'radar', 'swatter', 'knife'],
 };
 
 /**
@@ -54,7 +54,7 @@ export const SCENE_ROACH_TYPES: Record<SceneType, RoachType[]> = {
   [SceneType.ROOFTOP]: [RoachType.SMALL, RoachType.LARGE, RoachType.FLYING, RoachType.ARMORED, RoachType.SPLITTING, RoachType.SUICIDE, RoachType.FLYING_SUICIDE],
   [SceneType.STREET]: [RoachType.SMALL, RoachType.LARGE, RoachType.FLYING, RoachType.ARMORED, RoachType.SPLITTING, RoachType.SUICIDE, RoachType.FLYING_SUICIDE],
   [SceneType.HOSPITAL]: [RoachType.SMALL, RoachType.LARGE, RoachType.FLYING, RoachType.ARMORED, RoachType.SPLITTING, RoachType.SUICIDE, RoachType.FLYING_SUICIDE, RoachType.QUEEN, RoachType.NURSE, RoachType.MUTANT, RoachType.TIMED_SUICIDE],
-  [SceneType.SUBWAY]: [RoachType.SMALL, RoachType.LARGE, RoachType.FLYING, RoachType.ARMORED, RoachType.SPLITTING, RoachType.SUICIDE, RoachType.FLYING_SUICIDE, RoachType.QUEEN],
+  [SceneType.SUBWAY]: [RoachType.SMALL, RoachType.LARGE, RoachType.FLYING, RoachType.ARMORED, RoachType.SUICIDE, RoachType.FLYING_SUICIDE, RoachType.TUNNEL_WORKER, RoachType.SUBWAY_ELITE],
   [SceneType.SUPERMARKET]: [RoachType.SMALL, RoachType.LARGE, RoachType.FLYING, RoachType.ARMORED, RoachType.SPLITTING, RoachType.SUICIDE, RoachType.FLYING_SUICIDE, RoachType.QUEEN],
   [SceneType.SCHOOL]: [RoachType.SMALL, RoachType.LARGE, RoachType.FLYING, RoachType.ARMORED, RoachType.SPLITTING, RoachType.SUICIDE, RoachType.FLYING_SUICIDE, RoachType.QUEEN],
   [SceneType.NEST]: [RoachType.SMALL, RoachType.LARGE, RoachType.FLYING, RoachType.ARMORED, RoachType.SPLITTING, RoachType.SUICIDE, RoachType.FLYING_SUICIDE, RoachType.QUEEN],
@@ -117,7 +117,7 @@ export const SCENE_GROUND_BOUNDS: Record<SceneType, [number, number, number, num
   // Hospital: narrow corridor (窄走廊，增强沉浸感)
   [SceneType.HOSPITAL]: [232,416, 333,449, 141,512, 401,486, 50,490,810],
   // Subway: wide platform (宽平台)
-  [SceneType.SUBWAY]:   [220,440, 340,440,  100,620, 460,620,  0,530,800],
+  [SceneType.SUBWAY]:   [58,472, 190,472,  58,530, 456,530,  58,456,810],
   // Supermarket: aisles (货架通道)
   [SceneType.SUPERMARKET]: [200,430, 380,430,  90,610, 450,610,  0,530,800],
   // School: classroom (教室)
@@ -152,14 +152,12 @@ export const SCENE_REWARD_ITEMS: Record<SceneType, { type: string; name: string;
     { type: 'shotgun', name: '散弹模式', icon: '/assets/drop_shotgun.png', desc: '三！管！齐！发！这已经不是喷火枪了，这是喷火机关枪！扇面扫射，覆盖面大到连飞过的小鸟都得绕道走。一只蟑螂？三发全中。一群蟑螂？三发全中。满屏蟑螂？还是三发全中！唯一的缺点嘛……气罐消耗快得跟我的头发一样。多囤气罐，听蟑叔的准没错！' },
     { type: 'radar', name: '雷达激光', icon: '/assets/drop_radar.png', desc: '来来来，见识一下什么叫"科技改变灭蟑"！这玩意儿自带追踪雷达，哪只蟑螂离得最近，激光"咻"的一下就锁过去了！biu~biu~biu~跟打靶似的，指哪打哪，百发百中！在这条赛博街道上，雷达激光就是你的终极利器！蟑叔我当年要是早点发明这个，也不至于被蟑螂追了三条街……' },
   ],
-  // Hospital reward: advanced medical supplies for cockroach eradication
+  // Hospital reward: 斩螂·110（近战秒杀武器，地铁场景可用）
   [SceneType.HOSPITAL]: [
-    { type: 'gas_refill', name: '医疗气罐', icon: '/assets/consumable_gas.png', desc: '从医院氧气瓶改装的超级气罐！容量是普通气罐的两倍，持续时间超长。蟑叔我亲自从ICU"借"来的，护士追了我三层楼……但值得！有了这玩意儿，你可以放心大胆地喷火，不用担心气不够用！' },
+    { type: 'knife', name: '斩螂·110', icon: '/assets/drop_knife.png', desc: '年轻人，新装备——【斩螂·110】！重二两，锋110点！自动跃向场上威胁最高的目标，一击必杀，连护甲都拦不住！为什么叫110？因为遇到它，蟑螂打110都来不及！' },
   ],
-  // Subway reward: track electrifier
-  [SceneType.SUBWAY]: [
-    { type: 'swatter', name: '轨道电击器', icon: '/assets/drop_swatter.png', desc: '地铁第三轨的电流改装版！一炮下去整条轨道带电，蟑螂们踩着铁轨冲过来，结果全部变成烤蟑螂！范围超大，持续时间超长，就是有点费铁轨……别告诉地铁公司是我干的！' },
-  ],
+  // Subway: 暂无通关奖励
+  [SceneType.SUBWAY]: [],
   // Supermarket reward: shelf domino
   [SceneType.SUPERMARKET]: [
     { type: 'molotov', name: '货架燃烧弹', icon: '/assets/drop_molotov.png', desc: '超市货架倒塌+燃烧瓶=完美火海！推倒一整排货架，火焰沿着货架蔓延，整个超市变成烤箱！蟑螂们连逃跑的路线都被堵死了。蟑叔温馨提示：使用后请记得买保险……' },

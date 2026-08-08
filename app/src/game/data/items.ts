@@ -59,6 +59,7 @@ export const WEAPON_DROP_DEFS = {
   radar:   { name: '雷达激光', color: '#22d3ee', ammo: 20, cooldown: 8 },
   fan:     { name: '强力风扇', color: '#a78bfa', ammo: 5,  cooldown: 8 },
   swatter: { name: '电蚊拍',  color: '#fbbf24', type: 'instant' as const, ammo: 1,  cooldown: 10 }, // type='instant' 表示一次性使用，无需持续计时
+  knife:   { name: '斩螂·110', color: '#e2e8f0', ammo: 3,  cooldown: 5 }, // 近战秒杀：自动跃向威胁最高的目标
 };
 
 // 拾取道具回收价格（关卡结束时未使用的道具折合金币）
@@ -71,6 +72,7 @@ export const INVENTORY_SELL_PRICES: Record<string, number> = {
   radar:   10,  // 自动追踪，稀有
   fan:     8,   // 全场减速控制
   swatter: 15,  // 全屏秒杀，最稀有
+  knife:   12,  // 近战秒杀，高价值
 };
 
 // ========== Boss 配置 ==========
@@ -420,5 +422,44 @@ export const BALANCE_ITEMS = {
     initialMoney: { easy: 5000, normal: 5000, hard: 100 }, // 初始金币（不同难度）
     talentCostScaling: 1.5,      // 天赋升级费用倍率（每级 1.5x）
     hardModeRewardPenalty: 0.8,  // 困难模式奖励削减系数（80%）
+  },
+
+  // ===== 地铁场景：列车系统（自动定时驶过） =====
+  // 列车每隔 autoTrainInterval 秒自动驶过一次，驶过前 warningTime 秒在轨道起点闪烁预警提示玩家
+  train: {
+    autoTrainInterval: 25,         // 列车自动驶过间隔（秒，从进入地铁场景起计时）
+    warningTime: 3,                // 列车驶过前的预警时长（秒，轨道起点闪烁提示）
+    railYRatios: [0.34, 0.5, 0.66] as readonly number[], // 三条铁轨 Y 比例（相对防线高度）
+    bandHalfHeight: 46,            // 碾压判定半高（像素）
+    killTextColor: '#fca5a5',      // 碾压击杀浮动文字颜色
+    // ===== 贝塞尔曲线轨迹（相对 540 逻辑宽度画布，固定坐标） =====
+    // 起点 P0=(101,469)；终点 P3=(533,637)；P1/P2 取 P0→P3 直线的 1/3、2/3 处
+    trainDuration: 2.2,            // 列车驶完全程时长（秒）
+    trainStart: { x: 101, y: 469 } as const,           // 起点 P0
+    trainControl1: { x: 245, y: 595 } as const,        // 控制点 P1（下移 70px：525 → 595）
+    trainControl2: { x: 389, y: 621 } as const,        // 控制点 P2（下移 40px：581 → 621）
+    trainEnd: { x: 533, y: 637 } as const,             // 终点 P3（固定坐标）
+    // ===== 序列帧动画（氛围事件图，固定位置播放，不随贝塞尔移动） =====
+    trainFrameCount: 16,           // 序列帧总数（train_01.png ~ train_16.png）
+    // 帧率 = 帧数 / 时长，确保 16 帧在 trainDuration 内恰好播放 1 次
+    trainFrameRate: 16 / 2.2,      // ≈7.27 FPS（16帧 ÷ 2.2秒，单次播放不循环）
+    // ===== 车头碰撞圆（跟随车头，可调半径） =====
+    trainHeadRadius: 90,           // 车头碰撞圆半径（像素）
+    trainHeadOffset: 0,            // 车头圆心沿曲线切线方向的前移偏移（像素）
+  },
+
+  // ===== 地铁场景：隧道工 / 精英 / 斩螂·110 =====
+  subway: {
+    // 隧道工蟑螂
+    armorSprayInterval: 6,         // 护甲喷涂间隔（秒）
+    armorSprayAmount: 150,         // 单次喷涂护甲值（提高 BUFF 效果，原 50）
+    armorSprayRange: 200,          // 喷涂范围（像素）
+    // 地铁精英
+    eliteChargeDelay: 2,           // 出场后进入冲刺的延迟（秒）
+    eliteChargeSpeed: 460,         // 冲刺速度（像素/秒）
+    eliteChargeEdgeMargin: 30,     // 冲刺到屏幕边缘停止的余量（像素）
+    // 斩螂·110
+    knifeDashDuration: 0.18,       // 刀刃飞跃单程时长（秒）
+    knifeKillDelay: 0.18,          // 到达目标后击杀延迟（秒）
   },
 } as const;
