@@ -11,7 +11,7 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { createGameEngine } from '@/game/engine/index';
 import { GameState, GameMode, SceneType, type Player, type Economy, type GameProgress, type DialogConfig, type BossBattleState, type InventoryItem } from '@/game/types';
-import { BALANCE_CONFIG, DIALOG_CONFIGS, SCENE_CONFIGS, SCENE_UNLOCK_CHAIN, SUBWAY_ELITE_TUTORIAL_DIALOG } from '@/game/data';
+import { BALANCE_CONFIG, DIALOG_CONFIGS, SCENE_CONFIGS, SCENE_UNLOCK_CHAIN, SUBWAY_ELITE_TUTORIAL_DIALOG, SUBWAY_KNIFE_TUTORIAL_DIALOG } from '@/game/data';
 import * as Vibration from '@/game/vibration';
 import { trpc } from '@/providers/trpc';
 import { GameHUD } from './GameHUD';
@@ -112,6 +112,7 @@ export const GameCanvas: React.FC = () => {
   /** 新手引导暂停出怪状态（厨房第一波） */
   const [tutorialPauseSpawn, setTutorialPauseSpawn] = useState(false);
   const [eliteTutorialPause, setEliteTutorialPause] = useState(false);
+  const [knifeTutorialPause, setKnifeTutorialPause] = useState(false);
 
   // ── 倒计时状态（波次开始前 3-2-1）──
   const [countdownPhase, setCountdownPhase] = useState(3);
@@ -173,6 +174,8 @@ export const GameCanvas: React.FC = () => {
       audio: undefined
     });
     engineRef.current = engine;
+    // TEMP-DEBUG: 平衡分析用，任务完成后移除
+    (window as any).__engine = engine;
 
     engine.onStateChange = (state) => {
       setGameState(state);
@@ -196,6 +199,10 @@ export const GameCanvas: React.FC = () => {
 
     engine.onEliteTutorialPauseChange = (paused) => {
       setEliteTutorialPause(paused);
+    };
+
+    engine.onKnifeTutorialPauseChange = (paused) => {
+      setKnifeTutorialPause(paused);
     };
 
     engine.onConsumableUpdate = (
@@ -559,26 +566,54 @@ export const GameCanvas: React.FC = () => {
   //   prevPowerBoostRef.current = powerBoostTimer;
   // }, [powerBoostTimer]);
 
-  /** 重新开始当前关卡：停止所有音频 → 切换BGM → 引擎重启 → 同步消耗品状态 */
+  /** 重新开始当前关卡：停止音频 → 检查是否需要战前准备（道具选择）→ 重启引擎 */
   const handleRestart = useCallback(() => {
     setBossDefeated(false);
-    engineRef.current?.audio.stopBGM();
-    engineRef.current?.audio.stopVictoryBGM();
-    engineRef.current?.audio.stopGameOverBGM();
-    engineRef.current?.restart();
-    // 必须在 restart() 的 stop() 之后、start() 之前切换 BGM（start() 内部会触发 startLevelBGM()）
     const engine = engineRef.current;
-    if (engine && engine.gameMode === GameMode.STORY) {
-      engine.audio.switchBGMForScene(engine.currentScene, engine.difficulty);
+    if (!engine) return;
+
+    // 停止所有音频
+    engine.audio.stopBGM();
+    engine.audio.stopVictoryBGM();
+    engine.audio.stopGameOverBGM();
+    engine.audio.stopFire();
+    engine.audio.stopFanLoop();
+    engine.audio.stopFireWallBurn();
+    engine.audio.stopFlyingBuzzLoop();
+
+    // 停止游戏循环
+    cancelAnimationFrame(engine.animationId);
+
+    const diff = engine.difficulty;
+    const mode = engine.gameMode;
+    const scene = engine.currentScene;
+
+    // 检查是否需要展示战前准备界面（与 maybeShowPreparation 逻辑一致）
+    if (mode === GameMode.STORY) {
+      const unlocked = engine.progress.weaponsUnlocked;
+      if (unlocked && unlocked.length >= 4) {
+        setPreparationItems(unlocked);
+        setPendingPreparationParams({ diff, mode, scene });
+        setShowPreparation(true);
+        return;
+      }
     }
-    // Sync React state with engine's consumable inventory (preserved across restarts)
-    setTimeout(() => {
-      const engine2 = engineRef.current;
-      if (!engine2) return;
-      setCarriedConsumables({ ...engine2.consumableInventory });
-      setEmergencyCoolCount(engine2.emergencyCoolInventory);
-    }, 100);
-  }, []);
+
+    // 无需准备界面，直接重启
+    engine.audio.setMuted(audioMuted);
+    if (mode === GameMode.STORY) {
+      engine.audio.switchBGMForScene(scene, diff);
+    }
+    engine.start(mode, scene, false, undefined, menuShopMoney);
+    // 同步 React 状态
+    setPlayer({ ...engine.player });
+    setEconomy({ ...engine.economy });
+    setWave(engine.wave);
+    setDefenseHp(engine.defenseHp);
+    setMaxDefenseHp(engine.maxDefenseHp);
+    setCarriedConsumables({ ...engine.consumableInventory });
+    setEmergencyCoolCount(engine.emergencyCoolInventory);
+  }, [audioMuted, menuShopMoney]);
 
   // Continue to next wave after shopping
   // const handleContinueFromShop = useCallback(() => {
@@ -1049,7 +1084,7 @@ export const GameCanvas: React.FC = () => {
         />
       )}
 
-      {/* ═══ 地铁第5波：精英蟑螂登场教学对话 ═══ */}
+      {/* ═══ 地铁第1波：精英蟑螂登场教学对话 ═══ */}
       {eliteTutorialPause && (
         <DialogScreen
           config={SUBWAY_ELITE_TUTORIAL_DIALOG}
@@ -1059,6 +1094,21 @@ export const GameCanvas: React.FC = () => {
           }}
           onSkip={() => {
             engineRef.current?.resumeSpawnAfterEliteTutorial();
+          }}
+          audio={engineRef.current?.audio}
+        />
+      )}
+
+      {/* ═══ 地铁第4波：斩螂·110 对阵护盾蟑螂教学对话 ═══ */}
+      {knifeTutorialPause && (
+        <DialogScreen
+          config={SUBWAY_KNIFE_TUTORIAL_DIALOG}
+          difficulty={difficulty}
+          onComplete={() => {
+            engineRef.current?.resumeSpawnAfterKnifeTutorial();
+          }}
+          onSkip={() => {
+            engineRef.current?.resumeSpawnAfterKnifeTutorial();
           }}
           audio={engineRef.current?.audio}
         />
@@ -1350,6 +1400,7 @@ export const GameCanvas: React.FC = () => {
             timedSuicideKills: 0,
             tunnelWorkerKills: 0,
             subwayEliteKills: 0,
+            shieldKills: 0,
             perfectWaves: 0,
             gasSavedBonus: 0,
             breaches: 0,

@@ -28,8 +28,14 @@ export interface WaveGameplayCallbacks {
   onUnlockNextScene: () => void;
   onPlayBGM: () => void;
   onTutorialPauseChange: (paused: boolean) => void;
-  /** 地铁第5波精英登场教学对话暂停回调 */
+  /** 地铁精英登场教学对话暂停回调（第1波首次触发） */
   onEliteTutorialPauseChange?: (paused: boolean) => void;
+  /** 地铁斩螂·110 教学对话暂停回调（第4波护盾蟑螂登场前首次触发） */
+  onKnifeTutorialPauseChange?: (paused: boolean) => void;
+  /** 波次生成回调（doWaveSpawn 时触发）：用于列车时刻表等按波计时系统 */
+  onWaveStart?: (wave: number) => void;
+  /** 波次清空回调（所有敌人死亡且队列空时触发一次）：用于取消该波剩余列车调度 */
+  onWaveCleared?: () => void;
 }
 
 /** 蟑螂数据访问回调 */
@@ -80,8 +86,12 @@ export class WaveManager {
   waveClearTimer: number = 0;
   /** 教程暂停生成标志 */
   tutorialPauseSpawn: boolean = false;
-  /** 地铁精英教学暂停生成标志（第5波精英登场对话） */
-  eliteTutorialPause: boolean = false;
+  /** 地铁精英教学暂停生成标志（第1波精英登场对话） */
+	  eliteTutorialPause: boolean = false;
+	  /** 地铁斩螂·110 教学暂停生成标志（第4波护盾蟑螂登场前对话） */
+	  knifeTutorialPause: boolean = false;
+  /** 波次清空通知标志（防止等待期间重复通知 onWaveCleared） */
+  private waveClearNotified: boolean = false;
   /** 倒计时阶段 */
   countdownPhase: number = 0;
   /** 倒计时计时器 */
@@ -110,6 +120,8 @@ export class WaveManager {
     this.waveClearTimer = 0;
     this.tutorialPauseSpawn = false;
     this.eliteTutorialPause = false;
+    this.knifeTutorialPause = false;
+    this.waveClearNotified = false;
     this.countdownPhase = 0;
     this.countdownTimer = 0;
     this.countdownWavePending = false;
@@ -177,8 +189,13 @@ export class WaveManager {
     }
 
     // 波次完成：检查胜利或自动开始下一波
-    if (!this.tutorialPauseSpawn && !this.eliteTutorialPause && !this.waveSpawning &&
+    if (!this.tutorialPauseSpawn && !this.eliteTutorialPause && !this.knifeTutorialPause && !this.waveSpawning &&
         this.cb.onGetRoaches().length === 0 && this.spawnQueue.length === 0 && this.wave > 0) {
+      // 波次清空瞬间：通知取消该波剩余的按波调度事件（如列车时刻表）
+      if (!this.waveClearNotified) {
+        this.waveClearNotified = true;
+        this.cb.onWaveCleared?.();
+      }
       this.waveTimer -= deltaTime;
       if (this.waveTimer <= 0) {
         this.waveTimer = BALANCE_CONFIG.wave.clearDelay;
@@ -251,14 +268,26 @@ export class WaveManager {
       }
     }
 
-    // 地铁第5波：精英蟑螂登场教学对话（暂停生成，仅首次）
-    if (this.cfg.currentScene === SceneType.SUBWAY && this.wave === 5 && this.cfg.gameMode === GameMode.STORY) {
+    // 地铁第1波：精英蟑螂登场教学对话（暂停生成，仅首次）
+    if (this.cfg.currentScene === SceneType.SUBWAY && this.wave === 1 && this.cfg.gameMode === GameMode.STORY) {
       const eliteTutorialSeen = (() => {
         try { return !!localStorage.getItem('subway_elite_tutorial_seen'); } catch { return false; }
       })();
       if (!eliteTutorialSeen) {
         this.eliteTutorialPause = true;
         this.cb.onEliteTutorialPauseChange?.(true);
+        return;
+      }
+    }
+
+    // 地铁第4波：斩螂·110 对阵护盾蟑螂教学对话（暂停生成，仅首次，护盾蟑螂首登场波次）
+    if (this.cfg.currentScene === SceneType.SUBWAY && this.wave === 4 && this.cfg.gameMode === GameMode.STORY) {
+      const knifeTutorialSeen = (() => {
+        try { return !!localStorage.getItem('subway_knife_tutorial_seen'); } catch { return false; }
+      })();
+      if (!knifeTutorialSeen) {
+        this.knifeTutorialPause = true;
+        this.cb.onKnifeTutorialPauseChange?.(true);
         return;
       }
     }
@@ -289,6 +318,9 @@ export class WaveManager {
   doWaveSpawn(): void {
     this.cb.onStateChange(GameState.PLAYING);
     this.countdownWavePending = false;
+    this.waveClearNotified = false;
+    // 通知按波计时系统（列车时刻表等）：波次生成开始
+    this.cb.onWaveStart?.(this.wave);
 
     // Boss 模式跳过倒计时，在此处启动关卡 BGM
     if (this.wave === 1 && this.cfg.gameMode === GameMode.BOSS) {
@@ -360,9 +392,10 @@ export class WaveManager {
       this.cb.onSetTimedSuicideTimer(timedSuicideCount > 0 ? 5.0 : 0);
     }
 
-    // 地铁特殊单位
+    // 地铁特殊单位（护盾蟑螂最先生成，确保编队锚点先就位）
     if (this.cfg.currentScene === SceneType.SUBWAY) {
-      const { tunnelWorkerCount = 0, eliteCount = 0 } = config;
+      const { tunnelWorkerCount = 0, eliteCount = 0, shieldCount = 0 } = config;
+      addToQueue(phase1, RoachType.SHIELD, shieldCount); // 护盾蟑螂在 phase1 最前
       addToQueue(phase1, RoachType.TUNNEL_WORKER, tunnelWorkerCount);
       shuffle(phase1);
       addToQueue(phase2, RoachType.SUBWAY_ELITE, eliteCount);

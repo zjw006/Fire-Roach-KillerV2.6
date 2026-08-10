@@ -145,13 +145,23 @@ export const ENEMY_DEFS: Record<RoachType, {
   },
   [RoachType.SUBWAY_ELITE]: {
     name: '地铁蟑螂精英',
-    description: '飞行化的精英蟑螂，沿铁轨高速冲刺后转为空中移动，不受地面阻挡影响，被列车碾压后分裂为2只小蟑螂',
+    description: '从空中掠过，速度极快，不受地面阻挡影响',
     hp: 80,          // 较高血量（精英单位）
-    speed: 1.0,      // 飞行化后速度降低（原 2.0）
-    reward: 45,      // 高奖励（地铁场景精英）
-    color: '#b45309', // 锈迹橙棕色
-    size: 36,        // 缩小体型（原 72 的 50%）
-    special: ['flying', 'rail_charge', 'train_split'], // 飞行 / 轨道冲刺 / 被列车碾压分裂
+    speed: 2.4,      // 与飞行蟑螂一致，速度极快
+    reward: 4,       // 与飞行蟑螂一致
+    color: '#4a5a6a', // 灰蓝色（与飞行蟑螂一致）
+    size: 32,        // 与飞行蟑螂一致
+    special: ['flying', 'dodge'], // 飞行 + 闪避俯冲（与飞行蟑螂一致）
+  },
+  [RoachType.SHIELD]: {
+    name: '护盾蟑螂',
+    description: '释放气体护盾保护身后同伴，矩形范围内的蟑螂免疫火焰直射',
+    hp: 100,         // 高血量（阵型锚点）
+    speed: 0.5,      // 极慢（阵型锚点）
+    reward: 35,      // 高奖励（优先击杀目标）
+    color: '#67e8f9', // 淡青色（气体护盾视觉基调）
+    size: 88,        // 大体型（阵型核心，略大于隧道工）
+    special: ['gas_shield'], // 气体护盾（矩形保护身后同伴）
   },
 };
 
@@ -222,7 +232,8 @@ export const BALANCE_ENEMIES = {
       timedSuicide: { easy: 5, hard: 15 },
       queen: { easy: 12, hard: 35 }, // 女王突破伤害最高
       tunnelWorker: { easy: 5, hard: 15 },
-      subwayElite: { easy: 6, hard: 18 },
+      subwayElite: { easy: 3, hard: 8 },
+      shield: { easy: 6, hard: 18 }, // 护盾蟑螂突破伤害（阵型核心，略高）
     },
   },
 

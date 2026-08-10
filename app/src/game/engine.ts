@@ -138,7 +138,8 @@ import { WaveManager } from './engine/wave/WaveManager';
 import { WeatherSystem } from './engine/weather/WeatherSystem';
 import { RoachAISystem } from './engine/ai/RoachAISystem';
 import { FloatingTextSystem } from './engine/floating-text/FloatingTextSystem';
-import { TrainSystem } from './engine/train/TrainSystem';
+// import { TrainSystem } from './engine/train/TrainSystem';
+import { ShieldSystem } from './engine/shield/ShieldSystem';
 import { KnifeSystem } from './engine/knife/KnifeSystem';
 
 // =============================================================================
@@ -304,6 +305,7 @@ export class GameEngine {
   /** 地铁场景专属：隧道工蟑螂贴图（地铁精英同样使用该贴图） */
   roachTunnelWorkerImg: HTMLImageElement | null = null;
   roachSubwayEliteImg: HTMLImageElement | null = null;
+  roachShieldImg: HTMLImageElement | null = null;
   roachAISystem!: RoachAISystem;
   /** Boss 图片资源（阶段变体预留给未来使用） */
   /** Boss 动画系统（帧数据由引擎管理，与 bossSystem 共享） */
@@ -338,6 +340,9 @@ export class GameEngine {
   isEasyMode: boolean = false;
   imagesLoaded: boolean = false;
 
+  /** 调试：是否显示护盾蟑螂的护盾范围框 */
+  showShieldRange: boolean = false;
+
   /** 掉落道具图片缓存 */
   _dropImages: Record<string, HTMLImageElement> | null = null;
   /** 地铁列车序列帧（train_01.png ~ train_08.png），索引 0~7 */
@@ -346,8 +351,10 @@ export class GameEngine {
   animationId: number = 0;
   onStateChange?: (state: GameState) => void;
   onTutorialPauseChange?: (paused: boolean) => void;
-  /** 地铁第5波精英登场教学对话暂停回调 */
+  /** 地铁第1波精英登场教学对话暂停回调 */
   onEliteTutorialPauseChange?: (paused: boolean) => void;
+  /** 地铁第4波斩螂·110 教学对话暂停回调 */
+  onKnifeTutorialPauseChange?: (paused: boolean) => void;
   onEconomyUpdate?: (economy: Economy) => void;
   onInventoryUpdate?: (inventory: InventoryItem[]) => void;
   onPlayerUpdate?: (player: Player) => void;
@@ -408,7 +415,9 @@ export class GameEngine {
   /** 波次系统模块（委托给 WaveManager） */
   private waveManager: WaveManager | null = null;
   /** 地铁场景：列车系统模块（委托给 TrainSystem，自动定时驶过） */
-  private trainSystem: TrainSystem | null = null;
+  // private trainSystem: TrainSystem | null = null;
+  /** 地铁场景：护盾蟑螂气体护盾系统模块（护盾生命周期 + 矩形区域判定） */
+  private shieldSystem: ShieldSystem | null = null;
   /** 斩螂·110 武器模块（委托给 KnifeSystem） */
   private knifeSystem: KnifeSystem | null = null;
 
@@ -429,9 +438,13 @@ export class GameEngine {
   get tutorialPauseSpawn(): boolean { return this.waveManager!.tutorialPauseSpawn; }
   set tutorialPauseSpawn(v: boolean) { this.waveManager!.tutorialPauseSpawn = v; }
 
-  /** 地铁第5波精英教学暂停：阻止生成直到对话完成 */
+  /** 地铁第1波精英教学暂停：阻止生成直到对话完成 */
   get eliteTutorialPause(): boolean { return this.waveManager!.eliteTutorialPause; }
   set eliteTutorialPause(v: boolean) { this.waveManager!.eliteTutorialPause = v; }
+
+  /** 地铁第4波斩螂·110 教学暂停：阻止生成直到对话完成 */
+  get knifeTutorialPause(): boolean { return this.waveManager!.knifeTutorialPause; }
+  set knifeTutorialPause(v: boolean) { this.waveManager!.knifeTutorialPause = v; }
 
   /** 波次前 3-2-1 倒计时状态 */
   get countdownTimer(): number { return this.waveManager!.countdownTimer; }
@@ -486,7 +499,7 @@ export class GameEngine {
   scenesCleared: Set<SceneType> = new Set();
 
   /** 显示地面边界线（蟑螂可走区域可视化） */
-  showMovementRange: boolean = true;
+  showMovementRange: boolean = false;
 
   /** 装甲肉盾缓存：定期更新以避免每帧 O(n²) 检测 */
   armorShieldCache: Set<number> = new Set(); /** 受附近装甲蟑螂保护的蟑螂 ID */
@@ -576,6 +589,9 @@ export class GameEngine {
       onVibrateGameOver: () => { Vibration.vibrateGameOver(); },
       onScreenShake: (amount) => { this.screenShake = amount; },
       onSuicideExplode: (r, i) => { this.suicideExplode(r, i); },
+      // 地铁护盾：火焰直射拦截查询 + 伤害转移至气体护盾
+      onFindProtectingShield: (target) => ShieldSystem.findProtectingShield(this.roaches, target),
+      onErodeShield: (shield, amount, showBlockText) => { this.shieldSystem?.damageShield(shield, amount, showBlockText); },
     });
     this.weaponSystem = new WeaponSystem({
       difficulty: this.difficulty as 'easy' | 'hard',
@@ -614,19 +630,24 @@ export class GameEngine {
       },
     });
     // ===== 地铁场景：列车系统（自动定时驶过） =====
-    this.trainSystem = new TrainSystem({
-      getCurrentScene: () => this.currentScene,
-      getGameState: () => this.state,
-      getCanvasWidth: () => this.width,
-      getDefenseLineY: () => this.defenseLineY(),
-      onTrainKill: (roach) => { this.killRoach(roach, this.roaches.indexOf(roach)); },
-      onAddFloatingText: (x, y, text, color, duration?) => { this.addFloatingText(x, y, text, color, duration); },
-      onAddParticle: (p) => { this.particles.push(p); },
-      onScreenShake: (amount) => { this.screenShake = amount; },
-      onPlaySound: (name) => {
-        if (name === 'train') this.audio.playTrainSfx();
-        else if (name === 'trainStop') this.audio.stopTrainSfx();
-      },
+    // this.trainSystem = new TrainSystem({
+    //   getCurrentScene: () => this.currentScene,
+    //   getGameState: () => this.state,
+    //   getCanvasWidth: () => this.width,
+    //   getDefenseLineY: () => this.defenseLineY(),
+    //   onTrainKill: (roach) => { this.killRoach(roach, this.roaches.indexOf(roach)); },
+    //   onAddFloatingText: (x, y, text, color, duration?) => { this.addFloatingText(x, y, text, color, duration); },
+    //   onAddParticle: (p) => { this.particles.push(p); },
+    //   onScreenShake: (amount) => { this.screenShake = amount; },
+    //   onPlaySound: (name) => {
+    //     if (name === 'train') this.audio.playTrainSfx();
+    //     else if (name === 'trainStop') this.audio.stopTrainSfx();
+    //   },
+    // });
+    // ===== 地铁场景：护盾蟑螂气体护盾系统 =====
+    this.shieldSystem = new ShieldSystem({
+      onAddFloatingText: (x, y, text, color) => { this.addFloatingText(x, y, text, color); },
+      onSpawnSpark: (x, y, count) => { ParticleSpawner.spawnSparkParticles(this.particles, x, y, count); },
     });
     // ===== 斩螂·110 武器系统 =====
     this.knifeSystem = new KnifeSystem({
@@ -877,6 +898,7 @@ export class GameEngine {
       onAddFloatingText: (x, y, text, color, duration?) => { this.addFloatingText(x, y, text, color, duration); },
       onSpawnRoach: (type, clusterId?) => this.spawnRoach(type, clusterId),
       onApplyDamageToRoach: (r, damage) => { this.applyDamageToRoach(r, damage); },
+      onTraceBurnDamage: (dmg) => { this.traceFlameDmg += dmg; },
       onSaveProgress: () => { this.saveProgress(); },
       onGameOver: (economy, wave) => { this.onGameOver?.(economy, wave); },
       onStateChange: (state) => { this.onStateChange?.(state); },
@@ -906,6 +928,9 @@ export class GameEngine {
         onPlayBGM: () => { this.audio.startLevelBGM(); },
         onTutorialPauseChange: (paused) => { this.onTutorialPauseChange?.(paused); },
         onEliteTutorialPauseChange: (paused) => { this.onEliteTutorialPauseChange?.(paused); },
+        onKnifeTutorialPauseChange: (paused) => { this.onKnifeTutorialPauseChange?.(paused); },
+        onWaveStart: (wave) => { /* this.trainSystem?.onWaveStart(wave); */ },
+        onWaveCleared: () => { /* this.trainSystem?.onWaveCleared(); */ },
         onKillRoach: (roach, idx) => { this.killRoach(roach, idx); },
         onGetRoaches: () => this.roaches,
         onKillAllNurseRoaches: () => {
@@ -998,6 +1023,8 @@ export class GameEngine {
     load('/assets/roach_tunnel_worker.png', (img) => this.roachTunnelWorkerImg = img);
     // 地铁精英独立贴图
     load('/assets/roach_subway_elite.png', (img) => this.roachSubwayEliteImg = img);
+    // 护盾蟑螂贴图
+    load('/assets/roach_shield01.png', (img) => this.roachShieldImg = img);
     // 加载 7 帧变形序列
     for (let i = 1; i <= 7; i++) {
       const frameIdx = i - 1;
@@ -1272,6 +1299,63 @@ export class GameEngine {
     this.onStateChange?.(this.state);
   }
 
+  // ===== 战斗数据采样（平衡分析用，0.5s 粒度） =====
+  private traceSamples: { t: number; wave: number; hp: number; armor: number; shield: number; flameDmg: number; spawnHp: number; firing: number }[] = [];
+  private traceTime = 0;
+  private traceTimer = 0;
+  private traceFlameDmg = 0;
+  private traceSpawnHp = 0;
+
+  /** 每 0.5 秒采样一次在屏血量/护甲/护盾与累计输出（仅 PLAYING 状态） */
+  private updateTrace() {
+    if (this.state !== GameState.PLAYING) return;
+    this.traceTime += this.deltaTime;
+    this.traceTimer += this.deltaTime;
+    if (this.traceTimer < 0.5) return;
+    this.traceTimer -= 0.5;
+    let hp = 0, armor = 0, shield = 0;
+    for (const r of this.roaches) {
+      if (r.state !== RoachState.ALIVE) continue;
+      hp += Math.max(0, r.hp);
+      armor += Math.max(0, r.armorHp || 0);
+      shield += Math.max(0, r.shieldHp || 0);
+    }
+    this.traceSamples.push({
+      t: +this.traceTime.toFixed(2),
+      wave: this.wave,
+      hp: Math.round(hp),
+      armor: Math.round(armor),
+      shield: Math.round(shield),
+      flameDmg: Math.round(this.traceFlameDmg),
+      spawnHp: Math.round(this.traceSpawnHp),
+      firing: this.player.isFiring ? 1 : 0,
+    });
+  }
+
+  /** 对局结束时导出采样数据（自动下载 JSON + localStorage 备份） */
+  private exportTrace(result: 'victory' | 'defeat') {
+    if (this.traceSamples.length === 0) return;
+    const data = {
+      scene: this.currentScene,
+      difficulty: this.difficulty,
+      result,
+      duration: +this.traceTime.toFixed(1),
+      interval: 0.5,
+      samples: this.traceSamples,
+    };
+    const json = JSON.stringify(data);
+    try { localStorage.setItem('roach_trace_last', json); } catch { /* 存储失败忽略 */ }
+    try {
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `roach-trace-${this.currentScene}-${result}-${Date.now()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch { /* 下载失败忽略 */ }
+  }
+
   /**
    * 重置游戏：清空所有实体和状态，为新一局做准备
    * @param {number} initialMoney - 初始金钱
@@ -1296,6 +1380,12 @@ export class GameEngine {
     this.deadTimedBombs = [];
     this.timedSuicideSpawnTimer = 0;
     this.timedSuicideSpawnRemaining = 0;
+    // 重置战斗数据采样
+    this.traceSamples = [];
+    this.traceTime = 0;
+    this.traceTimer = 0;
+    this.traceFlameDmg = 0;
+    this.traceSpawnHp = 0;
     this.consumableSystem?.reset();
     this.roachAISystem?.reset();
     // Sync new array references after resetGame() creates new arrays
@@ -1329,6 +1419,7 @@ export class GameEngine {
     this.onPendingRewardUpdate?.(0);
     this.tutorialPauseSpawn = false;
     this.eliteTutorialPause = false;
+    this.knifeTutorialPause = false;
     this.throwableSystem?.reset();
     this.aimingSystem?.reset();
     this.inventory = [];
@@ -1338,7 +1429,8 @@ export class GameEngine {
     this.radarLaserSystem?.reset();
     this.swatterSystem?.reset();
     this.insecticideSystem?.reset();
-    this.trainSystem?.reset();
+    // this.trainSystem?.reset();
+    this.shieldSystem?.reset();
     this.knifeSystem?.reset();
     const defMult = this.talentMultipliers.defenseMultiplier || 1;
     this.defenseHp = BALANCE_CONFIG.defense.baseHp * defMult;
@@ -1739,6 +1831,7 @@ export class GameEngine {
 
   /** 触发游戏胜利流程 */
   gameVictory() {
+    this.exportTrace('victory'); // 导出本局战斗采样数据
     // 保存关卡内累计的金币奖励到 victoryGoldReward（由结算界面动画展示后发放）
     this.victoryGoldReward = this.pendingRewards;
     this.pendingRewards = 0;
@@ -1860,13 +1953,25 @@ export class GameEngine {
     this.doWaveSpawn();
   }
 
-  /** 地铁精英教学对话完成：标记已读并恢复第5波生成（无倒计时，直接生成） */
+  /** 地铁精英教学对话完成：标记已读并恢复第1波生成（首波需走3-2-1倒计时以启动BGM） */
   resumeSpawnAfterEliteTutorial() {
     if (!this.eliteTutorialPause) return;
     this.eliteTutorialPause = false;
     this.onEliteTutorialPauseChange?.(false);
     try { localStorage.setItem('subway_elite_tutorial_seen', '1'); } catch { /* localStorage 不可用时忽略 */ }
-    // 第5波非首波，无倒计时，直接生成
+    // 第1波：先走3-2-1倒计时（倒计时开始时启动关卡BGM）
+    if (this.startCountdown()) return;
+    // 非首波（理论上不会走到，兜底）：直接生成
+    this.doWaveSpawn();
+  }
+
+  /** 地铁斩螂·110 教学对话完成：标记已读并恢复第4波生成（非首波，直接生成，无需倒计时） */
+  resumeSpawnAfterKnifeTutorial() {
+    if (!this.knifeTutorialPause) return;
+    this.knifeTutorialPause = false;
+    this.onKnifeTutorialPauseChange?.(false);
+    try { localStorage.setItem('subway_knife_tutorial_seen', '1'); } catch { /* localStorage 不可用时忽略 */ }
+    // 第4波（非首波）：直接生成，无需倒计时
     this.doWaveSpawn();
   }
 
@@ -1875,6 +1980,7 @@ export class GameEngine {
     // Guard: prevent multiple calls
     if (this.defeatTriggered) return;
     this.defeatTriggered = true;
+    this.exportTrace('defeat'); // 导出本局战斗采样数据
     // 失败：关卡内金币不发放，但已有金币池保留
     this.pendingRewards = 0;
     this.onPendingRewardUpdate?.(0);
@@ -1949,6 +2055,7 @@ export class GameEngine {
     this.updateArmorShieldCache();
     this.updatePlayer();
     this.roachAISystem!.update();
+    this.updateTrace();
     this.consumableSystem!.update(this.deltaTime);
     this.consumableSystem!.checkAutoUseConsumables();
     this.updateParticles();
@@ -1967,10 +2074,11 @@ export class GameEngine {
     }
     this.updateScreenShake();
     this.swatterSystem!.updateSwatter(this.deltaTime, this.player.x, this.player.y);
-    this.weaponSystem!.update(this.deltaTime, this.player, this.defenseLineY(), this.tutorialPauseSpawn || this.eliteTutorialPause);
-    // 地铁场景：列车自动碾压 + 斩螂·110 刀刃飞跃（精英教学对话期间暂停）
-    if (!this.eliteTutorialPause) {
-      this.trainSystem!.update(this.deltaTime, this.roaches);
+    this.weaponSystem!.update(this.deltaTime, this.player, this.defenseLineY(), this.tutorialPauseSpawn || this.eliteTutorialPause || this.knifeTutorialPause);
+    // 地铁场景：列车自动碾压 + 斩螂·110 刀刃飞跃（教学对话期间暂停）
+    if (!this.eliteTutorialPause && !this.knifeTutorialPause) {
+      // this.trainSystem!.update(this.deltaTime, this.roaches);
+      this.shieldSystem!.update(this.deltaTime, this.roaches);
     }
     this.knifeSystem!.update(this.deltaTime, this.roaches);
     this.aimingSystem!.updateAiming(this.time, this.width, this.defenseLineY(), this.player.y);
@@ -2061,7 +2169,7 @@ export class GameEngine {
     const p = this.player;
 
     // ===== 教程暂停：教程期间阻止所有玩家控制 =====
-    if (this.tutorialPauseSpawn || this.eliteTutorialPause) {
+    if (this.tutorialPauseSpawn || this.eliteTutorialPause || this.knifeTutorialPause) {
       p.isFiring = false; // 强制停止火焰喷射器
       this.audio.stopFire();
       p.x = Math.max(10, Math.min(this.width - 10, this.mouseX));
@@ -2195,7 +2303,10 @@ export class GameEngine {
     const gasCost = this.deltaTime * (p.powerBoostTimer > 0 ? 2 : 1); // 力量加成期间 2 倍燃气消耗
     const heatGain = this.deltaTime * 1.0;
     const powerBoostMult = p.powerBoostTimer > 0 ? 2 : 1;
-    const baseDamage = (this.difficulty === 'hard' ? 200 : 300) * this.deltaTime * p.damageMultiplier * powerBoostMult;
+    // 喷火枪：配置表 flamethrower 为总 DPS。火焰粒子区 DPS = 总DPS × (1 - 束占比)，
+    // 再经 fireZoneDpsMultiplier 还原为每帧传入 spawnConeFire 的 baseDamage。
+    const flameDps = (this.difficulty === 'hard' ? BALANCE_CONFIG.weaponDamage.flamethrower.hard : BALANCE_CONFIG.weaponDamage.flamethrower.easy);
+    const baseDamage = (flameDps * (1 - BALANCE_CONFIG.weaponDamage.flamethrowerBeamShare) / BALANCE_CONFIG.weaponDamage.fireZoneDpsMultiplier) * this.deltaTime * p.damageMultiplier * powerBoostMult;
     const range = p.fireRange * 0.5;
     const spreadAngle = (Math.PI / 15) * p.flameSpreadMultiplier;
     ParticleSpawner.spawnConeFire({ particles: this.particles, fireZones: this.fireZones, deltaTime: this.deltaTime, x: p.x, y: p.y, angle: -Math.PI / 2, range, baseDamage, type: 'fire' });
@@ -2727,6 +2838,10 @@ export class GameEngine {
       baseY = this.height * 0.3 + Math.random() * this.height * 0.2;
       // Start flying buzz loop (continuous while any flying roach is alive)
       this.audio.startFlyingBuzzLoop();
+    } else if (type === RoachType.SUBWAY_ELITE) {
+      // Subway elite roaches spawn at sides and fly across (like flying roaches)
+      baseX = Math.random() < 0.5 ? -25 : this.width + 25;
+      baseY = this.height * 0.35 + Math.random() * this.height * 0.2;
     } else if (type === RoachType.QUEEN) {
       baseX = this.width / 2 + (Math.random() - 0.5) * 100;
       baseY = this.height * 0.45;
@@ -2869,9 +2984,11 @@ export class GameEngine {
       r.armorHp = 20;
       r.maxArmorHp = 20;
     }
-    // Subway exclusive: tunnel worker init (armor spray cooldown)
+    // Subway exclusive: tunnel worker init (armor spray cooldown + shield follow state)
     if (type === RoachType.TUNNEL_WORKER) {
       r.armorSprayTimer = BALANCE_CONFIG.subway.armorSprayInterval;
+      r.shieldFollowTargetId = null;
+      r.shieldRepairTextTimer = 0;
     }
     // Subway exclusive: elite init (rail charge state)
     if (type === RoachType.SUBWAY_ELITE) {
@@ -2880,6 +2997,16 @@ export class GameEngine {
       r.chargeDir = 0;
       r.killedByTrain = false;
     }
+    // Subway exclusive: shield roach init (气体护盾满值 + 重建计时清零)
+    if (type === RoachType.SHIELD) {
+      r.shieldHp = BALANCE_CONFIG.subway.shieldMaxHp;
+      r.maxShieldHp = BALANCE_CONFIG.subway.shieldMaxHp;
+      r.shieldBrokenTimer = 0;
+      r.shieldHitFlash = 0;
+      r.shieldFollowTargetId = null;
+    }
+    // 采样：血量流入（含护甲）
+    this.traceSpawnHp += Math.max(0, r.hp) + Math.max(0, r.armorHp || 0);
     this.roaches.push(r);
     if (type === RoachType.QUEEN) this.bossSystem!.activeBosses++;
     return r;
@@ -3315,6 +3442,7 @@ export class GameEngine {
       case RoachType.MUTANT: break;
       case RoachType.TUNNEL_WORKER: this.economy.tunnelWorkerKills++; break;
       case RoachType.SUBWAY_ELITE: this.economy.subwayEliteKills++; break;
+      case RoachType.SHIELD: this.economy.shieldKills++; break;
     }
 
     // Update encyclopedia kill counts
@@ -3836,6 +3964,12 @@ export class GameEngine {
           const fireDmgMult2 = this.talentMultipliers.fireDamage || 1;
           r.burnDamage = wall.damagePerSecond * fireDmgMult2;
           r.inFire = true;
+          // 气体护盾：火墙对受保护目标承伤时，额外加倍侵蚀护盾
+          // （快照机制已等量侵蚀 1x，此处补足至 shieldFireZoneErosionMult 倍）
+          const wallProtector = ShieldSystem.findProtectingShield(this.roaches, r);
+          if (wallProtector) {
+            this.shieldSystem?.damageShield(wallProtector, dmg * (BALANCE_CONFIG.subway.shieldFireZoneErosionMult - 1), false);
+          }
         }
       }
 
@@ -4250,9 +4384,9 @@ export class GameEngine {
     this.renderRoaches(ctx);
 
     // 地铁场景：列车预警/列车序列帧渲染（列车覆盖在蟑螂之上，表现碾压）
-    this.trainSystem!.render(ctx, this._trainFrames);
-    // 地铁场景调试可视化：防线 / 贝塞尔曲线 / 车头碰撞圆
-    this.trainSystem!.renderDebug(ctx);
+    // this.trainSystem!.render(ctx, this._trainFrames);
+    // 地铁场景调试可视化：防线 / 贝塞尔曲线 / 车头碰撞圆（已关闭）
+    // this.trainSystem!.renderDebug(ctx);
     // 斩螂·110：飞跃中的刀刃
     this.knifeSystem!.render(ctx, this._dropImages?.['knife'] ?? null);
 
@@ -4554,12 +4688,15 @@ export class GameEngine {
       roachFlyingSuicideImg: this.roachFlyingSuicideImg, roachQueenImg: this.roachQueenImg,
       roachTunnelWorkerImg: this.roachTunnelWorkerImg,
       roachSubwayEliteImg: this.roachSubwayEliteImg,
+      roachShieldImg: this.roachShieldImg,
       nurseCastFrames: this.nurseCastFrames, mutantTransformFrames: this.mutantTransformFrames,
       imagesLoaded: this.imagesLoaded, time: this.time, deltaTime: this.deltaTime,
       bossBattle: this.bossBattle, bossAnimState: this.bossAnimState, bossAnimFrames: this.bossAnimFrames,
       onAddParticle: (p) => { this.particles.push(p); },
       onSpawnShockwaveRing: (x, y, count) => { ParticleSpawner.spawnShockwaveRing(this.particles,x, y, count); },
       isStuckByBoard: (id) => this.isStuckByBoard(id),
+      showShieldRange: this.showShieldRange,
+      onSpawnShieldAura: (x, y, hw) => { ParticleSpawner.spawnShieldAura(this.particles, x, y, hw); },
     }, ctx, this.roaches);
   }
 

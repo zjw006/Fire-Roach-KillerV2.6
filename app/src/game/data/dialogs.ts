@@ -108,8 +108,8 @@ export const DIALOG_CONFIGS: DialogConfig[] = [
 ];
 
 /**
- * 地铁第5波：精英蟑螂登场教学对话（战斗中触发，暂停生成）
- * @description 首次进入地铁第5波时弹出，介绍地铁蟑螂精英的冲刺机制与应对方式。
+ * 地铁第1波：精英蟑螂登场教学对话（战斗中触发，暂停生成）
+ * @description 首次进入地铁第1波时弹出，介绍地铁蟑螂精英的冲刺机制与应对方式。
  * 通过 localStorage 'subway_elite_tutorial_seen' 标记只显示一次。
  */
 export const SUBWAY_ELITE_TUTORIAL_DIALOG: DialogConfig = {
@@ -124,5 +124,25 @@ export const SUBWAY_ELITE_TUTORIAL_DIALOG: DialogConfig = {
     { speaker: '蟑叔', text: '还有个更爽的——铁轨上的列车会定时驶过，直接把拦路的蟑螂碾过去！不过它被碾后会"啪"地分裂成两只小蟑螂，记得补刀！', emotion: 'excited' },
     { speaker: '你', text: '分裂这么麻烦，那我用【斩螂·110】直接斩了它。' },
     { speaker: '蟑叔', text: '聪明！斩击一击必杀，不触发分裂！去吧，让它知道什么叫"到站不下车"的下场！', emotion: 'happy' },
+  ],
+};
+
+/**
+ * 地铁第4波：斩螂·110 对阵护盾蟑螂教学（战斗中触发，暂停生成）
+ * @description 首次进入地铁第4波（护盾蟑螂首登场）时弹出，教学斩螂·110 破盾机制。
+ * 通过 localStorage 'subway_knife_tutorial_seen' 标记只显示一次。
+ */
+export const SUBWAY_KNIFE_TUTORIAL_DIALOG: DialogConfig = {
+  sceneType: SceneType.SUBWAY,
+  title: '斩螂·110 破盾教学',
+  bgImage: '/assets/bg_subway.jpg',
+  lines: [
+    { speaker: '蟑叔', text: '看前面！那团淡青色的气体——是【护盾蟑螂】！它释放的气体护盾把身后的大片蟑螂都罩住了！', emotion: 'scared' },
+    { speaker: '蟑叔', text: '火焰直射被护盾挡住，根本烧不到后面的蟑螂！不过，护盾挡不住物理斩击！', emotion: 'serious' },
+    { speaker: '你', text: '【斩螂·110】？' },
+    { speaker: '蟑叔', text: '对！斩螂·110 是近战斩击，直接绕过气体护盾，跃向目标一击必杀！', emotion: 'excited' },
+    { speaker: '蟑叔', text: '优先斩杀护盾蟑螂——它是阵型核心，后面的隧道工会跟着它帮忙修盾。斩了它，盾墙就散了！', emotion: 'normal' },
+    { speaker: '你', text: '斩首行动，懂了。' },
+    { speaker: '蟑叔', text: '注意：其他伤害也会消耗护盾，但火焰被挡得最狠。用斩螂·110 直接秒掉护盾蟑螂，才是最快破阵的办法！上！', emotion: 'happy' },
   ],
 };

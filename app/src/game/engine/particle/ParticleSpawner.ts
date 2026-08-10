@@ -88,6 +88,94 @@ export class ParticleSpawner {
     }
   }
 
+  // ========== 护盾蟑螂气体光环粒子 ==========
+
+  /**
+   * 在护盾蟑螂下方生成持续的护盾能量粒子（气体光环效果）
+   * 使用 SHIELD 类型（渲染为圆环），每帧少量生成，营造脉冲能量场
+   * @param particles 粒子数组
+   * @param x 护盾蟑螂 X 坐标
+   * @param y 护盾蟑螂 Y 坐标（护盾起始线 = 本体下缘）
+   * @param hw 护盾矩形半宽
+   */
+  static spawnShieldAura(particles: Particle[], x: number, y: number, hw: number): void {
+    const cfg = BALANCE_CONFIG.particle.shieldAura;
+    const count = cfg.countPerFrame;
+
+    for (let i = 0; i < count; i++) {
+      // 在护盾矩形下缘水平随机分布
+      const radius = hw * (cfg.radiusMin + Math.random() * (cfg.radiusMax - cfg.radiusMin));
+      const px = x + (Math.random() - 0.5) * 2 * radius;
+      const py = y + (Math.random() - 0.5) * 6; // 微小 Y 抖动
+
+      const life = cfg.lifeMin + Math.random() * (cfg.lifeMax - cfg.lifeMin);
+      const size = cfg.sizeMin + Math.random() * (cfg.sizeMax - cfg.sizeMin);
+
+      particles.push({
+        x: px, y: py,
+        vx: 0, vy: 0, // 静止悬浮，不移动
+        life, maxLife: life,
+        size,
+        color: `hsla(${cfg.hue}, ${cfg.saturation}%, ${cfg.lightnessMin + Math.random() * (cfg.lightnessMax - cfg.lightnessMin)}%, ${cfg.alphaMin + Math.random() * (cfg.alphaMax - cfg.alphaMin)})`,
+        type: ParticleType.SHIELD,
+      });
+    }
+  }
+
+  // ========== 隧道工护甲喷涂粒子 ==========
+
+  /**
+   * 生成隧道工护甲喷涂的喷射流粒子（从隧道工向目标方向喷射）
+   * @param particles 粒子数组
+   * @param fromX 隧道工 X 坐标
+   * @param fromY 隧道工 Y 坐标
+   * @param toX 目标 X 坐标
+   * @param toY 目标 Y 坐标
+   */
+  static spawnArmorSprayStream(particles: Particle[], fromX: number, fromY: number, toX: number, toY: number): void {
+    const cfg = BALANCE_CONFIG.particle.armorSpray;
+    const baseAngle = Math.atan2(toY - fromY, toX - fromX);
+
+    for (let i = 0; i < cfg.streamCount; i++) {
+      const angle = baseAngle + (Math.random() - 0.5) * cfg.streamSpread;
+      const speed = cfg.streamSpeedMin + Math.random() * (cfg.streamSpeedMax - cfg.streamSpeedMin);
+      const life = cfg.streamLifeMin + Math.random() * (cfg.streamLifeMax - cfg.streamLifeMin);
+      const size = cfg.streamSizeMin + Math.random() * (cfg.streamSizeMax - cfg.streamSizeMin);
+      const c = cfg.streamColor;
+      const color = `rgba(${Math.round(c.rMin + Math.random() * (c.rMax - c.rMin))}, ${Math.round(c.gMin + Math.random() * (c.gMax - c.gMin))}, ${Math.round(c.bMin + Math.random() * (c.bMax - c.bMin))}, ${c.aMin + Math.random() * (c.aMax - c.aMin)})`;
+
+      particles.push({
+        x: fromX, y: fromY,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life, maxLife: life,
+        size,
+        color,
+        type: ParticleType.SPARK,
+      });
+    }
+  }
+
+  /**
+   * 在目标头顶生成 + 号治疗粒子（表示获得护甲）
+   * @param particles 粒子数组
+   * @param x 目标 X 坐标
+   * @param y 目标 Y 坐标
+   */
+  static spawnArmorHealPlus(particles: Particle[], x: number, y: number): void {
+    const cfg = BALANCE_CONFIG.particle.armorSpray;
+    particles.push({
+      x, y: y - 40, // 头顶偏移
+      vx: 0, vy: cfg.plusVy,
+      life: cfg.plusLife, maxLife: cfg.plusLife,
+      size: cfg.plusSize,
+      color: cfg.plusColor,
+      type: ParticleType.SPARK,
+      text: '+',
+      textColor: cfg.plusColor,
+    });
+  }
+
   // ========== 锥形火焰粒子 ==========
 
   /**

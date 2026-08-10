@@ -98,7 +98,10 @@ export const BALANCE_ITEMS = {
   // ===== 武器伤害 =====
   // 不同难度下的武器伤害值，easy 约 1.5x hard
   weaponDamage: {
-    flamethrower: { easy: 45, hard: 30 }, // 火焰喷射器基础伤害
+    // 喷火枪：火焰总 DPS（每秒真实伤害，近端满伤害、无天赋、无火力全开）。
+    // 由两套机制分摊：火焰束(碰撞)伤害占 flamethrowerBeamShare，火焰粒子区占剩余部分。
+    flamethrower: { easy: 3600, hard: 2400 },
+    flamethrowerBeamShare: 0.75, // 火焰束伤害占比（束 DPS = 总DPS × 此比例，其余为火焰粒子区 DPS）
     poison: { easy: 20, hard: 12 },        // 毒雾每跳伤害
     shotgun: { easy: 50, hard: 35 },       // 散弹单发伤害
     molotov: { easy: 40, hard: 25 },       // 燃烧瓶基础伤害
@@ -424,10 +427,23 @@ export const BALANCE_ITEMS = {
     hardModeRewardPenalty: 0.8,  // 困难模式奖励削减系数（80%）
   },
 
-  // ===== 地铁场景：列车系统（自动定时驶过） =====
-  // 列车每隔 autoTrainInterval 秒自动驶过一次，驶过前 warningTime 秒在轨道起点闪烁预警提示玩家
+  // ===== 地铁场景：列车系统（场景被动事件） =====
+  // 列车按每波时刻表自动驶过（无需玩家操作），驶过前 warningTime 秒在轨道起点闪烁预警提示玩家。
+  // 时刻表时间为波次开始（doWaveSpawn）后的秒数；波次提前清完时取消该波剩余列车。
   train: {
-    autoTrainInterval: 25,         // 列车自动驶过间隔（秒，从进入地铁场景起计时）
+    // 每波列车时刻表（秒，从波次生成起算，升序；未列出的波次回退到第 10 波配置）
+    waveSchedule: {
+      1: [],
+      2: [15],
+      3: [10, 25],
+      4: [8, 20],
+      5: [12],
+      6: [8, 18, 28],
+      7: [6, 14, 22],
+      8: [5, 15, 25],
+      9: [6, 16, 26],
+      10: [5, 13, 21, 29],
+    } as Record<number, readonly number[]>,
     warningTime: 3,                // 列车驶过前的预警时长（秒，轨道起点闪烁提示）
     railYRatios: [0.34, 0.5, 0.66] as readonly number[], // 三条铁轨 Y 比例（相对防线高度）
     bandHalfHeight: 46,            // 碾压判定半高（像素）
@@ -448,7 +464,7 @@ export const BALANCE_ITEMS = {
     trainHeadOffset: 0,            // 车头圆心沿曲线切线方向的前移偏移（像素）
   },
 
-  // ===== 地铁场景：隧道工 / 精英 / 斩螂·110 =====
+  // ===== 地铁场景：隧道工 / 精英 / 护盾蟑螂 / 斩螂·110 =====
   subway: {
     // 隧道工蟑螂
     armorSprayInterval: 6,         // 护甲喷涂间隔（秒）
@@ -458,6 +474,21 @@ export const BALANCE_ITEMS = {
     eliteChargeDelay: 2,           // 出场后进入冲刺的延迟（秒）
     eliteChargeSpeed: 460,         // 冲刺速度（像素/秒）
     eliteChargeEdgeMargin: 30,     // 冲刺到屏幕边缘停止的余量（像素）
+    // 护盾蟑螂（气体护盾）
+    shieldMaxHp: 200,              // 气体护盾容量
+    shieldRegenPerSec: 5,          // 护盾完好时自然恢复（点/秒）
+    shieldRebuildDelay: 10,        // 护盾破碎后重新生成延迟（秒）
+    shieldRectHalfWidth: 100,      // 护盾矩形保护区半宽（像素，总宽200）
+    shieldRectHeight: 180,         // 护盾矩形保护区高度（像素，从护盾蟑螂向上延伸）
+    shieldFireZoneErosionMult: 2,  // 火墙对护盾的侵蚀倍率
+    shieldRepairPerSec: 25,        // 隧道工修理护盾速度（点/秒）
+    shieldRepairRange: 150,        // 隧道工修理射程（像素）
+    workerFollowStopDist: 100,     // 隧道工跟随护盾蟑螂的停留距离（像素）
+    // 盾墙推进阵型（FormationSystem）
+    formationLateralRange: 120,    // 编队横向容许距离（像素，随从与护盾锚点的横向偏移上限）
+    formationSpeedBindMult: 1.05,  // 编队速度绑定倍率（随从速度钳制到锚点速度 × 此倍率）
+    formationMoveSpeedMult: 2.5,   // 编队成员向护盾后方移动的横向速度倍率（快速归位）
+    formationBreakDist: 80,        // 距防线此距离内解除编队（像素）
     // 斩螂·110
     knifeDashDuration: 0.18,       // 刀刃飞跃单程时长（秒）
     knifeKillDelay: 0.18,          // 到达目标后击杀延迟（秒）

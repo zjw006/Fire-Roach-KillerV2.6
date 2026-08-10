@@ -1,7 +1,8 @@
 /**
  * @fileoverview 地铁场景专属：列车系统模块
  * @description
- * 列车每隔一段时间自动驶过（无需玩家操作），驶过前在轨道起点闪烁预警提示玩家。
+ * 列车按每波时刻表自动驶过（场景被动事件，无需玩家操作），驶过前在轨道起点闪烁预警提示玩家。
+ * 时刻表时间从波次生成（doWaveSpawn）起算；波次提前清完时取消该波剩余列车。
  * 列车沿贝塞尔曲线从左向右贯穿场景，碾压秒杀路径上的全部蟑螂（无视护甲，
  * 击杀照常发放金币/击杀数/成就计数；地铁精英被碾压后分裂为 2 只小蟑螂，由引擎击杀管线处理）。
  */
@@ -36,16 +37,19 @@ export class TrainSystem {
   private config: TrainSystemConfig;
   /** 横扫中的列车 */
   private trains: TrainSweep[] = [];
-  /** 自动列车计时器（秒，倒计时到 warningTime 时进入预警，到 0 时生成列车） */
-  private trainTimer: number = 0;
+  /** 当前波次已流逝时间（秒，从波次生成起算，仅 PLAYING 状态推进） */
+  private waveTime: number = 0;
+  /** 当前波次待触发的列车时刻队列（升序，秒） */
+  private pendingTimes: number[] = [];
   /** 是否处于预警阶段（轨道起点闪烁提示） */
   private warning: boolean = false;
+  /** 预警已持续时间（秒，达到 warningTime 时生成列车） */
+  private warningElapsed: number = 0;
   /** 渲染时间（用于预警闪烁动画） */
   private time: number = 0;
 
   constructor(config: TrainSystemConfig) {
     this.config = config;
-    this.trainTimer = BALANCE_CONFIG.train.autoTrainInterval;
   }
 
   updateConfig(partial: Partial<TrainSystemConfig>): void {
@@ -55,8 +59,27 @@ export class TrainSystem {
   /** 重置（resetGame 时调用） */
   reset(): void {
     this.trains = [];
-    this.trainTimer = BALANCE_CONFIG.train.autoTrainInterval;
+    this.waveTime = 0;
+    this.pendingTimes = [];
     this.warning = false;
+    this.warningElapsed = 0;
+  }
+
+  /** 波次开始（doWaveSpawn 时由 WaveManager 通知）：加载该波列车时刻表 */
+  onWaveStart(wave: number): void {
+    const schedule = BALANCE_CONFIG.train.waveSchedule;
+    const times = schedule[wave] ?? schedule[10]; // 未配置的波次回退到第 10 波（终局频次）
+    this.pendingTimes = [...times].sort((a, b) => a - b);
+    this.waveTime = 0;
+    this.warning = false;
+    this.warningElapsed = 0;
+  }
+
+  /** 波次清空（WaveManager 通知）：取消该波剩余列车（在场列车继续驶完） */
+  onWaveCleared(): void {
+    this.pendingTimes = [];
+    this.warning = false;
+    this.warningElapsed = 0;
   }
 
   /** 铁轨中心 Y 坐标 */
@@ -72,17 +95,22 @@ export class TrainSystem {
     const cfg = BALANCE_CONFIG.train;
 
     if (this.config.getGameState() === GameState.PLAYING && this.config.getCurrentScene() === SceneType.SUBWAY) {
-      // ===== 自动列车计时：先进入预警阶段，预警结束生成列车 =====
-      if (this.trains.length === 0) {
-        this.trainTimer -= deltaTime;
-        // 进入预警阶段（剩余 warningTime 秒时闪烁提示）
-        if (!this.warning && this.trainTimer <= cfg.warningTime && this.trainTimer > 0) {
-          this.warning = true;
-          const start = cfg.trainStart;
-          this.config.onAddFloatingText(start.x * this.wr + 60, start.y - 40, TEXT_CONFIG.combat.trainWarning.text, TEXT_CONFIG.combat.trainWarning.color);
-        }
-        // 预警结束，生成列车
-        if (this.trainTimer <= 0) {
+      // ===== 每波时刻表调度：波次时间推进，到点前 warningTime 秒进入预警 =====
+      this.waveTime += deltaTime;
+      const nextTime = this.pendingTimes[0];
+
+      // 进入预警阶段（到达 触发时刻 - warningTime 时闪烁提示）
+      if (!this.warning && nextTime !== undefined && this.trains.length === 0
+          && this.waveTime >= nextTime - cfg.warningTime) {
+        this.warning = true;
+        this.warningElapsed = this.waveTime - (nextTime - cfg.warningTime);
+        const start = cfg.trainStart;
+        this.config.onAddFloatingText(start.x * this.wr + 60, start.y - 40, TEXT_CONFIG.combat.trainWarning.text, TEXT_CONFIG.combat.trainWarning.color);
+      }
+      // 预警结束，生成列车
+      if (this.warning) {
+        this.warningElapsed += deltaTime;
+        if (this.warningElapsed >= cfg.warningTime) {
           this.trains.push({
             railIndex: 0,
             y: cfg.trainStart.y,
@@ -90,8 +118,9 @@ export class TrainSystem {
             frameTimer: 0,
             active: true,
           });
+          this.pendingTimes.shift();
           this.warning = false;
-          this.trainTimer = cfg.autoTrainInterval;
+          this.warningElapsed = 0;
           this.config.onAddFloatingText(this.config.getCanvasWidth() / 2, cfg.trainStart.y - 70, TEXT_CONFIG.combat.trainIncoming.text, TEXT_CONFIG.combat.trainIncoming.color);
           this.config.onScreenShake(6);
           this.config.onPlaySound('train');

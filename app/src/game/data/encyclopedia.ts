@@ -98,9 +98,16 @@ const ENCYCLOPEDIA_META: Partial<Record<RoachType, {
   [RoachType.SUBWAY_ELITE]: {
     id: 'roach_subway_elite',
     image: '/assets/roach_subway_elite.png',
-    description: '沿铁轨高速冲刺的精英蟑螂，冲刺时无视蟑螂贴板。被列车碾压后会分裂为2只普通小蟑螂。',
-    funFact: '它是地铁蟑螂界的短跑冠军，梦想是参加奥运会。可惜每次冲刺的终点不是火墙就是列车。',
-    special: '轨道冲刺：出场2秒后沿铁轨高速冲刺；被列车碾压后分裂为2只小蟑螂；斩螂·110拦截不触发分裂',
+    description: '飞行化的精英蟑螂，速度极快，不受地面阻挡影响。具有闪避俯冲能力，会突然俯冲躲避火焰攻击。',
+    funFact: '它是地铁蟑螂界的天选之子，经过基因改造后获得了飞行能力。但它最怕的还是杀虫剂。',
+    special: '飞行：不受地面阻挡影响；闪避俯冲：检测到火焰时突然俯冲闪避',
+  },
+  [RoachType.SHIELD]: {
+    id: 'roach_shield',
+    image: '/assets/roach_shield01.png',
+    description: '释放淡青色气体护盾的蟑螂，矩形护盾可保护身后同伴免疫火焰直射。护盾可被任何伤害侵蚀，破碎后10秒重组。',
+    funFact: '它在地铁通风管道里吸了二十年的废气，如今一开腔就是一道移动防空网。同伴们亲切地称它为"行走的防毒面具"。',
+    special: '气体护盾：身后矩形范围内同伴免疫火焰直射；护盾200点，所有伤害均可侵蚀；破碎后10秒重组',
   },
 };
 

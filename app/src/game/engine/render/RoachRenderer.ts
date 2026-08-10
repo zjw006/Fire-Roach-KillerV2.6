@@ -23,6 +23,8 @@ export interface RoachRendererConfig {
   roachTunnelWorkerImg: HTMLImageElement | null;
   /** 地铁场景：地铁精英贴图（独立贴图 roach_subway_elite.png） */
   roachSubwayEliteImg: HTMLImageElement | null;
+  /** 地铁场景：护盾蟑螂贴图（roach_shield01.png） */
+  roachShieldImg: HTMLImageElement | null;
   nurseCastFrames: (HTMLImageElement | null)[];
   mutantTransformFrames: (HTMLImageElement | null)[];
   imagesLoaded: boolean;
@@ -40,6 +42,14 @@ export interface RoachRendererConfig {
   onAddParticle: (particle: Particle) => void;
   onSpawnShockwaveRing: (x: number, y: number, count: number) => void;
   isStuckByBoard: (id: number) => boolean;
+
+  // 调试开关
+  /** 是否显示护盾蟑螂的护盾范围框（调试用） */
+  showShieldRange: boolean;
+
+  // 护盾粒子特效回调
+  /** 生成护盾蟑螂气体光环粒子（渲染时逐帧调用） */
+  onSpawnShieldAura?: (x: number, y: number, hw: number) => void;
 }
 
 export class RoachRenderer {
@@ -192,6 +202,9 @@ export class RoachRenderer {
       } else if (r.type === RoachType.SUBWAY_ELITE && config.roachSubwayEliteImg) {
         // 地铁精英使用独立贴图 roach_subway_elite.png
         ctx.drawImage(config.roachSubwayEliteImg, -w / 2, -h / 2, w, h);
+      } else if (r.type === RoachType.SHIELD && config.roachShieldImg) {
+        // 护盾蟑螂使用贴图 roach_shield01.png
+        ctx.drawImage(config.roachShieldImg, -w / 2, -h / 2, w, h);
       } else if (r.type === RoachType.QUEEN && config.roachQueenImg) {
         RoachRenderer.renderBossBody(config, ctx, r, w, h, size);
       } else {
@@ -978,11 +991,47 @@ export class RoachRenderer {
       ctx.restore();
     }
 
+    // ===== SUBWAY EXCLUSIVE: 护盾蟑螂气体护盾（前方直线 + 矩形拖尾） =====
+    // 起始线（直线边界）在本体下缘；矩形向护盾蟑螂后方（上方）延伸，与 isInShieldSector 判定区一致
+    if (config.showShieldRange && r.type === RoachType.SHIELD && r.state === RoachState.ALIVE && (r.shieldHp ?? 0) > 0) {
+      const sub = BALANCE_CONFIG.subway;
+      const hw = sub.shieldRectHalfWidth;   // 矩形半宽
+      const rh = sub.shieldRectHeight;      // 矩形高度（向后方/上方延伸）
+      const originY = r.y + def.size * 0.5; // 护盾起始线 = 本体下缘
+      const hpRatio = Math.max(0, (r.shieldHp ?? 0) / (r.maxShieldHp || 1));
+      const flash = Math.min(1, (r.shieldHitFlash ?? 0) / 0.15);
+      const pulse = 0.16 + Math.sin(config.time * 2.5 + r.id) * 0.04;
+      const alpha = (pulse + flash * 0.25) * (0.4 + hpRatio * 0.6);
+
+      ctx.save();
+
+      // --- 1. 矩形填充（从起始线向上延伸，向尾部渐隐） ---
+      const rectGrad = ctx.createLinearGradient(r.x, originY, r.x, originY - rh);
+      rectGrad.addColorStop(0, `rgba(103, 232, 249, ${alpha * 0.5})`);
+      rectGrad.addColorStop(0.6, `rgba(103, 232, 249, ${alpha * 0.28})`);
+      rectGrad.addColorStop(1, 'rgba(103, 232, 249, 0)');
+      ctx.fillStyle = rectGrad;
+      ctx.fillRect(r.x - hw, originY - rh, hw * 2, rh);
+
+      // --- 2. 直线矩形线框（四边笔直：前边/后边/两侧） ---
+      ctx.strokeStyle = `rgba(165, 243, 252, ${Math.min(1, alpha * 1.8 + flash * 0.3)})`;
+      ctx.lineWidth = 1.5 + flash * 1.5;
+      ctx.strokeRect(r.x - hw, originY - rh, hw * 2, rh);
+
+      ctx.restore();
+    }
+
+    // 护盾气体光环粒子（独立于范围框显示，始终生成）
+    if (r.type === RoachType.SHIELD && r.state === RoachState.ALIVE && (r.shieldHp ?? 0) > 0) {
+      const hw = BALANCE_CONFIG.subway.shieldRectHalfWidth;
+      config.onSpawnShieldAura?.(r.x, r.y + def.size * 0.5, hw);
+    }
+
     // ===== HP bar + Armor bar: show for ALL roaches that have armor buff =====
     const barW = r.isBoss ? 60 : Math.max(32, (r.size ?? 30) * 0.5);
     const barH = r.isBoss ? 8 : 5;
     // Always show HP bar for armored/shielded roaches, large/boss roaches
-    const showHpBar = r.armorHp > 0 || r.isBoss || r.type === RoachType.SMALL || r.type === RoachType.LARGE || r.type === RoachType.ARMORED || r.type === RoachType.SPLITTING || r.type === RoachType.NURSE || r.type === RoachType.TIMED_SUICIDE || r.type === RoachType.TUNNEL_WORKER || r.type === RoachType.SUBWAY_ELITE;
+    const showHpBar = r.armorHp > 0 || r.isBoss || r.type === RoachType.SMALL || r.type === RoachType.LARGE || r.type === RoachType.ARMORED || r.type === RoachType.SPLITTING || r.type === RoachType.NURSE || r.type === RoachType.TIMED_SUICIDE || r.type === RoachType.TUNNEL_WORKER || r.type === RoachType.SUBWAY_ELITE || r.type === RoachType.SHIELD;
     if (showHpBar) {
       const hpRatio = Math.max(0, r.hp / r.maxHp);
       ctx.fillStyle = 'rgba(0,0,0,0.6)';
@@ -1007,6 +1056,32 @@ export class RoachRenderer {
       ctx.strokeStyle = 'rgba(147, 197, 253, 0.6)';
       ctx.lineWidth = 1;
       ctx.strokeRect(r.x - barW / 2, r.y - size - 23, barW, 4);
+    }
+
+    // ===== 气体护盾条：护盾蟑螂专属（护甲条上方一行，避免与喷涂护甲重叠） =====
+    if (r.type === RoachType.SHIELD && r.state === RoachState.ALIVE && (r.maxShieldHp ?? 0) > 0) {
+      const shieldRatio = Math.max(0, (r.shieldHp ?? 0) / (r.maxShieldHp || 1));
+      const broken = (r.shieldBrokenTimer ?? 0) > 0;
+      // 护盾条背景
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.fillRect(r.x - barW / 2, r.y - size - 31, barW, 4);
+      if (!broken) {
+        // 护盾填充（青色渐变）
+        const shieldGrad = ctx.createLinearGradient(r.x - barW / 2, 0, r.x + barW / 2, 0);
+        shieldGrad.addColorStop(0, '#164e63');
+        shieldGrad.addColorStop(1, '#67e8f9');
+        ctx.fillStyle = shieldGrad;
+        ctx.fillRect(r.x - barW / 2, r.y - size - 31, barW * shieldRatio, 4);
+      } else {
+        // 破碎中：暗红重建进度条
+        const rebuildRatio = Math.max(0, 1 - (r.shieldBrokenTimer ?? 0) / BALANCE_CONFIG.subway.shieldRebuildDelay);
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.6)';
+        ctx.fillRect(r.x - barW / 2, r.y - size - 31, barW * rebuildRatio, 4);
+      }
+      // 护盾条边框
+      ctx.strokeStyle = 'rgba(103, 232, 249, 0.6)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(r.x - barW / 2, r.y - size - 31, barW, 4);
     }
 
     // Flying indicator (including flying suicide)

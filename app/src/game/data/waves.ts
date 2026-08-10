@@ -104,20 +104,20 @@ export const WAVE_CONFIGS_SUBWAY: WaveConfig[] = [
   { wave: 2, smallCount: 0, largeCount: 22, flyingCount: 3, armoredCount: 2, splittingCount: 0, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, eliteCount: 4, speed: 0.82, interval: 6, clusterChance: 0.2 },
   // 波3：首次遇到隧道工 + 首只自爆，需吹走隧道工同时吹蟑螂过去
   { wave: 3, smallCount: 0, largeCount: 24, flyingCount: 4, armoredCount: 0, splittingCount: 0, suicideCount: 1, flyingSuicideCount: 0, queenCount: 0, tunnelWorkerCount: 1, eliteCount: 5, speed: 0.86, interval: 5, clusterChance: 0.2 },
-  // 波4：装甲群 + 自爆，考验双区域控制
-  { wave: 4, smallCount: 0, largeCount: 20, flyingCount: 5, armoredCount: 4, splittingCount: 0, suicideCount: 2, flyingSuicideCount: 0, queenCount: 0, tunnelWorkerCount: 1, eliteCount: 5, speed: 0.88, interval: 5, clusterChance: 0.25 },
+  // 波4：护盾蟑螂首登场（盾墙推进阵型首现）+ 装甲群，考验破盾 + 列车时机
+  { wave: 4, smallCount: 0, largeCount: 20, flyingCount: 5, armoredCount: 4, splittingCount: 0, suicideCount: 2, flyingSuicideCount: 0, queenCount: 0, tunnelWorkerCount: 1, eliteCount: 5, shieldCount: 2, speed: 0.88, interval: 5, clusterChance: 0.25 },
   // 波5：精英冲锋 + 首只飞行自爆，火墙/风扇控制 + 列车碾压
-  { wave: 5, smallCount: 0, largeCount: 24, flyingCount: 5, armoredCount: 2, splittingCount: 0, suicideCount: 2, flyingSuicideCount: 1, queenCount: 0, tunnelWorkerCount: 1, eliteCount: 7, speed: 0.90, interval: 5, clusterChance: 0.25 },
-  // 波6：高压——精英冲刺 + 隧道工喷涂 + 护甲群 + 自爆
-  { wave: 6, smallCount: 0, largeCount: 18, flyingCount: 6, armoredCount: 4, splittingCount: 0, suicideCount: 2, flyingSuicideCount: 1, queenCount: 0, tunnelWorkerCount: 2, eliteCount: 7, speed: 0.93, interval: 4, clusterChance: 0.3 },
-  // 波7：分神——精英群 + 隧道工同时压场
-  { wave: 7, smallCount: 0, largeCount: 26, flyingCount: 6, armoredCount: 3, splittingCount: 0, suicideCount: 2, flyingSuicideCount: 1, queenCount: 0, tunnelWorkerCount: 2, eliteCount: 9, speed: 0.96, interval: 4, clusterChance: 0.3 },
-  // 波8：高压护甲群 + 精英群 + 自爆压制
-  { wave: 8, smallCount: 0, largeCount: 22, flyingCount: 7, armoredCount: 5, splittingCount: 0, suicideCount: 2, flyingSuicideCount: 1, queenCount: 0, tunnelWorkerCount: 2, eliteCount: 9, speed: 0.99, interval: 4, clusterChance: 0.35 },
-  // 波9：持续高压——三隧道工喷涂 + 精英群
-  { wave: 9, smallCount: 0, largeCount: 28, flyingCount: 7, armoredCount: 4, splittingCount: 0, suicideCount: 2, flyingSuicideCount: 1, queenCount: 0, tunnelWorkerCount: 3, eliteCount: 10, speed: 1.02, interval: 3, clusterChance: 0.35 },
-  // 波10：终局——精英群/护甲群压场，隧道工全线喷涂
-  { wave: 10, smallCount: 0, largeCount: 24, flyingCount: 8, armoredCount: 6, splittingCount: 0, suicideCount: 2, flyingSuicideCount: 1, queenCount: 0, tunnelWorkerCount: 3, eliteCount: 11, speed: 1.05, interval: 3, clusterChance: 0.4 },
+  { wave: 5, smallCount: 0, largeCount: 24, flyingCount: 5, armoredCount: 2, splittingCount: 0, suicideCount: 2, flyingSuicideCount: 1, queenCount: 0, tunnelWorkerCount: 1, eliteCount: 7, shieldCount: 2, speed: 0.90, interval: 5, clusterChance: 0.25 },
+  // 波6：高压——精英冲刺 + 护盾阵型 + 隧道工喷涂 + 护甲群 + 自爆
+  { wave: 6, smallCount: 0, largeCount: 18, flyingCount: 6, armoredCount: 4, splittingCount: 0, suicideCount: 2, flyingSuicideCount: 1, queenCount: 0, tunnelWorkerCount: 2, eliteCount: 7, shieldCount: 2, speed: 0.93, interval: 4, clusterChance: 0.3 },
+  // 波7：分神——精英群 + 护盾阵型 + 隧道工同时压场
+  { wave: 7, smallCount: 0, largeCount: 26, flyingCount: 6, armoredCount: 3, splittingCount: 0, suicideCount: 2, flyingSuicideCount: 1, queenCount: 0, tunnelWorkerCount: 2, eliteCount: 9, shieldCount: 3, speed: 0.96, interval: 4, clusterChance: 0.3 },
+  // 波8：高压护甲群 + 精英群 + 护盾阵型 + 自爆压制
+  { wave: 8, smallCount: 0, largeCount: 22, flyingCount: 7, armoredCount: 5, splittingCount: 0, suicideCount: 2, flyingSuicideCount: 1, queenCount: 0, tunnelWorkerCount: 2, eliteCount: 9, shieldCount: 3, speed: 0.99, interval: 4, clusterChance: 0.35 },
+  // 波9：持续高压——三隧道工喷涂 + 三护盾阵型 + 精英群
+  { wave: 9, smallCount: 0, largeCount: 28, flyingCount: 7, armoredCount: 4, splittingCount: 0, suicideCount: 2, flyingSuicideCount: 1, queenCount: 0, tunnelWorkerCount: 3, eliteCount: 10, shieldCount: 3, speed: 1.02, interval: 3, clusterChance: 0.35 },
+  // 波10：终局——精英群/护甲群/护盾阵型压场，隧道工全线喷涂
+  { wave: 10, smallCount: 0, largeCount: 24, flyingCount: 8, armoredCount: 6, splittingCount: 0, suicideCount: 2, flyingSuicideCount: 1, queenCount: 0, tunnelWorkerCount: 3, eliteCount: 11, shieldCount: 4, speed: 1.05, interval: 3, clusterChance: 0.4 },
 ];
 
 // 超市 6 波（包含女王）

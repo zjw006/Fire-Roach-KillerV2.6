@@ -7,6 +7,12 @@ import { GameState, RoachType, RoachState, type Roach, type Player, type TripleF
 import { ENEMY_DEFS, BALANCE_CONFIG, TEXT_CONFIG } from '../../data';
 
 /**
+ * 火焰束伤害按帧累加（burnDamage）、再按秒结算，故 DPS = 单帧伤害 × 帧率。
+ * 这里用目标帧率 60 将配置表中的"总 DPS"换算为"单帧伤害"。
+ */
+const FRAME_RATE = 60;
+
+/**
  * 碰撞检测系统配置接口
  */
 export interface CollisionSystemConfig {
@@ -33,6 +39,10 @@ export interface CollisionSystemConfig {
   onScreenShake?: (amount: number) => void;
   /** 自杀爆炸处理 */
   onSuicideExplode?: (roach: Roach, index: number) => void;
+  /** 查询保护目标的气体护盾蟑螂（地铁护盾矩形机制，无保护返回 null） */
+  onFindProtectingShield?: (target: Roach) => Roach | null;
+  /** 侵蚀气体护盾（火焰拦截伤害转移，showBlockText 控制格挡文字） */
+  onErodeShield?: (shield: Roach, amount: number, showBlockText: boolean) => void;
 }
 
 /**
@@ -91,7 +101,8 @@ export class CollisionSystem {
     const isHard = this.config.difficulty === 'hard';
     const wd = BALANCE_CONFIG.weaponDamage;
     this.weaponDamageConfigs = {
-      flamethrower: { baseDamage: isHard ? wd.flamethrower.hard : wd.flamethrower.easy, falloffFactor: 0.7 },
+      // 喷火枪：配置表 flamethrower 为总 DPS。火焰束单帧伤害 = 束 DPS / 帧率，束 DPS = 总DPS × flamethrowerBeamShare
+      flamethrower: { baseDamage: (isHard ? wd.flamethrower.hard : wd.flamethrower.easy) * wd.flamethrowerBeamShare / FRAME_RATE, falloffFactor: 0.7 },
       sticky: { baseDamage: 0, falloffFactor: 0 },
       poison: { baseDamage: isHard ? wd.poison.hard : wd.poison.easy, falloffFactor: 0.7 },
       shotgun: { baseDamage: isHard ? wd.shotgun.hard : wd.shotgun.easy, falloffFactor: 0.5 },
@@ -142,6 +153,13 @@ export class CollisionSystem {
           if (flyDist < flyHitWidth && vertDist > 0 && vertDist < maxRange * colCfg.flyingRangeMultiplier) {
             const falloff = 1 - (vertDist / (maxRange * colCfg.flyingFalloffRange)) * colCfg.flameFalloffFactor;
             const damage = this.getWeaponDamage(player.currentWeapon) * player.damageMultiplier * falloff * gun.damageMult;
+            // 气体护盾拦截：矩形保护内的目标免疫火焰直射，伤害转移至护盾
+            const protector = this.config.onFindProtectingShield?.(r);
+            if (protector) {
+              this.config.onErodeShield?.(protector, damage, true);
+              if (Math.random() < 0.25) this.config.onSpawnSpark?.(r.x, r.y, 2);
+              continue;
+            }
             this.applyWeaponEffect(r, player.currentWeapon);
             r.burnDamage += damage;
             r.inFire = true;
@@ -161,6 +179,13 @@ export class CollisionSystem {
 
           if (r.type === RoachType.QUEEN) {
             damage *= (1 - colCfg.bossDamageResist);
+          }
+          // 气体护盾拦截：矩形保护内的目标免疫火焰直射，伤害转移至护盾
+          const protector = this.config.onFindProtectingShield?.(r);
+          if (protector) {
+            this.config.onErodeShield?.(protector, damage, true);
+            if (Math.random() < 0.25) this.config.onSpawnSpark?.(r.x, r.y, 2);
+            continue;
           }
           this.applyWeaponEffect(r, player.currentWeapon);
           r.burnDamage += damage;
@@ -243,6 +268,7 @@ export class CollisionSystem {
       case RoachType.QUEEN: return isHard ? dbd.queen.hard : dbd.queen.easy;
       case RoachType.TUNNEL_WORKER: return isHard ? dbd.tunnelWorker.hard : dbd.tunnelWorker.easy;
       case RoachType.SUBWAY_ELITE: return isHard ? dbd.subwayElite.hard : dbd.subwayElite.easy;
+      case RoachType.SHIELD: return isHard ? dbd.shield.hard : dbd.shield.easy;
       default: return 0;
     }
   }

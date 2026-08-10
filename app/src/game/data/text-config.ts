@@ -116,6 +116,11 @@ export const TEXT_CONFIG = {
     eliteCharge: { text: '轨道冲刺!', color: '#f97316' },
     eliteBroken: { text: '冲刺被打断!', color: '#fbbf24' },
     eliteSplit: { text: '分裂x2!', color: '#fb923c' },
+    // 地铁场景：护盾蟑螂气体护盾
+    shieldGasBlock: { text: '格挡!', color: '#67e8f9' },
+    shieldBreak: { text: '护盾破碎!', color: '#fbbf24' },
+    shieldRebuild: { text: '护盾重组!', color: '#67e8f9' },
+    shieldRepair: { text: '护盾修理!', color: '#a8a29e' },
     knifeKill: { text: '一击必杀!', color: '#e2e8f0' },
     knifeNoTarget: { text: '没有可斩的目标!', color: '#9ca3af' },
     disintegrate: { text: '解体!', color: '#88ccff' },

@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>蟑螂杀手·难度 vs 火力 对比曲线</title>
+<style>
+  body { margin:0; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background:#0f1117; color:#e5e7eb; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 24px 16px 60px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color:#9ca3af; font-size: 13px; margin-bottom: 18px; line-height:1.6; }
+  .card { background:#171a23; border:1px solid #262b38; border-radius:12px; padding:16px 18px; margin-bottom: 18px; }
+  .legend { display:flex; gap:22px; flex-wrap:wrap; margin-bottom:10px; font-size:13px; }
+  .legend span { display:inline-flex; align-items:center; gap:6px; }
+  .dot { width:12px; height:3px; border-radius:2px; display:inline-block; }
+  canvas { width:100%; height:auto; display:block; background:#0f1117; border:1px solid #262b38; border-radius:8px; }
+  table { width:100%; border-collapse:collapse; font-size:12px; margin-top:6px; }
+  th, td { border:1px solid #262b38; padding:5px 8px; text-align:right; }
+  th { background:#1c202b; }
+  td:first-child, th:first-child { text-align:left; }
+  .hi { color:#f87171; font-weight:600; }
+  .note { font-size:12px; color:#9ca3af; margin-top:8px; line-height:1.7; }
+  h2 { font-size:15px; margin:0 0 8px; }
+  .eq { font-size:12px; color:#cbd5e1; line-height:1.8; }
+  .eq b { color:#fbbf24; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>关卡难度 vs 喷火枪火力 · 对比曲线</h1>
+  <div class="sub">横轴 = 游戏进程时间轴（11关里程碑）；纵轴 = 相对起点倍数（对数轴，起点=1.0×）。<br>难度曲线 = 各关「等效威胁指数」；火力曲线 = 喷火枪平均DPS（火焰各位置平均伤害 × 天赋成长）。</div>
+
+  <div class="card">
+    <div class="legend">
+      <span><i class="dot" style="background:#f87171"></i>关卡难度（等效威胁指数 / 第1关）</span>
+      <span><i class="dot" style="background:#4ade80"></i>喷火枪平均DPS（火焰位置均值 2340，天赋沿时间轴铺满）</span>
+    </div>
+    <canvas id="chart" width="940" height="500"></canvas>
+    <div class="note">
+      难度曲线最高飙到 <b>66.4×</b>（地铁关）：主要由护盾(×300)、隧道工喷涂(×210)、精英(×100) 的高权重单位撑起，远超相邻关卡。
+      喷火枪满天赋仅 <b>1.75×</b>。但喷火枪平均 DPS 是 <b>2340</b>，即使地铁关 17730 等效HP，也仅需约 7.6 秒持续喷射即可清空（未计火墙/三重/道具）。
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>等效威胁指数构成（每类敌人的等效血量 = 血量+护甲+护盾+支援折算）</h2>
+    <div class="eq">
+      小1 | 大4 | 飞2 | 装甲<b>24</b>(12+12甲) | 分裂6 | 自爆6 | 飞爆10 | 女王100 | 变异8 |<br>
+      护士<b>67</b>(25+12甲+治疗30) | 定时自爆<b>60</b>(30+12甲+炸弹18) | 隧道工<b>210</b>(60+喷涂150) | 精英<b>100</b>(80+20甲) | 护盾<b>300</b>(100+200盾)
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>数据明细</h2>
+    <table id="tbl"></table>
+  </div>
+
+  <div class="card">
+    <h2>血量流入率 λ(t) vs 喷火枪有效DPS（100分钟时间轴 · 按波次加权：共72波，每波≈1.39分钟）</h2>
+    <div class="legend">
+      <span><i class="dot" style="background:#f87171"></i>血量流入率 λ（HP/s，对数轴）</span>
+      <span><i class="dot" style="background:#4ade80"></i>单体有效DPS ≈2000（3600×0.85衰减×0.64占空比）</span>
+      <span><i class="dot" style="background:#fbbf24"></i>10%命中率折损 ≈200</span>
+    </div>
+    <canvas id="chart2" width="940" height="420"></canvas>
+    <div class="note">
+      即使 λ 最高的地铁关（13.9 HP/s）也只有有效DPS的 <b>0.7%</b> —— 喷火枪瓶颈不在DPS总量，而在<b>覆盖宽度</b>（束半宽15px / 屏宽540px）与<b>过热占空比</b>（连喷18s→锁定10s）。<br>
+      单体TTK全部 &lt;0.1s：精英(96+20甲)=0.058s、护盾120=0.060s、女王120=0.060s、隧道工72=0.036s → 真实约束是扫屏速度，不是伤害。
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>累计血量增长曲线（easy ×1.2，全程总血量池 21,320 HP）</h2>
+    <canvas id="chart3" width="940" height="380"></canvas>
+    <div class="note">
+      前50分钟（6关）累计仅 <b>4,027</b>（19%）；地铁一关（61–75分钟）注入 <b>11,552</b>（54%），是曲线斜率最陡的一段；
+      去掉地铁后厨房→巢穴仅 <b>5.7×</b> 平缓爬坡。hard难度整体 ×1.8（女王×2.7），形状不变。<br>
+      口径：仅生成血量（含女王），未含护甲/护盾/护士治疗/分裂子体/变异孵化 —— 地铁关实际等效更高。
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>血量明细（easy ×1.2）</h2>
+    <table id="tbl2"></table>
+  </div>
+</div>
+
+<script>
+(function(){
+  const scenes = ['厨房','下水道','垃圾场','地下室','天台','街道','医院','地铁','超市','学校','巢穴'];
+  // 各关等效威胁指数（含护甲/护盾/护士治疗/隧道工喷涂折算）
+  const threat = [267,601,890,1132,1207,1232,2416,17730,1802,1966,2180];
+  const t0 = threat[0];
+  const diff = threat.map(v => v / t0);
+  // 喷火枪：平均DPS 2340（火焰各位置平均 0.65×3600），天赋 +15%/级 沿时间轴铺满
+  const flameMult = [1.00,1.15,1.15,1.30,1.30,1.45,1.45,1.60,1.60,1.75,1.75];
+  const flameDps = flameMult.map(v => Math.round(2340 * v));
+  const n = scenes.length;
+
+  // 画图
+  const W = 940, H = 500, padL = 82, padR = 26, padT = 24, padB = 46;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const series = [
+    { name:'难度', color:'#f87171', data:diff },
+    { name:'喷火枪DPS', color:'#4ade80', data:flameMult },
+  ];
+  const all = [];
+  series.forEach(s => s.data.forEach(v => all.push(v)));
+  const yMinLog = Math.log10(Math.min.apply(null, all) * 0.8);
+  const yMaxLog = Math.log10(Math.max.apply(null, all) * 1.12);
+  const cv = document.getElementById('chart');
+  const ctx = cv.getContext('2d');
+  function X(i){ return padL + (i/(n-1))*plotW; }
+  function Y(v){ const l = Math.log10(v); return padT + plotH - (l - yMinLog)/(yMaxLog-yMinLog)*plotH; }
+  ctx.clearRect(0,0,W,H);
+  ctx.font='11px sans-serif'; ctx.textBaseline='middle'; ctx.lineWidth=1; ctx.strokeStyle='#262b38';
+  [1,2,3,5,8,12,20,40,70].forEach(t => {
+    if(t < Math.pow(10,yMinLog) || t > Math.pow(10,yMaxLog)) return;
+    const y = Y(t);
+    ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(W-padR,y); ctx.stroke();
+    ctx.fillStyle='#9ca3af'; ctx.textAlign='right'; ctx.fillText(t.toFixed(0)+'×', padL-8, y);
+  });
+  ctx.fillStyle='#9ca3af'; ctx.textAlign='center'; ctx.textBaseline='top';
+  for(let i=0;i<n;i++){ ctx.fillText(scenes[i], X(i), padT+plotH+8); }
+  ctx.textBaseline='middle';
+  ctx.strokeStyle='#4b5563'; ctx.strokeRect(padL,padT,plotW,plotH);
+  series.forEach(s => {
+    ctx.strokeStyle=s.color; ctx.lineWidth=2.6; ctx.lineJoin='round';
+    ctx.beginPath();
+    s.data.forEach((v,i)=>{ const x=X(i),y=Y(v); i===0?ctx.moveTo(x,y):ctx.lineTo(x,y); });
+    ctx.stroke();
+    s.data.forEach((v,i)=>{
+      const x=X(i),y=Y(v);
+      ctx.beginPath(); ctx.arc(x,y,4.5,0,Math.PI*2); ctx.fillStyle=s.color; ctx.fill();
+      ctx.strokeStyle='#0f1117'; ctx.lineWidth=1.5; ctx.stroke();
+    });
+  });
+  // 难度数值标注
+  ctx.font='bold 10px sans-serif';
+  diff.forEach((v,i)=>{ if(i%2===0 || v>5){ ctx.fillStyle='#f87171'; ctx.fillText(v.toFixed(1), X(i), Y(v)-12); } });
+  ctx.font='bold 12px sans-serif'; ctx.textAlign='left';
+  ctx.fillStyle='#f87171'; ctx.fillText('难度', padL+8, padT+16);
+  ctx.fillStyle='#4ade80'; ctx.fillText('喷火枪', padL+8, padT+34);
+
+  // 表格
+  const tbl = document.getElementById('tbl');
+  let html = '<tr><th>关卡</th>' + scenes.map(s=>`<th>${s}</th>`).join('') + '</tr>';
+  const rows = [
+    ['难度(×)', diff, v=>v.toFixed(2)],
+    ['威胁指数', threat, v=>v.toLocaleString()],
+    ['喷火枪DPS', flameDps, v=>v],
+    ['喷火枪(×)', flameMult, v=>v.toFixed(2)]
+  ];
+  rows.forEach(r=>{
+    let cells = r[1].map((v,idx)=>{
+      const hi = r[0]==='难度(×)' && v>5;
+      return `<td class="${hi?'hi':''}">${r[2](v)}</td>`;
+    }).join('');
+    html += `<tr><td>${r[0]}</td>${cells}</tr>`;
+  });
+  tbl.innerHTML = html;
+})();
+</script>
+
+<script>
+(function(){
+  // ===== 关卡血量池（easy ×1.2 取整后，仅生成血量） =====
+  const levels = [
+    { name:'厨房',   waves:6,  pool:267 },
+    { name:'下水道', waves:6,  pool:541 },
+    { name:'垃圾场', waves:6,  pool:652 },
+    { name:'地下室', waves:6,  pool:884 },
+    { name:'天台',   waves:6,  pool:843 },
+    { name:'街道',   waves:6,  pool:840 },
+    { name:'医院',   waves:8,  pool:1558 },
+    { name:'地铁',   waves:10, pool:11552 },
+    { name:'超市',   waves:6,  pool:1284 },
+    { name:'学校',   waves:6,  pool:1379 },
+    { name:'巢穴',   waves:6,  pool:1520 },
+  ];
+  const TOTAL_MIN = 100, TOTAL_WAVES = 72, perWave = TOTAL_MIN / TOTAL_WAVES;
+  let t = 0, cum = 0;
+  levels.forEach(l => {
+    l.start = t; t += l.waves * perWave; l.end = t;
+    l.lambda = l.pool / (l.waves * perWave * 60); // HP/s
+    l.cumStart = cum; cum += l.pool; l.cumEnd = cum;
+  });
+  const EFF_DPS = 2000;   // 单体有效DPS
+  const HIT10 = 200;      // 10% 命中率折损
+
+  // ========== 图2：λ(t) 阶梯图（对数轴） ==========
+  (function(){
+    const cv = document.getElementById('chart2'), ctx = cv.getContext('2d');
+    const W = 940, H = 420, padL = 76, padR = 26, padT = 30, padB = 42;
+    const plotW = W - padL - padR, plotH = H - padT - padB;
+    const yMin = Math.log10(0.4), yMax = Math.log10(3000);
+    function X(min){ return padL + (min / TOTAL_MIN) * plotW; }
+    function Y(v){ return padT + plotH - (Math.log10(v) - yMin) / (yMax - yMin) * plotH; }
+    ctx.clearRect(0,0,W,H);
+    ctx.font = '11px sans-serif'; ctx.textBaseline = 'middle';
+    // 网格
+    ctx.lineWidth = 1; ctx.strokeStyle = '#262b38';
+    [0.5,1,2,5,10,20,50,100,200,500,1000,2000].forEach(g => {
+      const y = Y(g);
+      ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(W-padR,y); ctx.stroke();
+      ctx.fillStyle = '#9ca3af'; ctx.textAlign = 'right'; ctx.fillText(g, padL-8, y);
+    });
+    // 时间刻度（每10分钟）
+    ctx.fillStyle = '#6b7280'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    for(let m = 0; m <= 100; m += 10){ ctx.fillText(m + "'", X(m), padT+plotH+26); }
+    ctx.textBaseline = 'middle';
+    // λ 阶梯矩形
+    levels.forEach(l => {
+      const x1 = X(l.start), x2 = X(l.end), y = Y(l.lambda);
+      ctx.fillStyle = 'rgba(248,113,113,0.20)';
+      ctx.fillRect(x1, y, x2-x1, padT+plotH-y);
+      ctx.strokeStyle = '#f87171'; ctx.lineWidth = 2;
+      ctx.strokeRect(x1, y, x2-x1, padT+plotH-y);
+      // λ 数值 + 关卡名
+      ctx.fillStyle = '#f87171'; ctx.textAlign = 'center'; ctx.font = 'bold 11px sans-serif';
+      ctx.fillText(l.lambda.toFixed(1), (x1+x2)/2, y-9);
+      ctx.fillStyle = '#cbd5e1'; ctx.font = '11px sans-serif'; ctx.textBaseline = 'top';
+      ctx.fillText(l.name, (x1+x2)/2, padT+plotH+8);
+      ctx.textBaseline = 'middle';
+    });
+    // 有效DPS参考线
+    function refLine(v, color, label){
+      const y = Y(v);
+      ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.setLineDash([7,5]);
+      ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(W-padR,y); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = color; ctx.textAlign = 'left'; ctx.font = 'bold 11px sans-serif';
+      ctx.fillText(label, padL+8, y-10);
+    }
+    refLine(EFF_DPS, '#4ade80', '单体有效DPS ≈2000 HP/s');
+    refLine(HIT10, '#fbbf24', '10%命中率 ≈200 HP/s');
+    ctx.strokeStyle = '#4b5563'; ctx.lineWidth = 1; ctx.strokeRect(padL,padT,plotW,plotH);
+  })();
+
+  // ========== 图3：累计血量增长曲线（线性轴） ==========
+  (function(){
+    const cv = document.getElementById('chart3'), ctx = cv.getContext('2d');
+    const W = 940, H = 380, padL = 76, padR = 26, padT = 24, padB = 42;
+    const plotW = W - padL - padR, plotH = H - padT - padB;
+    const yMax = 22000;
+    function X(min){ return padL + (min / TOTAL_MIN) * plotW; }
+    function Y(v){ return padT + plotH - (v / yMax) * plotH; }
+    ctx.clearRect(0,0,W,H);
+    ctx.font = '11px sans-serif'; ctx.textBaseline = 'middle';
+    // 网格
+    ctx.lineWidth = 1; ctx.strokeStyle = '#262b38';
+    for(let g = 0; g <= yMax; g += 5000){
+      const y = Y(g);
+      ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(W-padR,y); ctx.stroke();
+      ctx.fillStyle = '#9ca3af'; ctx.textAlign = 'right'; ctx.fillText(g.toLocaleString(), padL-8, y);
+    }
+    ctx.fillStyle = '#6b7280'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    for(let m = 0; m <= 100; m += 10){ ctx.fillText(m + "'", X(m), padT+plotH+26); }
+    ctx.textBaseline = 'middle';
+    // 面积填充 + 折线
+    ctx.beginPath(); ctx.moveTo(X(0), Y(0));
+    levels.forEach(l => ctx.lineTo(X(l.end), Y(l.cumEnd)));
+    ctx.lineTo(X(100), Y(0)); ctx.closePath();
+    ctx.fillStyle = 'rgba(96,165,250,0.14)'; ctx.fill();
+    ctx.beginPath(); ctx.moveTo(X(0), Y(0));
+    levels.forEach(l => ctx.lineTo(X(l.end), Y(l.cumEnd)));
+    ctx.strokeStyle = '#60a5fa'; ctx.lineWidth = 2.6; ctx.lineJoin = 'round'; ctx.stroke();
+    // 关卡分界点 + 名称
+    levels.forEach((l,i) => {
+      const x = X(l.end), y = Y(l.cumEnd);
+      ctx.beginPath(); ctx.arc(x,y,4,0,Math.PI*2);
+      ctx.fillStyle = '#60a5fa'; ctx.fill();
+      ctx.strokeStyle = '#0f1117'; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.fillStyle = '#cbd5e1'; ctx.textAlign = 'center'; ctx.font = '11px sans-serif'; ctx.textBaseline = 'top';
+      ctx.fillText(l.name, (X(l.start)+X(l.end))/2, padT+plotH+8);
+      ctx.textBaseline = 'middle';
+      // 每关累计值标注
+      ctx.fillStyle = '#93c5fd'; ctx.font = '10px sans-serif';
+      ctx.fillText(l.cumEnd.toLocaleString(), x, y-11);
+    });
+    // 地铁段标注
+    const sub = levels[7];
+    ctx.fillStyle = '#f87171'; ctx.textAlign = 'left'; ctx.font = 'bold 12px sans-serif';
+    ctx.fillText('地铁段注入 11,552（全程54%）', X(sub.start)-150, Y(sub.cumEnd)-30);
+    ctx.strokeStyle = '#4b5563'; ctx.lineWidth = 1; ctx.strokeRect(padL,padT,plotW,plotH);
+  })();
+
+  // ========== 血量明细表 ==========
+  const tbl2 = document.getElementById('tbl2');
+  let html = '<tr><th>关卡</th>' + levels.map(l=>`<th>${l.name}</th>`).join('') + '</tr>';
+  const lam0 = levels[0].lambda;
+  const rows = [
+    ['时间窗(分)', levels.map(l=>`${l.start.toFixed(0)}–${l.end.toFixed(0)}`)],
+    ['波数', levels.map(l=>l.waves)],
+    ['血量池', levels.map(l=>l.pool.toLocaleString())],
+    ['λ 流入率(HP/s)', levels.map(l=>l.lambda.toFixed(2))],
+    ['λ 相对厨房', levels.map(l=>(l.lambda/lam0).toFixed(1)+'×')],
+    ['理论清空耗时*', levels.map(l=>(l.pool/EFF_DPS).toFixed(2)+'s')],
+  ];
+  rows.forEach(r=>{
+    const cells = r[1].map((v,idx)=>{
+      const hi = (r[0]==='λ 相对厨房' && levels[idx].lambda/lam0 > 10);
+      return `<td class="${hi?'hi':''}">${v}</td>`;
+    }).join('');
+    html += `<tr><td>${r[0]}</td>${cells}</tr>`;
+  });
+  tbl2.innerHTML = html;
+})();
+</script>
+</body>
+</html>

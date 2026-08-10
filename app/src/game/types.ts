@@ -62,6 +62,7 @@ export const RoachType = {
   // 地铁场景专属蟑螂
   TUNNEL_WORKER: 'tunnel_worker',
   SUBWAY_ELITE: 'subway_elite',
+  SHIELD: 'shield',
 } as const;
 export type RoachType = typeof RoachType[keyof typeof RoachType];
 
@@ -453,6 +454,18 @@ export interface Roach {
   chargeDir?: number;
   // Subway elite: 被列车碾压标记（触发分裂为 2 只小蟑螂）
   killedByTrain?: boolean;
+  // Shield roach: 气体护盾当前值（仅 SHIELD 类型）
+  shieldHp?: number;
+  // Shield roach: 气体护盾上限
+  maxShieldHp?: number;
+  // Shield roach: 护盾破碎重建倒计时（秒，>0 表示护盾破碎中）
+  shieldBrokenTimer?: number;
+  // Shield roach: 护盾受击闪白计时（秒，用于受损视觉反馈）
+  shieldHitFlash?: number;
+  // Tunnel worker: 跟随修理的护盾蟑螂目标 ID
+  shieldFollowTargetId?: number | null;
+  // Tunnel worker: 修盾浮动文字节流计时（秒）
+  shieldRepairTextTimer?: number;
 }
 
 /** 列车横扫碾压状态（地铁场景专属） */
@@ -637,6 +650,8 @@ export interface WaveConfig {
   // 地铁场景专属敌人数目
   tunnelWorkerCount?: number;
   eliteCount?: number;
+  /** 护盾蟑螂数目（气体护盾：矩形保护身后同伴） */
+  shieldCount?: number;
   /** 敌人生成间隔（秒） */
   spawnInterval?: number;
   /** 波次名称 */
@@ -660,6 +675,7 @@ export interface Economy {
   timedSuicideKills: number;
   tunnelWorkerKills: number;
   subwayEliteKills: number;
+  shieldKills: number;
   perfectWaves: number;
   gasSavedBonus: number;
   breaches: number;

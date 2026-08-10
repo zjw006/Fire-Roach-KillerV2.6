@@ -63,6 +63,41 @@ export const BALANCE_RENDER = {
   // ===== 粒子生成器 =====
   // 所有战斗特效粒子（火焰、烟雾、灰烬、血液、火花等）的生成参数
   particle: {
+    // 护盾蟑螂气体光环粒子（悬浮在护盾蟑螂下方，营造能量场氛围）
+    shieldAura: {
+      countPerFrame: 1,                       // 每帧生成粒子数
+      lifeMin: 0.4, lifeMax: 0.7,             // 粒子存活时间（秒）
+      sizeMin: 1.5, sizeMax: 3.5,             // 粒子大小（像素）
+      radiusMin: 0.6, radiusMax: 0.95,        // 散布半径系数（× shieldRectHalfWidth）
+      pulseFreqBase: 2, pulseFreqVar: 3,      // 脉冲频率（基础 + 随机）
+      phaseOffset: 6.2832,                    // 相位偏移（2π）
+      hue: 185, saturation: 90,               // HSL 色相/饱和度（青色）
+      lightnessMin: 60, lightnessMax: 85,     // HSL 亮度范围
+      alphaMin: 0.3, alphaMax: 0.7,           // 透明度范围
+    },
+    // 隧道工护甲喷涂粒子（灰色喷射流 + 目标头顶 + 号）
+    armorSpray: {
+      // 喷射流粒子（隧道工 → 目标方向）
+      streamCount: 12,                        // 喷射流粒子数量
+      streamLifeMin: 0.25, streamLifeMax: 0.4, // 喷射流存活时间（秒）
+      streamSizeMin: 2, streamSizeMax: 4,      // 喷射流粒子大小
+      streamSpeedMin: 120, streamSpeedMax: 200, // 喷射流速度
+      streamSpread: 0.5,                       // 喷射扩散角度（弧度）
+      streamColor: { rMin: 148, rMax: 163, gMin: 163, gMax: 184, bMin: 184, bMax: 184, aMin: 0.6, aMax: 0.9 }, // 灰蓝色
+      // +号粒子（目标头顶）
+      plusLife: 0.8,                          // +号存活时间（秒）
+      plusSize: 8,                            // +号大小（像素）
+      plusVy: -30,                            // +号上升速度
+      plusColor: 'rgba(203, 213, 225, 1)',    // +号颜色（浅灰白）
+    },
+    // 护盾修复粒子（隧道工修理护盾蟑螂时产生的青色火花）
+    shieldRepair: {
+      spawnChance: 0.6,                       // 每帧生成概率（0~1）
+      lifeMin: 0.4, lifeMax: 0.6,             // 粒子存活时间（秒）
+      sizeMin: 3, sizeMax: 6,                 // 粒子大小（像素）
+      speedMin: 10, speedMax: 30,             // 上升速度范围（像素/秒）
+      color: 'rgba(103, 232, 249, 0.8)',      // 青色（与护盾颜色一致）
+    },
     // 锥形火焰喷射粒子
     coneFire: {
       countMin: 3, countMax: 3,     // 每帧生成的粒子数
