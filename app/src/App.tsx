@@ -2,6 +2,7 @@ import { Routes, Route } from 'react-router';
 import { GameCanvas } from '@/components/game/GameCanvas';
 import { ErrorBoundary } from '@/components/game/ErrorBoundary';
 import AdminPage from '@/pages/AdminPage';
+import EffectLabPage from '@/pages/effect-lab/EffectLabPage';
 
 function App() {
   return (
@@ -14,6 +15,7 @@ function App() {
         </div>
       } />
       <Route path="/admin" element={<AdminPage />} />
+      <Route path="/effect-lab" element={<EffectLabPage />} />
     </Routes>
   );
 }

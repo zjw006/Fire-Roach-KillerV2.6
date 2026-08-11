@@ -104,6 +104,15 @@ export class NurseRenderer {
   }
 
   /**
+   * 使刻度预计算缓存失效（下一次渲染时按当前配置重建）。
+   * 仅供开发工具（特效编辑器 /effect-lab）在修改 nurseHealVFX.spray 参数后调用；
+   * 游戏运行时配置不变，无需调用。
+   */
+  static invalidateTickCache(): void {
+    this._tickData = null;
+  }
+
+  /**
    * 渲染护士蟑螂的治疗特效（3 阶段动画）
    * @param ctx Canvas 渲染上下文
    * @param roaches 蟑螂数组

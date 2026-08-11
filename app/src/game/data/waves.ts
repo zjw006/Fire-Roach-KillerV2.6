@@ -85,13 +85,13 @@ export const WAVE_CONFIGS_HOSPITAL: WaveConfig[] = [
   // Wave 4: 4 mutants + 2 timed
   { wave: 4, smallCount: 8, largeCount: 3, flyingCount: 2, armoredCount: 2, splittingCount: 1, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 0.80, interval: 7, clusterChance: 0.3, nurseCount: 1, mutantCount: 4, timedSuicideCount: 2, eggPoolActiveCount: 1 },
   // Wave 5: 4 mutants + 2 timed (max 2 per wave)
-  { wave: 5, smallCount: 8, largeCount: 4, flyingCount: 4, armoredCount: 2, splittingCount: 1, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 0.85, interval: 6, clusterChance: 0.35, nurseCount: 2, mutantCount: 4, timedSuicideCount: 2, eggPoolActiveCount: 1 },
+  { wave: 5, smallCount: 8, largeCount: 4, flyingCount: 4, armoredCount: 2, splittingCount: 1, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 0.85, interval: 6, clusterChance: 0.35, nurseCount: 1, mutantCount: 4, timedSuicideCount: 2, eggPoolActiveCount: 1 },
   // Wave 6: 5 mutants + 2 timed
-  { wave: 6, smallCount: 6, largeCount: 4, flyingCount: 4, armoredCount: 3, splittingCount: 2, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 0.90, interval: 5, clusterChance: 0.4, nurseCount: 2, mutantCount: 5, timedSuicideCount: 2, eggPoolActiveCount: 2 },
+  { wave: 6, smallCount: 6, largeCount: 4, flyingCount: 4, armoredCount: 3, splittingCount: 2, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 0.90, interval: 5, clusterChance: 0.4, nurseCount: 1, mutantCount: 5, timedSuicideCount: 2, eggPoolActiveCount: 2 },
   // Wave 7: 5 mutants + 2 timed
-  { wave: 7, smallCount: 6, largeCount: 4, flyingCount: 5, armoredCount: 3, splittingCount: 2, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 0.95, interval: 5, clusterChance: 0.45, nurseCount: 3, mutantCount: 5, timedSuicideCount: 2, eggPoolActiveCount: 2 },
+  { wave: 7, smallCount: 6, largeCount: 4, flyingCount: 5, armoredCount: 3, splittingCount: 2, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 0.95, interval: 5, clusterChance: 0.45, nurseCount: 2, mutantCount: 5, timedSuicideCount: 2, eggPoolActiveCount: 2 },
   // Wave 8: Final - 6 mutants + 2 timed (max 2 per wave)
-  { wave: 8, smallCount: 4, largeCount: 4, flyingCount: 5, armoredCount: 3, splittingCount: 2, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 1.0, interval: 4, clusterChance: 0.5, nurseCount: 3, mutantCount: 6, timedSuicideCount: 2, eggPoolActiveCount: 2 },
+  { wave: 8, smallCount: 4, largeCount: 4, flyingCount: 5, armoredCount: 3, splittingCount: 2, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 1.0, interval: 4, clusterChance: 0.5, nurseCount: 2, mutantCount: 6, timedSuicideCount: 2, eggPoolActiveCount: 2 },
 ];
 
 // 地铁 10 波（无女王Boss；无小蟑螂——原小蟑螂全部升级为大蟑螂，原大蟑螂+精英全部升级为精英；
@@ -113,13 +113,13 @@ export const WAVE_CONFIGS_SUBWAY: WaveConfig[] = [
   // 波6：高压——精英冲刺 + 护盾阵型 + 隧道工喷涂 + 护甲群 + 自爆
   { wave: 6, smallCount: 0, largeCount: 9, flyingCount: 3, armoredCount: 2, splittingCount: 0, suicideCount: 1, flyingSuicideCount: 1, queenCount: 0, tunnelWorkerCount: 1, eliteCount: 3, shieldCount: 1, speed: 0.93, interval: 4, clusterChance: 0.3 },
   // 波7：分神——精英群 + 护盾阵型 + 隧道工同时压场
-  { wave: 7, smallCount: 0, largeCount: 10, flyingCount: 3, armoredCount: 2, splittingCount: 0, suicideCount: 1, flyingSuicideCount: 1, queenCount: 0, tunnelWorkerCount: 2, eliteCount: 3, shieldCount: 2, speed: 0.96, interval: 4, clusterChance: 0.3 },
+  { wave: 7, smallCount: 0, largeCount: 10, flyingCount: 3, armoredCount: 2, splittingCount: 0, suicideCount: 1, flyingSuicideCount: 1, queenCount: 0, tunnelWorkerCount: 2, eliteCount: 3, shieldCount: 1, speed: 0.96, interval: 4, clusterChance: 0.3 },
   // 波8：高压护甲群 + 精英群 + 护盾阵型 + 自爆压制
-  { wave: 8, smallCount: 0, largeCount: 10, flyingCount: 4, armoredCount: 2, splittingCount: 0, suicideCount: 1, flyingSuicideCount: 1, queenCount: 0, tunnelWorkerCount: 2, eliteCount: 3, shieldCount: 2, speed: 0.99, interval: 4, clusterChance: 0.35 },
+  { wave: 8, smallCount: 0, largeCount: 10, flyingCount: 4, armoredCount: 2, splittingCount: 0, suicideCount: 1, flyingSuicideCount: 1, queenCount: 0, tunnelWorkerCount: 2, eliteCount: 3, shieldCount: 1, speed: 0.99, interval: 4, clusterChance: 0.35 },
   // 波9：持续高压——双隧道工喷涂 + 双护盾阵型 + 精英群
-  { wave: 9, smallCount: 0, largeCount: 10, flyingCount: 4, armoredCount: 2, splittingCount: 0, suicideCount: 1, flyingSuicideCount: 1, queenCount: 0, tunnelWorkerCount: 2, eliteCount: 3, shieldCount: 2, speed: 1.02, interval: 3, clusterChance: 0.35 },
+  { wave: 9, smallCount: 0, largeCount: 10, flyingCount: 4, armoredCount: 2, splittingCount: 0, suicideCount: 1, flyingSuicideCount: 1, queenCount: 0, tunnelWorkerCount: 2, eliteCount: 3, shieldCount: 1, speed: 1.02, interval: 3, clusterChance: 0.35 },
   // 波10：终局——精英群/护甲群/护盾阵型压场，隧道工全线喷涂
-  { wave: 10, smallCount: 0, largeCount: 11, flyingCount: 4, armoredCount: 3, splittingCount: 0, suicideCount: 1, flyingSuicideCount: 1, queenCount: 0, tunnelWorkerCount: 2, eliteCount: 4, shieldCount: 2, speed: 1.05, interval: 3, clusterChance: 0.4 },
+  { wave: 10, smallCount: 0, largeCount: 11, flyingCount: 4, armoredCount: 3, splittingCount: 0, suicideCount: 1, flyingSuicideCount: 1, queenCount: 0, tunnelWorkerCount: 2, eliteCount: 4, shieldCount: 1, speed: 1.05, interval: 3, clusterChance: 0.4 },
 ];
 
 // 超市 6 波（包含女王）

@@ -136,7 +136,7 @@ export const ENEMY_DEFS: Record<RoachType, {
   [RoachType.TUNNEL_WORKER]: {
     name: '隧道工蟑螂',
     description: '背着工具箱的蟑螂，定期为周围血量最高的蟑螂添加护甲',
-    hp: 60,          // 较高血量（辅助单位）
+    hp: 40,          // 较高血量（辅助单位，平衡下调：60→40）
     speed: 0.6,      // 缓慢
     reward: 30,      // 高奖励（优先击杀目标）
     color: '#78716c', // 暗灰色（工具箱金属感）
@@ -156,7 +156,7 @@ export const ENEMY_DEFS: Record<RoachType, {
   [RoachType.SHIELD]: {
     name: '护盾蟑螂',
     description: '释放气体护盾保护身后同伴，矩形范围内的蟑螂免疫火焰直射',
-    hp: 100,         // 高血量（阵型锚点）
+    hp: 60,          // 高血量（阵型锚点，平衡下调：100→60，减少护盾持续压制时间）
     speed: 0.5,      // 极慢（阵型锚点）
     reward: 35,      // 高奖励（优先击杀目标）
     color: '#67e8f9', // 淡青色（气体护盾视觉基调）

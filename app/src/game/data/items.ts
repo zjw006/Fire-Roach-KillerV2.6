@@ -101,7 +101,7 @@ export const BALANCE_ITEMS = {
     // 喷火枪：真实总 DPS（每秒实际交付伤害，近端满伤害、无天赋、无火力全开）。
     // 由两套机制分摊：火焰束(碰撞)伤害占 flamethrowerBeamShare，火焰粒子区占剩余部分。
     // 束 DPS = 45 × 0.75 = 33.75（easy）/ 30 × 0.75 = 22.5（hard），火焰粒子区 DPS = 11.25 / 7.5。
-    flamethrower: { easy: 10, hard: 10 },
+    flamethrower: { easy: 25, hard: 25 },
     flamethrowerBeamShare: 0.75, // 火焰束伤害占比（束 DPS = 总DPS × 此比例，其余为火焰粒子区 DPS）
     poison: { easy: 20, hard: 12 },        // 毒雾每跳伤害
     shotgun: { easy: 30, hard: 35 },       // 散弹单发伤害
@@ -475,13 +475,13 @@ export const BALANCE_ITEMS = {
     eliteChargeSpeed: 460,         // 冲刺速度（像素/秒）
     eliteChargeEdgeMargin: 30,     // 冲刺到屏幕边缘停止的余量（像素）
     // 护盾蟑螂（气体护盾）
-    shieldMaxHp: 200,              // 气体护盾容量
-    shieldRegenPerSec: 5,          // 护盾完好时自然恢复（点/秒）
+    shieldMaxHp: 50,               // 气体护盾容量（平衡下调：120→50，降低对火焰输出的吸收）
+    shieldRegenPerSec: 2,          // 护盾完好时自然恢复（点/秒，5→2，放缓自然回盾）
     shieldRebuildDelay: 10,        // 护盾破碎后重新生成延迟（秒）
     shieldRectHalfWidth: 100,      // 护盾矩形保护区半宽（像素，总宽200）
     shieldRectHeight: 360,         // 护盾矩形保护区高度（像素，从护盾蟑螂向上延伸，Y轴拉长一倍，原 180）
     shieldFireZoneErosionMult: 2,  // 火墙对护盾的侵蚀倍率
-    shieldRepairPerSec: 25,        // 隧道工修理护盾速度（点/秒）
+    shieldRepairPerSec: 10,        // 隧道工修理护盾速度（点/秒，25→10，削弱持续回盾）
     shieldRepairRange: 220,        // 隧道工修理射程（像素，增强施法范围，原 150）
     workerFollowStopDist: 100,     // 隧道工跟随护盾蟑螂的停留距离（像素）
     // 盾墙推进阵型（FormationSystem）
