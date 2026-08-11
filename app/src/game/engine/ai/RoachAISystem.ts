@@ -6,9 +6,9 @@
 
 import { RoachType, RoachState, SceneType, GameMode, GameState, ParticleType } from '../../types';
 import type { Roach, Player, Particle, FireWall, Economy, GameProgress, BossBattleState, WaveConfig } from '../../types';
-import { ENEMY_DEFS, BOSS_CONFIG, SCENE_GROUND_BOUNDS, TEXT_CONFIG, BALANCE_CONFIG } from '../../data';
+import { ENEMY_DEFS, BOSS_CONFIG, TEXT_CONFIG, BALANCE_CONFIG } from '../../data';
 import { ParticleSpawner } from '../particle/ParticleSpawner';
-import { FormationSystem, type FormationMoveResult } from '../formation/FormationSystem';
+import { FormationSystem } from '../formation/FormationSystem';
 import type { StickySystem } from '../sticky/StickySystem';
 import type { BossBattleSystem } from '../boss/BossBattleSystem';
 import type { ConsumableSystem } from '../consumable/ConsumableSystem';
@@ -115,9 +115,6 @@ export class RoachAISystem {
   private _deathChainDepth: number = 0;
   private readonly MAX_DEATH_CHAIN_DEPTH = 3;
 
-  /** 胚胎暴走：待生成的蟑螂类型 */
-  private _embryoSpawnTypes: RoachType[] = [];
-
   /** 死体炸弹 ID */
   private _nextBombId: number = 1;
 
@@ -144,7 +141,6 @@ export class RoachAISystem {
     this.slimeBurstX = 0;
     this.slimeBurstY = 0;
     this._deathChainDepth = 0;
-    this._embryoSpawnTypes = [];
     this._nextBombId = 1;
   }
 
@@ -286,7 +282,7 @@ export class RoachAISystem {
   // =========================================================================
 
   /** 处理移动前的状态更新（伤害闪烁、状态效果、定身、愤怒、恐慌）。返回 isImmobilized */
-  private handleRoachPreMovement(r: Roach, deltaTime: number, _time: number, roaches: Roach[]): boolean {
+  private handleRoachPreMovement(r: Roach, deltaTime: number, _time: number, _roaches: Roach[]): boolean {
     const moveCfg = BALANCE_CONFIG.roachAI.movement;
 
     // Damage flash decay
@@ -641,7 +637,7 @@ export class RoachAISystem {
   // =========================================================================
 
   /** 处理自爆/小蟑螂在火焰中触发闪避 */
-  private handleFireDodgeTriggers(r: Roach, roaches: Roach[]): void {
+  private handleFireDodgeTriggers(r: Roach, _roaches: Roach[]): void {
     const dodgeCfg = BALANCE_CONFIG.roachAI.dodge;
 
     // Suicide roach dodge in fire
@@ -674,13 +670,17 @@ export class RoachAISystem {
     const particles = this.cfg.particles;
 
     // Apply burn damage
-    if (r.inFire && r.burnDamage > 0) {
-      const dmg = r.burnDamage * deltaTime;
-      this.cfg.onApplyDamageToRoach(r, dmg);
-      this.cfg.onTraceBurnDamage?.(dmg); // 平衡采样：火焰实际输出
-      r.burnDamage = 0;
-      if (Math.random() < 0.3) {
-        ParticleSpawner.spawnSmokeParticles(particles, r.x, r.y, 1);
+    // inFire 每帧由火焰束/火焰区域重新置位，此处统一在下一帧清除，
+    // 避免火焰区域（只置 inFire、不加 burnDamage）导致 inFire 永久卡真、闪避行为不停触发
+    if (r.inFire) {
+      if (r.burnDamage > 0) {
+        const dmg = r.burnDamage * deltaTime;
+        this.cfg.onApplyDamageToRoach(r, dmg);
+        this.cfg.onTraceBurnDamage?.(dmg); // 平衡采样：火焰实际输出
+        r.burnDamage = 0;
+        if (Math.random() < 0.3) {
+          ParticleSpawner.spawnSmokeParticles(particles, r.x, r.y, 1);
+        }
       }
       r.inFire = false;
     }
@@ -993,7 +993,7 @@ export class RoachAISystem {
   // 定时自爆突破系统
   // =========================================================================
 
-  private updateTimedSuicideBreach(r: Roach, i: number, roaches: Roach[], defenseLineY: number, _isHard: boolean): void {
+  private updateTimedSuicideBreach(r: Roach, _i: number, _roaches: Roach[], defenseLineY: number, _isHard: boolean): void {
     if (r.type !== RoachType.TIMED_SUICIDE || r.state !== RoachState.ALIVE) return;
 
     const deltaTime = this.cfg.getDeltaTime();

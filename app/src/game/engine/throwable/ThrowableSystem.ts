@@ -9,7 +9,6 @@ import {
   type FireZone,
   RoachType,
   RoachState,
-  ParticleType,
 } from '../../types';
 import { BALANCE_CONFIG, TEXT_CONFIG, RENDER_COLOR } from '../../data';
 

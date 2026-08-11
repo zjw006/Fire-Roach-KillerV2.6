@@ -32,6 +32,9 @@ const ROACH_ICONS: Record<RoachType, React.ReactNode> = {
   [RoachType.NURSE]: <Bug size={20} />,
   [RoachType.MUTANT]: <Bug size={22} />,
   [RoachType.TIMED_SUICIDE]: <Bomb size={20} />,
+  [RoachType.TUNNEL_WORKER]: <Bug size={20} />,
+  [RoachType.SUBWAY_ELITE]: <Wind size={20} />,
+  [RoachType.SHIELD]: <Shield size={20} />,
 };
 
 /** 蟑螂类型对应的渐变色（用于图标背景） */
@@ -47,6 +50,9 @@ const ROACH_COLORS: Record<RoachType, string> = {
   [RoachType.NURSE]: 'from-blue-700 to-blue-600',
   [RoachType.MUTANT]: 'from-green-700 to-green-600',
   [RoachType.TIMED_SUICIDE]: 'from-yellow-700 to-yellow-600',
+  [RoachType.TUNNEL_WORKER]: 'from-lime-700 to-lime-600',
+  [RoachType.SUBWAY_ELITE]: 'from-sky-700 to-sky-600',
+  [RoachType.SHIELD]: 'from-cyan-700 to-cyan-600',
 };
 
 /** 蟑螂类型对应的卡片背景色 */
@@ -62,6 +68,9 @@ const ROACH_BG_COLORS: Record<RoachType, string> = {
   [RoachType.NURSE]: 'bg-blue-950/40 border-blue-800/40',
   [RoachType.MUTANT]: 'bg-green-950/40 border-green-800/40',
   [RoachType.TIMED_SUICIDE]: 'bg-yellow-950/40 border-yellow-800/40',
+  [RoachType.TUNNEL_WORKER]: 'bg-lime-950/40 border-lime-800/40',
+  [RoachType.SUBWAY_ELITE]: 'bg-sky-950/40 border-sky-800/40',
+  [RoachType.SHIELD]: 'bg-cyan-950/40 border-cyan-800/40',
 };
 
 /** 蟑螂类型对应的文字颜色 */
@@ -77,6 +86,9 @@ const ROACH_TEXT_COLORS: Record<RoachType, string> = {
   [RoachType.NURSE]: 'text-blue-400',
   [RoachType.MUTANT]: 'text-green-400',
   [RoachType.TIMED_SUICIDE]: 'text-yellow-400',
+  [RoachType.TUNNEL_WORKER]: 'text-lime-400',
+  [RoachType.SUBWAY_ELITE]: 'text-sky-400',
+  [RoachType.SHIELD]: 'text-cyan-400',
 };
 
 /** 蟑螂类型对应的发光阴影颜色 */
@@ -92,6 +104,9 @@ const ROACH_GLOW_COLORS: Record<RoachType, string> = {
   [RoachType.NURSE]: 'shadow-blue-900/30',
   [RoachType.MUTANT]: 'shadow-green-900/30',
   [RoachType.TIMED_SUICIDE]: 'shadow-yellow-900/30',
+  [RoachType.TUNNEL_WORKER]: 'shadow-lime-900/30',
+  [RoachType.SUBWAY_ELITE]: 'shadow-sky-900/30',
+  [RoachType.SHIELD]: 'shadow-cyan-900/30',
 };
 
 /** 根据速度值返回星级（1-5） */

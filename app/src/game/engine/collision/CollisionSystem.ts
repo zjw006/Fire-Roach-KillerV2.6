@@ -3,14 +3,8 @@
  * @description 负责处理游戏中的碰撞检测、伤害计算和武器效果应用
  */
 
-import { GameState, RoachType, RoachState, type Roach, type Player, type TripleFlameState } from '../../types';
+import { RoachType, RoachState, type Roach, type Player, type TripleFlameState } from '../../types';
 import { ENEMY_DEFS, BALANCE_CONFIG, TEXT_CONFIG } from '../../data';
-
-/**
- * 火焰束伤害按帧累加（burnDamage）、再按秒结算，故 DPS = 单帧伤害 × 帧率。
- * 这里用目标帧率 60 将配置表中的"总 DPS"换算为"单帧伤害"。
- */
-const FRAME_RATE = 60;
 
 /**
  * 碰撞检测系统配置接口
@@ -101,8 +95,9 @@ export class CollisionSystem {
     const isHard = this.config.difficulty === 'hard';
     const wd = BALANCE_CONFIG.weaponDamage;
     this.weaponDamageConfigs = {
-      // 喷火枪：配置表 flamethrower 为总 DPS。火焰束单帧伤害 = 束 DPS / 帧率，束 DPS = 总DPS × flamethrowerBeamShare
-      flamethrower: { baseDamage: (isHard ? wd.flamethrower.hard : wd.flamethrower.easy) * wd.flamethrowerBeamShare / FRAME_RATE, falloffFactor: 0.7 },
+      // 喷火枪：配置表 flamethrower 为真实总 DPS（每秒）。baseDamage = 束 DPS，
+      // 每帧累加进 burnDamage，由 RoachAISystem 按 burnDamage × deltaTime 结算，无需再除帧率
+      flamethrower: { baseDamage: (isHard ? wd.flamethrower.hard : wd.flamethrower.easy) * wd.flamethrowerBeamShare, falloffFactor: 0.7 },
       sticky: { baseDamage: 0, falloffFactor: 0 },
       poison: { baseDamage: isHard ? wd.poison.hard : wd.poison.easy, falloffFactor: 0.7 },
       shotgun: { baseDamage: isHard ? wd.shotgun.hard : wd.shotgun.easy, falloffFactor: 0.5 },

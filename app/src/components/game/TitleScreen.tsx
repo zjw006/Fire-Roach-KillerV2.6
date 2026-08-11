@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @fileoverview 标题屏幕组件 — 游戏启动时的主菜单界面，包含废土风格的加载进度条和模拟加载提示。
  * 加载完成后显示"点击开始"闪烁提示，点击或按键后淡出并进入游戏。
  * 包含 CRT 扫描线效果、暗角叠加、废土工业风进度条及中英文标题。
@@ -32,7 +32,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   // Loading progress state
   const [loadProgress, setLoadProgress] = useState(0);
   const [loadComplete, setLoadComplete] = useState(false);
-  const [currentHint, setCurrentHint] = useState(LOADING_HINTS[0]);
+  const [currentHint, setCurrentHint] = useState<string>(LOADING_HINTS[0]);
   const progressRef = useRef(0);
   const rafRef = useRef<number>(0);
 

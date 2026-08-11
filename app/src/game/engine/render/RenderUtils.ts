@@ -6,7 +6,7 @@
  *   - 使用 measureText 缓存减少重复测量
  */
 
-import { SceneType, RoachState, RoachType } from '../../types';
+import { SceneType, RoachType } from '../../types';
 import type { Roach, Player, TripleFlameState } from '../../types';
 import { SCENE_GROUND_BOUNDS, TEXT_CONFIG, RENDER_COLOR, RENDER_FONT, BALANCE_CONFIG } from '../../data';
 
@@ -51,22 +51,6 @@ export class RenderUtils {
   // ===== measureText 缓存 =====
 
   private static _textWidthCache: Map<string, number> = new Map();
-
-  /**
-   * 安全将颜色字符串转换为 rgba 格式
-   */
-  private static toRgba(color: string, alpha: number): string {
-    if (color.startsWith('#')) {
-      const r = parseInt(color.slice(1, 3), 16);
-      const g = parseInt(color.slice(3, 5), 16);
-      const b = parseInt(color.slice(5, 7), 16);
-      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-    }
-    if (color.startsWith('rgb(')) {
-      return color.replace('rgb(', 'rgba(').replace(')', `, ${alpha})`);
-    }
-    return color;
-  }
 
   /** 获取缓存的文本宽度 */
   private static getCachedTextWidth(ctx: CanvasRenderingContext2D, text: string, font: string): number {

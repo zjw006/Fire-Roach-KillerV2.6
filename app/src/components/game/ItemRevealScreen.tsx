@@ -7,7 +7,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, Sparkles, Star, Zap } from 'lucide-react';
 import { AudioManager } from '@/game/audio';
-import { TEXT_CONFIG } from '@/game/data';
 
 interface ItemRevealScreenProps {
   item: { type: string; name: string; icon: string; desc: string } | null | undefined;

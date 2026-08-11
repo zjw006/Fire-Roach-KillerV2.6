@@ -1000,22 +1000,22 @@ export class RoachRenderer {
       const originY = r.y + def.size * 0.5; // 护盾起始线 = 本体下缘
       const hpRatio = Math.max(0, (r.shieldHp ?? 0) / (r.maxShieldHp || 1));
       const flash = Math.min(1, (r.shieldHitFlash ?? 0) / 0.15);
-      const pulse = 0.16 + Math.sin(config.time * 2.5 + r.id) * 0.04;
-      const alpha = (pulse + flash * 0.25) * (0.4 + hpRatio * 0.6);
+      const pulse = 0.3 + Math.sin(config.time * 2.5 + r.id) * 0.07; // 增亮（原 0.16 ± 0.04）
+      const alpha = (pulse + flash * 0.35) * (0.4 + hpRatio * 0.6);
 
       ctx.save();
 
       // --- 1. 矩形填充（从起始线向上延伸，向尾部渐隐） ---
       const rectGrad = ctx.createLinearGradient(r.x, originY, r.x, originY - rh);
-      rectGrad.addColorStop(0, `rgba(103, 232, 249, ${alpha * 0.5})`);
-      rectGrad.addColorStop(0.6, `rgba(103, 232, 249, ${alpha * 0.28})`);
+      rectGrad.addColorStop(0, `rgba(103, 232, 249, ${alpha * 0.75})`);
+      rectGrad.addColorStop(0.6, `rgba(103, 232, 249, ${alpha * 0.45})`);
       rectGrad.addColorStop(1, 'rgba(103, 232, 249, 0)');
       ctx.fillStyle = rectGrad;
       ctx.fillRect(r.x - hw, originY - rh, hw * 2, rh);
 
       // --- 2. 直线矩形线框（四边笔直：前边/后边/两侧） ---
-      ctx.strokeStyle = `rgba(165, 243, 252, ${Math.min(1, alpha * 1.8 + flash * 0.3)})`;
-      ctx.lineWidth = 1.5 + flash * 1.5;
+      ctx.strokeStyle = `rgba(165, 243, 252, ${Math.min(1, alpha * 2.2 + flash * 0.4)})`;
+      ctx.lineWidth = 2 + flash * 1.5;
       ctx.strokeRect(r.x - hw, originY - rh, hw * 2, rh);
 
       ctx.restore();

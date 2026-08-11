@@ -106,11 +106,10 @@
  * @see {@link ../engine/} 各子系统模块目录
  */
 
-import { GameState, RoachType, RoachState, SceneType, WeatherType, ParticleType, FlameMode, GameMode, SAVE_VERSION, type Roach, type Player, type Particle, type FireZone, type FireWall, type Economy, type WeaponDrop, type GameProgress, type WaveConfig, type ThrowableProjectile, type InventoryItem, type TripleFlameState, type BossBattleState, type RadarLaser, type StickyBoard, type StickyDrop, type FanState } from './types';
+import { GameState, RoachType, RoachState, SceneType, WeatherType, ParticleType, FlameMode, GameMode, type Roach, type Player, type Particle, type FireZone, type FireWall, type Economy, type GameProgress, type WaveConfig, type InventoryItem, type BossBattleState } from './types';
 import * as Vibration from './vibration';
 import { AudioManager } from './audio';
-import { SCENE_CONFIGS, ENEMY_DEFS, TALENT_DEFS, WEAPON_DROP_DEFS, INVENTORY_SELL_PRICES, BOSS_CONFIG, SCENE_WAVE_CONFIGS, SCENE_ITEM_UNLOCKS, SCENE_ROACH_TYPES, SCENE_UNLOCK_CHAIN, SCENE_REWARD_ITEMS, SCENE_GROUND_BOUNDS, createDefaultProgress, ENCYCLOPEDIA_DEFS, CONSUMABLE_DEFS, BALANCE_CONFIG, TEXT_CONFIG } from './data';
-import { BOSS_ANIMATIONS } from './bossAnimation';
+import { SCENE_CONFIGS, ENEMY_DEFS, TALENT_DEFS, WEAPON_DROP_DEFS, INVENTORY_SELL_PRICES, BOSS_CONFIG, SCENE_WAVE_CONFIGS, SCENE_UNLOCK_CHAIN, SCENE_REWARD_ITEMS, SCENE_GROUND_BOUNDS, CONSUMABLE_DEFS, BALANCE_CONFIG, TEXT_CONFIG } from './data';
 import { SaveSystem } from './engine/save/SaveSystem';
 import { EconomyManager } from './engine/economy/EconomyManager';
 import { AchievementSystem } from './engine/achievement/AchievementSystem';
@@ -406,8 +405,6 @@ export class GameEngine {
   private insecticideSystem: InsecticideSystem | null = null;
   /** 投掷物系统模块（委托给 ThrowableSystem） */
   private throwableSystem: ThrowableSystem | null = null;
-  /** 毒雾系统模块（委托给 PoisonSystem） */
-  private poisonSystem: PoisonSystem | null = null;
   /** 消耗品系统模块（委托给 ConsumableSystem） */
   private consumableSystem: ConsumableSystem | null = null;
   /** Boss战斗系统模块（委托给 BossBattleSystem） */
@@ -501,6 +498,9 @@ export class GameEngine {
   /** 显示地面边界线（蟑螂可走区域可视化） */
   showMovementRange: boolean = false;
 
+  /** 调试：显示喷火枪攻击范围（束）与辐射范围（火焰粒子区）矩形框及衰减标注。默认隐藏，当前开启用于调试 */
+  showFlameDebug: boolean = true;
+
   /** 装甲肉盾缓存：定期更新以避免每帧 O(n²) 检测 */
   armorShieldCache: Set<number> = new Set(); /** 受附近装甲蟑螂保护的蟑螂 ID */
   armorShieldCacheTimer: number = 0;
@@ -569,7 +569,7 @@ export class GameEngine {
       canvasHeight: this.height,
       onAddFloatingText: (x, y, text, color) => { this.addFloatingText(x, y, text, color); },
       onSaveProgress: () => { this.saveProgress(); },
-      onEconomyUpdate: (e) => { this.onEconomyUpdate?.(this.economy); },
+      onEconomyUpdate: () => { this.onEconomyUpdate?.(this.economy); },
     });
     this.particleSystem = new ParticleSystem({
       particleLimit: this._particleLimit,
@@ -577,6 +577,21 @@ export class GameEngine {
       defenseLineY: this.defenseLineY(),
       canvasWidth: this.width,
       canvasHeight: this.height,
+      damageCallbacks: {
+        // 火焰区域伤害：走护甲吸收 + 气体护盾拦截 + 平衡采样（与束伤害口径一致）
+        onFireZoneDamage: (roach, damage) => {
+          const protector = ShieldSystem.findProtectingShield(this.roaches, roach);
+          if (protector) {
+            this.shieldSystem?.damageShield(protector, damage, false);
+            return;
+          }
+          this.applyDamageToRoach(roach, damage);
+          this.traceFlameDmg += damage;
+        },
+        onFireWallDamage: (roach, damage) => {
+          this.applyDamageToRoach(roach, damage);
+        },
+      },
     });
     this.floatingTextSystem = new FloatingTextSystem();
     this.collisionSystem = new CollisionSystem({
@@ -625,7 +640,7 @@ export class GameEngine {
       canPickup: (_drop) => {
         return true;
       },
-      onSwitchWeapon: (weapon, weaponName) => {
+      onSwitchWeapon: (_weapon, weaponName) => {
         this.addFloatingText(this.player.x, this.player.y - 60, TEXT_CONFIG.combat.weaponSwitch.text(weaponName), TEXT_CONFIG.combat.weaponSwitch.color);
       },
     });
@@ -769,13 +784,6 @@ export class GameEngine {
       onShowArmorImmune: (r) => {
         this.addFloatingText(r.x, r.y - 15, TEXT_CONFIG.combat.armorImmune.text, TEXT_CONFIG.combat.armorImmune.color);
       },
-    });
-    this.poisonSystem = new PoisonSystem({
-      onAddFloatingText: (x, y, text, color) => { this.addFloatingText(x, y, text, color); },
-      onScreenShake: (amount) => { this.screenShake = amount; },
-      onAddZone: (zone) => { this.fireZones.push(zone); },
-      onDamageRoach: (roach, damage) => { roach.hp -= damage; },
-      onSpawnPoisonExplosion: (x, y) => { PoisonSystem.spawnPoisonExplosion(this.particles, x, y); },
     });
     this.consumableSystem = new ConsumableSystem({
       consumableDefs: CONSUMABLE_DEFS,
@@ -929,7 +937,7 @@ export class GameEngine {
         onTutorialPauseChange: (paused) => { this.onTutorialPauseChange?.(paused); },
         onEliteTutorialPauseChange: (paused) => { this.onEliteTutorialPauseChange?.(paused); },
         onKnifeTutorialPauseChange: (paused) => { this.onKnifeTutorialPauseChange?.(paused); },
-        onWaveStart: (wave) => { /* this.trainSystem?.onWaveStart(wave); */ },
+        onWaveStart: () => { /* this.trainSystem?.onWaveStart(wave); */ },
         onWaveCleared: () => { /* this.trainSystem?.onWaveCleared(); */ },
         onKillRoach: (roach, idx) => { this.killRoach(roach, idx); },
         onGetRoaches: () => this.roaches,
@@ -2303,12 +2311,11 @@ export class GameEngine {
     const gasCost = this.deltaTime * (p.powerBoostTimer > 0 ? 2 : 1); // 力量加成期间 2 倍燃气消耗
     const heatGain = this.deltaTime * 1.0;
     const powerBoostMult = p.powerBoostTimer > 0 ? 2 : 1;
-    // 喷火枪：配置表 flamethrower 为总 DPS。火焰粒子区 DPS = 总DPS × (1 - 束占比)，
-    // 再经 fireZoneDpsMultiplier 还原为每帧传入 spawnConeFire 的 baseDamage。
+    // 喷火枪：配置表 flamethrower 为真实总 DPS（每秒）。火焰粒子区 DPS = 总DPS × (1 - 束占比)，
+    // 直接以每秒伤害传入 spawnConeFire（天赋/火力全开倍率乘在这里，束伤害在 CollisionSystem 中乘）
     const flameDps = (this.difficulty === 'hard' ? BALANCE_CONFIG.weaponDamage.flamethrower.hard : BALANCE_CONFIG.weaponDamage.flamethrower.easy);
-    const baseDamage = (flameDps * (1 - BALANCE_CONFIG.weaponDamage.flamethrowerBeamShare) / BALANCE_CONFIG.weaponDamage.fireZoneDpsMultiplier) * this.deltaTime * p.damageMultiplier * powerBoostMult;
+    const baseDamage = flameDps * (1 - BALANCE_CONFIG.weaponDamage.flamethrowerBeamShare) * p.damageMultiplier * powerBoostMult;
     const range = p.fireRange * 0.5;
-    const spreadAngle = (Math.PI / 15) * p.flameSpreadMultiplier;
     ParticleSpawner.spawnConeFire({ particles: this.particles, fireZones: this.fireZones, deltaTime: this.deltaTime, x: p.x, y: p.y, angle: -Math.PI / 2, range, baseDamage, type: 'fire' });
     // Black smoke at flame tip during power boost (use dynamic particle limit)
     if (p.powerBoostTimer > 0 && this.particles.length < this._particleLimit - 10 && Math.random() < 0.4) {
@@ -2344,7 +2351,8 @@ export class GameEngine {
   updatePoisonSpray(p: Player) {
     const gasCost = this.deltaTime;
     const range = p.fireRange * 0.45;
-    const baseDamage = 30 * this.deltaTime;
+    // 毒雾粒子区真实每秒伤害（AoE 持续伤害，每秒语义与原 30×dt 一致）
+    const baseDamage = this.difficulty === 'hard' ? 20 : 30;
     ParticleSpawner.spawnConeFire({ particles: this.particles, fireZones: this.fireZones, deltaTime: this.deltaTime, x: p.x, y: p.y, angle: -Math.PI / 2, range, baseDamage, type: 'poison' });
     p.gas -= gasCost * p.gasCostMultiplier;
     if (p.gas < 0) p.gas = 0;
@@ -2359,7 +2367,8 @@ export class GameEngine {
   updateShotgun(p: Player) {
     const gasCost = this.deltaTime * 1.5;
     const range = p.fireRange * 0.35;
-    const baseDamage = 150 * this.deltaTime * p.damageMultiplier;
+    // 散弹粒子区真实每秒总伤害 150（按弹丸分摊到各方向火区，每秒语义与原 150×dt 一致）
+    const baseDamage = 150 * p.damageMultiplier;
     // Wide spread shotgun blast
     for (let i = 0; i < p.shotgunPellets; i++) {
       const spreadAngle = -Math.PI / 2 + (i - p.shotgunPellets / 2) * (Math.PI / 8);
@@ -3110,6 +3119,7 @@ export class GameEngine {
       }
       if (this.defenseHp <= 0) {
         this.defenseHp = 0;
+        this.exportTrace('defeat'); // 导出本局战斗采样数据（自爆突破路径）
         Vibration.vibrateGameOver();
         // 失败：关卡内金币不发放，但已有金币池保留
         this.pendingRewards = 0;
@@ -3641,6 +3651,7 @@ export class GameEngine {
     // 游戏结束处理
     if (result.gameOver) {
       this.defenseHp = 0;
+      this.exportTrace('defeat'); // 导出本局战斗采样数据（波次突破路径）
       Vibration.vibrateGameOver();
       // 失败：关卡内金币不发放，但已有金币池保留
       this.pendingRewards = 0;
@@ -3917,8 +3928,7 @@ export class GameEngine {
     this.particleSystem!.syncParticleArrays(
       this.particles,
       this.fireZones,
-      this.roaches,
-      this.armorShieldCache
+      this.roaches
     );
   }
 
@@ -4210,6 +4220,77 @@ export class GameEngine {
     RenderUtils.renderMovementRange(ctx, this.currentScene, this.defenseLineY(), (y) => this.getGroundBoundsAtY(y), this.width);
   }
 
+  /**
+   * 调试渲染：喷火枪攻击范围（火焰束）与辐射范围（火焰粒子区）矩形框。
+   * - 束矩形（红）：宽 2×beamHalfWidth，自喷嘴向上 flameRangeRatio×fireRange，标注各高度衰减后伤害百分比
+   * - 辐射矩形（绿）：火焰粒子区圆的外接矩形（圆心位于喷嘴前方 range/2，半径 range×0.8），平坦伤害无衰减
+   * 两个框体尺寸均随天赋射程加成（fireRangeMultiplier）增长。
+   */
+  renderFlameDebugRanges(ctx: CanvasRenderingContext2D) {
+    const p = this.player;
+    if (!p) return;
+    const colCfg = BALANCE_CONFIG.collision;
+    const nozzleY = p.y - BALANCE_CONFIG.player.nozzleOffsetY;
+
+    // 攻击范围（束）：与 CollisionSystem.checkFlameCollisions 判定一致
+    const beamRange = p.fireRange * colCfg.flameRangeRatio;
+    const beamHW = colCfg.beamHalfWidth;
+    // 辐射范围（粒子区）：与 ParticleSpawner.spawnConeFire 火区一致
+    const zoneRange = p.fireRange * 0.5;
+    const zoneR = zoneRange * 0.8;
+    const zoneCy = nozzleY - zoneRange / 2;
+
+    ctx.save();
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+
+    // --- 束矩形（红虚线） ---
+    ctx.strokeStyle = 'rgba(239, 68, 68, 0.9)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([6, 4]);
+    ctx.strokeRect(p.x - beamHW, nozzleY - beamRange, beamHW * 2, beamRange);
+    ctx.setLineDash([]);
+    // 衰减刻度线 + 伤害百分比（falloff = 1 - t × flameFalloffFactor）
+    for (let i = 0; i <= 4; i++) {
+      const t = i / 4;
+      const y = nozzleY - beamRange * t;
+      const dmgPct = Math.round((1 - t * colCfg.flameFalloffFactor) * 100);
+      ctx.strokeStyle = 'rgba(239, 68, 68, 0.35)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(p.x - beamHW, y);
+      ctx.lineTo(p.x + beamHW, y);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(239, 68, 68, 0.95)';
+      ctx.fillText(`${dmgPct}%`, p.x + beamHW + 4, y);
+    }
+    ctx.fillStyle = 'rgba(239, 68, 68, 0.95)';
+    ctx.fillText(`束 ${Math.round(beamRange)}px`, p.x + beamHW + 4, nozzleY - beamRange - 10);
+
+    // --- 辐射矩形（绿虚线，火区圆外接矩形） ---
+    ctx.strokeStyle = 'rgba(74, 222, 128, 0.9)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([6, 4]);
+    ctx.strokeRect(p.x - zoneR, zoneCy - zoneR, zoneR * 2, zoneR * 2);
+    ctx.setLineDash([]);
+    // 火区真实判定圆（细线）
+    ctx.strokeStyle = 'rgba(74, 222, 128, 0.45)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(p.x, zoneCy, zoneR, 0, Math.PI * 2);
+    ctx.stroke();
+    // 辐射伤害 = 总DPS × (1 - 束占比) × 伤害倍率，平坦无衰减
+    const wd = BALANCE_CONFIG.weaponDamage;
+    const zoneDps = (this.difficulty === 'hard' ? wd.flamethrower.hard : wd.flamethrower.easy)
+      * (1 - wd.flamethrowerBeamShare) * (p.damageMultiplier || 1);
+    ctx.fillStyle = 'rgba(74, 222, 128, 0.95)';
+    ctx.fillText(`辐射 r=${Math.round(zoneR)}px`, p.x + zoneR + 4, zoneCy - zoneR + 6);
+    ctx.fillText(`${zoneDps.toFixed(1)}/s 无衰减`, p.x + zoneR + 4, zoneCy - zoneR + 20);
+
+    ctx.restore();
+  }
+
   // ===== 渲染系统 =====
 
   // =============================================================================
@@ -4382,6 +4463,11 @@ export class GameEngine {
       }
     }
     this.renderRoaches(ctx);
+
+    // 调试：喷火枪攻击范围（束）与辐射范围（粒子区）矩形框
+    if (this.showFlameDebug) {
+      this.renderFlameDebugRanges(ctx);
+    }
 
     // 地铁场景：列车预警/列车序列帧渲染（列车覆盖在蟑螂之上，表现碾压）
     // this.trainSystem!.render(ctx, this._trainFrames);
@@ -4660,7 +4746,7 @@ export class GameEngine {
 
   /** 渲染武器掉落物（委托给 DropRenderer 静态方法） */
   renderWeaponDrops(ctx: CanvasRenderingContext2D) {
-    DropRenderer.renderWeaponDrops(ctx, this.weaponSystem!.getWeaponDrops(), this.time, this._dropImages);
+    DropRenderer.renderWeaponDrops(ctx, this.weaponSystem!.getWeaponDrops(), this.time, this._dropImages ?? undefined);
   }
 
   // Render flying bait jar (parabolic arc from player to target roach)

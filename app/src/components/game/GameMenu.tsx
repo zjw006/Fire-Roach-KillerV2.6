@@ -7,7 +7,7 @@
  */
 import React, { useEffect, useState } from 'react';
 import {
-  Flame, Volume2, VolumeX, Swords, Trophy,
+  Flame, Volume2, VolumeX, Swords,
   Skull, Map, RotateCcw, AlertTriangle, Trash2, Lock,
 } from 'lucide-react';
 import { GameMode, SceneType, type GameProgress } from '@/game/types';
@@ -52,7 +52,7 @@ export const GameMenu: React.FC<GameMenuProps> = ({
   const scenesUnlocked = progress?.scenesUnlocked || [SceneType.KITCHEN];
 
   /** 游戏模式列表（部分模式暂未开放） */
-  const gameModes = [
+  const gameModes: { id: GameMode; name: string; icon: React.ReactNode; desc: string; disabled: boolean }[] = [
     { id: GameMode.STORY, name: TEXT_CONFIG.ui.menu.storyMode, icon: <Swords size={24} />, desc: TEXT_CONFIG.ui.menu.storyDesc, disabled: false },
     { id: GameMode.ENDLESS, name: TEXT_CONFIG.ui.menu.endlessMode, icon: <Skull size={24} />, desc: TEXT_CONFIG.ui.menu.endlessDesc, disabled: true },
     // BOSS mode temporarily disabled

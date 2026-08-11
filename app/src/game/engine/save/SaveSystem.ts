@@ -4,7 +4,7 @@
  */
 
 import type { GameProgress } from '../../types';
-import { createDefaultProgress, ENCYCLOPEDIA_DEFS } from '../../data';
+import { createDefaultProgress } from '../../data';
 
 /**
  * 存档系统类

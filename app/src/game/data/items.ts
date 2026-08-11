@@ -98,15 +98,15 @@ export const BALANCE_ITEMS = {
   // ===== 武器伤害 =====
   // 不同难度下的武器伤害值，easy 约 1.5x hard
   weaponDamage: {
-    // 喷火枪：火焰总 DPS（每秒真实伤害，近端满伤害、无天赋、无火力全开）。
+    // 喷火枪：真实总 DPS（每秒实际交付伤害，近端满伤害、无天赋、无火力全开）。
     // 由两套机制分摊：火焰束(碰撞)伤害占 flamethrowerBeamShare，火焰粒子区占剩余部分。
-    flamethrower: { easy: 3600, hard: 2400 },
+    // 束 DPS = 45 × 0.75 = 33.75（easy）/ 30 × 0.75 = 22.5（hard），火焰粒子区 DPS = 11.25 / 7.5。
+    flamethrower: { easy: 10, hard: 10 },
     flamethrowerBeamShare: 0.75, // 火焰束伤害占比（束 DPS = 总DPS × 此比例，其余为火焰粒子区 DPS）
     poison: { easy: 20, hard: 12 },        // 毒雾每跳伤害
-    shotgun: { easy: 50, hard: 35 },       // 散弹单发伤害
+    shotgun: { easy: 30, hard: 35 },       // 散弹单发伤害
     molotov: { easy: 40, hard: 25 },       // 燃烧瓶基础伤害
     fallback: { easy: 45, hard: 30 },      // 兜底伤害（未识别武器时使用）
-    fireZoneDpsMultiplier: 3,              // 火焰区域 DPS 倍率
     fireZoneMaxLife: 0.5,                  // 火焰区域最大存活时间（秒）
     fireZoneMaxCount: 25,                  // 同时存在的火焰区域数量上限
   },
@@ -469,7 +469,7 @@ export const BALANCE_ITEMS = {
     // 隧道工蟑螂
     armorSprayInterval: 6,         // 护甲喷涂间隔（秒）
     armorSprayAmount: 150,         // 单次喷涂护甲值（提高 BUFF 效果，原 50）
-    armorSprayRange: 200,          // 喷涂范围（像素）
+    armorSprayRange: 300,          // 喷涂范围（像素，增强施法范围，原 200）
     // 地铁精英
     eliteChargeDelay: 2,           // 出场后进入冲刺的延迟（秒）
     eliteChargeSpeed: 460,         // 冲刺速度（像素/秒）
@@ -479,10 +479,10 @@ export const BALANCE_ITEMS = {
     shieldRegenPerSec: 5,          // 护盾完好时自然恢复（点/秒）
     shieldRebuildDelay: 10,        // 护盾破碎后重新生成延迟（秒）
     shieldRectHalfWidth: 100,      // 护盾矩形保护区半宽（像素，总宽200）
-    shieldRectHeight: 180,         // 护盾矩形保护区高度（像素，从护盾蟑螂向上延伸）
+    shieldRectHeight: 360,         // 护盾矩形保护区高度（像素，从护盾蟑螂向上延伸，Y轴拉长一倍，原 180）
     shieldFireZoneErosionMult: 2,  // 火墙对护盾的侵蚀倍率
     shieldRepairPerSec: 25,        // 隧道工修理护盾速度（点/秒）
-    shieldRepairRange: 150,        // 隧道工修理射程（像素）
+    shieldRepairRange: 220,        // 隧道工修理射程（像素，增强施法范围，原 150）
     workerFollowStopDist: 100,     // 隧道工跟随护盾蟑螂的停留距离（像素）
     // 盾墙推进阵型（FormationSystem）
     formationLateralRange: 120,    // 编队横向容许距离（像素，随从与护盾锚点的横向偏移上限）

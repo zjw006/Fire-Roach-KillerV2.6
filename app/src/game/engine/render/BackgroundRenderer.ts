@@ -5,9 +5,7 @@
  */
 
 import { SceneType, WeatherType } from '../../types';
-import type { Player, FireWall } from '../../types';
-import { WeatherSystem } from '../weather/WeatherSystem';
-import { ParticleSystem } from '../particle/ParticleSystem';
+import type { Player } from '../../types';
 import { BALANCE_CONFIG } from '../../data';
 
 // =============================================================================
@@ -166,6 +164,8 @@ export class BackgroundRenderer {
     // 修复 P1：使用 BALANCE_CONFIG.player.nozzleOffsetY 替代硬编码 322
     const nozzleY = p.y - BALANCE_CONFIG.player.nozzleOffsetY;
     const endY = nozzleY - maxRange;
+    // 天赋射程加成比例：火焰特效宽度随天赋等比放大（Y 轴长度已通过 maxRange = fireRange × rangeRatio 随天赋增长）
+    const talentScale = p.fireRange / BALANCE_CONFIG.player.baseFireRange;
 
     const gunXs: number[] = [p.x];
     if (cfg.tripleFlameState.active) {
@@ -193,7 +193,7 @@ export class BackgroundRenderer {
         const y0 = gunNozzleY + (gunEndY - gunNozzleY) * t0;
         const y1 = gunNozzleY + (gunEndY - gunNozzleY) * t1;
 
-        const baseWidth = rcfg.baseWidth * flameScale;
+        const baseWidth = rcfg.baseWidth * flameScale * talentScale;
         const w0 = baseWidth * (1 - t0 * rcfg.widthTaper) + Math.sin(t0 * Math.PI * rcfg.wiggleFreq + cfg.time * rcfg.wiggleTimeScale + gi) * rcfg.wiggleAmplitude;
         const w1 = baseWidth * (1 - t1 * rcfg.widthTaper) + Math.sin(t1 * Math.PI * rcfg.wiggleFreq + cfg.time * rcfg.wiggleTimeScale + gi) * rcfg.wiggleAmplitude;
 
@@ -214,7 +214,7 @@ export class BackgroundRenderer {
       if (p.currentWeapon === 'sticky') coreColor = rcfg.coreColorSticky;
       else if (p.currentWeapon === 'poison') coreColor = rcfg.coreColorPoison;
 
-      const glowSize = rcfg.coreGlowSize * flameScale;
+      const glowSize = rcfg.coreGlowSize * flameScale * talentScale;
       const coreGrad = ctx.createRadialGradient(gunX, gunNozzleY, 0, gunX, gunNozzleY, glowSize);
       coreGrad.addColorStop(0, `rgba(${coreColor}, 0.9)`);
       coreGrad.addColorStop(0.3, `rgba(${coreColor}, 0.5)`);

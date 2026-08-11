@@ -65,20 +65,20 @@ export const BALANCE_RENDER = {
   particle: {
     // 护盾蟑螂气体光环粒子（悬浮在护盾蟑螂下方，营造能量场氛围）
     shieldAura: {
-      countPerFrame: 1,                       // 每帧生成粒子数
+      countPerFrame: 3,                       // 每帧生成粒子数（增多粒子，原 1）
       lifeMin: 0.4, lifeMax: 0.7,             // 粒子存活时间（秒）
-      sizeMin: 1.5, sizeMax: 3.5,             // 粒子大小（像素）
+      sizeMin: 2, sizeMax: 4.5,               // 粒子大小（像素，增大，原 1.5~3.5）
       radiusMin: 0.6, radiusMax: 0.95,        // 散布半径系数（× shieldRectHalfWidth）
       pulseFreqBase: 2, pulseFreqVar: 3,      // 脉冲频率（基础 + 随机）
       phaseOffset: 6.2832,                    // 相位偏移（2π）
       hue: 185, saturation: 90,               // HSL 色相/饱和度（青色）
-      lightnessMin: 60, lightnessMax: 85,     // HSL 亮度范围
-      alphaMin: 0.3, alphaMax: 0.7,           // 透明度范围
+      lightnessMin: 65, lightnessMax: 92,     // HSL 亮度范围（增亮，原 60~85）
+      alphaMin: 0.5, alphaMax: 0.95,          // 透明度范围（增亮，原 0.3~0.7）
     },
     // 隧道工护甲喷涂粒子（灰色喷射流 + 目标头顶 + 号）
     armorSpray: {
       // 喷射流粒子（隧道工 → 目标方向）
-      streamCount: 12,                        // 喷射流粒子数量
+      streamCount: 20,                        // 喷射流粒子数量（增多，原 12）
       streamLifeMin: 0.25, streamLifeMax: 0.4, // 喷射流存活时间（秒）
       streamSizeMin: 2, streamSizeMax: 4,      // 喷射流粒子大小
       streamSpeedMin: 120, streamSpeedMax: 200, // 喷射流速度
@@ -92,7 +92,7 @@ export const BALANCE_RENDER = {
     },
     // 护盾修复粒子（隧道工修理护盾蟑螂时产生的青色火花）
     shieldRepair: {
-      spawnChance: 0.6,                       // 每帧生成概率（0~1）
+      spawnChance: 0.9,                       // 每帧生成概率（0~1，增多粒子，原 0.6）
       lifeMin: 0.4, lifeMax: 0.6,             // 粒子存活时间（秒）
       sizeMin: 3, sizeMax: 6,                 // 粒子大小（像素）
       speedMin: 10, speedMax: 30,             // 上升速度范围（像素/秒）
@@ -242,8 +242,8 @@ export const BALANCE_RENDER = {
     // 火焰区域渲染（喷火枪的火焰锥形效果）
     fireZone: {
       segments: 20,            // 火焰形状分段数（越多越平滑）
-      rangeRatio: 0.5,         // 火焰范围占射程的比例
-      baseWidth: 32,           // 火焰基础宽度（像素）
+      rangeRatio: 1,         // 火焰范围占射程的比例
+      baseWidth: 25,           // 火焰基础宽度（像素）
       widthTaper: 0.94,        // 火焰宽度锥形收缩率
       wiggleFreq: 6,           // 火焰摆动频率
       wiggleTimeScale: 30,     // 火焰摆动时间缩放

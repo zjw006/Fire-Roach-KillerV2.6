@@ -183,7 +183,7 @@ export const BALANCE_ENEMIES = {
   // 玩家使用火焰喷射器，消耗燃气，过热时需要冷却
   player: {
     baseGasCapacity: 100,        // 基础燃气容量（喷射帧数）
-    baseFireRange: 440,          // 基础火焰射程（像素）
+    baseFireRange: 250,          // 基础火焰射程（像素），天赋满级 ×1.4 = 504
     baseOverheatThreshold: 1800, // 基础过热阈值（累积热量）
     heatWarningDuration: 3,      // 过热警告持续时间（秒），警告剩余 3 秒
     overheatCooldown: {          // 过热冷却时间（秒），按火焰模式

@@ -21,7 +21,7 @@ export interface ConeFireParams {
   angle: number;
   /** 喷射范围 */
   range: number;
-  /** 基础伤害 */
+  /** 火焰区域真实每秒伤害（DPS，非每帧伤害） */
   baseDamage: number;
   /** 火焰类型 */
   type?: 'fire' | 'ice' | 'poison';
@@ -101,12 +101,14 @@ export class ParticleSpawner {
   static spawnShieldAura(particles: Particle[], x: number, y: number, hw: number): void {
     const cfg = BALANCE_CONFIG.particle.shieldAura;
     const count = cfg.countPerFrame;
+    // 粒子沿护盾矩形整个高度分布（Y 轴拉长后能量场充满保护区），而非仅底部一条线
+    const rh = BALANCE_CONFIG.subway.shieldRectHeight;
 
     for (let i = 0; i < count; i++) {
       // 在护盾矩形下缘水平随机分布
       const radius = hw * (cfg.radiusMin + Math.random() * (cfg.radiusMax - cfg.radiusMin));
       const px = x + (Math.random() - 0.5) * 2 * radius;
-      const py = y + (Math.random() - 0.5) * 6; // 微小 Y 抖动
+      const py = y - Math.random() * rh; // 从起始线向上延伸至护盾顶缘
 
       const life = cfg.lifeMin + Math.random() * (cfg.lifeMax - cfg.lifeMin);
       const size = cfg.sizeMin + Math.random() * (cfg.sizeMax - cfg.sizeMin);
@@ -187,7 +189,7 @@ export class ParticleSpawner {
    * 修复 P2：移除未使用的 _spread 参数
    */
   static spawnConeFire(params: ConeFireParams): void {
-    const { particles, fireZones, deltaTime, x, y, angle, range, baseDamage, type = 'fire' } = params;
+    const { particles, fireZones, x, y, angle, range, baseDamage, type = 'fire' } = params;
     const cfg = BALANCE_CONFIG.particle.coneFire;
     const wpnCfg = BALANCE_CONFIG.weaponDamage;
     const isIce = type === 'ice';
@@ -249,16 +251,17 @@ export class ParticleSpawner {
       type: ParticleType.SPARK,
     });
 
-    // 修复 P0：damagePerSecond = baseDamage * 乘数 / deltaTime
-    // 碰撞系统每帧应用 damagePerSecond * deltaTime，所以每帧实际伤害 = baseDamage * multiplier
+    // 火焰区域：baseDamage 即真实每秒伤害（由调用方按武器换算为 DPS 传入）。
+    // 伤害区域与视觉火焰对齐：火焰从喷嘴（玩家 y - nozzleOffsetY）喷出，
+    // 火区中心位于喷嘴前方 range/2 处，而非玩家脚下——否则蟑螂在束射程内被烧死前永远进不了火区
     const fireZoneLife = wpnCfg.fireZoneMaxLife;
-    const damagePerSecond = baseDamage * wpnCfg.fireZoneDpsMultiplier / deltaTime;
+    const muzzleY = y - BALANCE_CONFIG.player.nozzleOffsetY;
 
     fireZones.push({
       x: x + Math.cos(angle) * range / 2,
-      y: y + Math.sin(angle) * range / 2,
+      y: muzzleY + Math.sin(angle) * range / 2,
       radius: range * 0.8,
-      damagePerSecond,
+      damagePerSecond: baseDamage,
       life: fireZoneLife,
       maxLife: fireZoneLife,
       type,

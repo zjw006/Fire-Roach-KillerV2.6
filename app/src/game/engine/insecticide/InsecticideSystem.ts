@@ -98,7 +98,7 @@ export class InsecticideSystem {
     deltaTime: number,
     canvasWidth: number,
     canvasHeight: number,
-    defenseLineY: number,
+    _defenseLineY: number,
     roaches: Roach[]
   ): Particle[] {
     if (!this.spray.active) return [];

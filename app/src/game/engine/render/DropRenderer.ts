@@ -164,7 +164,7 @@ export class DropRenderer {
   static renderWeaponDrops(
     ctx: CanvasRenderingContext2D,
     drops: WeaponDrop[],
-    time: number,
+    _time: number,
     dropImages?: Record<string, HTMLImageElement>
   ): void {
     const cfg = BALANCE_CONFIG.render.drop.weapon;
@@ -254,9 +254,7 @@ export class DropRenderer {
     const y = drop.y + bobY;
 
     // 辉光效果
-    const glowPulse = (Math.sin(drop.bobPhase * 2) + 1) * cfg.glowPulseBase + cfg.glowPulseAmplitude * 0;
-    // 实际计算: (sin+1)*0.5 + 0.5 的极值范围是 [0.5, 1.5]，但原代码用的是 (sin+1)*0.5
-    // 保持原始行为: glowPulse = (sin(t*2)+1) * 0.5, 范围 [0, 1]
+    // glowPulse = (sin(t*2)+1) * 0.5, 范围 [0, 1]
     const actualGlowPulse = (Math.sin(drop.bobPhase * 2) + 1) * cfg.glowPulseBase;
 
     const gradient = ctx.createRadialGradient(x, y, cfg.size * cfg.glowInnerRadiusRatio, x, y, cfg.size * cfg.glowOuterRadiusRatio);

@@ -23,7 +23,7 @@ const trpcClient = trpc.createClient({
         return globalThis.fetch(input, {
           ...(init ?? {}),
           credentials: "include",
-        }).catch((err) => {
+        }).catch(() => {
           // 生产模式下静默处理网络错误
           return new Response(JSON.stringify([]), { status: 200, headers: { 'content-type': 'application/json' } });
         });

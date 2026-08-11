@@ -105,11 +105,6 @@ export class BossBattleSystem {
   /** 对话计时器数组（修复 P0：防止 setTimeout 内存泄漏） */
   private dialogueTimers: ReturnType<typeof setTimeout>[] = [];
 
-  /** 获得 economy 引用 */
-  private get economy() { return this.cb.onGetEconomy(); }
-  /** 获得 progress 引用 */
-  private get progress() { return this.cb.onGetProgress(); }
-
   /**
    * 构造函数
    * @param getNextBossId ID生成器回调（修复 P0：注入式ID，消除全局状态）
@@ -754,7 +749,7 @@ export class BossBattleSystem {
     }
 
     // 波次进度文字
-    let waveDisplay = TEXT_CONFIG.combat.preparing.text;
+    let waveDisplay: string = TEXT_CONFIG.combat.preparing.text;
     if (bb.currentWave >= 1 && bb.currentWave <= totalLayers) {
       waveDisplay = TEXT_CONFIG.combat.bossWaveProgress.text(bb.currentWave);
     } else if (bb.currentWave > totalLayers) {
