@@ -20,6 +20,11 @@ export const renderCfg = BALANCE_CONFIG.render as unknown as AnyRecord;
 /** 渲染配置初始值备份（与 backupCfg 一同用于"重置全部参数"） */
 export const backupRenderCfg = deepClone(renderCfg);
 
+/** 活动的可编辑风扇配置（BALANCE_CONFIG.fan 的可变别名，FanSystem 渲染/逻辑共用，定义于 items.ts BALANCE_ITEMS） */
+export const fanCfg = (BALANCE_CONFIG as unknown as AnyRecord).fan as AnyRecord;
+/** 风扇配置初始值备份 */
+export const backupFanCfg = deepClone(fanCfg);
+
 export type ConeVariant = 'fire' | 'ice' | 'poison';
 
 /** 资源管理器分组 */
@@ -80,11 +85,264 @@ export function sectionsForAtoms(atomIds: string[]): EffectSection[] {
 }
 
 /**
- * 预制体专属的非 particle 配置节（渲染器直连特效等，key = 预制体 id）。
- * obj 指向 BALANCE_CONFIG.render 子节点（原地编辑即被游戏渲染器读取）；
- * path 以 render. 开头（相对 BALANCE_CONFIG 根，供导出定位）。
+ * 预制体专属的非 particle 配置节（渲染器直连 Canvas 直绘特效等，key = 预制体 id）。
+ * obj 指向 BALANCE_CONFIG 对应子节点（原地编辑即被游戏渲染器实时读取）；
+ * path 相对 BALANCE_CONFIG 根（render.* / fan 等，供导出定位）。
  */
+/** 火焰锥（render.fireZone）可编辑节：喷火枪 / 火力全开系列预制体共用 */
+const FIRE_ZONE_SECTIONS: EffectSection[] = [
+  {
+    title: '火焰锥形状（分段/宽度/收缩）',
+    obj: renderCfg.fireZone,
+    path: 'render.fireZone',
+    keys: ['segments', 'rangeRatio', 'baseWidth', 'widthTaper'],
+  },
+  {
+    title: '火焰摆动（频率/时间缩放/幅度）',
+    obj: renderCfg.fireZone,
+    path: 'render.fireZone',
+    keys: ['wiggleFreq', 'wiggleTimeScale', 'wiggleAmplitude'],
+  },
+  {
+    title: '喷嘴核心辉光 / 变体颜色',
+    obj: renderCfg.fireZone,
+    path: 'render.fireZone',
+    keys: ['coreGlowSize', 'coreColorDefault', 'coreColorSticky', 'coreColorPoison'],
+    hint: '核心颜色为裸 RGB 三元组，渲染代码以 rgba(颜色, α) 插值使用；喷射长度由预制体 step.params.range 控制',
+  },
+];
+
+/** 火力全开（fireZone boost 波纹 + muzzleFlash 枪口强化喷射）可编辑节 */
+const POWER_BOOST_SECTIONS: EffectSection[] = [
+  {
+    title: '强化波纹（火力全开叠加层）',
+    obj: renderCfg.fireZone,
+    path: 'render.fireZone',
+    keys: [
+      'boostAlphaMax', 'boostAlphaFade', 'boostRippleCount', 'boostRippleFreq',
+      'boostRippleSpacing', 'boostRippleMaxPhase', 'boostRippleRadiusBase',
+      'boostRippleRadiusGrowth', 'boostRippleLineWidth',
+    ],
+  },
+  {
+    title: '枪口强化喷射（renderUtils.muzzleFlash）',
+    obj: renderCfg.renderUtils.muzzleFlash,
+    path: 'render.renderUtils.muzzleFlash',
+    keys: [
+      'boostParticleCount', 'boostSprayDistMin', 'boostSprayDistMax', 'boostSprayYScale',
+      'boostSprayYRandom', 'boostParticleSizeBase', 'boostParticleSizeRange',
+      'boostAlphaBase', 'boostAlphaRange', 'boostGlowSizeMultiplier',
+      'boostGlowAlphaRatio', 'boostAlphaFadeTime',
+    ],
+    hint: 'boostColors 颜色数组为常量，不在面板显示（直接改 render-balance.ts）',
+  },
+];
+
 export const PREFAB_CONFIG_SECTIONS: Record<string, EffectSection[]> = {
+  // ==================== 武器 ====================
+  // 喷火枪火焰锥：BackgroundRenderer.renderFireZones 直接 Canvas 绘制（render.fireZone 驱动）
+  w_flamethrower: [...FIRE_ZONE_SECTIONS],
+  w_flamethrower_boost: [...FIRE_ZONE_SECTIONS, ...POWER_BOOST_SECTIONS],
+
+  // ==================== 掉落道具 ====================
+  // 道具拾取：DropRenderer.renderWeaponDrops（render.drop.weapon 驱动）
+  p_pickup: [
+    {
+      title: '漂浮 / 呼吸 / 倾斜',
+      obj: renderCfg.drop.weapon,
+      path: 'render.drop.weapon',
+      keys: [
+        'bobYAmplitude', 'bobXAmplitude', 'bobXTimeScale',
+        'breatheBase', 'breatheAmplitude', 'breatheTimeScale',
+        'tiltAmplitude', 'tiltTimeScale',
+      ],
+    },
+    {
+      title: '图标 / 名称标签',
+      obj: renderCfg.drop.weapon,
+      path: 'render.drop.weapon',
+      keys: [
+        'baseSize', 'labelFont', 'labelOffsetY', 'labelShadowBlur', 'labelShadowColor',
+        'fallbackSize', 'fallbackLineWidth', 'fallbackStrokeColor',
+      ],
+    },
+    {
+      title: '辉光环',
+      obj: renderCfg.drop.weapon,
+      path: 'render.drop.weapon',
+      keys: ['haloAlpha', 'haloLineWidth', 'glowSize', 'glowAlpha'],
+    },
+  ],
+  // 蟑螂贴板：DropRenderer.renderStickyDrops（render.drop.sticky 驱动）
+  p_sticky: [
+    {
+      title: '辉光 / 本体',
+      obj: renderCfg.drop.sticky,
+      path: 'render.drop.sticky',
+      keys: [
+        'glowSizeMultiplier', 'glowAlpha', 'glowInnerColor', 'glowOuterColor',
+        'pulseBase', 'pulseAmplitude', 'bodyAlpha', 'bodyColor',
+      ],
+      hint: '颜色为 rgba(..., {alpha}) 模板字符串，{alpha} 由代码注入，编辑时请保留该占位符',
+    },
+    {
+      title: '高光',
+      obj: renderCfg.drop.sticky,
+      path: 'render.drop.sticky',
+      keys: ['highlightAlpha', 'highlightColor', 'highlightSizeRatio', 'highlightOffsetRatio'],
+    },
+    {
+      title: '速度拖尾 / 滴落',
+      obj: renderCfg.drop.sticky,
+      path: 'render.drop.sticky',
+      keys: [
+        'trailLength', 'trailAlphaBase', 'trailSizeDecay', 'trailColor',
+        'dripCount', 'dripLengthBase', 'dripLengthAmplitude', 'dripTimeScale',
+      ],
+    },
+  ],
+  // 电蚊拍：RenderUtils.renderSwatter（render.renderUtils.swatter 驱动）
+  p_swatter: [
+    {
+      title: '拍体动画（扫落轨迹/尺寸）',
+      obj: renderCfg.renderUtils.swatter,
+      path: 'render.renderUtils.swatter',
+      keys: ['animDuration', 'startYRatio', 'endYRatio', 'headWRatio', 'headHRatio', 'handleLengthRatio', 'handleWidth'],
+    },
+    {
+      title: '拍面网格',
+      obj: renderCfg.renderUtils.swatter,
+      path: 'render.renderUtils.swatter',
+      keys: ['gridCols', 'gridRows', 'gridStroke', 'gridStrokeAlpha'],
+    },
+    {
+      title: '拍面电弧',
+      obj: renderCfg.renderUtils.swatter,
+      path: 'render.renderUtils.swatter',
+      keys: [
+        'arcAlphaPeak', 'arcPhaseStart', 'arcPhaseEnd', 'arcCount', 'arcSegments',
+        'arcWidth', 'arcHeight', 'arcFillAlpha', 'arcGlowBlur', 'arcStroke', 'arcFill', 'arcGlowColor',
+      ],
+    },
+    {
+      title: '外发光 / 描边',
+      obj: renderCfg.renderUtils.swatter,
+      path: 'render.renderUtils.swatter',
+      keys: [
+        'outerGlowAlpha', 'outerGlowColor', 'outerGlowColor2', 'outerGlowFalloff',
+        'rectStroke', 'rectStrokeAlpha', 'rectStrokeDecay', 'handleStroke', 'handleStrokeAlpha',
+      ],
+    },
+    {
+      title: '眩晕星星',
+      obj: renderCfg.renderUtils.swatter,
+      path: 'render.renderUtils.swatter',
+      keys: ['stunStarChance', 'stunStarSize', 'stunStarAlphaBase', 'stunStarAlphaRange', 'stunStar'],
+    },
+  ],
+  // 雷达激光：RenderUtils.renderRadarLaser（render.renderUtils.radarLaser 驱动）
+  p_radar: [
+    {
+      title: '激光束（三层辉光）',
+      obj: renderCfg.renderUtils.radarLaser,
+      path: 'render.renderUtils.radarLaser',
+      keys: [
+        'fadeInDuration', 'baseAlpha', 'pulseFreq', 'pulseAmp',
+        'outerGlowAlpha', 'outerGlowWidth', 'midGlowAlpha', 'midGlowWidth',
+        'coreWidth', 'colorBody', 'colorBright',
+      ],
+    },
+    {
+      title: '目标锁定环',
+      obj: renderCfg.renderUtils.radarLaser,
+      path: 'render.renderUtils.radarLaser',
+      keys: [
+        'lockPulseFreq', 'lockPulseBase', 'lockPulseAmp', 'lockRingRadius',
+        'lockRingAmp', 'lockRingWidth', 'lockFillRadius', 'lockFillAlpha',
+      ],
+    },
+    {
+      title: '发射器',
+      obj: renderCfg.renderUtils.radarLaser,
+      path: 'render.renderUtils.radarLaser',
+      keys: ['emitterRadius', 'emitterAlpha'],
+    },
+  ],
+  // 杀虫剂喷雾：RenderUtils.renderInsecticideSpray（render.renderUtils.insecticide 驱动）
+  p_insecticide: [
+    {
+      title: '喷雾锥（范围/脉冲/边界/喷嘴）',
+      obj: renderCfg.renderUtils.insecticide,
+      path: 'render.renderUtils.insecticide',
+      keys: [
+        'range', 'pulseBaseAlpha', 'pulseAmpAlpha', 'pulseFreq',
+        'boundaryAlpha', 'boundaryStroke', 'boundaryWidth',
+        'centerAlpha', 'centerStroke', 'centerWidth',
+        'nozzleGlowAlpha', 'nozzleRadius', 'timerOffsetY',
+      ],
+      hint: 'centerDash 虚线数组为常量，不在面板显示（直接改 render-balance.ts）',
+    },
+  ],
+  // 强力风扇：FanSystem.renderFan（BALANCE fan 驱动，定义于 items.ts BALANCE_ITEMS）
+  p_fan: [
+    {
+      title: '风纹波（透视气流线）',
+      obj: fanCfg,
+      path: 'fan',
+      keys: [
+        'waveCount', 'waveSpeedBase', 'waveSpeedIncrement', 'waveAmplitudeBase',
+        'waveAmplitudeIncrement', 'waveAlphaBase', 'waveAlphaAmp', 'waveLineYStep',
+        'wavePhaseMultiplier', 'waveStrokeBase', 'waveStrokeAmp',
+        'perspectiveScaleMin', 'sourceWidthRatio',
+      ],
+      hint: '逻辑参数（pushForce / defaultSlowFactor / effects 减速表）影响游戏平衡，请在 items.ts BALANCE_ITEMS.fan 编辑',
+    },
+    {
+      title: '阵风前沿',
+      obj: fanCfg,
+      path: 'fan',
+      keys: ['gustCount', 'gustHeightBase', 'gustHeightIncrement', 'gustAlphaBase', 'gustSpeedBase', 'gustSpeedIncrement'],
+    },
+    {
+      title: '悬浮粒子 / 风扇图标叶片',
+      obj: fanCfg,
+      path: 'fan',
+      keys: [
+        'particleCount', 'particleRiseSpeedBase', 'particleRiseSpeedIncrement',
+        'particleAlphaBase', 'particleAlphaAmp', 'particleSizeBase', 'particleSizeAmp',
+        'particleRotateAmp', 'particleSizeLength',
+        'sourceAlpha', 'sourceGlowAlpha', 'sourceGlowMidAlpha',
+        'iconSize', 'defaultBladeSpeed', 'bladeSize', 'bladeLength', 'bladeRadiusRatio', 'centerSize',
+      ],
+    },
+  ],
+
+  // ==================== 商店道具 ====================
+  // 火力全开：枪口强化喷射 + 增强火焰锥
+  p_power_boost: [...POWER_BOOST_SECTIONS],
+  // 临时护盾：RenderUtils.renderDefenseLine 护盾分支（render.renderUtils.defenseLine 驱动）
+  p_shield: [
+    {
+      title: '防线主体（虚线/填充/标签）',
+      obj: renderCfg.renderUtils.defenseLine,
+      path: 'render.renderUtils.defenseLine',
+      keys: ['lineWidth', 'dashSpeed', 'fillAlpha', 'fillHeight', 'labelFont', 'labelAlpha', 'labelOffsetY'],
+      hint: 'dash 虚线数组为常量，不在面板显示（直接改 render-balance.ts）',
+    },
+    {
+      title: '护盾辉光（临时护盾效果）',
+      obj: renderCfg.renderUtils.defenseLine,
+      path: 'render.renderUtils.defenseLine',
+      keys: [
+        'shieldYOffset', 'shieldAlphaBase', 'shieldAlphaAmp', 'shieldAlphaFreq',
+        'shieldGlowColor', 'shieldGlowBase', 'shieldGlowAmp', 'shieldGlowFreq',
+        'shieldLineWidth', 'shieldCoreWidth', 'shieldCoreAlphaRatio',
+        'shieldColor', 'shieldCoreColor',
+      ],
+    },
+  ],
+
+  // ==================== 怪物技能 ====================
   // 护士治疗：光环由 NurseRenderer.renderNurseHealVFX 直接 Canvas 绘制（非粒子）
   s_nurse: [
     {
@@ -109,6 +367,19 @@ export const PREFAB_CONFIG_SECTIONS: Record<string, EffectSection[]> = {
       title: '消散阶段光环（淡出环 + 收缩点）',
       obj: renderCfg.nurseHealVFX.dissipate,
       path: 'render.nurseHealVFX.dissipate',
+    },
+  ],
+  // 护甲喷涂：命中后目标套上旋转六边形护甲环（RoachRenderer ARMOR SHIELD EFFECT，render.roach.shield 驱动）
+  s_armor_spray: [
+    {
+      title: '六边形护甲环（普通护盾）',
+      obj: renderCfg.roach.shield,
+      path: 'render.roach.shield',
+      keys: [
+        'normalColor', 'normalPulseBase', 'normalLineWidth', 'normalShadowBlur',
+        'normalShadowAlphaRatio', 'normalRadiusRatio', 'normalGlowAlphaRatio',
+      ],
+      hint: '改动会同步影响装甲蟑螂的护盾外观；timedSuicide* 为定时自爆蟑螂的橙色护盾配色，此处不显示',
     },
   ],
 };

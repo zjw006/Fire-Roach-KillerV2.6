@@ -383,13 +383,24 @@ export function parseColorToRgba(str: string): Rgba | null {
       return { r, g, b, a: parts.length >= 4 && Number.isFinite(parts[3]) ? clamp(parts[3], 0, 1) : 1 };
     }
   }
+  // 裸 RGB 三元组（如 '160, 210, 255'）：游戏渲染代码以 rgba(${c}, α) 插值使用，alpha 由代码侧控制
+  m = /^(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})$/.exec(s);
+  if (m) {
+    const [r, g, b] = [Number(m[1]), Number(m[2]), Number(m[3])];
+    if (r <= 255 && g <= 255 && b <= 255) return { r, g, b, a: 1 };
+  }
   return null;
 }
 
-/** 将新颜色写回颜色字符串：原 hex 且不透明时保持 hex，其余统一输出 rgba() */
+/** 将新颜色写回颜色字符串：原 hex 且不透明时保持 hex；裸 RGB 三元组保持三元组格式；其余统一输出 rgba() */
 export function writeColorString(original: string, next: Rgba): string {
-  if (original.trim().startsWith('#') && next.a >= 1) {
+  const s = original.trim();
+  if (s.startsWith('#') && next.a >= 1) {
     return rgbaToHex(next.r, next.g, next.b);
+  }
+  // 裸三元组（如 fireZone.coreColorDefault）回写仍为 'r, g, b'，避免破坏渲染代码的 rgba(${c}, α) 插值
+  if (/^\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}$/.test(s)) {
+    return `${Math.round(next.r)}, ${Math.round(next.g)}, ${Math.round(next.b)}`;
   }
   return `rgba(${Math.round(next.r)}, ${Math.round(next.g)}, ${Math.round(next.b)}, ${+next.a.toFixed(2)})`;
 }
@@ -524,7 +535,7 @@ export function exportEffectSnippet(
   const shared = sections.filter((s) => s.path.startsWith('physics.')).map((s) => s.path);
   return [
     `// ===== 特效「${name} ${en}」配置片段（由特效工作台导出）=====`,
-    `// 用法：将以下节点按键合并回 render-balance.ts 的 ${targetNode}: { ... } 中`,
+    `// 用法：将以下节点按键合并回 BALANCE_CONFIG 的 ${targetNode}: { ... } 配置节点（render-balance.ts / items.ts）`,
     ...(shared.length > 0
       ? [`// 注意：${shared.join('、')} 为共享组，改动会同时影响引用它的其他特效`]
       : []),

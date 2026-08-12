@@ -33,9 +33,11 @@ import { ParamPanel } from './ParamPanel';
 import { EFFECT_DRAG_MIME, PREFAB_DRAG_MIME, ResourceExplorer } from './ResourceExplorer';
 import {
   backupCfg,
+  backupFanCfg,
   backupRenderCfg,
   EFFECTS,
   PREFAB_CONFIG_SECTIONS,
+  fanCfg,
   particleCfg,
   renderCfg,
   sectionsForAtoms,
@@ -546,6 +548,7 @@ export default function EffectLabPage() {
     if (!window.confirm('重置所有粒子/渲染参数为代码初始值？（未导出的修改将丢失）')) return;
     deepAssign(particleCfg, backupCfg);
     deepAssign(renderCfg, backupRenderCfg);
+    deepAssign(fanCfg, backupFanCfg);
     NurseRenderer.invalidateTickCache();
     bump();
   };
@@ -579,16 +582,19 @@ export default function EffectLabPage() {
       configParts.push(exportEffectSnippet(prefab.name, prefab.en, atomSections, particleCfg));
     }
     if (renderSections.length > 0) {
-      // render 配置节的 path 相对 BALANCE_CONFIG 根（render.nurseHealVFX.*）
-      configParts.push(
-        exportEffectSnippet(
-          prefab.name,
-          prefab.en,
-          renderSections,
-          BALANCE_CONFIG as unknown as AnyRecord,
-          'render',
-        ),
-      );
+      // 渲染/系统配置节的 path 相对 BALANCE_CONFIG 根（render.* / fan 等），按顶层节点分组导出
+      const groups = new Map<string, typeof renderSections>();
+      for (const sec of renderSections) {
+        const top = sec.path.split('.')[0];
+        const arr = groups.get(top) ?? [];
+        arr.push(sec);
+        groups.set(top, arr);
+      }
+      for (const [top, secs] of groups) {
+        configParts.push(
+          exportEffectSnippet(prefab.name, prefab.en, secs, BALANCE_CONFIG as unknown as AnyRecord, top),
+        );
+      }
     }
     const stepsPart = toTsLiteral(
       {
