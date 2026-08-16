@@ -56,7 +56,7 @@ export class PoisonSystem {
     y: number
   ): void {
     const cfg = BALANCE_CONFIG.poisonCloud;
-    for (let i = 0; i < cfg.particleCount; i++) {
+    for (let i = 0; i < cfg.emitter.particleCount; i++) {
       const angle = Math.random() * Math.PI * 2;
       const speed = cfg.speedMin + Math.random() * cfg.speedMax;
       const life = cfg.lifeMin + Math.random() * cfg.lifeMax;

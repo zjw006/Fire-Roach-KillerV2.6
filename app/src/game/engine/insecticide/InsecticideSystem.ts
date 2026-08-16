@@ -144,6 +144,8 @@ export class InsecticideSystem {
    */
   private spawnSideParticles(side: number, w: number, h: number): Particle[] {
     const cfg = BALANCE_CONFIG.insecticide;
+    // 粒子颜色随机范围集中于 vfx-balance render.renderUtils.insecticide.particles
+    const colors = BALANCE_CONFIG.render.renderUtils.insecticide.particles;
     const particles: Particle[] = [];
     const cy = h / 2;
     const isLeft = side === 0;
@@ -151,11 +153,12 @@ export class InsecticideSystem {
     const dirX = isLeft ? 1 : -1;
 
     // 主喷雾粒子
+    const sc = colors.spray;
     for (let i = 0; i < cfg.sideParticleCount; i++) {
       const py = cy + (Math.random() - 0.5) * h * 0.6;
       const life = cfg.particleLifeMin + Math.random() * cfg.particleLifeMax;
       const speed = cfg.particleSpeedMin + Math.random() * cfg.particleSpeedMax;
-      const greenBase = 180 + Math.random() * 60;
+      const greenBase = sc.gMin + Math.random() * sc.gRange;
       const alpha = cfg.particleAlphaMin + Math.random() * cfg.particleAlphaMax;
       particles.push({
         x: baseX + Math.random() * 30,
@@ -164,12 +167,13 @@ export class InsecticideSystem {
         vy: (Math.random() - 0.5) * 30,
         life, maxLife: life,
         size: 5 + Math.random() * 10,
-        color: `rgba(${50 + Math.random() * 30}, ${greenBase}, ${50 + Math.random() * 20}, ${alpha})`,
+        color: `rgba(${sc.rMin + Math.random() * sc.rRange}, ${greenBase}, ${sc.bMin + Math.random() * sc.bRange}, ${alpha})`,
         type: ParticleType.POISON_CLOUD,
       });
     }
 
     // 细雾滴粒子
+    const mc = colors.mist;
     for (let i = 0; i < cfg.centerParticleCount; i++) {
       const px = isLeft ? 15 + Math.random() * 20 : w - 15 - Math.random() * 20;
       const py = cy + (Math.random() - 0.5) * h * 0.5;
@@ -180,12 +184,13 @@ export class InsecticideSystem {
         vy: (Math.random() - 0.5) * 40,
         life, maxLife: life,
         size: 2 + Math.random() * 4,
-        color: `rgba(${120 + Math.random() * 40}, 255, ${120 + Math.random() * 40}, ${0.5 + Math.random() * 0.3})`,
+        color: `rgba(${mc.rMin + Math.random() * mc.rRange}, ${mc.g}, ${mc.bMin + Math.random() * mc.bRange}, ${mc.alphaMin + Math.random() * mc.alphaRange})`,
         type: ParticleType.SPARK,
       });
     }
 
     // 喷嘴爆发效果
+    const nc = colors.nozzle;
     const nx = isLeft ? 10 : w - 10;
     for (let i = 0; i < 2; i++) {
       particles.push({
@@ -195,7 +200,7 @@ export class InsecticideSystem {
         life: 0.15 + Math.random() * 0.15,
         maxLife: 0.15 + Math.random() * 0.15,
         size: 4 + Math.random() * 6,
-        color: `rgba(${100 + Math.random() * 30}, 240, ${100 + Math.random() * 20}, ${0.6 + Math.random() * 0.3})`,
+        color: `rgba(${nc.rMin + Math.random() * nc.rRange}, ${nc.g}, ${nc.bMin + Math.random() * nc.bRange}, ${nc.alphaMin + Math.random() * nc.alphaRange})`,
         type: ParticleType.POISON_CLOUD,
       });
     }
@@ -228,6 +233,8 @@ export class InsecticideSystem {
   private spawnFadeOutParticles(w: number, h: number): Particle[] {
     const particles: Particle[] = [];
     const cy = h / 2;
+    // 消散粒子颜色随机范围集中于 vfx-balance render.renderUtils.insecticide.particles.fadeOut
+    const fc = BALANCE_CONFIG.render.renderUtils.insecticide.particles.fadeOut;
 
     for (let side = 0; side < 2; side++) {
       for (let i = 0; i < 8; i++) {
@@ -240,7 +247,7 @@ export class InsecticideSystem {
           life: 0.5 + Math.random() * 0.5,
           maxLife: 0.5 + Math.random() * 0.5,
           size: 5 + Math.random() * 10,
-          color: `rgba(${60 + Math.random() * 30}, ${160 + Math.random() * 50}, ${60 + Math.random() * 20}, ${0.2 + Math.random() * 0.2})`,
+          color: `rgba(${fc.rMin + Math.random() * fc.rRange}, ${fc.gMin + Math.random() * fc.gRange}, ${fc.bMin + Math.random() * fc.bRange}, ${fc.alphaMin + Math.random() * fc.alphaRange})`,
           type: ParticleType.POISON_CLOUD,
         });
       }
@@ -304,6 +311,8 @@ export class InsecticideSystem {
 
       // 命中粒子
       if (Math.random() < cfg.hitParticleChance) {
+        // 命中粒子颜色随机范围集中于 vfx-balance render.renderUtils.insecticide.particles.hit
+        const hc = BALANCE_CONFIG.render.renderUtils.insecticide.particles.hit;
         particles.push({
           x: r.x + (Math.random() - 0.5) * 10,
           y: r.y + (Math.random() - 0.5) * 10,
@@ -312,7 +321,7 @@ export class InsecticideSystem {
           life: 0.3,
           maxLife: 0.3,
           size: 2 + Math.random() * 3,
-          color: `rgba(${80 + Math.random() * 40}, 220, ${80 + Math.random() * 20}, 0.7)`,
+          color: `rgba(${hc.rMin + Math.random() * hc.rRange}, ${hc.g}, ${hc.bMin + Math.random() * hc.bRange}, ${hc.alpha})`,
           type: ParticleType.POISON_CLOUD,
         });
       }

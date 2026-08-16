@@ -1,4 +1,4 @@
-import { SceneType, type WaveConfig } from '../types';
+import { SceneType, RoachType, type WaveConfig } from '../types';
 
 /**
  * @fileoverview 波次配置
@@ -77,9 +77,9 @@ export const WAVE_CONFIGS_STREET: WaveConfig[] = [
 // 每波最多 2 只 timed_suicide，mutant 数量从 1 递增到 6
 export const WAVE_CONFIGS_HOSPITAL: WaveConfig[] = [
   // Wave 1: Intro - 1 mutant + 1 timed suicide (gentle intro)
-  { wave: 1, smallCount: 6, largeCount: 2, flyingCount: 0, armoredCount: 0, splittingCount: 0, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 0.65, interval: 9, clusterChance: 0.15, nurseCount: 0, mutantCount: 1, timedSuicideCount: 1, eggPoolActiveCount: 0 },
+  { wave: 1, smallCount: 6, largeCount: 2, flyingCount: 0, armoredCount: 0, splittingCount: 0, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 0.65, interval: 9, clusterChance: 0.15, nurseCount: 1, mutantCount: 1, timedSuicideCount: 1, eggPoolActiveCount: 0 },
   // Wave 2: Egg pool - 2 mutants + 1 timed
-  { wave: 2, smallCount: 8, largeCount: 3, flyingCount: 1, armoredCount: 0, splittingCount: 0, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 0.70, interval: 8, clusterChance: 0.2, nurseCount: 0, mutantCount: 2, timedSuicideCount: 1, eggPoolActiveCount: 1 },
+  { wave: 2, smallCount: 8, largeCount: 3, flyingCount: 1, armoredCount: 0, splittingCount: 0, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 0.70, interval: 8, clusterChance: 0.2, nurseCount: 1, mutantCount: 2, timedSuicideCount: 1, eggPoolActiveCount: 1 },
   // Wave 3: First nurse + 3 mutants + 1 timed
   { wave: 3, smallCount: 8, largeCount: 3, flyingCount: 2, armoredCount: 1, splittingCount: 0, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 0.75, interval: 7, clusterChance: 0.25, nurseCount: 1, mutantCount: 3, timedSuicideCount: 1, eggPoolActiveCount: 1 },
   // Wave 4: 4 mutants + 2 timed
@@ -89,9 +89,9 @@ export const WAVE_CONFIGS_HOSPITAL: WaveConfig[] = [
   // Wave 6: 5 mutants + 2 timed
   { wave: 6, smallCount: 6, largeCount: 4, flyingCount: 4, armoredCount: 3, splittingCount: 2, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 0.90, interval: 5, clusterChance: 0.4, nurseCount: 1, mutantCount: 5, timedSuicideCount: 2, eggPoolActiveCount: 2 },
   // Wave 7: 5 mutants + 2 timed
-  { wave: 7, smallCount: 6, largeCount: 4, flyingCount: 5, armoredCount: 3, splittingCount: 2, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 0.95, interval: 5, clusterChance: 0.45, nurseCount: 2, mutantCount: 5, timedSuicideCount: 2, eggPoolActiveCount: 2 },
+  { wave: 7, smallCount: 6, largeCount: 4, flyingCount: 5, armoredCount: 3, splittingCount: 2, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 0.95, interval: 5, clusterChance: 0.45, nurseCount: 1, mutantCount: 5, timedSuicideCount: 2, eggPoolActiveCount: 2 },
   // Wave 8: Final - 6 mutants + 2 timed (max 2 per wave)
-  { wave: 8, smallCount: 4, largeCount: 4, flyingCount: 5, armoredCount: 3, splittingCount: 2, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 1.0, interval: 4, clusterChance: 0.5, nurseCount: 2, mutantCount: 6, timedSuicideCount: 2, eggPoolActiveCount: 2 },
+  { wave: 8, smallCount: 4, largeCount: 4, flyingCount: 5, armoredCount: 3, splittingCount: 2, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 1.0, interval: 4, clusterChance: 0.5, nurseCount: 1, mutantCount: 6, timedSuicideCount: 2, eggPoolActiveCount: 2 },
 ];
 
 // 地铁 10 波（无女王Boss；无小蟑螂——原小蟑螂全部升级为大蟑螂，原大蟑螂+精英全部升级为精英；
@@ -101,11 +101,11 @@ export const WAVE_CONFIGS_HOSPITAL: WaveConfig[] = [
 // 精英/护盾/隧道工为场景机制锚点，数量保留核心编成，主要削减大蟑螂填充与精英堆叠
 export const WAVE_CONFIGS_SUBWAY: WaveConfig[] = [
   // 波1：教学过渡，熟悉风扇吹怪、聚拢分散
-  { wave: 1, smallCount: 0, largeCount: 10, flyingCount: 2, armoredCount: 0, splittingCount: 0, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, eliteCount: 1, speed: 0.78, interval: 6, clusterChance: 0.15 },
+  { wave: 1, smallCount: 0, largeCount: 10, flyingCount: 2, armoredCount: 0, splittingCount: 0, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, eliteCount: 1, tunnelWorkerCount: 1, shieldCount: 1, speed: 0.78, interval: 6, clusterChance: 0.15 },
   // 波2：火墙破甲 + 风扇吹向列车轨道
-  { wave: 2, smallCount: 0, largeCount: 10, flyingCount: 2, armoredCount: 1, splittingCount: 0, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, eliteCount: 1, speed: 0.82, interval: 6, clusterChance: 0.2 },
+  { wave: 2, smallCount: 0, largeCount: 10, flyingCount: 2, armoredCount: 1, splittingCount: 0, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, eliteCount: 1, tunnelWorkerCount: 1, shieldCount: 1, speed: 0.82, interval: 6, clusterChance: 0.2 },
   // 波3：首次遇到隧道工 + 首只自爆，需吹走隧道工同时吹蟑螂过去
-  { wave: 3, smallCount: 0, largeCount: 10, flyingCount: 2, armoredCount: 0, splittingCount: 0, suicideCount: 1, flyingSuicideCount: 0, queenCount: 0, tunnelWorkerCount: 1, eliteCount: 1, speed: 0.86, interval: 5, clusterChance: 0.2 },
+  { wave: 3, smallCount: 0, largeCount: 10, flyingCount: 2, armoredCount: 0, splittingCount: 0, suicideCount: 1, flyingSuicideCount: 0, queenCount: 0, tunnelWorkerCount: 1, eliteCount: 1, shieldCount: 1, speed: 0.86, interval: 5, clusterChance: 0.2 },
   // 波4：护盾蟑螂首登场（盾墙推进阵型首现）+ 装甲群，考验破盾 + 列车时机
   { wave: 4, smallCount: 0, largeCount: 9, flyingCount: 3, armoredCount: 2, splittingCount: 0, suicideCount: 1, flyingSuicideCount: 0, queenCount: 0, tunnelWorkerCount: 1, eliteCount: 2, shieldCount: 1, speed: 0.88, interval: 5, clusterChance: 0.25 },
   // 波5：精英冲锋 + 首只飞行自爆，火墙/风扇控制 + 列车碾压
@@ -113,23 +113,94 @@ export const WAVE_CONFIGS_SUBWAY: WaveConfig[] = [
   // 波6：高压——精英冲刺 + 护盾阵型 + 隧道工喷涂 + 护甲群 + 自爆
   { wave: 6, smallCount: 0, largeCount: 9, flyingCount: 3, armoredCount: 2, splittingCount: 0, suicideCount: 1, flyingSuicideCount: 1, queenCount: 0, tunnelWorkerCount: 1, eliteCount: 3, shieldCount: 1, speed: 0.93, interval: 4, clusterChance: 0.3 },
   // 波7：分神——精英群 + 护盾阵型 + 隧道工同时压场
-  { wave: 7, smallCount: 0, largeCount: 10, flyingCount: 3, armoredCount: 2, splittingCount: 0, suicideCount: 1, flyingSuicideCount: 1, queenCount: 0, tunnelWorkerCount: 2, eliteCount: 3, shieldCount: 1, speed: 0.96, interval: 4, clusterChance: 0.3 },
+  { wave: 7, smallCount: 0, largeCount: 10, flyingCount: 3, armoredCount: 2, splittingCount: 0, suicideCount: 1, flyingSuicideCount: 1, queenCount: 0, tunnelWorkerCount: 1, eliteCount: 3, shieldCount: 1, speed: 0.96, interval: 4, clusterChance: 0.3 },
   // 波8：高压护甲群 + 精英群 + 护盾阵型 + 自爆压制
-  { wave: 8, smallCount: 0, largeCount: 10, flyingCount: 4, armoredCount: 2, splittingCount: 0, suicideCount: 1, flyingSuicideCount: 1, queenCount: 0, tunnelWorkerCount: 2, eliteCount: 3, shieldCount: 1, speed: 0.99, interval: 4, clusterChance: 0.35 },
+  { wave: 8, smallCount: 0, largeCount: 10, flyingCount: 4, armoredCount: 2, splittingCount: 0, suicideCount: 1, flyingSuicideCount: 1, queenCount: 0, tunnelWorkerCount: 1, eliteCount: 3, shieldCount: 1, speed: 0.99, interval: 4, clusterChance: 0.35 },
   // 波9：持续高压——双隧道工喷涂 + 双护盾阵型 + 精英群
-  { wave: 9, smallCount: 0, largeCount: 10, flyingCount: 4, armoredCount: 2, splittingCount: 0, suicideCount: 1, flyingSuicideCount: 1, queenCount: 0, tunnelWorkerCount: 2, eliteCount: 3, shieldCount: 1, speed: 1.02, interval: 3, clusterChance: 0.35 },
+  { wave: 9, smallCount: 0, largeCount: 10, flyingCount: 4, armoredCount: 2, splittingCount: 0, suicideCount: 1, flyingSuicideCount: 1, queenCount: 0, tunnelWorkerCount: 1, eliteCount: 3, shieldCount: 1, speed: 1.02, interval: 3, clusterChance: 0.35 },
   // 波10：终局——精英群/护甲群/护盾阵型压场，隧道工全线喷涂
-  { wave: 10, smallCount: 0, largeCount: 11, flyingCount: 4, armoredCount: 3, splittingCount: 0, suicideCount: 1, flyingSuicideCount: 1, queenCount: 0, tunnelWorkerCount: 2, eliteCount: 4, shieldCount: 1, speed: 1.05, interval: 3, clusterChance: 0.4 },
+  { wave: 10, smallCount: 0, largeCount: 11, flyingCount: 4, armoredCount: 3, splittingCount: 0, suicideCount: 1, flyingSuicideCount: 1, queenCount: 0, tunnelWorkerCount: 1, eliteCount: 4, shieldCount: 1, speed: 1.05, interval: 3, clusterChance: 0.4 },
 ];
 
-// 超市 6 波（包含女王）
+// 超市 10 波（V4.0 特种三排阵列：自由杂兵先行热场 → 队列清空后全部阵型组同帧整组生成（多组纵深错位）→ 推进全程 trickle 穿插偷袭）
+// 阵列仅由特种单位构成：前排装甲/护盾（承伤主锚点）｜中排分裂/定时自爆/隧道工（功能，隧道工≤2）｜后排护士（≤1）
+// 小/大/飞行/地面自爆/地铁精英 = 自由杂兵（原生AI，不入阵）；永久禁用女王；clusterChance 全 0（阵型编排由编队系统接管）
 export const WAVE_CONFIGS_SUPERMARKET: WaveConfig[] = [
-  { wave: 1, smallCount: 20, largeCount: 5, flyingCount: 5, armoredCount: 4, splittingCount: 3, suicideCount: 3, flyingSuicideCount: 2, queenCount: 0, speed: 0.78, interval: 6, clusterChance: 0.3 },
-  { wave: 2, smallCount: 28, largeCount: 6, flyingCount: 6, armoredCount: 4, splittingCount: 4, suicideCount: 3, flyingSuicideCount: 3, queenCount: 0, speed: 0.82, interval: 6, clusterChance: 0.35 },
-  { wave: 3, smallCount: 36, largeCount: 7, flyingCount: 7, armoredCount: 5, splittingCount: 5, suicideCount: 4, flyingSuicideCount: 4, queenCount: 0, speed: 0.86, interval: 5, clusterChance: 0.4 },
-  { wave: 4, smallCount: 44, largeCount: 7, flyingCount: 7, armoredCount: 5, splittingCount: 5, suicideCount: 4, flyingSuicideCount: 5, queenCount: 0, speed: 0.90, interval: 5, clusterChance: 0.45 },
-  { wave: 5, smallCount: 52, largeCount: 8, flyingCount: 8, armoredCount: 6, splittingCount: 6, suicideCount: 5, flyingSuicideCount: 5, queenCount: 0, speed: 0.94, interval: 4, clusterChance: 0.5 },
-  { wave: 6, smallCount: 50, largeCount: 7, flyingCount: 7, armoredCount: 5, splittingCount: 5, suicideCount: 4, flyingSuicideCount: 4, queenCount: 1, speed: 0.98, interval: 4, clusterChance: 0.55 },
+  // ===== 1~3波：前期热场（小/大蟑螂消耗燃气 → 1组阵列 → 穿插地面自爆+飞行袭扰） =====
+  // 波1：教学波——热场小怪 + 首组三线散兵阵列（装甲锚点+分裂中排），自爆随后偷袭
+  { wave: 1, smallCount: 10, largeCount: 2, flyingCount: 0, armoredCount: 0, splittingCount: 0, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 0.78, interval: 6, clusterChance: 0, name: '热场·首阵',
+    formationGroups: [
+      { templates: ['A'], armored: 2, splitting: 1 },
+    ],
+    trickle: { types: [RoachType.SUICIDE], total: 2, intervalSec: 5 } },
+  // 波2：热场加强 + 三线阵列加入护盾前排
+  { wave: 2, smallCount: 12, largeCount: 3, flyingCount: 0, armoredCount: 0, splittingCount: 0, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 0.80, interval: 6, clusterChance: 0, name: '热场·盾墙',
+    formationGroups: [
+      { templates: ['A'], armored: 2, shield: 1, splitting: 1 },
+    ],
+    trickle: { types: [RoachType.SUICIDE, RoachType.FLYING], total: 3, intervalSec: 5 } },
+  // 波3：飞行杂兵入场 + 装甲方阵（护士续航初登场）
+  { wave: 3, smallCount: 10, largeCount: 3, flyingCount: 2, armoredCount: 0, splittingCount: 0, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 0.84, interval: 5, clusterChance: 0, name: '方阵·初鸣',
+    formationGroups: [
+      { templates: ['D'], armored: 3, timedSuicide: 1, nurse: 1 },
+    ],
+    trickle: { types: [RoachType.SUICIDE, RoachType.FLYING], total: 3, intervalSec: 5 } },
+  // ===== 4~6波：中期压力上升（杂兵池扩充飞行 → 2组独立阵列同帧生成（纵深错位）→ 穿插地面/飞行自爆） =====
+  // 波4：双阵列初登场——三线散兵 + 楔形冲锋（纵深错位90px）
+  { wave: 4, smallCount: 10, largeCount: 4, flyingCount: 2, armoredCount: 0, splittingCount: 0, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 0.88, interval: 5, clusterChance: 0, name: '双阵·楔袭',
+    formationGroups: [
+      { templates: ['A'], armored: 2, shield: 1, splitting: 1 },
+      { templates: ['B'], armored: 2, timedSuicide: 1, splitting: 1 },
+    ],
+    trickle: { types: [RoachType.SUICIDE, RoachType.FLYING_SUICIDE], total: 4, intervalSec: 4 } },
+  // 波5：Z字穿插纵队 + 三线续航阵列
+  { wave: 5, smallCount: 10, largeCount: 3, flyingCount: 2, armoredCount: 0, splittingCount: 0, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 0.90, interval: 5, clusterChance: 0, name: '双阵·穿插',
+    formationGroups: [
+      { templates: ['F'], armored: 2, timedSuicide: 1 },
+      { templates: ['A'], armored: 2, shield: 1, splitting: 1, nurse: 1 },
+    ],
+    trickle: { types: [RoachType.SUICIDE, RoachType.FLYING_SUICIDE], total: 4, intervalSec: 4 } },
+  // 波6：混合纵队 + 装甲方阵（隧道工喷涂初登场）
+  { wave: 6, smallCount: 10, largeCount: 5, flyingCount: 3, armoredCount: 0, splittingCount: 0, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 0.93, interval: 4, clusterChance: 0, name: '双阵·纵队',
+    formationGroups: [
+      { templates: ['E'], armored: 2, shield: 1, splitting: 1, timedSuicide: 1 },
+      { templates: ['D'], armored: 2, tunnelWorker: 1, nurse: 1 },
+    ],
+    trickle: { types: [RoachType.SUICIDE, RoachType.FLYING_SUICIDE, RoachType.FLYING], total: 4, intervalSec: 4 } },
+  // ===== 7~9波：后期高压（自爆/精英高危杂兵先行 → 3组独立阵列同帧生成（纵深错位）→ 穿插池扩充定时自爆） =====
+  // 波7：三阵列——楔形 + 三线续航 + Z字穿插
+  { wave: 7, smallCount: 8, largeCount: 3, flyingCount: 0, armoredCount: 0, splittingCount: 0, suicideCount: 1, flyingSuicideCount: 0, queenCount: 0, eliteCount: 1, speed: 0.96, interval: 4, clusterChance: 0, name: '三阵·合围',
+    formationGroups: [
+      { templates: ['B'], armored: 2, shield: 1, timedSuicide: 1 },
+      { templates: ['A'], armored: 2, shield: 1, splitting: 1, nurse: 1 },
+      { templates: ['F'], armored: 2, timedSuicide: 1, tunnelWorker: 1 },
+    ],
+    trickle: { types: [RoachType.SUICIDE, RoachType.FLYING_SUICIDE, RoachType.TIMED_SUICIDE], total: 4, intervalSec: 4 } },
+  // 波8：三阵列——同心圆护卫 + 三线 + 混合纵队
+  { wave: 8, smallCount: 8, largeCount: 4, flyingCount: 0, armoredCount: 0, splittingCount: 0, suicideCount: 1, flyingSuicideCount: 0, queenCount: 0, eliteCount: 1, speed: 0.99, interval: 4, clusterChance: 0, name: '三阵·环卫',
+    formationGroups: [
+      { templates: ['G'], armored: 3, shield: 1, splitting: 1, nurse: 1 },
+      { templates: ['A'], armored: 2, shield: 1, timedSuicide: 1 },
+      { templates: ['E'], armored: 2, splitting: 1, tunnelWorker: 1, nurse: 1 },
+    ],
+    trickle: { types: [RoachType.SUICIDE, RoachType.FLYING_SUICIDE, RoachType.TIMED_SUICIDE], total: 4, intervalSec: 4 } },
+  // 波9：三阵列——双锋护卫 + 楔形 + 装甲方阵（重甲高压）
+  { wave: 9, smallCount: 10, largeCount: 4, flyingCount: 0, armoredCount: 0, splittingCount: 0, suicideCount: 2, flyingSuicideCount: 0, queenCount: 0, eliteCount: 1, speed: 1.02, interval: 4, clusterChance: 0, name: '三阵·双锋',
+    formationGroups: [
+      { templates: ['H'], armored: 4, shield: 1, tunnelWorker: 1, nurse: 1 },
+      { templates: ['B'], armored: 2, shield: 1, timedSuicide: 1 },
+      { templates: ['D'], armored: 3, splitting: 1, nurse: 1 },
+    ],
+    trickle: { types: [RoachType.SUICIDE, RoachType.FLYING_SUICIDE, RoachType.TIMED_SUICIDE], total: 5, intervalSec: 4 } },
+  // ===== 第10波：终局高潮（4组独立阵列同帧生成、纵深错位，模板随机池选用；混合杂兵全程穿插） =====
+  { wave: 10, smallCount: 12, largeCount: 5, flyingCount: 3, armoredCount: 0, splittingCount: 0, suicideCount: 1, flyingSuicideCount: 0, queenCount: 0, eliteCount: 1, speed: 1.05, interval: 3, clusterChance: 0, name: '终局·群阵',
+    formationGroups: [
+      { templates: ['A', 'B'], armored: 2, shield: 1, timedSuicide: 1 },
+      { templates: ['D', 'G'], armored: 3, shield: 1, splitting: 1, nurse: 1 },
+      { templates: ['E', 'F'], armored: 2, shield: 1, timedSuicide: 1, tunnelWorker: 1 },
+      { templates: ['H', 'B'], armored: 3, shield: 1, splitting: 1, nurse: 1 },
+    ],
+    trickle: { types: [RoachType.FLYING, RoachType.SUBWAY_ELITE, RoachType.FLYING_SUICIDE, RoachType.SUICIDE], total: 6, intervalSec: 3 } },
 ];
 
 // 学校 6 波（包含女王）

@@ -21,6 +21,8 @@ export interface ShieldSystemConfig {
   onAddFloatingText?: (x: number, y: number, text: string, color: string) => void;
   /** 生成火花粒子（护盾破碎时） */
   onSpawnSpark?: (x: number, y: number, count: number) => void;
+  /** 破盾特效（护盾破碎瞬间，参数为光带中心坐标：x = 本体中心 X，y = 本体下缘 - 光带半高） */
+  onShieldBreak?: (bandX: number, bandY: number) => void;
 }
 
 /**
@@ -69,6 +71,10 @@ export class ShieldSystem {
       // 受击闪白衰减
       if (r.shieldHitFlash && r.shieldHitFlash > 0) {
         r.shieldHitFlash = Math.max(0, r.shieldHitFlash - deltaTime);
+      }
+      // 火焰命中闪白衰减（独立于通用闪白，仅火焰直射路径设置）
+      if (r.shieldFlameHitFlash && r.shieldFlameHitFlash > 0) {
+        r.shieldFlameHitFlash = Math.max(0, r.shieldFlameHitFlash - deltaTime);
       }
 
       // 破碎重建倒计时（破碎期间不自然恢复）
@@ -132,6 +138,8 @@ export class ShieldSystem {
   static isInShieldSector(shield: Roach, target: Roach): boolean {
     if (shield.type !== RoachType.SHIELD || shield.state !== RoachState.ALIVE) return false;
     if ((shield.shieldHp ?? 0) <= 0 || (shield.shieldBrokenTimer ?? 0) > 0) return false;
+    // 护盾蟑螂不保护自身（否则火焰攻击自身 HP 下降 → 快照侵蚀护盾 → shieldHp 秒归零）
+    if (shield.id === target.id) return false;
 
     const sub = BALANCE_CONFIG.subway;
     // 起始线：护盾蟑螂本体下缘（中心点向下 1/2 本体大小）
@@ -180,6 +188,10 @@ export class ShieldSystem {
     if ((shield.shieldHp ?? 0) <= 0) return;
     shield.shieldHp = Math.max(0, (shield.shieldHp ?? 0) - amount);
     shield.shieldHitFlash = 0.15;
+    // 火焰直射命中标记（仅火焰路径 showBlockText=true，用于光带增强震动）
+    if (showBlockText) {
+      shield.shieldFlameHitFlash = 0.15;
+    }
     // 格挡浮动文字（节流：每只护盾 0.8s 内最多一次）
     if (showBlockText && !this.blockTextCooldowns.has(shield.id)) {
       this.blockTextCooldowns.set(shield.id, 0.8);
@@ -189,6 +201,9 @@ export class ShieldSystem {
       shield.shieldBrokenTimer = BALANCE_CONFIG.subway.shieldRebuildDelay;
       this.config.onAddFloatingText?.(shield.x, shield.y - 40, TEXT_CONFIG.combat.shieldBreak.text, TEXT_CONFIG.combat.shieldBreak.color);
       this.config.onSpawnSpark?.(shield.x, shield.y, 12);
+      // 破盾特效：光带中心 = 本体下缘 - 光带半高（与 RoachRenderer 光带绘制位置一致）
+      const size = shield.size ?? ENEMY_DEFS[shield.type].size;
+      this.config.onShieldBreak?.(shield.x, shield.y + size * 0.5 - BALANCE_CONFIG.subway.shieldBandHeight / 2);
     }
   }
 }

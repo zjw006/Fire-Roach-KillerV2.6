@@ -32,6 +32,8 @@ const ONLY = (ARGS.find(a => a.startsWith('--only=')) || '').split('=')[1] || nu
 const REPORT_ONLY = ARGS.includes('--report');
 // --no-open：生成报告后不自动在浏览器中打开
 const NO_OPEN = ARGS.includes('--no-open');
+// --sound：开启音效播放（默认 --mute-audio 静音；用于音效自测，浏览器窗口需可见且系统音量开启）
+const SOUND = ARGS.includes('--sound');
 const GAME_URL = process.env.GAME_URL || 'http://localhost:3000';
 const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
@@ -72,18 +74,23 @@ const FIRE_INFO = [
 // ---------- 注入页面侧的驱动器 ----------
 // 原则：UI 界面用真实 DOM 点击（button.click()），战斗操作用引擎 API（瞄准/开火/道具放置）
 const DRIVER = `
+console.log('[auto-test-driver] DRIVER 注入开始...');
 // 拦截带 download 属性的 <a> 点击：游戏的 exportTrace 会自动下载 trace JSON，
 // 沙箱会拦截 Chrome 写 Downloads 导致进程终止；trace 已由 Node 侧 writeFileSync 写盘，此下载冗余，屏蔽之。
 (() => {
   const orig = HTMLAnchorElement.prototype.click;
   HTMLAnchorElement.prototype.click = function () { if (this.download) return; return orig.call(this); };
 })();
+window.__isAutoTest = true;
+console.log('[auto-test-driver] __isAutoTest =', window.__isAutoTest);
 window.__driver = {
   targetSceneName: null,
   diffName: '简单',
   itemTimer: 0,
   prepSelected: false, // 战前准备界面是否已完成道具选择（防止重复选择）
   prepClickedList: [], // 战前准备已点击过的道具名（配合 400ms 间隔逐个选中，避免 React 批处理丢选）
+  talentCurrent: null, // 天赋树中当前选中的天赋名（用于加点循环切换）
+  talentFailed: {},    // 记录本关已"点不动"（点数不足/已满级）的天赋名，避免无限切换
 
   visible(el) { return !!(el && el.offsetParent); },
 
@@ -273,9 +280,74 @@ window.__driver = {
     return false;
   },
 
+  // 关闭天赋详情弹窗：点击弹窗背景层（absolute inset-0 bg-black/70，onClick 关闭）
+  closeTalentDetail() {
+    const modals = [...document.querySelectorAll('div.fixed.inset-0')].filter(el =>
+      this.visible(el) && el.classList.contains('z-[110]'));
+    for (const m of modals) {
+      const backdrop = m.querySelector('div.absolute.inset-0');
+      if (backdrop) { backdrop.click(); return true; }
+    }
+    return false;
+  },
+
+  // 天赋加点流程（逐拍调用，处理天赋树内一个动作）
+  // talentNames: 本关要尝试升级的天赋名列表（按优先级顺序），如 ['火焰强化', '射程延伸']
+  // 依赖字段: talentCurrent(当前选中/处理中的天赋名), talentFailed(本关已点不动的天赋名集合)
+  // 动作顺序：跳过引导 → 若详情弹窗打开则尝试升级(点数够连升、不够则关闭切下一个) → 选下一天赋 → 全部结束后点"返回"
+  upgradeTalents(talentNames) {
+    const list = talentNames || [];
+    const open = this.hasText('天赋树');
+    if (!open) return 'talent:not_open'; // 天赋树未打开，调用方应先点"去加点"
+
+    // A. 首次进入天赋树的新手引导遮罩：跳过
+    if (this.clickText('跳过引导')) return 'talent:tutorial_skip';
+
+    // B. 详情弹窗处理（当前已选中天赋）
+    if (this.talentCurrent) {
+      const modalOpen = this.hasText('升级天赋') || this.hasText('已满级') || this.hasText('天赋点不足');
+      if (!modalOpen) {
+        // 弹窗已自动关闭（如已满级自动清空选中）→ 该天赋视为处理完毕，切下一个
+        const t = this.talentCurrent;
+        this.talentFailed[t] = true;
+        this.talentCurrent = null;
+        return 'talent:done:' + t;
+      }
+      // 点数够 → 升级一次（每次进入只升一级），然后关闭详情切下一个天赋
+      if (this.clickText('升级天赋')) {
+        const t = this.talentCurrent;
+        this.talentFailed[t] = true; // 本关本次已升过，跳到下一个
+        this.closeTalentDetail();
+        this.talentCurrent = null;
+        return 'talent:upgrade:' + t;
+      }
+      // 已满级或点数不足 → 标记失败并关闭详情，跳到下一个天赋
+      if (this.hasText('已满级') || this.hasText('天赋点不足')) {
+        const t = this.talentCurrent;
+        this.talentFailed[t] = true;
+        this.closeTalentDetail();
+        this.talentCurrent = null;
+        return 'talent:blocked:' + t;
+      }
+      return null; // 弹窗打开但状态未就绪，等下一拍
+    }
+
+    // C. 列表视图：选下一个未失败的目标天赋
+    const next = list.find(n => !this.talentFailed[n]);
+    if (!next) {
+      // 全部尝试完毕：点"返回"回到结算界面
+      if (this.clickText('返回')) return 'talent:back';
+      return 'talent:done_no_back';
+    }
+    if (this.clickText(next)) {
+      this.talentCurrent = next;
+      return 'talent:select:' + next;
+    }
+    return null;
+  },
+
   // 解锁全部关卡 + 全部武器道具（首次运行播种用；武器 ≥4 才会触发战前准备界面，全解锁可覆盖该 UI 路径）
-  unlockAllScenes(scenes) {
-    const e = window.__engine;
+  unlockAllScenes(scenes) {    const e = window.__engine;
     if (!e) return false;
     e.progress.scenesUnlocked = scenes.slice();
     e.progress.weaponsUnlocked = ['flamethrower', 'sticky', 'fan', 'molotov', 'poison', 'shotgun', 'swatter', 'radar', 'knife'];
@@ -315,7 +387,7 @@ window.__driver = {
           else if (type === 'suicide') arm = 2;
           else if (type === 'flying_suicide') arm = 5;
           else if (type === 'nurse' || type === 'timed_suicide') arm = 12;
-          else if (type === 'subway_elite') arm = 20;
+          else if (type === 'subway_elite') arm = 10;
           armor += cnt * arm;
           // 护盾
           if (type === 'shield') shield += cnt * (BALANCE_CONFIG.subway?.shieldMaxHp || 0);
@@ -409,16 +481,20 @@ async function main() {
   // 使用每次运行唯一的 profile 目录，从根本上避免与上次残留的测试浏览器进程冲突
   // （"The browser is already running" 报错的根因）
   const profileDir = join(tmpdir(), 'roach-auto-test-profile-' + Date.now());
+  const launchArgs = ['--autoplay-policy=no-user-gesture-required', '--window-size=580,1080', '--disable-features=TranslateUI,MediaRouter,OptimizationHints',
+      // 减少 Chrome 写系统日志/崩溃报告/组件更新/GPU缓存（这些写入可能被沙箱拦截导致进程被终止）
+      // 日志强制走 stderr（不写 exe 旁 debug.log），禁用 crashpad/崩溃上报/后台指标
+      '--enable-logging=stderr', '--v=0', '--log-level=3', '--disable-breakpad', '--disable-crash-reporter', '--no-crash-upload', '--disable-crashpad',
+      '--disable-background-networking', '--disable-component-update', '--disable-background-mode', '--metrics-recording-only',
+      '--no-first-run', '--no-default-browser-check',
+      '--disable-gpu', '--disable-dev-shm-usage'];
+  if (!SOUND) launchArgs.push('--mute-audio'); // 默认静音；--sound 时保留音频输出用于音效自测
   const browser = await puppeteer.launch({
     executablePath: EXE,
     headless: HEADLESS,
     defaultViewport: { width: 560, height: 1000 },
     userDataDir: profileDir, // 独立且唯一的配置目录，避免与用户浏览器/上次运行冲突
-    args: ['--autoplay-policy=no-user-gesture-required', '--mute-audio', '--window-size=580,1080', '--disable-features=TranslateUI',
-      // 减少 Chrome 写系统日志/崩溃报告/组件更新/GPU缓存（这些写入可能被沙箱拦截导致进程被终止）
-      '--disable-logging', '--log-level=3', '--disable-breakpad', '--disable-crash-reporter', '--no-crash-upload',
-      '--disable-background-networking', '--disable-component-update', '--no-first-run', '--no-default-browser-check',
-      '--disable-gpu', '--disable-dev-shm-usage'],
+    args: launchArgs,
   });
   const page = await browser.newPage();
   page.on('pageerror', () => {}); // 忽略页面报错（音频等）
@@ -438,10 +514,12 @@ async function main() {
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForFunction('window.__engine !== undefined', { timeout: 30_000 });
   await page.evaluate(DRIVER);
+  console.log('[auto-test] DRIVER 注入完成，验证 __isAutoTest:', await page.evaluate(() => window.__isAutoTest));
   await page.evaluate((scenes) => window.__driver.unlockAllScenes(scenes), SCENES);
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForFunction('window.__engine !== undefined', { timeout: 30_000 });
   await page.evaluate(DRIVER);
+  console.log('[auto-test] 二次注入完成，验证 __isAutoTest:', await page.evaluate(() => window.__isAutoTest));
   console.log('[auto-test] 存档已重置并解锁全部 11 关，开始全真 UI 流程\n');
 
   // 从数值配置计算每关怪物总强度（固定曲线），写盘供 --report 复用
@@ -453,7 +531,8 @@ async function main() {
   } catch (e) { console.log('[auto-test] 配置总强度计算失败（忽略）: ' + e.message); }
 
   const results = [];
-  const scenesToRun = ONLY ? SCENES.filter(s => s === ONLY) : SCENES;
+  const onlyList = ONLY ? ONLY.split(',').map(s => s.trim()) : null;
+  const scenesToRun = onlyList ? SCENES.filter(s => onlyList.includes(s)) : SCENES;
   if (scenesToRun.length === 0) { console.error(`[auto-test] --only=${ONLY} 不在关卡列表中`); await browser.close(); process.exit(1); }
 
   for (let i = 0; i < scenesToRun.length; i++) {
@@ -464,6 +543,8 @@ async function main() {
       window.__driver.diffName = dn;
       window.__driver.prepSelected = false; // 每关重置战前准备选择状态
       window.__driver.prepClickedList = []; // 每关重置已点击道具名
+      window.__driver.talentCurrent = null; // 每关重置天赋加点状态
+      window.__driver.talentFailed = {};    // 每关重置"点不动"的天赋记录
       window.__driver.clearTrace();
     }, SCENE_NAME[scene], DIFF_NAME);
 
@@ -540,16 +621,35 @@ async function main() {
       }
     }
 
-    // ── 阶段 3：结算界面 → （胜利时进道具商店买气罐补给，点"返回"关闭）→ 点"下一关"进入下一关 ──
+    // ── 阶段 3：结算界面 → （胜利时进天赋加点升级火焰强化/射程延伸，再进道具商店买气罐补给）→ 点"下一关"进入下一关 ──
     if (result === 'victory') {
-      // 3a. 打开结算界面上的"道具商店"
+      // 3a. 结算界面 → 天赋加点：仅当结算界面出现"去加点"（已通关地下室解锁且本关获得未用天赋点）才进入。
+      //     进入天赋树后逐个升级"火焰强化/射程延伸"，升级完点"返回"回到结算界面再继续后续流程。
+      if (await page.evaluate(() => window.__driver.hasText('去加点'))) {
+        console.log('  天赋：结算界面检测到"去加点"，进入天赋树加点（火焰强化/射程延伸）');
+        for (let k = 0; k < 150; k++) {
+          const st = await page.evaluate(() => window.__engine?.state);
+          if (st !== 'wave_clear' && st !== 'game_over') break; // 已离开结算界面
+          const action = await page.evaluate((list) => {
+            if (!window.__driver.hasText('天赋树')) {
+              window.__driver.clickText('去加点');
+              return 'talent:open';
+            }
+            return window.__driver.upgradeTalents(list);
+          }, ['火焰强化', '射程延伸']);
+          if (action) console.log(`  天赋: ${action}`);
+          if (action === 'talent:back' || action === 'talent:done_no_back') break; // 加点完成已返回结算
+          await sleep(400);
+        }
+      }
+      // 3b. 打开结算界面上的"道具商店"
       for (let k = 0; k < 20; k++) {
         const st = await page.evaluate(() => window.__engine?.state);
         if (st === 'menu') break;
         if (await page.evaluate(() => window.__driver.clickShop())) break;
         await sleep(500);
       }
-      // 3b. 在商店内购买"气罐补给"（买一次；先跳过樟叔引导；钱不够时按钮为"金币不足"禁用，自动跳过）
+      // 3c. 在商店内购买"气罐补给"（买一次；先跳过樟叔引导；钱不够时按钮为"金币不足"禁用，自动跳过）
       for (let k = 0; k < 15; k++) {
         const inShop = await page.evaluate(() => window.__driver.hasText('气罐补给'));
         if (!inShop) {
@@ -560,7 +660,7 @@ async function main() {
         console.log(bought ? '  商店：已购买 气罐补给' : '  商店：气罐补给购买失败/钱不足，跳过');
         break;
       }
-      // 3c. 关闭商店：先跳过商店引导（其文案含"气罐补给"会干扰关闭判断），再点"返回"回到结算界面
+      // 3d. 关闭商店：先跳过商店引导（其文案含"气罐补给"会干扰关闭判断），再点"返回"回到结算界面
       for (let k = 0; k < 10; k++) {
         const st = await page.evaluate(() => window.__engine?.state);
         if (st === 'menu') break;
@@ -570,7 +670,7 @@ async function main() {
         await sleep(500);
       }
     }
-    // 3d. 结算界面 → 点"下一关"直接进入下一场景；若无"下一关"按钮（最后一关巢穴）则返回主菜单
+    // 3e. 结算界面 → 点"下一关"直接进入下一场景；若无"下一关"按钮（最后一关巢穴）则返回主菜单
     if (await page.evaluate(() => window.__driver.clickText('下一关'))) {
       console.log('  下一关：点击"下一关"进入下一场景');
       // 等待离开结算界面（可能先播漫画/对话，由下一关的 UI 导航阶段处理跳过）
@@ -593,7 +693,9 @@ async function main() {
 
   await browser.close();
   console.log('\n[auto-test] 11 关流程结束，生成报告...');
-  generateReport(results.filter(r => r.m), !NO_OPEN, cfgTotals);
+  // 从已落盘的 trace 文件重算指标（loadSessions 读取文件数据，与 --report 一致），
+  // 避免主流程内存中 results 的指标异常（曾出现汇总全 0 的问题）
+  generateReport(loadSessions(), !NO_OPEN, cfgTotals);
 }
 
 // ---------- 报告生成 ----------

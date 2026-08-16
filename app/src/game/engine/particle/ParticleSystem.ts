@@ -465,7 +465,7 @@ export class ParticleSystem {
    */
   spawnExplosionParticles(x: number, y: number, intensity: number = 30): void {
     const cfg = BALANCE_CONFIG.particle.explosionParticle;
-    const particleCount = Math.min(intensity * cfg.intensityMultiplier, cfg.maxCount);
+    const particleCount = Math.min(intensity * cfg.emitter.intensityMultiplier, cfg.emitter.maxCount);
     
     for (let i = 0; i < particleCount; i++) {
       const angle = Math.random() * Math.PI * 2;
@@ -647,171 +647,184 @@ export class ParticleSystem {
       const alpha = p.life / p.maxLife;
 
       switch (p.type) {
-        case ParticleType.FIRE:
-          ctx.globalAlpha = alpha * 0.7;
-          ctx.globalCompositeOperation = 'screen';
+        case ParticleType.FIRE: {
+          const pt = BALANCE_CONFIG.render.particleType.fire;
+          ctx.globalAlpha = alpha * pt.alphaScale;
+          ctx.globalCompositeOperation = pt.blend;
           ctx.save();
           ctx.translate(p.x, p.y);
           ctx.scale(p.size * 0.8, p.size * 0.8);
-          ctx.fillStyle = ParticleSystem.getNormGradient(ctx, 'fire', p.color, 'rgba(255, 50, 0, 0)');
+          ctx.fillStyle = ParticleSystem.getNormGradient(ctx, 'fire', p.color, `rgba(${pt.fadeColor}, 0)`);
           ctx.beginPath();
           ctx.arc(0, 0, 1, 0, Math.PI * 2);
           ctx.fill();
           ctx.restore();
           break;
+        }
 
-        case ParticleType.SMOKE:
-          ctx.globalAlpha = alpha * 0.5;
-          ctx.globalCompositeOperation = 'source-over';
+        case ParticleType.SMOKE: {
+          const pt = BALANCE_CONFIG.render.particleType.smoke;
+          ctx.globalAlpha = alpha * pt.alphaScale;
+          ctx.globalCompositeOperation = pt.blend;
           ctx.save();
           ctx.translate(p.x, p.y);
           ctx.scale(p.size, p.size);
-          ctx.fillStyle = ParticleSystem.getNormGradient(ctx, 'smoke', p.color, 'rgba(80, 80, 80, 0)');
+          ctx.fillStyle = ParticleSystem.getNormGradient(ctx, 'smoke', p.color, `rgba(${pt.fadeColor}, 0)`);
           ctx.beginPath();
           ctx.arc(0, 0, 1, 0, Math.PI * 2);
           ctx.fill();
           ctx.restore();
           break;
+        }
 
-        case ParticleType.EMBER:
+        case ParticleType.EMBER: {
+          const pt = BALANCE_CONFIG.render.particleType.ember;
           ctx.globalAlpha = alpha;
-          ctx.globalCompositeOperation = 'screen';
+          ctx.globalCompositeOperation = pt.blend;
           ctx.fillStyle = p.color;
           ctx.shadowColor = p.color;
-          ctx.shadowBlur = 6;
+          ctx.shadowBlur = pt.shadowBlur;
           ctx.beginPath();
           ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
           ctx.fill();
           ctx.shadowBlur = 0;
           break;
+        }
 
         case ParticleType.ASH:
           ctx.globalAlpha = alpha;
-          ctx.globalCompositeOperation = 'source-over';
+          ctx.globalCompositeOperation = BALANCE_CONFIG.render.particleType.ash.blend;
           ctx.fillStyle = p.color;
           ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
           break;
 
-        case ParticleType.SPARK:
+        case ParticleType.SPARK: {
+          const pt = BALANCE_CONFIG.render.particleType.spark;
           if (p.text) {
             ctx.globalAlpha = alpha;
-            ctx.globalCompositeOperation = 'source-over';
+            ctx.globalCompositeOperation = p.blend ?? pt.textBlend;
             ctx.font = `bold ${Math.round(p.size * 2)}px sans-serif`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillStyle = p.textColor || p.color;
+            if (p.textColor2) {
+              // 纵向双色渐变（字号 = size×2，上下各覆盖半个字号）
+              const grad = ctx.createLinearGradient(p.x, p.y - p.size, p.x, p.y + p.size);
+              grad.addColorStop(0, p.textColor || p.color);
+              grad.addColorStop(1, p.textColor2);
+              ctx.fillStyle = grad;
+            } else {
+              ctx.fillStyle = p.textColor || p.color;
+            }
             ctx.fillText(p.text, p.x, p.y);
           } else {
             ctx.globalAlpha = alpha;
-            ctx.globalCompositeOperation = 'screen';
+            ctx.globalCompositeOperation = p.blend ?? pt.blend;
             ctx.fillStyle = p.color;
             ctx.shadowColor = p.color;
-            ctx.shadowBlur = 4;
+            ctx.shadowBlur = pt.shadowBlur;
             ctx.beginPath();
             ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
             ctx.fill();
             ctx.shadowBlur = 0;
           }
           break;
+        }
 
-        case ParticleType.BLOOD:
+        case ParticleType.BLOOD: {
+          const pt = BALANCE_CONFIG.render.particleType.blood;
           ctx.globalAlpha = alpha;
-          ctx.globalCompositeOperation = 'source-over';
+          ctx.globalCompositeOperation = p.blend ?? pt.blend;
           ctx.fillStyle = p.color;
           ctx.beginPath();
           ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
           ctx.fill();
-          ctx.fillStyle = `rgba(10, 60, 10, ${alpha * 0.3})`;
+          ctx.fillStyle = `rgba(${p.coreColor ?? pt.coreColor}, ${alpha * pt.coreAlphaRatio})`;
           ctx.beginPath();
-          ctx.arc(p.x, p.y, p.size * 0.5, 0, Math.PI * 2);
+          ctx.arc(p.x, p.y, p.size * pt.coreSizeRatio, 0, Math.PI * 2);
           ctx.fill();
           break;
+        }
 
-        case ParticleType.ICE:
-          ctx.globalAlpha = alpha * 0.8;
-          ctx.globalCompositeOperation = 'screen';
+        case ParticleType.ICE: {
+          const pt = BALANCE_CONFIG.render.particleType.ice;
+          ctx.globalAlpha = alpha * pt.alphaScale;
+          ctx.globalCompositeOperation = pt.blend;
           ctx.save();
           ctx.translate(p.x, p.y);
           ctx.scale(p.size, p.size);
-          ctx.fillStyle = ParticleSystem.getNormGradient(ctx, 'ice', p.color, 'rgba(200, 250, 255, 0)');
+          ctx.fillStyle = ParticleSystem.getNormGradient(ctx, 'ice', p.color, `rgba(${pt.fadeColor}, 0)`);
           ctx.beginPath();
           ctx.arc(0, 0, 1, 0, Math.PI * 2);
           ctx.fill();
           ctx.restore();
           break;
+        }
 
-        case ParticleType.POISON_CLOUD:
-          ctx.globalAlpha = alpha * 0.6;
-          ctx.globalCompositeOperation = 'screen';
+        case ParticleType.POISON_CLOUD: {
+          const pt = BALANCE_CONFIG.render.particleType.poisonCloud;
+          ctx.globalAlpha = alpha * pt.alphaScale;
+          ctx.globalCompositeOperation = pt.blend;
           ctx.save();
           ctx.translate(p.x, p.y);
           ctx.scale(p.size * 2, p.size * 2);
-          ctx.fillStyle = ParticleSystem.getNormGradient(ctx, 'poison', p.color, 'rgba(150, 100, 255, 0)');
+          ctx.fillStyle = ParticleSystem.getNormGradient(ctx, 'poison', p.color, `rgba(${pt.fadeColor}, 0)`);
           ctx.beginPath();
           ctx.arc(0, 0, 1, 0, Math.PI * 2);
           ctx.fill();
           ctx.restore();
           break;
+        }
 
-        case ParticleType.EXPLOSION:
+        case ParticleType.EXPLOSION: {
           ctx.globalAlpha = alpha;
           if (p.isSlime) {
-            ctx.globalCompositeOperation = 'source-over';
+            const pt = BALANCE_CONFIG.render.particleType.slime;
+            ctx.globalCompositeOperation = pt.blend;
             ctx.save();
             ctx.translate(p.x, p.y);
             ctx.scale(p.size * 1.5, p.size * 1.5);
-            ctx.fillStyle = ParticleSystem.getNormGradient(ctx, 'slime', p.color, 'rgba(40, 120, 40, 0)');
+            ctx.fillStyle = ParticleSystem.getNormGradient(ctx, 'slime', p.color, `rgba(${pt.fadeColor}, 0)`);
             ctx.beginPath();
             ctx.arc(0, 0, 1, 0, Math.PI * 2);
             ctx.fill();
             ctx.restore();
-            ctx.shadowColor = 'rgba(100, 255, 100, 0.8)';
-            ctx.shadowBlur = 8;
+            ctx.shadowColor = `rgba(${pt.glowColor}, ${pt.glowAlpha})`;
+            ctx.shadowBlur = pt.glowBlur;
             ctx.beginPath();
             ctx.arc(p.x, p.y, p.size * 1.5, 0, Math.PI * 2);
             ctx.fill();
             ctx.shadowBlur = 0;
           } else {
-            ctx.globalCompositeOperation = 'screen';
+            const pt = BALANCE_CONFIG.render.particleType.explosion;
+            ctx.globalCompositeOperation = pt.blend;
             ctx.save();
             ctx.translate(p.x, p.y);
             ctx.scale(p.size * 1.5, p.size * 1.5);
-            ctx.fillStyle = ParticleSystem.getNormGradient(ctx, 'explosion', p.color, 'rgba(255, 100, 0, 0)');
+            ctx.fillStyle = ParticleSystem.getNormGradient(ctx, 'explosion', p.color, `rgba(${pt.fadeColor}, 0)`);
             ctx.beginPath();
             ctx.arc(0, 0, 1, 0, Math.PI * 2);
             ctx.fill();
             ctx.restore();
           }
           break;
+        }
 
-        case ParticleType.SHIELD:
-          const expandProgress = 1 - alpha;
-          const ringRadius = p.size * expandProgress;
-          ctx.globalAlpha = alpha * 0.6;
-          ctx.globalCompositeOperation = 'screen';
-          ctx.strokeStyle = p.color;
-          ctx.lineWidth = 3;
-          ctx.shadowColor = RENDER_COLOR.shieldStart;
-          ctx.shadowBlur = 10;
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, ringRadius, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.shadowBlur = 0;
-          break;
-
-        case ParticleType.LIGHTNING:
+        case ParticleType.LIGHTNING: {
+          const pt = BALANCE_CONFIG.render.particleType.lightning;
           ctx.globalAlpha = alpha;
-          ctx.globalCompositeOperation = 'screen';
+          ctx.globalCompositeOperation = pt.blend;
           ctx.fillStyle = p.color;
           ctx.shadowColor = RENDER_COLOR.shieldStart;
-          ctx.shadowBlur = 10;
+          ctx.shadowBlur = pt.shadowBlur;
           ctx.fillRect(p.x - 1, p.y, 2, p.size * 3);
           ctx.shadowBlur = 0;
           break;
+        }
 
-        case ParticleType.RAIN:
-          ctx.globalAlpha = alpha * 0.4;
-          ctx.globalCompositeOperation = 'source-over';
+        case ParticleType.RAIN: {
+          const pt = BALANCE_CONFIG.render.particleType.rain;
+          ctx.globalAlpha = alpha * pt.alphaScale;
+          ctx.globalCompositeOperation = pt.blend;
           ctx.strokeStyle = p.color;
           ctx.lineWidth = 1;
           ctx.beginPath();
@@ -819,6 +832,7 @@ export class ParticleSystem {
           ctx.lineTo(p.x + p.vx * 0.02, p.y + p.vy * 0.02);
           ctx.stroke();
           break;
+        }
       }
     }
 
@@ -842,7 +856,7 @@ export class ParticleSystem {
       const fontSize = Math.round(16 * (t.scale || 1));
       ctx.font = `bold ${fontSize}px sans-serif`;
       ctx.textAlign = 'center';
-      ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+      ctx.strokeStyle = BALANCE_CONFIG.particle.floatingText.strokeColor;
       ctx.lineWidth = 3 * (t.scale || 1);
       ctx.strokeText(t.text, t.x, t.y);
       ctx.fillText(t.text, t.x, t.y);
@@ -857,17 +871,19 @@ export class ParticleSystem {
    * @param time 游戏时间（用于动画）
    */
   static renderFireWalls(ctx: CanvasRenderingContext2D, fireWalls: FireWall[], time: number): void {
+    // 参数见 BALANCE_CONFIG.fireWall
+    const FW = BALANCE_CONFIG.fireWall;
     for (const wall of fireWalls) {
       const progress = wall.life / wall.maxLife;
-      const alpha = Math.min(1, progress * 1.5);
+      const alpha = Math.min(1, progress * FW.alphaRamp);
       const wallWidth = wall.x2 - wall.x1;
 
       ctx.save();
-      ctx.globalCompositeOperation = 'screen';
+      ctx.globalCompositeOperation = FW.blend; // 叠加混合集中于 vfx-balance fireWall.blend
 
-      const segments = Math.max(10, Math.floor(wallWidth / 15));
+      const segments = Math.max(FW.minSegments, Math.floor(wallWidth / FW.segmentWidth));
       // 边缘柔化区间占比（两侧各 18% 宽度内火焰逐渐稀疏/降低）
-      const edgeRatio = 0.18;
+      const edgeRatio = FW.edgeRatio;
       for (let i = 0; i < segments; i++) {
         const sx = wall.x1 + (wallWidth / segments) * i;
         const segW = wallWidth / segments;
@@ -877,30 +893,30 @@ export class ParticleSystem {
         const edgeT = Math.min(1, Math.min(t, 1 - t) / edgeRatio);
         const edgeFade = edgeT * edgeT * (3 - 2 * edgeT);
 
-        const flicker = 0.7 + Math.sin(time * 12 + i * 2.5) * 0.3;
+        const flicker = FW.flickerBase + Math.sin(time * FW.flickerFreq + i * FW.flickerPhaseStep) * FW.flickerAmp;
         // 边缘火焰更低矮稀疏
-        const h = wall.height * (2 + flicker) * (0.35 + 0.65 * edgeFade);
+        const h = wall.height * (FW.heightBase + flicker) * (FW.heightEdgeBase + FW.heightEdgeAmp * edgeFade);
         const segAlpha = alpha * edgeFade;
         if (segAlpha <= 0.01) continue;
 
-        const fireGrad = ctx.createLinearGradient(sx, wall.y - h, sx, wall.y + h * 0.3);
-        fireGrad.addColorStop(0, `rgba(255, 255, 100, ${segAlpha * 0.9})`);
-        fireGrad.addColorStop(0.3, `rgba(255, 180, 20, ${segAlpha * 0.85})`);
-        fireGrad.addColorStop(0.6, `rgba(255, 80, 10, ${segAlpha * 0.7})`);
-        fireGrad.addColorStop(1, `rgba(200, 30, 5, ${segAlpha * 0.3})`);
+        const fireGrad = ctx.createLinearGradient(sx, wall.y - h, sx, wall.y + h * FW.gradBottomYRatio);
+        fireGrad.addColorStop(0, `rgba(${FW.gradStop1Color}, ${segAlpha * FW.gradStop1Alpha})`);
+        fireGrad.addColorStop(FW.gradStop2Pos, `rgba(${FW.gradStop2Color}, ${segAlpha * FW.gradStop2Alpha})`);
+        fireGrad.addColorStop(FW.gradStop3Pos, `rgba(${FW.gradStop3Color}, ${segAlpha * FW.gradStop3Alpha})`);
+        fireGrad.addColorStop(1, `rgba(${FW.gradStop4Color}, ${segAlpha * FW.gradStop4Alpha})`);
 
         ctx.fillStyle = fireGrad;
-        ctx.fillRect(sx - segW * 0.1, wall.y - h * 0.5, segW * 1.2, h);
+        ctx.fillRect(sx - segW * FW.segOverhang, wall.y - h * FW.segYScale, segW * FW.segWidthScale, h);
       }
 
       // Core bright line (两端渐隐)
       const coreGrad = ctx.createLinearGradient(wall.x1, wall.y, wall.x2, wall.y);
-      coreGrad.addColorStop(0, 'rgba(255, 255, 220, 0)');
-      coreGrad.addColorStop(edgeRatio, `rgba(255, 255, 220, ${alpha * 0.9})`);
-      coreGrad.addColorStop(1 - edgeRatio, `rgba(255, 255, 220, ${alpha * 0.9})`);
-      coreGrad.addColorStop(1, 'rgba(255, 255, 220, 0)');
+      coreGrad.addColorStop(0, `rgba(${FW.coreColor}, 0)`);
+      coreGrad.addColorStop(edgeRatio, `rgba(${FW.coreColor}, ${alpha * FW.coreAlpha})`);
+      coreGrad.addColorStop(1 - edgeRatio, `rgba(${FW.coreColor}, ${alpha * FW.coreAlpha})`);
+      coreGrad.addColorStop(1, `rgba(${FW.coreColor}, 0)`);
       ctx.strokeStyle = coreGrad;
-      ctx.lineWidth = 2;
+      ctx.lineWidth = FW.coreLineWidth;
       ctx.beginPath();
       ctx.moveTo(wall.x1, wall.y);
       ctx.lineTo(wall.x2, wall.y);
@@ -908,29 +924,29 @@ export class ParticleSystem {
 
       // Outer glow (两端渐隐)
       const glowGrad = ctx.createLinearGradient(wall.x1, wall.y, wall.x2, wall.y);
-      glowGrad.addColorStop(0, 'rgba(255, 80, 10, 0)');
-      glowGrad.addColorStop(edgeRatio, `rgba(255, 80, 10, ${alpha * 0.25})`);
-      glowGrad.addColorStop(1 - edgeRatio, `rgba(255, 80, 10, ${alpha * 0.25})`);
-      glowGrad.addColorStop(1, 'rgba(255, 80, 10, 0)');
+      glowGrad.addColorStop(0, `rgba(${FW.glowColor}, 0)`);
+      glowGrad.addColorStop(edgeRatio, `rgba(${FW.glowColor}, ${alpha * FW.glowAlpha})`);
+      glowGrad.addColorStop(1 - edgeRatio, `rgba(${FW.glowColor}, ${alpha * FW.glowAlpha})`);
+      glowGrad.addColorStop(1, `rgba(${FW.glowColor}, 0)`);
       ctx.fillStyle = glowGrad;
-      ctx.fillRect(wall.x1, wall.y - 15, wallWidth, 30);
+      ctx.fillRect(wall.x1, wall.y - FW.glowOffsetY, wallWidth, FW.glowHeight);
 
       // Ember sparks
-      for (let i = 0; i < 3; i++) {
+      for (let i = 0; i < FW.emitter.emberCount; i++) {
         const sparkX = wall.x1 + Math.random() * wallWidth;
-        const sparkY = wall.y - 5 - Math.random() * 15;
-        const sparkSize = 1 + Math.random() * 2;
-        ctx.fillStyle = `rgba(255, ${150 + Math.random() * 100}, 30, ${alpha * (0.5 + Math.random() * 0.5)})`;
+        const sparkY = wall.y - FW.emitter.emberOffsetYBase - Math.random() * FW.emitter.emberOffsetYRange;
+        const sparkSize = FW.emberSizeMin + Math.random() * FW.emberSizeRange;
+        ctx.fillStyle = `rgba(255, ${FW.emberGBase + Math.random() * FW.emberGRange}, ${FW.emberColorB}, ${alpha * (FW.emberAlphaMin + Math.random() * FW.emberAlphaRange)})`;
         ctx.beginPath();
         ctx.arc(sparkX, sparkY, sparkSize, 0, Math.PI * 2);
         ctx.fill();
       }
 
       // Duration indicator
-      ctx.fillStyle = `rgba(255, 200, 100, ${alpha * 0.7})`;
-      ctx.font = 'bold 10px sans-serif';
+      ctx.fillStyle = `rgba(${FW.labelColor}, ${alpha * FW.labelAlpha})`;
+      ctx.font = FW.labelFont;
       ctx.textAlign = 'center';
-      ctx.fillText(`火焰墙 ${wall.life.toFixed(1)}s`, (wall.x1 + wall.x2) / 2, wall.y + 20);
+      ctx.fillText(`火焰墙 ${wall.life.toFixed(1)}s`, (wall.x1 + wall.x2) / 2, wall.y + FW.labelOffsetY);
 
       ctx.restore();
     }

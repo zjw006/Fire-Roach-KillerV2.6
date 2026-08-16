@@ -37,6 +37,8 @@ export interface CollisionSystemConfig {
   onFindProtectingShield?: (target: Roach) => Roach | null;
   /** 侵蚀气体护盾（火焰拦截伤害转移，showBlockText 控制格挡文字） */
   onErodeShield?: (shield: Roach, amount: number, showBlockText: boolean) => void;
+  /** 查询阵型伤害顶替者（超市模板G同心圆：核心锚点由存活环成员抵挡直射，无顶替返回 null） */
+  onFindFormationProtector?: (target: Roach) => Roach | null;
 }
 
 /**
@@ -149,19 +151,27 @@ export class CollisionSystem {
             const falloff = 1 - (vertDist / (maxRange * colCfg.flyingFalloffRange)) * colCfg.flameFalloffFactor;
             const damage = this.getWeaponDamage(player.currentWeapon) * player.damageMultiplier * falloff * gun.damageMult;
             // 气体护盾拦截：矩形保护内的目标免疫火焰直射，伤害转移至护盾
-            const protector = this.config.onFindProtectingShield?.(r);
-            if (protector) {
-              this.config.onErodeShield?.(protector, damage, true);
-              if (Math.random() < 0.25) this.config.onSpawnSpark?.(r.x, r.y, 2);
-              continue;
-            }
-            this.applyWeaponEffect(r, player.currentWeapon);
-            r.burnDamage += damage;
-            r.inFire = true;
-            this.triggerPanicOnArmorBreak(r, isStuckByBoard ? isStuckByBoard(r.id) : false);
+          const protector = this.config.onFindProtectingShield?.(r);
+          if (protector) {
+            this.config.onErodeShield?.(protector, damage, true);
+            if (Math.random() < 0.25) this.config.onSpawnSpark?.(r.x, r.y, 2);
+            continue;
           }
-          continue;
+          // 阵型顶替拦截（模板G同心圆：核心锚点由存活环成员抵挡直射火焰）
+          const fProt = this.config.onFindFormationProtector?.(r);
+          if (fProt) {
+            fProt.burnDamage += damage;
+            fProt.inFire = true;
+            if (Math.random() < 0.25) this.config.onSpawnSpark?.(fProt.x, fProt.y, 2);
+            continue;
+          }
+          this.applyWeaponEffect(r, player.currentWeapon);
+          r.burnDamage += damage;
+          r.inFire = true;
+          this.triggerPanicOnArmorBreak(r, isStuckByBoard ? isStuckByBoard(r.id) : false);
         }
+        continue;
+      }
 
         const t = -(r.y - nozzleY) / maxRange;
         const clampedT = Math.max(0, Math.min(1, t));
@@ -180,6 +190,14 @@ export class CollisionSystem {
           if (protector) {
             this.config.onErodeShield?.(protector, damage, true);
             if (Math.random() < 0.25) this.config.onSpawnSpark?.(r.x, r.y, 2);
+            continue;
+          }
+          // 阵型顶替拦截（模板G同心圆：核心锚点由存活环成员抵挡直射火焰）
+          const fProt = this.config.onFindFormationProtector?.(r);
+          if (fProt) {
+            fProt.burnDamage += damage;
+            fProt.inFire = true;
+            if (Math.random() < 0.25) this.config.onSpawnSpark?.(fProt.x, fProt.y, 2);
             continue;
           }
           this.applyWeaponEffect(r, player.currentWeapon);

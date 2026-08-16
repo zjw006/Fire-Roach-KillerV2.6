@@ -5,7 +5,7 @@
  */
 
 import { RoachType, RoachState, SceneType, GameMode, GameState, ParticleType } from '../../types';
-import type { Roach, Player, Particle, FireWall, Economy, GameProgress, BossBattleState, WaveConfig } from '../../types';
+import type { Roach, Player, Particle, FireWall, Economy, GameProgress, BossBattleState, WaveConfig, FormationGroupConfig } from '../../types';
 import { ENEMY_DEFS, BOSS_CONFIG, TEXT_CONFIG, BALANCE_CONFIG } from '../../data';
 import { ParticleSpawner } from '../particle/ParticleSpawner';
 import { FormationSystem } from '../formation/FormationSystem';
@@ -142,6 +142,33 @@ export class RoachAISystem {
     this.slimeBurstY = 0;
     this._deathChainDepth = 0;
     this._nextBombId = 1;
+    this.formationSystem.clearInstances();
+  }
+
+  // =========================================================================
+  // 超市阵型（V4.0 多组错时共存：WaveManager 波内调度器驱动，各组独立锚点/独立破阵）
+  // =========================================================================
+
+  /** 清空全部阵型实例（波次开始/重置/离开超市场景时调用） */
+  clearFormations(): void {
+    this.formationSystem.clearInstances();
+  }
+
+  /**
+   * 追加一组阵型并返回出生点表（出生点即阵型槽位，整组同帧生成，前后排由槽位 dy 体现）
+   * 模板从组的随机池中等概率选定；非超市场景返回 null
+   */
+  addFormationGroup(
+    group: FormationGroupConfig, spawnBaseY: number,
+  ): { type: RoachType; x: number; y: number }[] | null {
+    if (this.cfg.getCurrentScene() !== SceneType.SUPERMARKET) return null;
+    const template = group.templates[Math.floor(Math.random() * group.templates.length)];
+    return this.formationSystem.addPlan(template, group, this.cfg.getGroundBoundsAtY, spawnBaseY);
+  }
+
+  /** 模板G：核心锚点的环成员顶替承伤查询（CollisionSystem 伤害重定向用，无顶替返回 null） */
+  findFormationProtector(target: Roach, roaches: Roach[]): Roach | null {
+    return this.formationSystem.findRingProtector(target, roaches);
   }
 
   // =========================================================================
@@ -158,6 +185,9 @@ export class RoachAISystem {
     const roaches = this.cfg.roaches;
     const fireWalls = this.cfg.fireWalls;
     const isHard = this.cfg.getDifficulty() === 'hard';
+
+    // ===== 超市阵型实例（V4.0）：每帧状态机（计划由 WaveManager 波内调度器经 addFormationGroup 追加） =====
+    this.formationSystem.updateInstances(roaches, deltaTime, defenseLineY, this.cfg.getGroundBoundsAtY);
 
     for (let i = roaches.length - 1; i >= 0; i--) {
       const r = roaches[i];
@@ -184,7 +214,10 @@ export class RoachAISystem {
       let effectiveSpeed = r.speed * fanMultiplier;
 
       // ===== 盾墙推进编队：横向归位 + 速度钳制 + 接近防线解除 =====
-      const formation = this.formationSystem.computeFormationMove(roaches, r, defenseLineY);
+      // （超市阵型实例成员跳过盾墙判定，由阵型实例接管移动修正）
+      const formation = r.formationId == null
+        ? this.formationSystem.computeFormationMove(roaches, r, defenseLineY)
+        : { inFormation: false, anchor: null, lateralMoveSpeed: 0, speedCap: null, shouldBreak: false };
       if (formation.inFormation && formation.speedCap !== null && effectiveSpeed > formation.speedCap) {
         effectiveSpeed = formation.speedCap;
       }
@@ -204,6 +237,20 @@ export class RoachAISystem {
         const mixedVx = origVx * (1 - blendFactor) + latVx * blendFactor;
         const mixedVy = origVy * (1 - blendFactor) + latVy * blendFactor;
         moveAngle = Math.atan2(mixedVy, mixedVx);
+      }
+
+      // ===== 超市阵型实例（V3.1）：70% 跟随阵型槽位 + 30% 向防线推进 =====
+      // 冲突状态（闪避/狂暴/冲刺）时 computeInstanceMove 返回 null，原生 AI 优先
+      const instTarget = this.formationSystem.computeInstanceMove(r, this.cfg.getGroundBoundsAtY);
+      if (instTarget) {
+        const blend = BALANCE_CONFIG.supermarket.formationBlend;
+        const toTarget = Math.atan2(instTarget.y - r.y, instTarget.x - r.x);
+        const fOrigVx = Math.cos(moveAngle);
+        const fOrigVy = Math.sin(moveAngle);
+        moveAngle = Math.atan2(
+          fOrigVy * (1 - blend) + Math.sin(toTarget) * blend,
+          fOrigVx * (1 - blend) + Math.cos(toTarget) * blend,
+        );
       }
 
       this.applyRoachMovement(r, moveAngle, effectiveSpeed, roaches, deltaTime, canvasWidth, canvasHeight, fireWalls, defenseLineY, isImmobilized);
@@ -414,6 +461,11 @@ export class RoachAISystem {
 
     // ===== NURSE ROACH FOLLOW MOVEMENT =====
     if (r.type === RoachType.NURSE) {
+      if (this.formationSystem.isAnchor(r.id)) {
+        // 阵型锚点（超市方阵）：禁用自动跟随，走标准移动由编队修正驱动，固定阵型中心
+        r.vx = Math.cos(moveAngle) * effectiveSpeed * 65;
+        r.vy = Math.sin(moveAngle) * effectiveSpeed * 65;
+      } else {
       let nearest: Roach | null = null;
       let nearestDist = Infinity;
       for (const other of roaches) {
@@ -437,8 +489,14 @@ export class RoachAISystem {
       } else {
         r.vx = 0; r.vy = 0;
       }
+      }
     } else if (r.type === RoachType.TUNNEL_WORKER) {
       // ===== TUNNEL WORKER FOLLOW SHIELD ROACH =====
+      if (this.formationSystem.isAnchor(r.id)) {
+        // 阵型锚点（超市方阵）：禁用跟随护盾，走标准移动由编队修正驱动，固定阵型中心
+        r.vx = Math.cos(moveAngle) * effectiveSpeed * 65;
+        r.vy = Math.sin(moveAngle) * effectiveSpeed * 65;
+      } else {
       // 跟随最近的存活护盾蟑螂（停留距离 workerFollowStopDist），无目标时走标准移动
       let nearestShield: Roach | null = null;
       let nearestShieldDist = Infinity;
@@ -464,6 +522,7 @@ export class RoachAISystem {
         r.vx = Math.cos(moveAngle) * effectiveSpeed * 65;
         r.vy = Math.sin(moveAngle) * effectiveSpeed * 65;
       }
+      }
     } else if (r.type === RoachType.MUTANT && r.transformTimer && r.transformTimer > 0) {
       r.vx = 0; r.vy = 0;
     } else if (r.type === RoachType.TIMED_SUICIDE && r.placeTimer && r.placeTimer > 0) {
@@ -474,7 +533,7 @@ export class RoachAISystem {
       // 地铁精英：轨道冲刺（横向高速，无视普通移动角度）
       r.vx = (r.chargeDir ?? 1) * BALANCE_CONFIG.subway.eliteChargeSpeed;
       r.vy = 0;
-      r.angle = (r.chargeDir ?? 1) > 0 ? 0 : Math.PI;
+      r.angle = Math.PI; // 护盾蟑螂永远面朝左侧（玩家方向），不反转
     } else {
       r.vx = Math.cos(moveAngle) * effectiveSpeed * 65;
       r.vy = Math.sin(moveAngle) * effectiveSpeed * 65;
@@ -490,8 +549,8 @@ export class RoachAISystem {
       r.vy = moveCfg.minDownwardSpeed;
     }
 
-    // Dodge
-    if ((r.type === RoachType.SUICIDE || r.type === RoachType.SMALL) && r.dodgeTimer > 0) {
+    // Dodge（自爆/定时自爆/小蟑螂；定时自爆闪避数值与自爆蟑螂相同：suicideSpeed/suicideDuration）
+    if ((r.type === RoachType.SUICIDE || r.type === RoachType.TIMED_SUICIDE || r.type === RoachType.SMALL) && r.dodgeTimer > 0) {
       r.dodgeTimer -= deltaTime;
       if (r.dodgeTimer <= 0) {
         r.dodgeDir = 0;
@@ -502,7 +561,7 @@ export class RoachAISystem {
         } else if (r.type === RoachType.SMALL) {
           dodgeSpeed = dodgeCfg.smallSpeed;
         } else {
-          dodgeSpeed = dodgeCfg.suicideSpeed;
+          dodgeSpeed = dodgeCfg.suicideSpeed; // 自爆/定时自爆共用（数值相同）
         }
         const fanMult = r.fanSlowTimer > 0 ? (1 - r.fanSlowFactor) : 1;
         dodgeSpeed *= fanMult;
@@ -533,7 +592,7 @@ export class RoachAISystem {
 
     r.x += r.vx * deltaTime;
     r.y += r.vy * deltaTime;
-    r.angle = moveAngle;
+    r.angle = (r.type === RoachType.TUNNEL_WORKER || r.type === RoachType.SUBWAY_ELITE) ? Math.PI : moveAngle;
 
     // Pull back into screen
     const margin = 100;
@@ -636,12 +695,12 @@ export class RoachAISystem {
   // 子方法：火焰闪避触发
   // =========================================================================
 
-  /** 处理自爆/小蟑螂在火焰中触发闪避 */
+  /** 处理自爆/定时自爆/小蟑螂在火焰中触发闪避（定时自爆与自爆蟑螂数值相同：suicideDuration） */
   private handleFireDodgeTriggers(r: Roach, _roaches: Roach[]): void {
     const dodgeCfg = BALANCE_CONFIG.roachAI.dodge;
 
-    // Suicide roach dodge in fire
-    if (r.type === RoachType.SUICIDE && r.inFire && !this.cfg.stickySystem.isStuckByBoard(r.id)) {
+    // Suicide / timed-suicide roach dodge in fire（数值共用 dodgeCfg.suicideDuration）
+    if ((r.type === RoachType.SUICIDE || r.type === RoachType.TIMED_SUICIDE) && r.inFire && !this.cfg.stickySystem.isStuckByBoard(r.id)) {
       if (r.dodgeDir === 0) {
         r.dodgeDir = Math.random() < 0.5 ? -1 : 1;
       }
@@ -795,6 +854,7 @@ export class RoachAISystem {
         }
         if (healedCount > 0) {
           this.cfg.onAddFloatingText(r.x, r.y - 50, TEXT_CONFIG.combat.nurseSpray.text, TEXT_CONFIG.combat.nurseSpray.color);
+          this.cfg.audio.playNurseHealComplete(); // 治疗完成音效
         }
 
         r.healPhaseTimer! -= deltaTime;
@@ -879,9 +939,11 @@ export class RoachAISystem {
       if (best) {
         best.armorHp += subCfg.armorSprayAmount;
         best.maxArmorHp = Math.max(best.maxArmorHp, best.armorHp);
-        r.armorSprayCastTimer = 0.5; // 触发施法范围光圈脉冲（0.5 秒）
+        r.armorSprayCastTimer = BALANCE_CONFIG.render.roach.armorCastRing.duration; // 触发施法范围光圈脉冲（时长集中于 vfx-balance render.roach.armorCastRing）
         this.cfg.onAddFloatingText(best.x, best.y - 40, `+${subCfg.armorSprayAmount}`, TEXT_CONFIG.combat.armorSpray.color, 1000);
         this.cfg.onAddFloatingText(r.x, r.y - 50, TEXT_CONFIG.combat.armorSpray.text, TEXT_CONFIG.combat.armorSpray.color);
+        this.cfg.audio.playEngineerCast(); // 工程师施法音效
+        this.cfg.audio.playArmorGain();    // 目标获得护甲音效
         // 灰色喷涂喷射流粒子（隧道工 → 目标）
         ParticleSpawner.spawnArmorSprayStream(this.cfg.particles, r.x, r.y, best.x, best.y);
         // 目标头顶 + 号治疗粒子
@@ -891,6 +953,7 @@ export class RoachAISystem {
 
     // ===== 跟随修理护盾（25/s，射程 150px，仅修完好未破碎的护盾） =====
     r.shieldRepairTextTimer = Math.max(0, (r.shieldRepairTextTimer ?? 0) - deltaTime);
+    r.shieldRepairPlusTimer = Math.max(0, (r.shieldRepairPlusTimer ?? 0) - deltaTime);
     const followTarget = r.shieldFollowTargetId != null
       ? roaches.find(o => o.id === r.shieldFollowTargetId && o.state === RoachState.ALIVE && o.type === RoachType.SHIELD)
       : undefined;
@@ -902,20 +965,12 @@ export class RoachAISystem {
         && (followTarget.shieldHp ?? 0) < maxShield) {
         followTarget.shieldHp = Math.min(maxShield, (followTarget.shieldHp ?? 0) + subCfg.shieldRepairPerSec * deltaTime);
         followTarget.shieldHitFlash = 0.15; // 修理激活视觉（护盾增亮）
-        // 修理粒子（青色火花，配置化概率节流）
-        const repairCfg = BALANCE_CONFIG.particle.shieldRepair;
-        if (Math.random() < repairCfg.spawnChance) {
-          this.cfg.particles.push({
-            x: followTarget.x + (Math.random() - 0.5) * 30,
-            y: followTarget.y + (Math.random() - 0.5) * 20,
-            vx: (Math.random() - 0.5) * 20,
-            vy: -(repairCfg.speedMin + Math.random() * (repairCfg.speedMax - repairCfg.speedMin)),
-            life: repairCfg.lifeMin + Math.random() * (repairCfg.lifeMax - repairCfg.lifeMin),
-            maxLife: repairCfg.lifeMax,
-            size: repairCfg.sizeMin + Math.random() * (repairCfg.sizeMax - repairCfg.sizeMin),
-            color: repairCfg.color,
-            type: ParticleType.SPARK,
-          });
+        // 被修理的护盾蟑螂身上修盾上升粒子（每帧循环生成，lighter 叠加）
+        ParticleSpawner.spawnShieldRepairWorkerParticles(this.cfg.particles, followTarget.x, followTarget.y);
+        // 护盾蟑螂头顶+号粒子（节流生成）
+        if ((r.shieldRepairPlusTimer ?? 0) <= 0) {
+          r.shieldRepairPlusTimer = BALANCE_CONFIG.particle.shieldRepair.shieldPlus.interval;
+          ParticleSpawner.spawnShieldRepairPlus(this.cfg.particles, followTarget.x, followTarget.y);
         }
         // 修盾浮动文字（2s 节流）
         if ((r.shieldRepairTextTimer ?? 0) <= 0) {

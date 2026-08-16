@@ -78,6 +78,7 @@ export class DropRenderer {
       if (drop.life > drop.maxLife) continue;
 
       ctx.save();
+      ctx.globalCompositeOperation = cfg.blend; // 叠加混合集中于 vfx-balance render.drop.sticky.blend
 
       if (drop.hit && drop.targetId !== null) {
         // 弹丸已附着在蟑螂上 - 绘制滴落效果
@@ -181,6 +182,7 @@ export class DropRenderer {
 
       ctx.save();
       ctx.globalAlpha = alpha;
+      ctx.globalCompositeOperation = cfg.blend; // 叠加混合集中于 vfx-balance render.drop.weapon.blend
 
       const renderX = drop.x + bobX;
       const renderY = drop.y + bobY;
@@ -205,7 +207,7 @@ export class DropRenderer {
         // 回退：彩色方块
         const glowGrad = ctx.createRadialGradient(renderX, renderY, 0, renderX, renderY, cfg.glowSize * breathe);
         glowGrad.addColorStop(0, DropRenderer.toRgba(def.color, cfg.glowAlpha));
-        glowGrad.addColorStop(1, 'rgba(0,0,0,0)');
+        glowGrad.addColorStop(1, cfg.glowFadeColor);
         ctx.fillStyle = glowGrad;
         ctx.beginPath();
         ctx.arc(renderX, renderY, cfg.glowSize * breathe, 0, Math.PI * 2);
@@ -224,7 +226,7 @@ export class DropRenderer {
       }
 
       // 标签文字
-      ctx.fillStyle = '#fff';
+      ctx.fillStyle = cfg.labelColor;
       ctx.font = cfg.labelFont;
       ctx.textAlign = 'center';
       ctx.shadowColor = cfg.labelShadowColor;
@@ -253,6 +255,9 @@ export class DropRenderer {
     const x = drop.x;
     const y = drop.y + bobY;
 
+    ctx.save();
+    ctx.globalCompositeOperation = cfg.blend; // 叠加混合集中于 vfx-balance render.drop.item.blend
+
     // 辉光效果
     // glowPulse = (sin(t*2)+1) * 0.5, 范围 [0, 1]
     const actualGlowPulse = (Math.sin(drop.bobPhase * 2) + 1) * cfg.glowPulseBase;
@@ -260,7 +265,7 @@ export class DropRenderer {
     const gradient = ctx.createRadialGradient(x, y, cfg.size * cfg.glowInnerRadiusRatio, x, y, cfg.size * cfg.glowOuterRadiusRatio);
     gradient.addColorStop(0, cfg.glowColor1.replace('{alpha}', (0.4 + actualGlowPulse * 0.3).toFixed(2)));
     gradient.addColorStop(0.5, cfg.glowColor2.replace('{alpha}', (0.2 + actualGlowPulse * 0.2).toFixed(2)));
-    gradient.addColorStop(1, 'rgba(245, 158, 11, 0)');
+    gradient.addColorStop(1, cfg.glowFadeColor);
     ctx.fillStyle = gradient;
     ctx.beginPath();
     ctx.arc(x, y, cfg.size * cfg.glowOuterRadiusRatio, 0, Math.PI * 2);
@@ -300,11 +305,13 @@ export class DropRenderer {
       // 回退：金色方块 + 问号
       ctx.fillStyle = RENDER_COLOR.dropFallback;
       ctx.fillRect(x - halfSize, y - halfSize, cfg.size, cfg.size);
-      ctx.fillStyle = '#000';
+      ctx.fillStyle = cfg.fallbackTextColor;
       ctx.font = RENDER_FONT.title;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText('?', x, y);
     }
+
+    ctx.restore();
   }
 }

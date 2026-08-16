@@ -11,7 +11,15 @@
  *              路由：/effect-lab
  */
 
-import { useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from 'react';
 import {
   Contrast,
   Download,
@@ -19,9 +27,11 @@ import {
   Grid3x3,
   Pause,
   Play,
+  Plus,
   RotateCcw,
   SeparatorHorizontal,
   StepForward,
+  Trash2,
   Undo2,
 } from 'lucide-react';
 import { BALANCE_CONFIG } from '@/game/data';
@@ -32,22 +42,40 @@ import { ParticleType, type FireZone } from '@/game/types';
 import { ParamPanel } from './ParamPanel';
 import { EFFECT_DRAG_MIME, PREFAB_DRAG_MIME, ResourceExplorer } from './ResourceExplorer';
 import {
+  backupBaitCfg,
+  backupBombExplosionCfg,
   backupCfg,
   backupFanCfg,
   backupRenderCfg,
+  backupTimedBombCfg,
   EFFECTS,
   PREFAB_CONFIG_SECTIONS,
+  baitCfg,
+  bombExplosionCfg,
   fanCfg,
   particleCfg,
   renderCfg,
   sectionsForAtoms,
+  timedBombCfg,
   type ConeVariant,
   type EffectDef,
 } from './effectDefs';
-import { PREFABS, type PrefabStep } from './prefabDefs';
+import {
+  PREFABS,
+  SHAPE_KEY_META,
+  SHAPE_KIND_META,
+  type KeyframableStep,
+  type Keyframe,
+  type MarkerStep,
+  type PrefabStep,
+  type ShapeKeyParam,
+  type ShapeKind,
+  type ShapeStep,
+} from './prefabDefs';
 import { PrefabPlayer } from './prefabRuntime';
 import { TimelineDock, type LifeCurveInfo } from './TimelineDock';
 import {
+  clamp,
   deepAssign,
   exportEffectSnippet,
   exportParticleSnippet,
@@ -148,6 +176,7 @@ const STEP_KIND_COLOR: Record<PrefabStep['kind'], string> = {
   sprite: '#c084fc',
   custom: '#f472b6',
   vfx: '#34d399',
+  shape: '#fbbf24',
 };
 
 const STEP_KIND_LABEL: Record<PrefabStep['kind'], string> = {
@@ -157,6 +186,7 @@ const STEP_KIND_LABEL: Record<PrefabStep['kind'], string> = {
   sprite: '贴图',
   custom: '内联',
   vfx: '渲染',
+  shape: '图形',
 };
 
 /** 步骤摘要（检查器步骤列表一行） */
@@ -166,14 +196,33 @@ function stepSummary(s: PrefabStep): string {
       return `${s.atom}${s.count ? ` ×${s.count}` : ''}${s.duration ? ` ${s.duration}ms` : ''}`;
     case 'text':
       return s.text;
-    case 'marker':
-      return s.shape === 'circle' ? `圆 r=${s.r ?? 20}` : `矩形 ${s.w}×${s.h}`;
+    case 'marker': {
+      const base = s.shape === 'circle' ? `圆 r=${s.r ?? 20}` : `矩形 ${s.w}×${s.h}`;
+      // 参数打点徽标：keys 存在时附加 ◆×N
+      const keyCount = s.keys
+        ? Object.values(s.keys).reduce((n, a) => n + (a?.length ?? 0), 0)
+        : 0;
+      return keyCount > 0 ? `${base} ◆×${keyCount}` : base;
+    }
     case 'sprite':
       return s.frames ? `序列帧 ×${s.frames.length}` : (s.src?.split('/').pop() ?? '贴图');
     case 'custom':
       return s.fn;
     case 'vfx':
       return `${s.fn} ${s.duration}ms`;
+    case 'shape': {
+      // 尺寸：rect 显 w×h，圆/环/三角显 r
+      const size = s.shape === 'rect' ? ` ${s.w}×${s.h}` : ` r=${s.r}`;
+      const grad = s.gradient === 'radial' ? ' 径向渐变' : '';
+      // 扩散粒子徽标：✦颗数@生命
+      const bolt = s.sparks ? ` ✦×${s.sparks.count}@${s.sparks.life}ms` : '';
+      // 参数打点徽标：keys 存在时附加 ◆×N
+      const keyCount = s.keys
+        ? Object.values(s.keys).reduce((n, a) => n + (a?.length ?? 0), 0)
+        : 0;
+      const keyBadge = keyCount > 0 ? ` ◆×${keyCount}` : '';
+      return `${SHAPE_KIND_META[s.shape].label}${size}${grad}${bolt}${keyBadge}`;
+    }
   }
 }
 
@@ -196,6 +245,20 @@ export default function EffectLabPage() {
   const [simUI, setSimUI] = useState({ paused: false, timeScale: 1 });
   /** 视口显示选项 */
   const [view, setView] = useState<ViewOpts>({ grid: true, defense: true, bg: 'scene' });
+  /** 用户通过「添加 Canvas2D 图形」追加到预制体时间轴的自由图形步骤（key = 预制体 id，会话内有效） */
+  const [extraSteps, setExtraSteps] = useState<Record<string, ShapeStep[]>>({});
+  /** 当前选中编辑的自由图形步骤下标（在当前预制体 extraSteps 数组内；null = 未选中） */
+  const [selectedExtraIdx, setSelectedExtraIdx] = useState<number | null>(null);
+  /** 内置步骤的编辑器覆盖补丁（key = 预制体 id → 步骤下标 → 补丁；标注打点/参数修改合并进有效预制体，不改内置配方常量） */
+  const [stepOverrides, setStepOverrides] = useState<
+    Record<string, Record<number, Partial<PrefabStep>>>
+  >({});
+  /** 当前选中编辑的内置标注步骤下标（在 prefab.steps 内；null = 未选中） */
+  const [selectedMarkerIdx, setSelectedMarkerIdx] = useState<number | null>(null);
+  /** 当前选中编辑的内置图形步骤下标（在 prefab.steps 内，如气体护盾光带；null = 未选中） */
+  const [selectedBaseShapeIdx, setSelectedBaseShapeIdx] = useState<number | null>(null);
+  /** 「添加 Canvas2D 图形」形状选择器展开态 */
+  const [shapePickerOpen, setShapePickerOpen] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const trigRef = useRef(trigValues);
@@ -215,6 +278,89 @@ export default function EffectLabPage() {
   const prefab = activePrefabId ? (PREFABS.find((p) => p.id === activePrefabId) ?? null) : null;
   const bump = () => setVersion((v) => v + 1);
 
+  /** 合并内置步骤覆盖补丁 + 用户追加的自由图形步骤后的有效预制体（预览/步骤列表/导出共用） */
+  const effectivePrefab = useMemo(() => {
+    if (!prefab) return null;
+    const ov = stepOverrides[prefab.id] ?? {};
+    const hasOv = Object.keys(ov).length > 0;
+    const base = hasOv
+      ? prefab.steps.map((s, i) => (ov[i] ? ({ ...s, ...ov[i] } as PrefabStep) : s))
+      : prefab.steps;
+    const extra = extraSteps[prefab.id] ?? [];
+    return hasOv || extra.length > 0 ? { ...prefab, steps: [...base, ...extra] } : prefab;
+  }, [prefab, extraSteps, stepOverrides]);
+
+  /** 当前选中的自由图形步骤（随 extraSteps 更新实时反映最新参数） */
+  const selectedShape: ShapeStep | null =
+    prefab && selectedExtraIdx != null
+      ? ((extraSteps[prefab.id] ?? [])[selectedExtraIdx] ?? null)
+      : null;
+
+  /** 当前选中的内置标注步骤（取合并覆盖补丁后的最新值，随 stepOverrides 更新实时反映） */
+  const selectedMarker: MarkerStep | null = (() => {
+    if (!prefab || selectedMarkerIdx == null || selectedMarkerIdx >= prefab.steps.length) {
+      return null;
+    }
+    const s = effectivePrefab?.steps[selectedMarkerIdx];
+    return s && s.kind === 'marker' ? s : null;
+  })();
+
+  /** 当前选中的内置图形步骤（取合并覆盖补丁后的最新值，随 stepOverrides 更新实时反映） */
+  const selectedBaseShape: ShapeStep | null = (() => {
+    if (!prefab || selectedBaseShapeIdx == null || selectedBaseShapeIdx >= prefab.steps.length) {
+      return null;
+    }
+    const s = effectivePrefab?.steps[selectedBaseShapeIdx];
+    return s && s.kind === 'shape' ? s : null;
+  })();
+
+  /** 修改内置步骤参数（标注打点/数值补丁写入 stepOverrides，合并进有效预制体随 steps 一并导出） */
+  const updateBaseStep = (prefabId: string, idx: number, patch: Partial<PrefabStep>) => {
+    setStepOverrides((prev) => ({
+      ...prev,
+      [prefabId]: {
+        ...(prev[prefabId] ?? {}),
+        // 判别联合的 Partial 展开合并后需断言回 Partial<PrefabStep>
+        [idx]: { ...(prev[prefabId]?.[idx] ?? {}), ...patch } as Partial<PrefabStep>,
+      },
+    }));
+  };
+
+  /** 向当前预制体追加一个 Canvas2D 自由图形步骤（at=0 起，参数取 SHAPE_KIND_META 默认值）并选中 */
+  const addShapeStep = (kind: ShapeKind) => {
+    if (!prefab) return;
+    const meta = SHAPE_KIND_META[kind];
+    const step: ShapeStep = { kind: 'shape', shape: kind, at: 0, ...meta.defaults };
+    setExtraSteps((prev) => {
+      const list = [...(prev[prefab.id] ?? []), step];
+      setSelectedExtraIdx(list.length - 1);
+      return { ...prev, [prefab.id]: list };
+    });
+    setSelectedMarkerIdx(null);
+    setSelectedBaseShapeIdx(null);
+  };
+
+  /** 修改追加图形步骤的参数（时序 at/duration 及形状/大小/颜色/动画等全部实例参数） */
+  const updateExtraStep = (prefabId: string, idx: number, patch: Partial<ShapeStep>) => {
+    setExtraSteps((prev) => ({
+      ...prev,
+      [prefabId]: (prev[prefabId] ?? []).map((s, i) => (i === idx ? { ...s, ...patch } : s)),
+    }));
+  };
+
+  /** 移除追加图形步骤（若移除的是选中项或使其下标失效，同步修正选中态） */
+  const removeExtraStep = (prefabId: string, idx: number) => {
+    setExtraSteps((prev) => ({
+      ...prev,
+      [prefabId]: (prev[prefabId] ?? []).filter((_, i) => i !== idx),
+    }));
+    setSelectedExtraIdx((sel) => {
+      if (sel == null) return sel;
+      if (sel === idx) return null;
+      return sel > idx ? sel - 1 : sel;
+    });
+  };
+
   /**
    * 参数修改回调：使渲染器预计算缓存失效（NurseRenderer 刻度数据依赖配置）并触发 UI 刷新。
    * 配置原地写入 BALANCE_CONFIG，预览循环每帧读取，无需额外同步。
@@ -224,10 +370,23 @@ export default function EffectLabPage() {
     bump();
   };
 
-  /** 预制体检查器参数节：原子共享组 + 预制体专属渲染配置节（如护士光环 nurseHealVFX） */
-  const prefabSections = prefab
-    ? [...sectionsForAtoms(prefab.atoms), ...(PREFAB_CONFIG_SECTIONS[prefab.id] ?? [])]
-    : [];
+  /**
+    * 预制体检查器参数节：原子共享组 + 预制体专属渲染配置节（如护士光环 nurseHealVFX）。
+    * 自由图形（shape 步骤）的参数存于步骤实例本身，不注册到此处（单独显示于「图形参数」模块）。
+    */
+   const prefabSections = useMemo(() => {
+      if (!prefab) return [];
+      const seen = new Set<string>();
+      const out = sectionsForAtoms(prefab.atoms);
+      for (const sec of out) seen.add(`${sec.path}|${sec.title}`);
+      for (const sec of PREFAB_CONFIG_SECTIONS[prefab.id] ?? []) {
+        const key = `${sec.path}|${sec.title}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(sec);
+      }
+      return out;
+    }, [prefab]);
 
   const updateSim = (patch: Partial<{ paused: boolean; timeScale: number }>) => {
     Object.assign(simRef.current, patch);
@@ -238,7 +397,10 @@ export default function EffectLabPage() {
     setActiveId(id);
     setActivePrefabId(null);
   };
-  const selectPrefab = (id: string) => setActivePrefabId(id);
+  const selectPrefab = (id: string) => {
+    setActivePrefabId(id);
+    setSelectedMarkerIdx(null);
+  };
 
   /** 原子模式生命周期曲线数据：从首个物理组推导大小乘数，从首个生成组取 lifeMax */
   const curveInfo: LifeCurveInfo | null = (() => {
@@ -265,6 +427,8 @@ export default function EffectLabPage() {
 
   // ========== 预览循环：虚拟时钟 + 固定步长，复用游戏同一套生成/更新/渲染管线 ==========
   useEffect(() => {
+    // 预览使用合并了追加 Canvas2D 步骤的有效预制体（extraSteps 变化时本 effect 重建并重播）
+    const prefab = effectivePrefab;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -317,12 +481,10 @@ export default function EffectLabPage() {
               baseDamage: 0,
               type: variantRef.current,
             });
-          } else if (def.id === 'shieldAura') {
-            ParticleSpawner.spawnShieldAura(particles, W / 2, H * 0.62, t.hw ?? 100);
           } else if (def.id === 'shieldRepair') {
             // 护盾修复：按帧概率生成（复刻 RoachAISystem 内联逻辑）
             const rc = particleCfg.shieldRepair;
-            if (Math.random() < rc.spawnChance) {
+            if (Math.random() < rc.emitter.spawnChance) {
               const life = rc.lifeMin + Math.random() * (rc.lifeMax - rc.lifeMin);
               particles.push({
                 x: W / 2 + (Math.random() - 0.5) * 30,
@@ -441,6 +603,7 @@ export default function EffectLabPage() {
         player.renderVfx(ctx, clock.vNow); // 渲染器直连特效（护士光环等地面效果）
         ParticleSystem.renderParticles(ctx, particles);
         player.renderSprites(ctx, clock.vNow); // 序列帧贴图在粒子层之上
+        player.renderShapes(ctx, clock.vNow); // 自由图形在贴图之上（叠加元素）
         player.renderTexts(ctx); // 浮动文字最上层
         // 锚点十字
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
@@ -459,21 +622,6 @@ export default function EffectLabPage() {
           ctx.fillStyle = 'rgba(255, 200, 120, 0.9)';
           ctx.beginPath();
           ctx.arc(W / 2, H - 150, 3, 0, Math.PI * 2);
-          ctx.fill();
-        }
-        if (def.id === 'shieldAura') {
-          // 护盾矩形参考线 + 锚点
-          const t = trigRef.current[def.id] ?? defaultTriggers(def);
-          const hw = t.hw ?? 100;
-          const rh = BALANCE_CONFIG.subway.shieldRectHeight;
-          const ay = H * 0.62;
-          ctx.strokeStyle = 'rgba(103, 232, 249, 0.35)';
-          ctx.setLineDash([6, 5]);
-          ctx.strokeRect(W / 2 - hw, ay - rh, hw * 2, rh);
-          ctx.setLineDash([]);
-          ctx.fillStyle = 'rgba(103, 232, 249, 0.8)';
-          ctx.beginPath();
-          ctx.arc(W / 2, ay, 4, 0, Math.PI * 2);
           ctx.fill();
         }
         if (def.id === 'armorSpray') {
@@ -512,7 +660,7 @@ export default function EffectLabPage() {
       restartRef.current = () => {};
       cancelAnimationFrame(raf);
     };
-  }, [def.id, prefab?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [def.id, effectivePrefab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ========== 拖拽加载特效/预制体 ==========
   const dropHandlers = {
@@ -549,6 +697,9 @@ export default function EffectLabPage() {
     deepAssign(particleCfg, backupCfg);
     deepAssign(renderCfg, backupRenderCfg);
     deepAssign(fanCfg, backupFanCfg);
+    deepAssign(baitCfg, backupBaitCfg);
+    deepAssign(timedBombCfg, backupTimedBombCfg);
+    deepAssign(bombExplosionCfg, backupBombExplosionCfg);
     NurseRenderer.invalidateTickCache();
     bump();
   };
@@ -574,9 +725,22 @@ export default function EffectLabPage() {
   };
 
   const handleExportPrefab = () => {
-    if (!prefab) return;
-    const atomSections = sectionsForAtoms(prefab.atoms);
-    const renderSections = PREFAB_CONFIG_SECTIONS[prefab.id] ?? [];
+    if (!prefab || !effectivePrefab) return;
+    // 参数节与检查器面板同一份（prefabSections）；按「path 是否可解析于 particle 节点」拆回两条导出通道：
+    // - particle 通道（atom 原子组，root=particleCfg，如 coneFire / physics.*）
+    // - 渲染/系统通道（root=BALANCE_CONFIG 按顶层分组，如 render.* / fan / subway —— 护盾高度在此通道）
+    const resolvesInParticle = (path: string) => {
+      let cur: unknown = particleCfg;
+      for (const seg of path.split('.')) {
+        if (cur == null || typeof cur !== 'object') return false;
+        cur = (cur as AnyRecord)[seg];
+      }
+      return cur != null && typeof cur === 'object';
+    };
+    const atomSections = prefabSections.filter((s) => resolvesInParticle(s.path));
+    const renderSections = prefabSections.filter((s) => !resolvesInParticle(s.path));
+    const addedCount = effectivePrefab.steps.length - prefab.steps.length;
+    const overrideCount = Object.keys(stepOverrides[prefab.id] ?? {}).length;
     const configParts: string[] = [];
     if (atomSections.length > 0) {
       configParts.push(exportEffectSnippet(prefab.name, prefab.en, atomSections, particleCfg));
@@ -601,13 +765,15 @@ export default function EffectLabPage() {
         id: prefab.id,
         duration: prefab.duration,
         anchor: prefab.anchor,
-        steps: prefab.steps,
+        steps: effectivePrefab.steps,
       },
       2,
     );
     setExportData({
       title: `导出预制体「${prefab.name}」`,
-      hint: '粒子/渲染参数合并回 render-balance.ts 对应节点；steps 时序配方供核对/复刻',
+      hint: `粒子/渲染参数合并回 render-balance.ts 对应节点；steps 时序配方供核对/复刻${
+        addedCount > 0 ? `（含 ${addedCount} 个追加的 Canvas2D 自由图形步骤）` : ''
+      }${overrideCount > 0 ? `（含 ${overrideCount} 处内置步骤参数覆盖/打点）` : ''}`,
       code: `${configParts.join('\n')}\n// ===== 预制体时序配方（${prefab.source}） =====\nconst prefab = ${stepsPart}\n`,
       filename: `prefab-${prefab.id}.ts`,
     });
@@ -811,7 +977,7 @@ export default function EffectLabPage() {
           {/* ===== 底部时间轴坞 ===== */}
           <TimelineDock
             mode={prefab ? 'prefab' : 'atom'}
-            prefab={prefab}
+            prefab={effectivePrefab}
             elapsedMs={hud.elapsed}
             onSeek={(ms) => seekRef.current(ms)}
             curve={curveInfo}
@@ -888,28 +1054,184 @@ export default function EffectLabPage() {
                   </button>
                 </div>
 
-                {/* 时序步骤列表 */}
-                <InspectorModule title={`时序步骤（${prefab.steps.length}）`} accent="#c084fc">
+                {/* 时序步骤列表（含追加的 Canvas2D 自由图形：点击选中编辑、可调 at/duration、可删除） */}
+                <InspectorModule
+                  title={`时序步骤（${effectivePrefab?.steps.length ?? 0}）`}
+                  accent="#c084fc"
+                >
                   <div className="space-y-1">
-                    {prefab.steps.map((s, i) => (
-                      <div key={i} className="flex items-center gap-2 text-[10px] leading-4">
-                        <span className="w-12 shrink-0 text-right font-mono text-zinc-500">
-                          {s.at}ms
-                        </span>
-                        <span
-                          className="h-1.5 w-1.5 shrink-0 rounded-full"
-                          style={{ background: STEP_KIND_COLOR[s.kind] }}
-                        />
-                        <span className="shrink-0 font-mono text-zinc-600">
-                          {STEP_KIND_LABEL[s.kind]}
-                        </span>
-                        <span className="truncate font-mono text-zinc-400">{stepSummary(s)}</span>
-                      </div>
-                    ))}
+                    {(effectivePrefab?.steps ?? []).map((s, i) => {
+                      const extraIdx = i - prefab.steps.length;
+                      const shape = extraIdx >= 0 && s.kind === 'shape' ? s : null;
+                      const marker = extraIdx < 0 && s.kind === 'marker' ? s : null;
+                      // 内置图形步骤（如气体护盾光带）：可选中，经 stepOverrides 补丁编辑
+                      const baseShape = extraIdx < 0 && s.kind === 'shape' ? s : null;
+                      const isSelected =
+                        (shape != null && extraIdx === selectedExtraIdx) ||
+                        (marker != null && i === selectedMarkerIdx) ||
+                        (baseShape != null && i === selectedBaseShapeIdx);
+                      return (
+                        <div
+                          key={i}
+                          onClick={
+                            shape
+                              ? () => {
+                                  setSelectedExtraIdx(extraIdx);
+                                  setSelectedMarkerIdx(null);
+                                  setSelectedBaseShapeIdx(null);
+                                }
+                              : marker
+                                ? () => {
+                                    setSelectedMarkerIdx(i);
+                                    setSelectedExtraIdx(null);
+                                    setSelectedBaseShapeIdx(null);
+                                  }
+                                : baseShape
+                                  ? () => {
+                                      setSelectedBaseShapeIdx(i);
+                                      setSelectedExtraIdx(null);
+                                      setSelectedMarkerIdx(null);
+                                    }
+                                  : undefined
+                          }
+                          title={
+                            shape
+                              ? '点击选中，在下方「图形参数」模块编辑形状/大小/颜色/动画'
+                              : marker
+                                ? '点击选中，在下方「标注参数」模块编辑位置/大小/参数打点'
+                                : baseShape
+                                  ? '点击选中，在下方「图形参数」模块编辑矩形/渐变/闪电参数（补丁随 steps 导出）'
+                                  : undefined
+                          }
+                          className={`flex items-center gap-2 rounded px-1 py-0.5 text-[10px] leading-4 ${
+                            shape || marker || baseShape
+                              ? `cursor-pointer ${
+                                  isSelected
+                                    ? marker
+                                      ? 'bg-cyan-950/40 ring-1 ring-cyan-600/50'
+                                      : 'bg-amber-950/40 ring-1 ring-amber-600/50'
+                                    : 'hover:bg-[#26262c]'
+                                }`
+                              : ''
+                          }`}
+                        >
+                          {shape ? (
+                            <input
+                              type="number"
+                              value={shape.at}
+                              min={0}
+                              step={50}
+                              title="触发时刻 at（ms）"
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={(e) =>
+                                updateExtraStep(prefab.id, extraIdx, {
+                                  at: Math.max(0, Number(e.target.value) || 0),
+                                })
+                              }
+                              className="w-12 shrink-0 rounded border border-amber-900/60 bg-[#201a10] px-1 py-0.5 text-right font-mono text-[10px] leading-3 text-amber-300 outline-none focus:border-amber-600"
+                            />
+                          ) : (
+                            <span className="w-12 shrink-0 text-right font-mono text-zinc-500">
+                              {s.at}ms
+                            </span>
+                          )}
+                          <span
+                            className="h-1.5 w-1.5 shrink-0 rounded-full"
+                            style={{ background: STEP_KIND_COLOR[s.kind] }}
+                          />
+                          <span className="shrink-0 font-mono text-zinc-600">
+                            {STEP_KIND_LABEL[s.kind]}
+                          </span>
+                          {(shape ?? baseShape) && (
+                            <span
+                              className="h-2.5 w-2.5 shrink-0 rounded-sm border border-white/25"
+                              style={{ background: (shape ?? baseShape)!.color }}
+                              title={`主颜色 ${(shape ?? baseShape)!.color}`}
+                            />
+                          )}
+                          <span className="truncate font-mono text-zinc-400">
+                            {stepSummary(s)}
+                          </span>
+                          {shape && (
+                            <>
+                              <input
+                                type="number"
+                                value={shape.duration}
+                                min={50}
+                                step={50}
+                                title="持续窗口 duration（ms）"
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={(e) =>
+                                  updateExtraStep(prefab.id, extraIdx, {
+                                    duration: Math.max(50, Number(e.target.value) || 50),
+                                  })
+                                }
+                                className="w-14 shrink-0 rounded border border-amber-900/60 bg-[#201a10] px-1 py-0.5 text-right font-mono text-[10px] leading-3 text-amber-300 outline-none focus:border-amber-600"
+                              />
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  removeExtraStep(prefab.id, extraIdx);
+                                }}
+                                title="删除此 Canvas2D 图形"
+                                className="shrink-0 rounded p-0.5 text-zinc-600 transition-colors hover:bg-red-950/40 hover:text-red-400"
+                              >
+                                <Trash2 size={11} />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </InspectorModule>
 
-                {/* 聚合参数（原子共享组 + 预制体专属渲染配置节） */}
+                {/* 图形参数（选中的 Canvas2D 自由图形：位置/大小/颜色/缩放动画/旋转/淡出，存于步骤实例随预制体合并导出） */}
+                {selectedShape && selectedExtraIdx != null && (
+                  <InspectorModule
+                    title={`图形参数 · ${SHAPE_KIND_META[selectedShape.shape].label}`}
+                    sub="SHAPE"
+                    accent="#fbbf24"
+                  >
+                    <ShapeParamEditor
+                      step={selectedShape}
+                      onChange={(patch) => updateExtraStep(prefab.id, selectedExtraIdx, patch)}
+                      onDelete={() => removeExtraStep(prefab.id, selectedExtraIdx)}
+                    />
+                  </InspectorModule>
+                )}
+
+                {/* 图形参数（选中的内置 shape 步骤，如气体护盾光带：矩形/渐变/闪电参数，补丁经 stepOverrides 合并随 steps 导出；内置步骤不可删除） */}
+                {selectedBaseShape && selectedBaseShapeIdx != null && (
+                  <InspectorModule
+                    title={`图形参数 · ${SHAPE_KIND_META[selectedBaseShape.shape].label}（内置）`}
+                    sub="SHAPE"
+                    accent="#fbbf24"
+                  >
+                    <ShapeParamEditor
+                      step={selectedBaseShape}
+                      onChange={(patch) =>
+                        updateBaseStep(prefab.id, selectedBaseShapeIdx, patch)
+                      }
+                    />
+                  </InspectorModule>
+                )}
+
+                {/* 标注参数（选中的内置 marker 步骤，如气体护盾矩形虚框：位置/大小可打点，补丁经 stepOverrides 合并随 steps 导出） */}
+                {selectedMarker && selectedMarkerIdx != null && (
+                  <InspectorModule
+                    title={`标注参数 · ${selectedMarker.shape === 'rect' ? '矩形' : '圆形'}`}
+                    sub="MARKER"
+                    accent="#22d3ee"
+                  >
+                    <MarkerParamEditor
+                      step={selectedMarker}
+                      onChange={(patch) => updateBaseStep(prefab.id, selectedMarkerIdx, patch)}
+                    />
+                  </InspectorModule>
+                )}
+
+                {/* 聚合参数（原子共享组 + 预制体专属渲染配置节 + 追加 Canvas2D 图形注册节） */}
                 {prefabSections.length > 0 ? (
                   <ParamPanel sections={prefabSections} onChange={handleConfigChange} />
                 ) : (
@@ -917,6 +1239,48 @@ export default function EffectLabPage() {
                     此预制体未引用原子特效（纯文字/标注/内联粒子），无可调参数。
                   </p>
                 )}
+
+                {/* 添加 Canvas2D 自由图形：形状选择器（参数风格参考现有 Canvas2D 技能；实例参数存于步骤，随预制体合并导出、可删除） */}
+                <InspectorModule title="添加 Canvas2D 图形" sub="ADD SHAPE" accent="#fbbf24">
+                  <button
+                    onClick={() => setShapePickerOpen((o) => !o)}
+                    className={`flex w-full items-center justify-center gap-1.5 rounded border px-2 py-1.5 text-[11px] font-semibold transition-colors ${
+                      shapePickerOpen
+                        ? 'border-amber-600/60 bg-amber-950/50 text-amber-200'
+                        : 'border-amber-800/50 bg-amber-950/30 text-amber-300 hover:bg-amber-900/40 hover:text-amber-200'
+                    }`}
+                  >
+                    <Plus size={12} />
+                    {shapePickerOpen ? '收起形状库' : '选择图形形状…'}
+                  </button>
+                  {shapePickerOpen && (
+                    <div className="mt-2">
+                      <div className="grid grid-cols-2 gap-1">
+                        {(
+                          Object.entries(SHAPE_KIND_META) as [
+                            ShapeKind,
+                            (typeof SHAPE_KIND_META)[ShapeKind],
+                          ][]
+                        ).map(([kind, meta]) => (
+                          <button
+                            key={kind}
+                            onClick={() => addShapeStep(kind)}
+                            title={`追加一个${meta.label}到时间轴（at=0 起）并选中`}
+                            className="flex items-center gap-1.5 rounded border border-[#333338] bg-[#242428] px-1.5 py-1 text-left transition-colors hover:border-amber-700/60 hover:bg-amber-950/30"
+                          >
+                            <ShapeGlyph kind={kind} color={meta.defaults.color} />
+                            <span className="truncate text-[10px] font-semibold text-zinc-300">
+                              {meta.label}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                      <p className="mt-2 text-[9px] leading-3.5 text-zinc-600">
+                        点击形状追加到时间轴（at=0 起）并自动选中：大小/颜色/缩放动画/旋转等在「图形参数」模块调节，时序可在步骤列表调整，可删除，导出随预制体合并。
+                      </p>
+                    </div>
+                  )}
+                </InspectorModule>
               </>
             ) : (
               <>
@@ -1174,6 +1538,726 @@ function InspectorModule({
         {sub && <span className="font-mono text-[8px] tracking-[0.15em] text-zinc-600">{sub}</span>}
       </button>
       {open && <div className="px-2.5 pb-2.5 pt-2">{children}</div>}
+    </div>
+  );
+}
+
+/** 形状选择器小图标（SVG 预览：形状 + 默认主颜色） */
+function ShapeGlyph({ kind, color }: { kind: ShapeKind; color: string }) {
+  const props = { fill: kind === 'circle' || kind === 'triangle' ? color : 'none', stroke: color };
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" className="shrink-0">
+      {kind === 'circle' && <circle cx="7" cy="7" r="5.5" {...props} strokeWidth="1.5" />}
+      {kind === 'rect' && <rect x="1.5" y="3" width="11" height="8" {...props} strokeWidth="1.5" />}
+      {kind === 'ring' && <circle cx="7" cy="7" r="5" fill="none" stroke={color} strokeWidth="2.5" />}
+      {kind === 'triangle' && <path d="M7 1.5 L12.5 11.5 L1.5 11.5 Z" {...props} strokeWidth="1.5" />}
+    </svg>
+  );
+}
+
+/** 数字滑杆行（自由图形实例参数编辑：label + range + 数值输入） */
+function ShapeSlider({
+  label,
+  value,
+  min,
+  max,
+  step,
+  unit = '',
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  unit?: string;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div>
+      <div className="mb-0.5 flex items-center justify-between">
+        <label className="text-[11px] text-zinc-400">{label}</label>
+        <span className="font-mono text-[11px] text-amber-200">
+          {value}
+          {unit}
+        </span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="w-full accent-amber-400"
+      />
+    </div>
+  );
+}
+
+/**
+ * 元素设置框（矩形三层元素：矩形主元素 / 格子线·闪电附属元素）。
+ * 标题 + 主/附属徽标 + 内容 + 可选底部移除按钮（设置框下放删除框）。
+ */
+function ElementBox({
+  title,
+  badge,
+  children,
+  onRemove,
+  removeText,
+}: {
+  title: string;
+  badge: string;
+  children: ReactNode;
+  /** 移除回调：省略时隐藏移除按钮（矩形主元素不可移除） */
+  onRemove?: () => void;
+  removeText?: string;
+}) {
+  return (
+    <div className="space-y-1 rounded border border-[#2a2a2e] bg-[#1b1b1d] p-1.5">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-semibold text-zinc-300">{title}</span>
+        <span
+          className={`rounded px-1 py-px text-[9px] ${
+            badge === '主元素' ? 'bg-blue-500/15 text-blue-300' : 'bg-zinc-500/15 text-zinc-400'
+          }`}
+        >
+          {badge}
+        </span>
+      </div>
+      {children}
+      {onRemove && (
+        <button
+          onClick={onRemove}
+          className="mt-0.5 flex w-full items-center justify-center gap-1 rounded border border-red-800/40 bg-red-950/20 px-1 py-0.5 text-[10px] text-red-300/90 transition-colors hover:bg-red-900/30 hover:text-red-200"
+        >
+          <Trash2 size={10} />
+          {removeText ?? '移除'}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** 元素颜色选择行：颜色选择框 + 本层透明度 alpha 滑条（0~1，渲染时与整体透明度叠乘） */
+function ColorAlphaRow({
+  color,
+  alpha,
+  onColor,
+  onAlpha,
+}: {
+  color: string;
+  alpha: number;
+  onColor: (c: string) => void;
+  onAlpha: (a: number) => void;
+}) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="w-8 shrink-0 text-[10px] text-zinc-500">颜色</span>
+      <input
+        type="color"
+        value={color}
+        onChange={(e) => onColor(e.target.value)}
+        className="h-5 w-8 shrink-0 cursor-pointer rounded border border-[#3a3a40] bg-transparent"
+      />
+      <span className="shrink-0 font-mono text-[10px] text-zinc-500">{color}</span>
+      <span className="ml-auto shrink-0 text-[10px] text-zinc-500">alpha</span>
+      <input
+        type="range"
+        min={0}
+        max={1}
+        step={0.01}
+        value={alpha}
+        onChange={(e) => onAlpha(Math.max(0, Math.min(1, Number(e.target.value))))}
+        className="w-16 accent-amber-400"
+      />
+      <span className="w-7 shrink-0 text-right font-mono text-[10px] text-amber-200">
+        {alpha.toFixed(2)}
+      </span>
+    </div>
+  );
+}
+
+/** 附属元素添加按钮（虚线框，点击后以默认参数附加到矩形主元素上） */
+function AddElementButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex w-full items-center justify-center gap-1 rounded border border-dashed border-[#3a3a40] px-2 py-1 text-[10px] text-zinc-500 transition-colors hover:border-amber-400/50 hover:text-amber-200"
+    >
+      <Plus size={10} />
+      {label}
+    </button>
+  );
+}
+
+/**
+ * 自由图形参数编辑器（「添加 Canvas2D 图形」追加的 shape 步骤）。
+ * 参数风格参考现有 Canvas2D 技能（breatheAmplitude → scaleAmp、breatheTimeScale → scaleFreq），
+ * 全部写入步骤实例（Patch → updateExtraStep），不触碰 BALANCE_CONFIG。
+ * 数值参数均可打点（◆ 切换关键帧曲线），关键帧存于 step.keys 随预制体合并导出。
+ * 矩形按三层元素组织：① 矩形（主元素，含整体透明度）② 格子线（附属，可移除）③ 光带闪电（附属，可移除）；
+ * 附属元素移除写入 null（JSON 安全的补丁语义），三元素透明度在各自颜色行内分别设置。
+ */
+function ShapeParamEditor({
+  step,
+  onChange,
+  onDelete,
+}: {
+  step: ShapeStep;
+  onChange: (patch: Partial<ShapeStep>) => void;
+  /** 删除回调：省略时隐藏删除按钮（内置步骤不可删除） */
+  onDelete?: () => void;
+}) {
+  const isRect = step.shape === 'rect';
+  const isRing = step.shape === 'ring';
+  return (
+    <div className="space-y-2">
+      {/* 位置偏移（相对预制体锚点；矩形三层元素共用同一位置与动画） */}
+      <KeyframableSlider param="dx" unit="px" step={step} onChange={onChange} />
+      <KeyframableSlider param="dy" unit="px" step={step} onChange={onChange} />
+
+      {isRect ? (
+        <>
+          {/* ① 矩形（主元素）：宽高 + 颜色行（本层透明度 fillAlpha）+ 填充/渐变/混合 + 整体透明度 */}
+          <ElementBox title="矩形" badge="主元素">
+            <KeyframableSlider param="w" unit="px" step={step} onChange={onChange} />
+            <KeyframableSlider param="h" unit="px" step={step} onChange={onChange} />
+            <ColorAlphaRow
+              color={step.color}
+              alpha={step.fillAlpha ?? 1}
+              onColor={(c) => onChange({ color: c })}
+              onAlpha={(a) => onChange({ fillAlpha: a })}
+            />
+            <div className="flex items-center gap-3 pt-0.5">
+              <label className="flex shrink-0 cursor-pointer items-center gap-1 text-[11px] text-zinc-400">
+                <input
+                  type="checkbox"
+                  checked={step.fill}
+                  onChange={(e) => onChange({ fill: e.target.checked })}
+                  className="accent-amber-400"
+                />
+                填充
+              </label>
+              {step.fill && (
+                <>
+                  <label
+                    className="flex shrink-0 cursor-pointer items-center gap-1 text-[11px] text-zinc-400"
+                    title="中心实色 → 四周边缘透明（椭圆渐变覆盖矩形）"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={step.gradient === 'radial'}
+                      onChange={(e) => onChange({ gradient: e.target.checked ? 'radial' : undefined })}
+                      className="accent-amber-400"
+                    />
+                    径向渐变
+                  </label>
+                  <label
+                    className="flex shrink-0 cursor-pointer items-center gap-1 text-[11px] text-zinc-400"
+                    title="lighter 叠加混合：填充与背景相加增亮，呈现发光感"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={step.blend === 'lighter'}
+                      onChange={(e) => onChange({ blend: e.target.checked ? 'lighter' : undefined })}
+                      className="accent-amber-400"
+                    />
+                    叠加增亮
+                  </label>
+                </>
+              )}
+            </div>
+            {/* 整体透明度滑条：矩形/格子线/闪电三层的公共乘数，支持打点（◆ 关键帧曲线） */}
+            <KeyframableSlider param="alpha" label="整体透明度" step={step} onChange={onChange} />
+          </ElementBox>
+
+          {/* ② 格子线（附属元素）：设置框下放移除按钮；已移除时显示添加按钮 */}
+          {step.fill &&
+            (step.grid ? (
+              <ElementBox
+                title="格子线"
+                badge="附属"
+                onRemove={() => onChange({ grid: null })}
+                removeText="移除格子线"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="w-14 shrink-0 text-[10px] text-zinc-500">间隔px</span>
+                  <input
+                    type="number" min={2} max={100}
+                    value={step.grid.gap}
+                    onChange={(e) => onChange({ grid: { ...step.grid!, gap: Math.max(2, Number(e.target.value) || 5) } })}
+                    className="w-14 rounded bg-[#141416] px-1 py-0.5 font-mono text-[10px] text-zinc-200 outline-none"
+                  />
+                  <span className="w-14 shrink-0 text-[10px] text-zinc-500">线宽px</span>
+                  <input
+                    type="number" min={0.5} max={10} step={0.5}
+                    value={step.grid.lineWidth}
+                    onChange={(e) => onChange({ grid: { ...step.grid!, lineWidth: Math.max(0.5, Number(e.target.value) || 1) } })}
+                    className="w-14 rounded bg-[#141416] px-1 py-0.5 font-mono text-[10px] text-zinc-200 outline-none"
+                  />
+                </div>
+                <ColorAlphaRow
+                  color={step.grid.color}
+                  alpha={step.grid.alpha ?? 1}
+                  onColor={(c) => onChange({ grid: { ...step.grid!, color: c } })}
+                  onAlpha={(a) => onChange({ grid: { ...step.grid!, alpha: a } })}
+                />
+              </ElementBox>
+            ) : (
+              <AddElementButton
+                label="添加格子线（边缘渐隐）"
+                onClick={() =>
+                  onChange({ grid: { gap: 5, lineWidth: 1, color: '#e0f2fe', alpha: 1 } })
+                }
+              />
+            ))}
+
+          {/* ③ 扩散粒子（附属元素，需径向渐变底）：设置框下放移除按钮；已移除时显示添加按钮 */}
+          {step.fill &&
+            step.gradient === 'radial' &&
+            (step.sparks ? (
+              <ElementBox
+                title="扩散粒子"
+                badge="附属"
+                onRemove={() => onChange({ sparks: null })}
+                removeText="移除扩散粒子"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="w-14 shrink-0 text-[10px] text-zinc-500">数量</span>
+                  <input
+                    type="number" min={1} max={30}
+                    value={step.sparks.count}
+                    onChange={(e) => onChange({ sparks: { ...step.sparks!, count: Math.max(1, Math.min(30, Number(e.target.value) || 1)) } })}
+                    className="w-14 rounded bg-[#141416] px-1 py-0.5 font-mono text-[10px] text-zinc-200 outline-none"
+                  />
+                  <span className="w-14 shrink-0 text-[10px] text-zinc-500">生命ms</span>
+                  <input
+                    type="number" min={100} max={2000} step={50}
+                    value={step.sparks.life}
+                    onChange={(e) => onChange({ sparks: { ...step.sparks!, life: Math.max(100, Number(e.target.value) || 900) } })}
+                    className="w-14 rounded bg-[#141416] px-1 py-0.5 font-mono text-[10px] text-zinc-200 outline-none"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-14 shrink-0 text-[10px] text-zinc-500">大小px</span>
+                  <input
+                    type="number" min={0.5} max={10} step={0.1}
+                    value={step.sparks.size}
+                    onChange={(e) => onChange({ sparks: { ...step.sparks!, size: Math.max(0.5, Number(e.target.value) || 2.5) } })}
+                    className="w-14 rounded bg-[#141416] px-1 py-0.5 font-mono text-[10px] text-zinc-200 outline-none"
+                  />
+                </div>
+                <ColorAlphaRow
+                  color={step.sparks.color}
+                  alpha={step.sparks.alpha ?? 1}
+                  onColor={(c) => onChange({ sparks: { ...step.sparks!, color: c } })}
+                  onAlpha={(a) => onChange({ sparks: { ...step.sparks!, alpha: a } })}
+                />
+                {/* 叠加混合方式：缺省 lighter（叠加增亮，保证粒子亮度高于渐变底） */}
+                <div className="flex items-center gap-2">
+                  <span className="w-14 shrink-0 text-[10px] text-zinc-500">叠加方式</span>
+                  <select
+                    value={step.sparks.blend ?? 'lighter'}
+                    onChange={(e) => {
+                      const v = e.target.value as GlobalCompositeOperation;
+                      onChange({ sparks: { ...step.sparks!, blend: v === 'lighter' ? undefined : v } });
+                    }}
+                    className="rounded bg-[#141416] px-1 py-0.5 text-[10px] text-zinc-200 outline-none"
+                    title="lighter=叠加增亮（发光感）；screen=滤色（柔和提亮）；source-over=普通覆盖；multiply=正片叠底（变暗）"
+                  >
+                    <option value="lighter">lighter 叠加增亮</option>
+                    <option value="screen">screen 滤色</option>
+                    <option value="source-over">source-over 普通</option>
+                    <option value="multiply">multiply 正片叠底</option>
+                  </select>
+                </div>
+              </ElementBox>
+            ) : (
+              <AddElementButton
+                label="添加扩散粒子（中心 → 四周）"
+                onClick={() =>
+                  onChange({
+                    sparks: { count: 12, life: 900, size: 2.5, color: '#e0f2fe', alpha: 1 },
+                  })
+                }
+              />
+            ))}
+        </>
+      ) : (
+        <>
+          {/* 大小：非矩形用半径 */}
+          <KeyframableSlider param="r" unit="px" step={step} onChange={onChange} />
+          {/* 颜色 + 填充（颜色/填充不打点，随窗口恒定） */}
+          <div className="flex items-center gap-2">
+            <label className="shrink-0 text-[11px] text-zinc-400">颜色</label>
+            <input
+              type="color"
+              value={step.color}
+              onChange={(e) => onChange({ color: e.target.value })}
+              className="h-5 w-8 shrink-0 cursor-pointer rounded border border-[#3a3a40] bg-transparent"
+            />
+            <span className="font-mono text-[10px] text-zinc-500">{step.color}</span>
+            {!isRing && (
+              <label className="ml-auto flex shrink-0 cursor-pointer items-center gap-1 text-[11px] text-zinc-400">
+                <input
+                  type="checkbox"
+                  checked={step.fill}
+                  onChange={(e) => onChange({ fill: e.target.checked })}
+                  className="accent-amber-400"
+                />
+                填充
+              </label>
+            )}
+          </div>
+          <KeyframableSlider param="alpha" step={step} onChange={onChange} />
+        </>
+      )}
+
+      {(!step.fill || isRing) && (
+        <KeyframableSlider
+          param="lineWidth"
+          label={isRing ? '环宽' : '描边线宽'}
+          unit="px"
+          step={step}
+          onChange={onChange}
+        />
+      )}
+      {/* 缩放动画/旋转/结尾淡出（矩形三层元素共用；呼吸：1 + amp·sin(2π·freq·t)） */}
+      <KeyframableSlider param="scaleAmp" step={step} onChange={onChange} />
+      <KeyframableSlider param="scaleFreq" unit="/s" step={step} onChange={onChange} />
+      <KeyframableSlider param="rotSpeed" unit="圈/s" step={step} onChange={onChange} />
+      <ShapeSlider label="结尾淡出" value={step.fadeOut} min={0} max={1} step={0.05} onChange={(v) => onChange({ fadeOut: v })} />
+      {onDelete && (
+        <button
+          onClick={onDelete}
+          className="mt-1 flex w-full items-center justify-center gap-1 rounded border border-red-800/50 bg-red-950/30 px-2 py-1 text-[10px] font-semibold text-red-300 transition-colors hover:bg-red-900/40 hover:text-red-200"
+        >
+          <Trash2 size={11} />
+          删除此图形
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 区域标注参数编辑器（内置 marker 步骤，如气体护盾矩形虚框）。
+ * 数值参数（偏移 X/Y、宽/高/半径）均可打点（◆ 切换关键帧曲线，t 相对 life 窗口归一化），
+ * 修改经 stepOverrides 补丁合并进有效预制体，随预制体 steps 一并导出（不改动内置配方常量）。
+ */
+function MarkerParamEditor({
+  step,
+  onChange,
+}: {
+  step: MarkerStep;
+  onChange: (patch: Partial<MarkerStep>) => void;
+}) {
+  const isRect = step.shape === 'rect';
+  return (
+    <div className="space-y-2">
+      {/* 位置偏移（相对预制体锚点） */}
+      <KeyframableSlider param="dx" unit="px" step={step} onChange={onChange} />
+      <KeyframableSlider param="dy" unit="px" step={step} onChange={onChange} />
+      {/* 大小：矩形用宽/高，圆形用半径 */}
+      {isRect ? (
+        <>
+          <KeyframableSlider param="w" unit="px" step={step} onChange={onChange} />
+          <KeyframableSlider param="h" unit="px" step={step} onChange={onChange} />
+        </>
+      ) : (
+        <KeyframableSlider param="r" unit="px" step={step} onChange={onChange} />
+      )}
+      {/* 颜色 + 虚线（不打点，随窗口恒定） */}
+      <div className="flex items-center gap-2">
+        <label className="shrink-0 text-[11px] text-zinc-400">颜色</label>
+        <input
+          type="color"
+          value={step.color}
+          onChange={(e) => onChange({ color: e.target.value })}
+          className="h-5 w-8 shrink-0 cursor-pointer rounded border border-[#3a3a40] bg-transparent"
+        />
+        <span className="font-mono text-[10px] text-zinc-500">{step.color}</span>
+        <label className="ml-auto flex shrink-0 cursor-pointer items-center gap-1 text-[11px] text-zinc-400">
+          <input
+            type="checkbox"
+            checked={step.dashed ?? false}
+            onChange={(e) => onChange({ dashed: e.target.checked })}
+            className="accent-cyan-400"
+          />
+          虚线
+        </label>
+      </div>
+      {/* 存活时间（打点窗口长度，ms） */}
+      <ShapeSlider
+        label="存活时间（打点窗口）"
+        value={step.life ?? 800}
+        min={100}
+        max={5000}
+        step={50}
+        unit="ms"
+        onChange={(v) => onChange({ life: v })}
+      />
+    </div>
+  );
+}
+
+/**
+ * 可打点的数值参数行（参考 Unity Curve Editor 的参数曲线，shape / marker 步骤共用）：
+ * 常量模式为滑杆；点击 ◆ 切换为关键帧曲线编辑器（横轴 = 步骤窗口内归一化时间，纵轴 = 参数值）。
+ * 关键帧存于 step.keys[param]（t 升序、线性插值），取消打点则回退到同名常量字段。
+ */
+function KeyframableSlider<T extends KeyframableStep>({
+  param,
+  label,
+  unit = '',
+  step,
+  onChange,
+}: {
+  param: ShapeKeyParam;
+  label?: string;
+  unit?: string;
+  step: T;
+  onChange: (patch: Partial<T>) => void;
+}) {
+  const meta = SHAPE_KEY_META[param];
+  const keys = step.keys?.[param];
+  const constVal = step[param] ?? 0;
+
+  /** 写入/清除该参数的关键帧数组（清空时删除条目；全空时 keys 置 undefined 保持导出干净） */
+  const setKeys = (next: Keyframe[] | undefined) => {
+    const rest: Partial<Record<ShapeKeyParam, Keyframe[]>> = { ...(step.keys ?? {}) };
+    if (next && next.length > 0) rest[param] = next;
+    else delete rest[param];
+    onChange({ keys: Object.keys(rest).length > 0 ? rest : undefined } as Partial<T>);
+  };
+
+  return (
+    <div>
+      <div className="mb-0.5 flex items-center justify-between">
+        <label className="text-[11px] text-zinc-400">{label ?? meta.label}</label>
+        <div className="flex items-center gap-1.5">
+          <span className="font-mono text-[11px] text-amber-200">
+            {keys ? `◆×${keys.length}` : `${constVal}${unit}`}
+          </span>
+          <button
+            onClick={() =>
+              keys
+                ? setKeys(undefined)
+                : setKeys([
+                    { t: 0, v: constVal },
+                    { t: 1, v: constVal },
+                  ])
+            }
+            title={keys ? '取消打点（回退为常量）' : '打点：在步骤窗口内按时间编辑参数曲线'}
+            className={`rounded px-1 py-0.5 font-mono text-[9px] leading-3 transition-colors ${
+              keys
+                ? 'bg-amber-950/60 text-amber-300 ring-1 ring-amber-600/50'
+                : 'text-zinc-600 hover:bg-[#2a2a2e] hover:text-amber-300'
+            }`}
+          >
+            ◆
+          </button>
+        </div>
+      </div>
+      {keys ? (
+        <KeyCurveEditor
+          keys={keys}
+          min={meta.min}
+          max={meta.max}
+          valStep={meta.step}
+          onChange={setKeys}
+        />
+      ) : (
+        <input
+          type="range"
+          min={meta.min}
+          max={meta.max}
+          step={meta.step}
+          value={constVal}
+          onChange={(e) => onChange({ [param]: Number(e.target.value) } as unknown as Partial<T>)}
+          className="w-full accent-amber-400"
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * 关键帧迷你曲线编辑器（参考 Unity Curve Editor 单参数曲线）：
+ * 点击空白处打点，拖动菱形点调整时间/数值，双击删点；底部数值行可精确输入。
+ * 数据约定：t ∈ [0,1] 升序（相对步骤窗口），v 按 valStep 取整。
+ */
+function KeyCurveEditor({
+  keys,
+  min,
+  max,
+  valStep,
+  onChange,
+}: {
+  keys: Keyframe[];
+  min: number;
+  max: number;
+  valStep: number;
+  onChange: (next: Keyframe[]) => void;
+}) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [sel, setSel] = useState<number | null>(null);
+  const W2 = 320;
+  const H2 = 64;
+  const PAD = 8;
+
+  const toX = (t: number) => PAD + t * (W2 - PAD * 2);
+  const toY = (v: number) => H2 - PAD - ((v - min) / (max - min || 1)) * (H2 - PAD * 2);
+  /** 指针位置 → (t, v)（viewBox 固定 320×64，元素宽度自适应，按矩形比例换算） */
+  const fromPointer = (e: { clientX: number; clientY: number }) => {
+    const el = svgRef.current;
+    if (!el) return { t: 0, v: min };
+    const rect = el.getBoundingClientRect();
+    const nx = clamp((e.clientX - rect.left) / rect.width, 0, 1);
+    const ny = clamp((e.clientY - rect.top) / rect.height, 0, 1);
+    return {
+      t: clamp((nx * W2 - PAD) / (W2 - PAD * 2), 0, 1),
+      v: clamp(min + (1 - (ny * H2 - PAD) / (H2 - PAD * 2)) * (max - min), min, max),
+    };
+  };
+  /** 数值取整（t 两位小数，v 按 valStep 步进） */
+  const snapT = (t: number) => Math.round(clamp(t, 0, 1) * 100) / 100;
+  const snapV = (v: number) =>
+    Number((Math.round(clamp(v, min, max) / valStep) * valStep).toFixed(4));
+
+  /** 移动选中点并保持 t 升序（以对象引用追踪排序后的新下标） */
+  const moveSelected = (t: number, v: number) => {
+    if (sel == null || sel >= keys.length) return;
+    const item = { t: snapT(t), v: snapV(v) };
+    const next = keys.map((k, i) => (i === sel ? item : k));
+    next.sort((a, b) => a.t - b.t);
+    onChange(next);
+    setSel(next.indexOf(item));
+  };
+  /** 删除指定点（清空后由父组件回退常量模式） */
+  const removeKey = (i: number) => {
+    setSel(null);
+    onChange(keys.filter((_, j) => j !== i));
+  };
+
+  const handleBgDown = (e: ReactPointerEvent<SVGSVGElement>) => {
+    const p = fromPointer(e);
+    const item = { t: snapT(p.t), v: snapV(p.v) };
+    const next = [...keys, item].sort((a, b) => a.t - b.t);
+    onChange(next);
+    setSel(next.indexOf(item));
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const handleMove = (e: ReactPointerEvent<SVGSVGElement>) => {
+    if (sel == null || !(e.buttons & 1)) return;
+    const p = fromPointer(e);
+    moveSelected(p.t, p.v);
+  };
+
+  const selKey = sel != null && sel < keys.length ? keys[sel] : null;
+  const line = keys.map((k) => `${toX(k.t).toFixed(1)},${toY(k.v).toFixed(1)}`).join(' ');
+  const area =
+    keys.length > 1
+      ? `${toX(keys[0].t).toFixed(1)},${toY(min).toFixed(1)} ${line} ${toX(keys[keys.length - 1].t).toFixed(1)},${toY(min).toFixed(1)}`
+      : null;
+
+  return (
+    <div>
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${W2} ${H2}`}
+        className="block h-16 w-full cursor-crosshair rounded border border-[#2c2c30] bg-[#161618]"
+        onPointerDown={handleBgDown}
+        onPointerMove={handleMove}
+      >
+        {/* 网格（时间 1/4 刻度 + 值中线；含 0 值参考线） */}
+        {[0.25, 0.5, 0.75].map((g) => (
+          <line
+            key={`v${g}`}
+            x1={toX(g)}
+            x2={toX(g)}
+            y1={PAD}
+            y2={H2 - PAD}
+            stroke="#2a2a2e"
+            strokeWidth={1}
+          />
+        ))}
+        <line x1={PAD} x2={W2 - PAD} y1={toY((min + max) / 2)} y2={toY((min + max) / 2)} stroke="#2a2a2e" strokeWidth={1} />
+        {min < 0 && max > 0 && (
+          <line x1={PAD} x2={W2 - PAD} y1={toY(0)} y2={toY(0)} stroke="#3f3f46" strokeWidth={1} />
+        )}
+        {/* 曲线下面积 + 折线 */}
+        {area && <polygon points={area} fill="#fbbf24" opacity={0.08} />}
+        {keys.length > 1 && (
+          <polyline points={line} fill="none" stroke="#fbbf24" strokeWidth={1.5} strokeLinejoin="round" />
+        )}
+        {/* 菱形关键点（大透明 hit 圆便于点按） */}
+        {keys.map((k, i) => (
+          <g
+            key={i}
+            transform={`translate(${toX(k.t)}, ${toY(k.v)})`}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              setSel(i);
+              svgRef.current?.setPointerCapture(e.pointerId);
+            }}
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              removeKey(i);
+            }}
+            className="cursor-grab"
+          >
+            <circle r={7} fill="transparent" />
+            <rect
+              x={-3.2}
+              y={-3.2}
+              width={6.4}
+              height={6.4}
+              transform="rotate(45)"
+              fill={i === sel ? '#fbbf24' : '#a1a1aa'}
+              stroke="#161618"
+              strokeWidth={1}
+            />
+          </g>
+        ))}
+      </svg>
+      {/* 数值行：选中点精确编辑 / 操作提示 */}
+      <div className="mt-1 flex items-center gap-1.5 text-[9px] text-zinc-600">
+        {selKey && sel != null ? (
+          <>
+            <span>t</span>
+            <input
+              type="number"
+              min={0}
+              max={1}
+              step={0.01}
+              value={selKey.t}
+              onChange={(e) => moveSelected(Number(e.target.value) || 0, selKey.v)}
+              className="w-12 rounded border border-[#3a3a40] bg-[#1a1a1d] px-1 py-0.5 text-right font-mono text-[9px] leading-3 text-amber-200 outline-none focus:border-amber-600"
+            />
+            <span>v</span>
+            <input
+              type="number"
+              min={min}
+              max={max}
+              step={valStep}
+              value={selKey.v}
+              onChange={(e) => moveSelected(selKey.t, Number(e.target.value) || 0)}
+              className="w-14 rounded border border-[#3a3a40] bg-[#1a1a1d] px-1 py-0.5 text-right font-mono text-[9px] leading-3 text-amber-200 outline-none focus:border-amber-600"
+            />
+            <button
+              onClick={() => removeKey(sel)}
+              className="ml-auto rounded px-1 py-0.5 text-zinc-500 transition-colors hover:bg-red-950/40 hover:text-red-400"
+              title="删除选中点（双击点同效）"
+            >
+              删点
+            </button>
+          </>
+        ) : (
+          <span>点击空白打点 · 拖动调时间/数值 · 双击删点（t=0~1 为窗口内归一化时间）</span>
+        )}
+      </div>
     </div>
   );
 }

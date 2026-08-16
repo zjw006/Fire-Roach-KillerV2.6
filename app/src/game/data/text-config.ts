@@ -460,7 +460,7 @@ export const TEXT_CONFIG = {
       subwayElite: '精英',
       breaches: '防线突破',
       talentUnlocked: '获得天赋点！',
-      talentDesc: '地下室通关奖励，可用于强化角色能力',
+      talentDesc: '通关奖励，可用于强化角色能力',
       goAddPoints: '去加点',
       nextLevel: (name: string) => `下一关：${name}`,
       playAgain: '再来一局',

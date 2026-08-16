@@ -11,6 +11,9 @@ import {
   Bomb,
   CircleDot,
   Cloud,
+  CloudRain,
+  CloudFog,
+  CloudLightning,
   Cookie,
   Cross,
   Crosshair,
@@ -27,7 +30,6 @@ import {
   Magnet,
   MousePointerClick,
   Radar,
-  Rocket,
   Search,
   Shapes,
   Shield,
@@ -59,9 +61,11 @@ const ICONS: Record<string, LucideIcon> = {
   blood: Droplet,
   spark: Sparkles,
   debris: Shapes,
-  shieldAura: Shield,
   armorSpray: SprayCan,
   shieldRepair: Wrench,
+  weatherRain: CloudRain,
+  weatherFog: CloudFog,
+  weatherLightning: CloudLightning,
 };
 
 const PREFAB_ICONS: Record<string, LucideIcon> = {
@@ -77,7 +81,6 @@ const PREFAB_ICONS: Record<string, LucideIcon> = {
   p_gas_refill: Fuel,
   p_defense_repair: ShieldPlus,
   p_emergency_cool: Snowflake,
-  p_power_boost: Rocket,
   p_shield: Shield,
   p_bait: Cookie,
   s_mutant: Dna,

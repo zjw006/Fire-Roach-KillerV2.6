@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @fileoverview 补给站 / 商店界面组件。
  * 支持两种模式：
  * - 菜单商店（isMenuShop）：从主菜单入口进入，使用持久化的 menuShopMoney 购买道具
@@ -27,6 +27,8 @@ interface ShopScreenProps {
   onOpenTalentTree?: () => void;
   isMenuShop?: boolean;
   audio?: AudioManager;
+  /** 天赋系统是否已解锁（通关地下室后），用于显示常驻天赋加点入口 */
+  talentUnlocked?: boolean;
 }
 
 /** 火枪相关消耗品 ID 列表 */
@@ -37,10 +39,8 @@ const OTHER_CONSUMABLE_IDS = ['defense_repair', 'shield', 'bait'];
 export const ShopScreen: React.FC<ShopScreenProps> = ({
   economy, onBuy, onContinue, onQuit,
   talentPoints, nextSceneName, onNextScene,
-  difficulty = 'easy', currentScene, onOpenTalentTree,
-  isMenuShop = false, audio}) => {
-  const isBasement = currentScene === 'basement';
-
+  difficulty = 'easy', onOpenTalentTree,
+  isMenuShop = false, audio, talentUnlocked}) => {
   // ── 状态管理 ──
   const [localMoney, setLocalMoney] = useState(economy.money);
   /** 从 localStorage 加载已拥有的消耗品数量 */
@@ -229,8 +229,8 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
             </div>
           </div>
 
-          {/* 地下室通关天赋点引导提示（仅局内商店） */}
-          {!isMenuShop && isBasement && talentPoints && talentPoints > 0 && onOpenTalentTree && (
+          {/* 天赋加点入口（通关地下室解锁后，局内商店常驻显示） */}
+          {!isMenuShop && talentUnlocked && talentPoints && talentPoints > 0 && onOpenTalentTree && (
             <div className="bg-gradient-to-r from-yellow-900/60 to-orange-900/60 border border-yellow-500/40 rounded-xl p-3 mb-3 flex items-center gap-3 animate-pulse">
               <Sparkles size={24} className="text-yellow-400 shrink-0" />
               <div className="flex-1">

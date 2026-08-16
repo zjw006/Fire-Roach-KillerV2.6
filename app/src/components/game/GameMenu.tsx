@@ -50,6 +50,8 @@ export const GameMenu: React.FC<GameMenuProps> = ({
   }, []);
 
   const scenesUnlocked = progress?.scenesUnlocked || [SceneType.KITCHEN];
+  // 天赋系统解锁门槛：通关地下室(basement)后解锁，此前主菜单天赋入口锁定
+  const talentUnlocked = !!progress?.scenesCompleted?.includes('basement');
 
   /** 游戏模式列表（部分模式暂未开放） */
   const gameModes: { id: GameMode; name: string; icon: React.ReactNode; desc: string; disabled: boolean }[] = [
@@ -364,15 +366,19 @@ export const GameMenu: React.FC<GameMenuProps> = ({
               <span className="absolute inset-0 flex items-center justify-center text-amber-200/80 text-[9px] font-mono tracking-wider [text-shadow:1px_1px_0_#000,-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000] pt-[25%]">{TEXT_CONFIG.ui.menu.shop}</span>
             </button>
 
-            {/* 2. 天赋 */}
+            {/* 2. 天赋（通关地下室后解锁） */}
             <button
-              onClick={onOpenTalentTree}
-              className="relative transition-all hover:scale-105 active:scale-95"
+              onClick={talentUnlocked ? onOpenTalentTree : undefined}
+              className={`relative transition-all hover:scale-105 active:scale-95 ${talentUnlocked ? '' : 'opacity-40 cursor-not-allowed'}`}
             >
               <img src="/assets/UI/btn_talent.png" alt="" className="w-full h-auto" draggable={false} />
               <span className="absolute inset-0 flex items-center justify-center text-amber-200/80 text-[9px] font-mono tracking-wider [text-shadow:1px_1px_0_#000,-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000] pt-[25%]">{TEXT_CONFIG.ui.menu.talent}</span>
-              {talentPoints > 0 && (
-                <span className="absolute -top-1.5 -right-1 bg-red-600 text-white text-[8px] font-bold rounded-full w-4 h-4 flex items-center justify-center border border-stone-900">{talentPoints}</span>
+              {!talentUnlocked ? (
+                <Lock size={12} className="absolute -top-1.5 -right-1 text-stone-500" />
+              ) : (
+                talentPoints > 0 && (
+                  <span className="absolute -top-1.5 -right-1 bg-red-600 text-white text-[8px] font-bold rounded-full w-4 h-4 flex items-center justify-center border border-stone-900">{talentPoints}</span>
+                )
               )}
             </button>
 

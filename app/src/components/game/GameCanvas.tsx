@@ -95,6 +95,8 @@ export const GameCanvas: React.FC = () => {
   const [showEncyclopedia, setShowEncyclopedia] = useState(false);
   const [talentPoints, setTalentPoints] = useState(0);
   const [progress, setProgress] = useState<GameProgress | null>(null);
+  // 天赋系统解锁门槛：通关地下室后解锁，此后结算/商店常驻天赋入口
+  const talentUnlocked = !!progress?.scenesCompleted?.includes('basement');
 
   // ── 漫画查看器状态 ──
   const [showComic, setShowComic] = useState(false);
@@ -1328,6 +1330,7 @@ export const GameCanvas: React.FC = () => {
           talentPoints={talentPoints}
           bossDefeated={bossDefeated}
           onOpenTalentTree={() => setShowTalentTree(true)}
+          talentUnlocked={talentUnlocked}
           audio={engineRef.current?.audio}
           menuMoney={menuShopMoney}
           unclaimedAchievementCount={engineRef.current?.getUnclaimedAchievementCount?.() ?? 0}
@@ -1364,6 +1367,7 @@ export const GameCanvas: React.FC = () => {
           talentPoints={talentPoints}
           bossDefeated={false}
           onOpenTalentTree={() => setShowTalentTree(true)}
+          talentUnlocked={talentUnlocked}
           onNextScene={(() => {
             const idx = SCENE_UNLOCK_CHAIN.indexOf(currentScene);
             if (idx >= 0 && idx < SCENE_UNLOCK_CHAIN.length - 1) {
@@ -1426,6 +1430,7 @@ export const GameCanvas: React.FC = () => {
             setShowMenuShop(false);
             setShowTalentTree(true);
           }}
+          talentUnlocked={talentUnlocked}
           isMenuShop
           audio={engineRef.current?.audio}
         />

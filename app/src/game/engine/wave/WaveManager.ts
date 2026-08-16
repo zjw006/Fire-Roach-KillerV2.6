@@ -4,8 +4,8 @@
  */
 
 import { SceneType, RoachType, GameMode, GameState } from '../../types';
-import type { WaveConfig } from '../../types';
-import { SCENE_WAVE_CONFIGS, SCENE_ROACH_TYPES, BALANCE_CONFIG, TEXT_CONFIG, RENDER_COLOR, RENDER_FONT } from '../../data';
+import type { FormationGroupConfig, TrickleConfig, WaveConfig } from '../../types';
+import { SCENE_WAVE_CONFIGS, SCENE_ROACH_TYPES, SCENE_GROUND_BOUNDS, BALANCE_CONFIG, TEXT_CONFIG, RENDER_COLOR, RENDER_FONT } from '../../data';
 
 // ===== 波次管理器配置接口 =====
 export interface WaveManagerConfig {
@@ -20,7 +20,7 @@ export interface WaveManagerConfig {
 
 /** 核心玩法回调 */
 export interface WaveGameplayCallbacks {
-  onSpawnRoach: (type: RoachType, clusterId?: number) => void;
+  onSpawnRoach: (type: RoachType, clusterId?: number, x?: number, y?: number) => void;
   onAddFloatingText: (x: number, y: number, text: string, color: string) => void;
   onStateChange: (state: GameState) => void;
   onGameVictory: () => void;
@@ -36,6 +36,10 @@ export interface WaveGameplayCallbacks {
   onWaveStart?: (wave: number) => void;
   /** 波次清空回调（所有敌人死亡且队列空时触发一次）：用于取消该波剩余列车调度 */
   onWaveCleared?: () => void;
+  /** 超市 V4.0：波次开始时清空残余阵型实例（多组错时共存，各组独立锚点/独立破阵） */
+  onClearFormations?: () => void;
+  /** 超市 V4.0：生成一组阵型（出生点即阵型槽位，整组同帧生成；groupIndex 用于多组纵深错位） */
+  onSpawnFormationGroup?: (group: FormationGroupConfig, groupIndex: number) => void;
 }
 
 /** 蟑螂数据访问回调 */
@@ -76,10 +80,22 @@ export class WaveManager {
   waveTimer: number = 0;
   /** 是否正在生成波次 */
   waveSpawning: boolean = false;
-  /** 波次生成队列 */
-  spawnQueue: { type: RoachType; clusterId?: number }[] = [];
+  /** 波次生成队列（x/y 存在时按指定坐标出生） */
+  spawnQueue: { type: RoachType; clusterId?: number; x?: number; y?: number }[] = [];
   /** 生成计时器 */
   spawnTimer: number = 0;
+  /** 超市 V4.0：待生成阵型组（热场杂兵队列清空且场上基本清完时首组出场，后续组按 groupStaggerSec 错时生成；容量不足顺延重试） */
+  private pendingFormations: FormationGroupConfig[] = [];
+  /** 超市 V4.0：热场队列清空后的等待计时（配合 formationWaitClear/formationWaitTimeout 判定阵型组出场） */
+  private formationIdleTimer: number = 0;
+  /** 超市 V4.0：相邻阵型组错时生成间隔计时（秒） */
+  private formationGroupTimer: number = 0;
+  /** 超市 V4.0：本波首组阵型是否已出场 */
+  private formationWaveStarted: boolean = false;
+  /** 超市 V4.0：已出场阵型组序号（用于出生线纵深错位） */
+  private formationGroupIndex: number = 0;
+  /** 超市 V4.0：穿插投放状态（阵列生成后激活，推进全程持续投放自由杂兵/自爆偷袭单位；suicideBlockTimer 累计自爆类投放等待时间） */
+  private trickleState: { cfg: TrickleConfig; active: boolean; intervalTimer: number; spawned: number; suicideSeq: number; suicideBlockTimer: number } | null = null;
   /** 波次刚刚清除标志 */
   waveJustCleared: boolean = false;
   /** 波次清除计时器 */
@@ -125,6 +141,12 @@ export class WaveManager {
     this.countdownPhase = 0;
     this.countdownTimer = 0;
     this.countdownWavePending = false;
+    this.pendingFormations = [];
+    this.formationIdleTimer = 0;
+    this.formationGroupTimer = 0;
+    this.formationWaveStarted = false;
+    this.formationGroupIndex = 0;
+    this.trickleState = null;
   }
 
   /** 获取波次配置 */
@@ -188,9 +210,9 @@ export class WaveManager {
       }
     }
 
-    // 波次完成：检查胜利或自动开始下一波
+    // 波次完成：检查胜利或自动开始下一波（超市 V4.0：须等待波内调度事件全部触发——延迟阵型组/穿插投放）
     if (!this.tutorialPauseSpawn && !this.eliteTutorialPause && !this.knifeTutorialPause && !this.waveSpawning &&
-        this.cb.onGetRoaches().length === 0 && this.spawnQueue.length === 0 && this.wave > 0) {
+        this.cb.onGetRoaches().length === 0 && this.spawnQueue.length === 0 && !this.hasPendingWaveEvents() && this.wave > 0) {
       // 波次清空瞬间：通知取消该波剩余的按波调度事件（如列车时刻表）
       if (!this.waveClearNotified) {
         this.waveClearNotified = true;
@@ -211,7 +233,7 @@ export class WaveManager {
       this.spawnTimer -= deltaTime;
       if (this.spawnTimer <= 0 && this.spawnQueue.length > 0) {
         const spawn = this.spawnQueue.shift()!;
-        this.cb.onSpawnRoach(spawn.type, spawn.clusterId);
+        this.cb.onSpawnRoach(spawn.type, spawn.clusterId, spawn.x, spawn.y);
         // 使用波次配置的生成间隔
         const config = this.getWaveConfig(this.wave);
         const wCfg = BALANCE_CONFIG.wave;
@@ -220,6 +242,87 @@ export class WaveManager {
           * (wCfg.spawnTimerMin + Math.random() * (wCfg.spawnTimerMax - wCfg.spawnTimerMin));
       }
       if (this.spawnQueue.length === 0) this.waveSpawning = false;
+    }
+
+    // ===== 超市 V4.0 波内调度：杂兵热场 → 阵型组整组生成 → 推进全程持续穿插（教学暂停期间冻结计时） =====
+    if (!this.tutorialPauseSpawn && !this.eliteTutorialPause && !this.knifeTutorialPause) {
+      // 阵型组：热场杂兵队列清空且场上基本清完（存活 ≤ formationWaitClear）时首组出场，后续组按 groupStaggerSec
+      // 错时生成（V4.0：各组错时、独立锚点、独立破阵判定；出生点即槽位，多组按 groupIndex 纵深错位）；
+      // 队列清空后等待超时强制出场兜底；接近硬上限 40 则顺延下帧重试，防静默丢弃
+      if (this.pendingFormations.length > 0) {
+        const cap = BALANCE_CONFIG.supermarket;
+        this.formationGroupTimer -= deltaTime;
+        if (!this.waveSpawning && this.spawnQueue.length === 0) {
+          this.formationIdleTimer += deltaTime;
+          const alive = this.cb.onGetRoaches().length;
+          const firstGroupDue = !this.formationWaveStarted
+            && (alive <= cap.formationWaitClear || this.formationIdleTimer >= cap.formationWaitTimeout);
+          const nextGroupDue = this.formationWaveStarted && this.formationGroupTimer <= 0;
+          if (firstGroupDue || nextGroupDue) {
+            const g = this.pendingFormations[0];
+            const groupSize = (g.armored ?? 0) + (g.shield ?? 0) + (g.splitting ?? 0) + (g.timedSuicide ?? 0)
+              + Math.min(g.tunnelWorker ?? 0, cap.maxTunnelerPerFormation)
+              + Math.min(g.nurse ?? 0, cap.maxNursePerFormation);
+            if (alive + groupSize <= 40) {
+              this.cb.onSpawnFormationGroup?.(g, this.formationGroupIndex);
+              this.pendingFormations.shift();
+              this.formationGroupIndex++;
+              this.formationWaveStarted = true;
+              this.formationGroupTimer = cap.groupStaggerSec;
+            }
+          }
+        } else {
+          this.formationIdleTimer = 0;
+        }
+      }
+      // 热场杂兵队列清空即激活穿插投放（不等首组阵列，自爆/杂兵更早进场）
+      const t = this.trickleState;
+      if (t && !t.active && !this.waveSpawning && this.spawnQueue.length === 0) {
+        t.active = true;
+      }
+      // 持续穿插：自由杂兵池保底轮换投放（场上数量达护栏值 spawnCapacityGuard 时顺延）；
+      // 自爆类（普通/飞行自爆）仅在场上存活蟑螂 ≥ trickleSuicideMinAlive 时投放（很多蟑螂时才生成），
+      // 不足则每 0.5s 重试并由 suicideBlockTimer 累计等待，超 trickleSuicideWaitTimeout 强制投放兜底防卡关；
+      // 自爆类挫开：出生 Y 按 3 档循环递进错位（更靠后出场）+ 间隔抖动放大（挫开位置与时间，避免同时出现）
+      if (t && t.active && t.spawned < t.cfg.total) {
+        t.intervalTimer -= deltaTime;
+        if (t.intervalTimer <= 0) {
+          const cap = BALANCE_CONFIG.supermarket;
+          const aliveCount = this.cb.onGetRoaches().length;
+          if (aliveCount >= cap.spawnCapacityGuard) {
+            t.intervalTimer = 0.5;
+          } else {
+            // 保底轮换：按已成功投放序号轮转类型池，池内每种类型轮流出现（不再等概率随机）
+            const type = t.cfg.types[t.spawned % t.cfg.types.length];
+            const isSuicideType = type === RoachType.SUICIDE || type === RoachType.FLYING_SUICIDE;
+            if (isSuicideType && aliveCount < cap.trickleSuicideMinAlive
+              && t.suicideBlockTimer < cap.trickleSuicideWaitTimeout) {
+              t.suicideBlockTimer += 0.5;
+              t.intervalTimer = 0.5;
+            } else {
+              t.suicideBlockTimer = 0;
+              const jitter = cap.trickleJitterMin + Math.random() * (cap.trickleJitterMax - cap.trickleJitterMin);
+              if (type === RoachType.SUICIDE || type === RoachType.TIMED_SUICIDE) {
+                const [, farLY, , farRY, , midLY, , midRY] = SCENE_GROUND_BOUNDS[this.cfg.currentScene];
+                const baseY = Math.min(farLY, farRY, midLY, midRY);
+                const band = t.suicideSeq % 3;
+                const y = baseY - 20 - band * cap.trickleSuicideYStep - Math.random() * 25;
+                const x = this.cfg.width * (0.25 + Math.random() * 0.5);
+                this.cb.onSpawnRoach(type, undefined, x, y);
+                t.suicideSeq++;
+                t.intervalTimer = t.cfg.intervalSec * (cap.trickleJitterMin + Math.random() * (cap.trickleSuicideJitterMax - cap.trickleJitterMin));
+              } else if (type === RoachType.FLYING_SUICIDE) {
+                this.cb.onSpawnRoach(type); // 飞行自爆走侧边出生，仅挫开时间
+                t.intervalTimer = t.cfg.intervalSec * (cap.trickleJitterMin + Math.random() * (cap.trickleSuicideJitterMax - cap.trickleJitterMin));
+              } else {
+                this.cb.onSpawnRoach(type);
+                t.intervalTimer = t.cfg.intervalSec * jitter;
+              }
+              t.spawned++;
+            }
+          }
+        }
+      }
     }
 
     return {};
@@ -331,6 +434,22 @@ export class WaveManager {
     // 此处不应重复调用，否则最后一波（wave === configs.length）会
     // 在生成敌人之前就触发胜利
     const config = this.getWaveConfig(this.wave);
+
+    // ===== 超市 V4.0：波内调度初始化 —— 清空残余阵型实例、登记待生成阵型组与穿插投放 =====
+    // 自由杂兵走下方标准三阶段队列先行热场；队列清空后首组阵型出场，后续组按 groupStaggerSec 错时整组生成（出生点即槽位）；
+    // 阵列推进全程由 trickle 持续穿插投放杂兵/自爆偷袭单位
+    if (this.cfg.currentScene === SceneType.SUPERMARKET) {
+      this.cb.onClearFormations?.();
+      this.pendingFormations = [...(config.formationGroups ?? [])];
+      this.formationIdleTimer = 0;
+      this.formationGroupTimer = 0;
+      this.formationWaveStarted = false;
+      this.formationGroupIndex = 0;
+      this.trickleState = config.trickle
+        ? { cfg: config.trickle, active: false, intervalTimer: 0, spawned: 0, suicideSeq: 0, suicideBlockTimer: 0 }
+        : null;
+    }
+
     let clusterId = 1;
 
     const allTypes = [RoachType.SMALL, RoachType.LARGE, RoachType.FLYING, RoachType.ARMORED, RoachType.SPLITTING, RoachType.SUICIDE, RoachType.FLYING_SUICIDE, RoachType.QUEEN];
@@ -402,6 +521,13 @@ export class WaveManager {
       shuffle(phase2);
     }
 
+    // 超市特殊单位（V4.0：地铁精英为自由杂兵直接入队；护盾/护士/隧道工/装甲/分裂仅由阵型组生成，不入自由队列）
+    if (this.cfg.currentScene === SceneType.SUPERMARKET) {
+      const { eliteCount = 0 } = config;
+      addToQueue(phase2, RoachType.SUBWAY_ELITE, eliteCount);
+      shuffle(phase2);
+    }
+
     this.spawnQueue = [...phase1, ...phase2, ...phase3];
     this.waveSpawning = true;
     this.spawnTimer = 0;
@@ -421,9 +547,15 @@ export class WaveManager {
     if (this.spawnQueue.length === 0) this.waveSpawning = false;
   }
 
-  /** 检查波次是否完成 */
+  /** 检查波次是否完成（含超市 V4.0 未触发的波内调度事件） */
   isWaveComplete(): boolean {
-    return !this.waveSpawning && this.spawnQueue.length === 0;
+    return !this.waveSpawning && this.spawnQueue.length === 0 && !this.hasPendingWaveEvents();
+  }
+
+  /** 是否还有未触发的波内调度事件（待生成阵型组/穿插投放）——胜利判定须等待其全部完成 */
+  private hasPendingWaveEvents(): boolean {
+    return this.pendingFormations.length > 0
+      || (this.trickleState !== null && this.trickleState.spawned < this.trickleState.cfg.total);
   }
 
   /** 检查是否需要显示商店 */

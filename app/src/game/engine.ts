@@ -499,7 +499,7 @@ export class GameEngine {
   showMovementRange: boolean = false;
 
   /** 调试：显示喷火枪攻击范围（束）与辐射范围（火焰粒子区）矩形框及衰减标注。默认隐藏，当前开启用于调试 */
-  showFlameDebug: boolean = true;
+  showFlameDebug: boolean = false;
 
   /** 装甲肉盾缓存：定期更新以避免每帧 O(n²) 检测 */
   armorShieldCache: Set<number> = new Set(); /** 受附近装甲蟑螂保护的蟑螂 ID */
@@ -607,6 +607,8 @@ export class GameEngine {
       // 地铁护盾：火焰直射拦截查询 + 伤害转移至气体护盾
       onFindProtectingShield: (target) => ShieldSystem.findProtectingShield(this.roaches, target),
       onErodeShield: (shield, amount, showBlockText) => { this.shieldSystem?.damageShield(shield, amount, showBlockText); },
+      // 超市模板G同心圆：核心锚点由存活环成员顶替抵挡直射火焰
+      onFindFormationProtector: (target) => this.roachAISystem.findFormationProtector(target, this.roaches),
     });
     this.weaponSystem = new WeaponSystem({
       difficulty: this.difficulty as 'easy' | 'hard',
@@ -663,6 +665,10 @@ export class GameEngine {
     this.shieldSystem = new ShieldSystem({
       onAddFloatingText: (x, y, text, color) => { this.addFloatingText(x, y, text, color); },
       onSpawnSpark: (x, y, count) => { ParticleSpawner.spawnSparkParticles(this.particles, x, y, count); },
+      onShieldBreak: (bandX, bandY) => {
+        ParticleSpawner.spawnShieldBreakParticles(this.particles, bandX, bandY);
+        this.audio.playShieldBreak();
+      },
     });
     // ===== 斩螂·110 武器系统 =====
     this.knifeSystem = new KnifeSystem({
@@ -927,7 +933,16 @@ export class GameEngine {
         gameMode: this.gameMode, currentScene: this.currentScene,
       },
       {
-        onSpawnRoach: (type, clusterId) => { this.spawnRoach(type, clusterId); },
+        onSpawnRoach: (type, clusterId, x, y) => { this.spawnRoach(type, clusterId, x, y); },
+        // 超市阵型（V4.0 多组同帧生成共存）：波开始清空残余实例；热场队列清空后整组生成（出生点即阵型槽位，多组按 groupIndex 纵深错位）
+        onClearFormations: () => { this.roachAISystem.clearFormations(); },
+        onSpawnFormationGroup: (group, groupIndex) => {
+          const [, farLY, , farRY, , midLY, , midRY] = SCENE_GROUND_BOUNDS[this.currentScene];
+          const spawnBaseY = Math.min(farLY, farRY, midLY, midRY)
+            + groupIndex * BALANCE_CONFIG.supermarket.groupDepthGap;
+          const entries = this.roachAISystem.addFormationGroup(group, spawnBaseY);
+          if (entries) for (const e of entries) this.spawnRoach(e.type, undefined, e.x, e.y);
+        },
         onAddFloatingText: (x, y, text, color) => { this.addFloatingText(x, y, text, color); },
         onStateChange: (state) => { this.state = state; this.onStateChange?.(state); },
         onGameVictory: () => { this.gameVictory(); },
@@ -1353,15 +1368,20 @@ export class GameEngine {
     };
     const json = JSON.stringify(data);
     try { localStorage.setItem('roach_trace_last', json); } catch { /* 存储失败忽略 */ }
-    try {
-      const blob = new Blob([json], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `roach-trace-${this.currentScene}-${result}-${Date.now()}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch { /* 下载失败忽略 */ }
+    // 只在自动测试时才下载 JSON 文件（避免玩家正常游戏时弹出下载）
+    const isAuto = (window as any).__isAutoTest === true;
+    console.log('[trace] exportTrace result=%s scene=%s __isAutoTest=%s', result, this.currentScene, isAuto);
+    if (isAuto) {
+      try {
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `roach-trace-${this.currentScene}-${result}-${Date.now()}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch { /* 下载失败忽略 */ }
+    }
   }
 
   /**
@@ -1441,7 +1461,9 @@ export class GameEngine {
     this.shieldSystem?.reset();
     this.knifeSystem?.reset();
     const defMult = this.talentMultipliers.defenseMultiplier || 1;
-    this.defenseHp = BALANCE_CONFIG.defense.baseHp * defMult;
+    // 超市 V4.0：阵型+穿插全程持续施压、无波间修复，防线总池按场景系数上浮
+    const sceneDefMult = this.currentScene === SceneType.SUPERMARKET ? BALANCE_CONFIG.supermarket.defenseHpMult : 1;
+    this.defenseHp = Math.round(BALANCE_CONFIG.defense.baseHp * defMult * sceneDefMult);
     this.maxDefenseHp = this.defenseHp;
     this.time = 0;
     this.screenShake = 0;
@@ -1875,7 +1897,7 @@ export class GameEngine {
 
     // Story mode: award talent points based on scene difficulty
     const sceneConfig = SCENE_CONFIGS[this.currentScene];
-    const talentReward = Math.floor(100 * (sceneConfig?.rewardMultiplier || 1));
+    const talentReward = Math.floor((BALANCE_CONFIG.economy.talentPointReward.coefficient) * (sceneConfig?.rewardMultiplier || 1));
     this.addTalentPoints(talentReward);
     this.saveProgress();
     // 显示天赋点奖励浮动文字
@@ -2831,7 +2853,7 @@ export class GameEngine {
    * @param {number} clusterId - 集群 ID（可选）
    * @returns {Roach | undefined} 生成的蟑螂实例
    */
-  spawnRoach(type: RoachType, clusterId?: number): Roach | undefined {
+  spawnRoach(type: RoachType, clusterId?: number, spawnX?: number, spawnY?: number): Roach | undefined {
     // Performance guard: hard cap on roach count
     if (this.roaches.length >= 40) return;
 
@@ -2841,7 +2863,14 @@ export class GameEngine {
 
     let baseX: number, baseY: number;
 
-    if (type === RoachType.FLYING || type === RoachType.FLYING_SUICIDE) {
+    if (spawnX !== undefined && spawnY !== undefined) {
+      // 阵型整阵生成（超市 V3.1）：出生点即阵型槽位，由 FormationSystem 计划提供
+      baseX = spawnX;
+      baseY = spawnY;
+      if (type === RoachType.FLYING || type === RoachType.FLYING_SUICIDE) {
+        this.audio.startFlyingBuzzLoop();
+      }
+    } else if (type === RoachType.FLYING || type === RoachType.FLYING_SUICIDE) {
       // Flying roaches spawn at sides and fly across
       baseX = Math.random() < 0.5 ? -20 : this.width + 20;
       baseY = this.height * 0.3 + Math.random() * this.height * 0.2;
@@ -2990,8 +3019,8 @@ export class GameEngine {
     }
     // Subway exclusive: elite roach armor (fixed 20, flying-tank elite)
     if (type === RoachType.SUBWAY_ELITE) {
-      r.armorHp = 20;
-      r.maxArmorHp = 20;
+      r.armorHp = 10;
+      r.maxArmorHp = 10;
     }
     // Subway exclusive: tunnel worker init (armor spray cooldown + shield follow state)
     if (type === RoachType.TUNNEL_WORKER) {
@@ -3012,6 +3041,7 @@ export class GameEngine {
       r.maxShieldHp = BALANCE_CONFIG.subway.shieldMaxHp;
       r.shieldBrokenTimer = 0;
       r.shieldHitFlash = 0;
+      r.shieldFlameHitFlash = 0;
       r.shieldFollowTargetId = null;
     }
     // 采样：血量流入（含护甲）
@@ -3105,7 +3135,9 @@ export class GameEngine {
     const roachBottom = r.y + roachSize * 0.4;
     const defenseDamageRange = (r.type === RoachType.FLYING_SUICIDE) ? 300 : 100;
     if (roachBottom > this.defenseLineY() - defenseDamageRange) {
-      const dmg = this.difficulty === 'hard' ? 15 : 5;
+      const dmg = this.currentScene === SceneType.SUPERMARKET
+        ? (this.difficulty === 'hard' ? BALANCE_CONFIG.supermarket.suicideExplodeDefenseDamage.hard : BALANCE_CONFIG.supermarket.suicideExplodeDefenseDamage.easy)
+        : (this.difficulty === 'hard' ? 15 : 5);
       if (this.player.shieldTimer > 0) {
         this.addFloatingText(r.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.shieldBlock.text, TEXT_CONFIG.combat.shieldBlock.color);
       } else {
@@ -3190,7 +3222,9 @@ export class GameEngine {
     const roachBottom = r.y + roachSize * 0.4;
     const defenseDamageRange = (r.type === RoachType.FLYING_SUICIDE) ? 300 : 100;
     if (roachBottom > this.defenseLineY() - defenseDamageRange) {
-      const dmg = this.difficulty === 'hard' ? 15 : 5;
+      const dmg = this.currentScene === SceneType.SUPERMARKET
+        ? (this.difficulty === 'hard' ? BALANCE_CONFIG.supermarket.suicideExplodeDefenseDamage.hard : BALANCE_CONFIG.supermarket.suicideExplodeDefenseDamage.easy)
+        : (this.difficulty === 'hard' ? 15 : 5);
       if (this.player.shieldTimer > 0) {
         this.addFloatingText(r.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.shieldBlock.text, TEXT_CONFIG.combat.shieldBlock.color);
       } else {
@@ -3226,30 +3260,31 @@ export class GameEngine {
       ParticleSpawner.spawnFireRingParticles(this.particles,r.x, r.y, 30);
       // Layer 3: Smoke (40)
       ParticleSpawner.spawnSmokeParticles(this.particles,r.x, r.y, 40);
-      // Layer 4: Fire flash overlay (3 layers)
-      for (let fi = 0; fi < 3; fi++) {
+      // Layer 4: Fire flash overlay (layers)
+      const BE = BALANCE_CONFIG.bombExplosion;
+      for (let fi = 0; fi < BE.flash.emitter.layers; fi++) {
         this.particles.push({
-          x: r.x + (Math.random() - 0.5) * 30,
-          y: r.y + (Math.random() - 0.5) * 20,
+          x: r.x + (Math.random() - 0.5) * BE.flash.emitter.offsetX,
+          y: r.y + (Math.random() - 0.5) * BE.flash.emitter.offsetY,
           vx: 0, vy: 0,
-          life: 0.2 + fi * 0.1, maxLife: 0.2 + fi * 0.1,
-          size: 60 + fi * 30,
-          color: `rgba(${255}, ${180 - fi * 40}, ${50 - fi * 20}, ${0.5 - fi * 0.1})`,
+          life: BE.flash.lifeBase + fi * BE.flash.lifeStep, maxLife: BE.flash.lifeBase + fi * BE.flash.lifeStep,
+          size: BE.flash.sizeBase + fi * BE.flash.sizeStep,
+          color: `rgba(${BE.flash.colorR}, ${BE.flash.colorGBase - fi * BE.flash.colorGStep}, ${BE.flash.colorBBase - fi * BE.flash.colorBStep}, ${BE.flash.alphaBase - fi * BE.flash.alphaStep})`,
           type: ParticleType.EXPLOSION,
         });
       }
-      // Layer 5: Debris (15 fragments)
-      for (let d = 0; d < 15; d++) {
-        const angle = (d / 15) * Math.PI * 2 + Math.random() * 0.3;
-        const speed = 100 + Math.random() * 150;
+      // Layer 5: Debris (fragments)
+      for (let d = 0; d < BE.debris.emitter.count; d++) {
+        const angle = (d / BE.debris.emitter.count) * Math.PI * 2 + Math.random() * BE.debris.emitter.angleJitter;
+        const speed = BE.debris.speedMin + Math.random() * BE.debris.speedRange;
         this.particles.push({
           x: r.x, y: r.y,
           vx: Math.cos(angle) * speed,
-          vy: Math.sin(angle) * speed - 30,
-          life: 0.8 + Math.random() * 0.5,
-          maxLife: 1.3,
-          size: 3 + Math.random() * 6,
-          color: `rgba(${200 + Math.floor(Math.random() * 55)}, ${100 + Math.floor(Math.random() * 80)}, 0, 0.9)`,
+          vy: Math.sin(angle) * speed + BE.debris.vyBias,
+          life: BE.debris.lifeMin + Math.random() * BE.debris.lifeRange,
+          maxLife: BE.debris.maxLife,
+          size: BE.debris.sizeMin + Math.random() * BE.debris.sizeRange,
+          color: `rgba(${BE.debris.colorRBase + Math.floor(Math.random() * BE.debris.colorRRange)}, ${BE.debris.colorGBase + Math.floor(Math.random() * BE.debris.colorGRange)}, 0, ${BE.debris.alpha})`,
           type: ParticleType.ASH,
         });
       }
@@ -3712,37 +3747,38 @@ export class GameEngine {
       if (bomb.timer > 0 && Math.abs(bomb.timer - secs) < 0.05 && secs <= 3) {
         this.addFloatingText(bomb.x, bomb.y - 25, TEXT_CONFIG.combat.bombCountdown.text(secs), secs <= 1 ? TEXT_CONFIG.combat.defenseBreach.color : TEXT_CONFIG.combat.waveCleared.color);
       }
-      // Red flash pulse during countdown (last 3 seconds)
-      if (bomb.timer <= 3 && bomb.timer > 0) {
-        const flashIntensity = (Math.sin(bomb.flashPhase * 10) + 1) * 0.5;
-        if (Math.random() < 0.5) {
+      // Red flash pulse during countdown (last seconds)
+      const CF = BALANCE_CONFIG.timedBomb.corpseFlash;
+      if (bomb.timer <= CF.emitter.countdownThreshold && bomb.timer > 0) {
+        const flashIntensity = (Math.sin(bomb.flashPhase * CF.flashFreq) + 1) * 0.5;
+        if (Math.random() < CF.emitter.sparkChance) {
           const angle = Math.random() * Math.PI * 2;
-          const speed = 20 + Math.random() * 40;
+          const speed = CF.sparkSpeedMin + Math.random() * CF.sparkSpeedRange;
           this.particles.push({
-            x: bomb.x + Math.cos(angle) * (15 + Math.random() * 10),
-            y: bomb.y + Math.sin(angle) * (10 + Math.random() * 5),
+            x: bomb.x + Math.cos(angle) * (CF.emitter.sparkOffsetXBase + Math.random() * CF.emitter.sparkOffsetXRange),
+            y: bomb.y + Math.sin(angle) * (CF.emitter.sparkOffsetYBase + Math.random() * CF.emitter.sparkOffsetYRange),
             vx: Math.cos(angle) * speed,
-            vy: Math.sin(angle) * speed - 20,
-            life: 0.3 + Math.random() * 0.3,
-            maxLife: 0.6,
-            size: 2 + Math.random() * 4,
-            color: `rgba(255, ${Math.floor(20 + flashIntensity * 40)}, 0, ${0.6 + flashIntensity * 0.4})`,
+            vy: Math.sin(angle) * speed + CF.sparkVyBias,
+            life: CF.sparkLifeMin + Math.random() * CF.sparkLifeRange,
+            maxLife: CF.sparkMaxLife,
+            size: CF.sparkSizeMin + Math.random() * CF.sparkSizeRange,
+            color: `rgba(255, ${Math.floor(CF.sparkGBase + flashIntensity * CF.sparkGRange)}, 0, ${CF.sparkAlphaBase + flashIntensity * CF.sparkAlphaRange})`,
             type: ParticleType.SPARK,
           });
         }
-        if (bomb.timer <= 1 && flashIntensity > 0.7) {
+        if (bomb.timer <= CF.emitter.burstThreshold && flashIntensity > CF.emitter.burstIntensityMin) {
           this.particles.push({
             x: bomb.x, y: bomb.y,
             vx: 0, vy: 0,
-            life: 0.1, maxLife: 0.1,
-            size: 60 + Math.random() * 40,
-            color: `rgba(255, 0, 0, ${0.15 + flashIntensity * 0.15})`,
+            life: CF.burstLife, maxLife: CF.burstLife,
+            size: CF.burstSizeMin + Math.random() * CF.burstSizeRange,
+            color: `rgba(255, 0, 0, ${CF.burstAlphaBase + flashIntensity * CF.burstAlphaRange})`,
             type: ParticleType.EXPLOSION,
           });
         }
       }
-      // 0.5s warning pulse
-      if (bomb.timer <= 0.5 && Math.floor(bomb.timer * 6) % 2 === 0) {
+      // warning pulse
+      if (bomb.timer <= CF.warnThreshold && Math.floor(bomb.timer * CF.warnBlinkRate) % 2 === 0) {
         this.addFloatingText(bomb.x, bomb.y - 40, TEXT_CONFIG.combat.bombWarning.text, TEXT_CONFIG.combat.bombWarning.color);
       }
       // EXPLOSION!
@@ -3771,8 +3807,11 @@ export class GameEngine {
           }
         }
         const defenseDist = Math.abs(bomb.y - this.defenseLineY());
-        if (defenseDist < 120) {
-          const defenseDmg = 12;
+        const corpseDefRadius = this.currentScene === SceneType.SUPERMARKET
+          ? BALANCE_CONFIG.supermarket.corpseBombDefenseRadius : 120;
+        if (defenseDist < corpseDefRadius) {
+          const defenseDmg = this.currentScene === SceneType.SUPERMARKET
+            ? BALANCE_CONFIG.supermarket.corpseBombDefenseDamage : 12;
           if (this.player.shieldTimer > 0) {
             this.addFloatingText(bomb.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.shieldBlock.text, TEXT_CONFIG.combat.shieldBlock.color);
           } else {
@@ -3787,8 +3826,8 @@ export class GameEngine {
       }
     }
 
-    // ===== HOSPITAL EXCLUSIVE: Update placed bombs (timed suicide) =====
-    if (this.currentScene === SceneType.HOSPITAL) {
+    // ===== 医院/超市：更新已放置的定时炸弹（定时自爆蟑螂在防线放置） =====
+    if (this.currentScene === SceneType.HOSPITAL || this.currentScene === SceneType.SUPERMARKET) {
       for (let bi = this.placedBombs.length - 1; bi >= 0; bi--) {
         const bomb = this.placedBombs[bi];
         bomb.timer -= this.deltaTime;
@@ -3800,32 +3839,35 @@ export class GameEngine {
           ParticleSpawner.spawnExplosionParticles(this.particles,bomb.x, bomb.y, 80);
           ParticleSpawner.spawnFireRingParticles(this.particles,bomb.x, bomb.y, 30);
           ParticleSpawner.spawnSmokeParticles(this.particles,bomb.x, bomb.y, 40);
-          for (let fi = 0; fi < 3; fi++) {
+          // Layer 4: Fire flash overlay (layers) — 参数见 BALANCE_CONFIG.bombExplosion
+          const BE = BALANCE_CONFIG.bombExplosion;
+          for (let fi = 0; fi < BE.flash.emitter.layers; fi++) {
             this.particles.push({
-              x: bomb.x + (Math.random() - 0.5) * 30, 
-              y: bomb.y + (Math.random() - 0.5) * 20, 
+              x: bomb.x + (Math.random() - 0.5) * BE.flash.emitter.offsetX,
+              y: bomb.y + (Math.random() - 0.5) * BE.flash.emitter.offsetY,
               vx: 0, vy: 0,
-              life: 0.2 + fi * 0.1, maxLife: 0.2 + fi * 0.1,
-              size: 60 + fi * 30,
-              color: `rgba(${255}, ${180 - fi * 40}, ${50 - fi * 20}, ${0.5 - fi * 0.1})`,
+              life: BE.flash.lifeBase + fi * BE.flash.lifeStep, maxLife: BE.flash.lifeBase + fi * BE.flash.lifeStep,
+              size: BE.flash.sizeBase + fi * BE.flash.sizeStep,
+              color: `rgba(${BE.flash.colorR}, ${BE.flash.colorGBase - fi * BE.flash.colorGStep}, ${BE.flash.colorBBase - fi * BE.flash.colorBStep}, ${BE.flash.alphaBase - fi * BE.flash.alphaStep})`,
               type: ParticleType.EXPLOSION,
             });
           }
-          for (let d = 0; d < 15; d++) {
-            const angle = (d / 15) * Math.PI * 2 + Math.random() * 0.3;
-            const speed = 100 + Math.random() * 150;
+          // Layer 5: Debris (fragments)
+          for (let d = 0; d < BE.debris.emitter.count; d++) {
+            const angle = (d / BE.debris.emitter.count) * Math.PI * 2 + Math.random() * BE.debris.emitter.angleJitter;
+            const speed = BE.debris.speedMin + Math.random() * BE.debris.speedRange;
             this.particles.push({
               x: bomb.x, y: bomb.y,
               vx: Math.cos(angle) * speed,
-              vy: Math.sin(angle) * speed - 30,
-              life: 0.8 + Math.random() * 0.5,
-              maxLife: 1.3,
-              size: 3 + Math.random() * 6,
-              color: `rgba(${200 + Math.floor(Math.random() * 55)}, ${100 + Math.floor(Math.random() * 80)}, 0, 0.9)`,
+              vy: Math.sin(angle) * speed + BE.debris.vyBias,
+              life: BE.debris.lifeMin + Math.random() * BE.debris.lifeRange,
+              maxLife: BE.debris.maxLife,
+              size: BE.debris.sizeMin + Math.random() * BE.debris.sizeRange,
+              color: `rgba(${BE.debris.colorRBase + Math.floor(Math.random() * BE.debris.colorRRange)}, ${BE.debris.colorGBase + Math.floor(Math.random() * BE.debris.colorGRange)}, 0, ${BE.debris.alpha})`,
               type: ParticleType.ASH,
             });
           }
-          this.screenShake = 28;
+          this.screenShake = BALANCE_CONFIG.screenShake.queenDeath;
           this.audio.playTimedBombExplode();
           Vibration.vibrateDamage();
           for (const other of this.roaches) {
@@ -3839,7 +3881,9 @@ export class GameEngine {
               if (other.hp <= 0) this.killRoach(other, this.roaches.indexOf(other));
             }
           }
-          const defDmg = this.difficulty === 'hard' ? 20 : 8;
+          const defDmg = this.currentScene === SceneType.SUPERMARKET
+            ? (this.difficulty === 'hard' ? BALANCE_CONFIG.supermarket.placedBombDefenseDamage.hard : BALANCE_CONFIG.supermarket.placedBombDefenseDamage.easy)
+            : (this.difficulty === 'hard' ? 20 : 8);
           if (this.player.shieldTimer > 0) {
             this.addFloatingText(bomb.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.shieldBlock.text, TEXT_CONFIG.combat.shieldBlock.color);
           } else {
@@ -4032,10 +4076,10 @@ export class GameEngine {
     if (weather === WeatherType.RAIN) {
       // 雨滴粒子（帧率无关：spawnRate * deltaTime）
       const rainCfg = BALANCE_CONFIG.weather.rain;
-      if (Math.random() < rainCfg.spawnRate * this.deltaTime) {
+      if (Math.random() < rainCfg.emitter.spawnRate * this.deltaTime) {
         const rainParticle: Particle = {
           x: Math.random() * this.width,
-          y: -10,
+          y: rainCfg.emitter.spawnY,
           vx: rainCfg.vxMin + Math.random() * rainCfg.vxRange,
           vy: rainCfg.vyMin + Math.random() * rainCfg.vyRange,
           life: rainCfg.life,
@@ -4049,10 +4093,10 @@ export class GameEngine {
     } else if (weather === WeatherType.FOG) {
       // 缓慢移动的雾（帧率无关：spawnRate * deltaTime）
       const fogCfg = BALANCE_CONFIG.weather.fog;
-      if (Math.random() < fogCfg.spawnRate * this.deltaTime) {
+      if (Math.random() < fogCfg.emitter.spawnRate * this.deltaTime) {
         const life = fogCfg.lifeMin + Math.random() * fogCfg.lifeRange;
         const fogParticle: Particle = {
-          x: Math.random() < 0.5 ? -20 : this.width + 20,
+          x: Math.random() < 0.5 ? -fogCfg.emitter.spawnEdgeOffset : this.width + fogCfg.emitter.spawnEdgeOffset,
           y: Math.random() * this.height,
           vx: (Math.random() < 0.5 ? 1 : -1) * (fogCfg.vxMin + Math.random() * fogCfg.vxRange),
           vy: fogCfg.vyMin + Math.random() * fogCfg.vyRange,
@@ -4069,11 +4113,11 @@ export class GameEngine {
       this.lightningTimer -= this.deltaTime;
       this.lightningTextCooldown -= this.deltaTime;
       if (this.lightningTimer <= 0) {
-        this.lightningTimer = BALANCE_CONFIG.lightning.timerMin + Math.random() * BALANCE_CONFIG.lightning.timerRandMax;
-        if (Math.random() < BALANCE_CONFIG.lightning.chance) {
+        this.lightningTimer = BALANCE_CONFIG.lightning.emitter.timerMin + Math.random() * BALANCE_CONFIG.lightning.emitter.timerRandMax;
+        if (Math.random() < BALANCE_CONFIG.lightning.emitter.chance) {
           this.lightningFlash = BALANCE_CONFIG.lightning.flashDuration;
           if (this.lightningTextCooldown <= 0) {
-            this.addFloatingText(this.width / 2, this.height / 2 - 100, TEXT_CONFIG.combat.lightning.text, TEXT_CONFIG.combat.lightning.color);
+            this.addFloatingText(this.width / 2, this.height / 2 - BALANCE_CONFIG.lightning.textOffsetY, TEXT_CONFIG.combat.lightning.text, TEXT_CONFIG.combat.lightning.color);
             this.lightningTextCooldown = BALANCE_CONFIG.lightning.textCooldown;
           }
         }
@@ -4353,20 +4397,21 @@ export class GameEngine {
     this.renderBaitMark(ctx);
     // Render placed bombs with fire glow + countdown zoom effect
     if (this.placedBombs.length > 0) {
-      const bombSize = 64;
+      const PB = BALANCE_CONFIG.timedBomb.placed;
+      const bombSize = PB.bombSize;
       for (const bomb of this.placedBombs) {
         ctx.save();
         ctx.translate(bomb.x, bomb.y);
 
         // Fire glow pulse (intensifies as timer counts down)
         const secs = Math.ceil(bomb.timer);
-        const urgency = Math.max(0, 1 - bomb.timer / 3); // 0→1 as timer goes 3→0
-        const pulseRadius = bombSize * 0.8 + urgency * 20 + Math.sin(this.time * 10) * urgency * 5;
-        const glowAlpha = 0.15 + urgency * 0.35;
-        const fireGradient = ctx.createRadialGradient(0, 0, bombSize * 0.3, 0, 0, pulseRadius);
-        fireGradient.addColorStop(0, `rgba(255, 200, 50, ${glowAlpha})`);
-        fireGradient.addColorStop(0.5, `rgba(255, 100, 20, ${glowAlpha * 0.6})`);
-        fireGradient.addColorStop(1, 'rgba(255, 50, 0, 0)');
+        const urgency = Math.max(0, 1 - bomb.timer / PB.fuseDuration); // 0→1 as timer goes fuseDuration→0
+        const pulseRadius = bombSize * PB.glowRadiusRatio + urgency * PB.glowRadiusUrgency + Math.sin(this.time * PB.glowPulseFreq) * urgency * PB.glowPulseAmp;
+        const glowAlpha = PB.glowAlphaBase + urgency * PB.glowAlphaUrgency;
+        const fireGradient = ctx.createRadialGradient(0, 0, bombSize * PB.glowInnerRatio, 0, 0, pulseRadius);
+        fireGradient.addColorStop(0, `rgba(${PB.glowColorInner}, ${glowAlpha})`);
+        fireGradient.addColorStop(0.5, `rgba(${PB.glowColorMid}, ${glowAlpha * PB.glowMidAlphaRatio})`);
+        fireGradient.addColorStop(1, `rgba(${PB.glowColorEdge}, 0)`);
         ctx.fillStyle = fireGradient;
         ctx.beginPath();
         ctx.arc(0, 0, pulseRadius, 0, Math.PI * 2);
@@ -4377,38 +4422,38 @@ export class GameEngine {
         if (img) {
           ctx.drawImage(img, -bombSize / 2, -bombSize / 2, bombSize, bombSize);
         } else {
-          ctx.fillStyle = '#f59e0b';
+          ctx.fillStyle = PB.fallbackColor;
           ctx.beginPath();
-          ctx.arc(0, 0, bombSize / 3, 0, Math.PI * 2);
+          ctx.arc(0, 0, bombSize / PB.fallbackRadiusRatio, 0, Math.PI * 2);
           ctx.fill();
         }
 
         // Countdown number with zoom effect (scales up as timer decreases)
-        const countColor = bomb.timer <= 1 ? '#ff0000' : '#ffaa00';
-        const countScale = 1.8 + urgency * 1.5; // 1.8→3.3x scale (1.5× enlarged)
+        const countColor = bomb.timer <= PB.urgentThreshold ? PB.countdownUrgentColor : PB.countdownColor;
+        const countScale = PB.countdownScaleBase + urgency * PB.countdownScaleUrgency;
         ctx.save();
         ctx.scale(countScale, countScale);
-        ctx.font = 'bold 42px sans-serif';
+        ctx.font = PB.countdownFont;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillStyle = countColor;
-        ctx.strokeStyle = '#000000';
-        ctx.lineWidth = 3;
-        ctx.shadowColor = 'rgba(255,0,0,0.8)';
-        ctx.shadowBlur = 10;
-        const countY = (-bombSize / 2 - 20) / countScale;
+        ctx.strokeStyle = PB.countdownStrokeColor;
+        ctx.lineWidth = PB.countdownLineWidth;
+        ctx.shadowColor = PB.countdownShadowColor;
+        ctx.shadowBlur = PB.countdownShadowBlur;
+        const countY = (-bombSize / 2 - PB.countdownYOffset) / countScale;
         ctx.strokeText(`${secs}`, 0, countY);
         ctx.fillText(`${secs}`, 0, countY);
         ctx.shadowBlur = 0;
         ctx.restore();
 
         // Urgent flash ring at last second
-        if (bomb.timer <= 1) {
-          const flashAlpha = 0.3 + Math.sin(this.time * 15) * 0.2;
-          ctx.strokeStyle = `rgba(239, 68, 68, ${flashAlpha})`;
-          ctx.lineWidth = 2;
+        if (bomb.timer <= PB.urgentThreshold) {
+          const flashAlpha = PB.flashAlphaBase + Math.sin(this.time * PB.flashFreq) * PB.flashAlphaAmp;
+          ctx.strokeStyle = `rgba(${PB.flashColor}, ${flashAlpha})`;
+          ctx.lineWidth = PB.flashLineWidth;
           ctx.beginPath();
-          ctx.arc(0, 0, pulseRadius * 0.7, 0, Math.PI * 2);
+          ctx.arc(0, 0, pulseRadius * PB.flashRadiusRatio, 0, Math.PI * 2);
           ctx.stroke();
         }
 
@@ -4417,47 +4462,48 @@ export class GameEngine {
     }
     // ===== TIMED SUICIDE: Render dead body bombs (red flashing corpse + countdown) =====
     if (this.deadTimedBombs.length > 0) {
+      const CB = BALANCE_CONFIG.timedBomb.corpse;
       for (const bomb of this.deadTimedBombs) {
         ctx.save();
         ctx.translate(bomb.x, bomb.y);
         // Red flashing corpse body (pulsing glow)
-        const flashIntensity = 0.4 + Math.sin(bomb.flashPhase * 8) * 0.3;
-        const corpseRadius = 22;
+        const flashIntensity = CB.flashBase + Math.sin(bomb.flashPhase * CB.flashFreq) * CB.flashAmp;
+        const corpseRadius = CB.corpseRadius;
         // Outer glow pulse
-        const glowGradient = ctx.createRadialGradient(0, 0, corpseRadius * 0.5, 0, 0, corpseRadius * 1.8);
-        glowGradient.addColorStop(0, `rgba(239, 68, 68, ${0.3 + flashIntensity * 0.4})`);
-        glowGradient.addColorStop(0.5, `rgba(220, 38, 38, ${0.2 + flashIntensity * 0.3})`);
-        glowGradient.addColorStop(1, 'rgba(153, 27, 27, 0)');
+        const glowGradient = ctx.createRadialGradient(0, 0, corpseRadius * CB.glowInnerRatio, 0, 0, corpseRadius * CB.glowOuterRatio);
+        glowGradient.addColorStop(0, `rgba(${CB.glowColorInner}, ${CB.glowAlphaInnerBase + flashIntensity * CB.glowAlphaInnerAmp})`);
+        glowGradient.addColorStop(0.5, `rgba(${CB.glowColorMid}, ${CB.glowAlphaMidBase + flashIntensity * CB.glowAlphaMidAmp})`);
+        glowGradient.addColorStop(1, `rgba(${CB.glowColorEdge}, 0)`);
         ctx.fillStyle = glowGradient;
         ctx.beginPath();
-        ctx.arc(0, 0, corpseRadius * 1.8, 0, Math.PI * 2);
+        ctx.arc(0, 0, corpseRadius * CB.glowOuterRatio, 0, Math.PI * 2);
         ctx.fill();
         // Corpse body (dark red, slightly flattened)
-        ctx.fillStyle = `rgba(120, 20, 20, ${0.85 + flashIntensity * 0.15})`;
+        ctx.fillStyle = `rgba(${CB.bodyColor}, ${CB.bodyAlphaBase + flashIntensity * CB.bodyAlphaAmp})`;
         ctx.beginPath();
-        ctx.ellipse(0, 4, corpseRadius, corpseRadius * 0.7, 0, 0, Math.PI * 2);
+        ctx.ellipse(0, CB.bodyYOffset, corpseRadius, corpseRadius * CB.bodyYScale, 0, 0, Math.PI * 2);
         ctx.fill();
         // Corpse border (bright red pulse)
-        ctx.strokeStyle = `rgba(239, 68, 68, ${0.6 + flashIntensity * 0.4})`;
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = `rgba(${CB.borderColor}, ${CB.borderAlphaBase + flashIntensity * CB.borderAlphaAmp})`;
+        ctx.lineWidth = CB.borderLineWidth;
         ctx.stroke();
         // Skull icon (simple X eyes)
-        ctx.fillStyle = `rgba(255, 100, 100, ${0.7 + flashIntensity * 0.3})`;
-        ctx.font = 'bold 14px sans-serif';
+        ctx.fillStyle = `rgba(${CB.skullColor}, ${CB.skullAlphaBase + flashIntensity * CB.skullAlphaAmp})`;
+        ctx.font = CB.skullFont;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText('💀', 0, 2);
+        ctx.fillText('💀', 0, CB.skullYOffset);
         // Countdown number (large, above corpse)
         const secs = Math.ceil(bomb.timer);
-        const countColor = bomb.timer <= 1 ? '#ef4444' : '#fbbf24';
-        const countScale = 1 + (bomb.timer <= 1 ? 0.3 : 0) * Math.sin(bomb.flashPhase * 12);
-        ctx.font = `bold ${Math.floor(22 * countScale)}px sans-serif`;
+        const countColor = bomb.timer <= CB.urgentThreshold ? CB.countdownUrgentColor : CB.countdownColor;
+        const countScale = 1 + (bomb.timer <= CB.urgentThreshold ? CB.countdownPulseAmp : 0) * Math.sin(bomb.flashPhase * CB.countdownPulseFreq);
+        ctx.font = `bold ${Math.floor(CB.countdownFontSize * countScale)}px sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillStyle = countColor;
-        ctx.shadowColor = 'rgba(0,0,0,0.9)';
-        ctx.shadowBlur = 6;
-        ctx.fillText(`${secs}`, 0, -corpseRadius - 12);
+        ctx.shadowColor = CB.countdownShadowColor;
+        ctx.shadowBlur = CB.countdownShadowBlur;
+        ctx.fillText(`${secs}`, 0, -corpseRadius - CB.countdownYOffset);
         ctx.shadowBlur = 0;
         ctx.restore();
       }
@@ -4478,57 +4524,58 @@ export class GameEngine {
 
     // ===== MUTANT SPAWN: Green slime burst visual =====
     if (this.roachAISystem!.slimeBurstTimer > 0) {
-      const progress = 1 - this.roachAISystem!.slimeBurstTimer / 1.2; // 0→1 over 1.2s
+      const SB = BALANCE_CONFIG.slimeBurst;
+      const progress = 1 - this.roachAISystem!.slimeBurstTimer / SB.duration; // 0→1 over SB.duration s
       const sx = this.roachAISystem!.slimeBurstX;
       const sy = this.roachAISystem!.slimeBurstY;
-      const alpha = Math.max(0, 1 - progress * 0.8);
+      const alpha = Math.max(0, 1 - progress * SB.alphaFade);
 
       ctx.save();
       ctx.globalCompositeOperation = 'source-over';
 
       // 1. Central green glow
-      const glowR = 20 + progress * 80;
+      const glowR = SB.glowRadiusBase + progress * SB.glowRadiusGrowth;
       const glowGrad = ctx.createRadialGradient(sx, sy, 0, sx, sy, glowR);
-      glowGrad.addColorStop(0, `rgba(100, 240, 100, ${alpha * 0.6})`);
-      glowGrad.addColorStop(0.5, `rgba(60, 200, 60, ${alpha * 0.4})`);
-      glowGrad.addColorStop(1, `rgba(40, 120, 40, 0)`);
+      glowGrad.addColorStop(0, `rgba(${SB.glowColorInner}, ${alpha * SB.glowAlphaInner})`);
+      glowGrad.addColorStop(SB.glowMidStop, `rgba(${SB.glowColorMid}, ${alpha * SB.glowAlphaMid})`);
+      glowGrad.addColorStop(1, `rgba(${SB.glowColorEdge}, 0)`);
       ctx.fillStyle = glowGrad;
       ctx.beginPath();
       ctx.arc(sx, sy, glowR, 0, Math.PI * 2);
       ctx.fill();
 
       // 2. Green slime droplets spreading outward
-      const dropCount = 12;
+      const dropCount = SB.emitter.dropCount;
       for (let di = 0; di < dropCount; di++) {
-        const baseAngle = (di / dropCount) * Math.PI * 2 + di * 0.7;
-        const spreadDist = progress * 60;
+        const baseAngle = (di / dropCount) * Math.PI * 2 + di * SB.emitter.dropAngleJitter;
+        const spreadDist = progress * SB.dropSpreadDist;
         const dropX = sx + Math.cos(baseAngle) * spreadDist;
-        const dropY = sy + Math.sin(baseAngle) * spreadDist * 0.5;
-        const dropSize = (5 + di % 3 * 3) * (1 - progress * 0.3);
-        const dropAlpha = alpha * (0.7 + (di % 3) * 0.1);
+        const dropY = sy + Math.sin(baseAngle) * spreadDist * SB.dropYScale;
+        const dropSize = (SB.dropSizeBase + di % 3 * SB.dropSizeStep) * (1 - progress * SB.dropSizeFade);
+        const dropAlpha = alpha * (SB.dropAlphaBase + (di % 3) * SB.dropAlphaStep);
 
         // Glow behind each droplet
-        const dGlow = ctx.createRadialGradient(dropX, dropY, 0, dropX, dropY, dropSize * 2);
-        dGlow.addColorStop(0, `rgba(120, 255, 120, ${dropAlpha * 0.5})`);
-        dGlow.addColorStop(1, `rgba(60, 180, 60, 0)`);
+        const dGlow = ctx.createRadialGradient(dropX, dropY, 0, dropX, dropY, dropSize * SB.dropGlowScale);
+        dGlow.addColorStop(0, `rgba(${SB.dropGlowColor}, ${dropAlpha * SB.dropGlowAlpha})`);
+        dGlow.addColorStop(1, `rgba(${SB.dropGlowEdgeColor}, 0)`);
         ctx.fillStyle = dGlow;
         ctx.beginPath();
-        ctx.arc(dropX, dropY, dropSize * 2, 0, Math.PI * 2);
+        ctx.arc(dropX, dropY, dropSize * SB.dropGlowScale, 0, Math.PI * 2);
         ctx.fill();
 
         // Solid droplet core
-        ctx.fillStyle = `rgba(80, 220, 80, ${dropAlpha})`;
+        ctx.fillStyle = `rgba(${SB.dropCoreColor}, ${dropAlpha})`;
         ctx.beginPath();
         ctx.arc(dropX, dropY, dropSize, 0, Math.PI * 2);
         ctx.fill();
       }
 
       // 3. Outer slime ring
-      const ringR = 15 + progress * 50;
-      ctx.strokeStyle = `rgba(100, 255, 130, ${alpha * 0.5})`;
-      ctx.lineWidth = 3;
+      const ringR = SB.ringRadiusBase + progress * SB.ringRadiusGrowth;
+      ctx.strokeStyle = `rgba(${SB.ringColor}, ${alpha * SB.ringAlpha})`;
+      ctx.lineWidth = SB.ringLineWidth;
       ctx.beginPath();
-      ctx.ellipse(sx, sy, ringR, ringR * 0.4, 0, 0, Math.PI * 2);
+      ctx.ellipse(sx, sy, ringR, ringR * SB.ringYScale, 0, 0, Math.PI * 2);
       ctx.stroke();
 
       ctx.restore();
@@ -4536,74 +4583,74 @@ export class GameEngine {
 
     // ===== HEAL BUFF: Rising green plus signs on healed roaches =====
     // Drawn in world coordinates after all roaches for visibility
+    const HB = BALANCE_CONFIG.healBuff;
     ctx.save();
     ctx.globalCompositeOperation = 'source-over';
     for (const r of this.roaches) {
       if (r.healBuffTimer && r.healBuffTimer > 0 && r.state === RoachState.ALIVE) {
-        const buffProgress = r.healBuffTimer / 2.0; // 1→0
-        const baseAlpha = 0.9 * buffProgress;
+        const buffProgress = r.healBuffTimer / HB.duration; // 1→0
+        const baseAlpha = HB.baseAlphaMax * buffProgress;
         const size = r.size ?? 30;
 
         // 1. Large green glow halo around healed roach
-        const haloR = size * 0.8;
+        const haloR = size * HB.haloRadiusRatio;
         const haloGrad = ctx.createRadialGradient(r.x, r.y, 0, r.x, r.y, haloR * 2);
-        haloGrad.addColorStop(0, `rgba(100, 255, 120, ${baseAlpha * 0.25})`);
-        haloGrad.addColorStop(0.5, `rgba(60, 220, 80, ${baseAlpha * 0.4})`);
-        haloGrad.addColorStop(1, `rgba(40, 150, 60, 0)`);
+        haloGrad.addColorStop(0, `rgba(${HB.haloColorInner}, ${baseAlpha * HB.haloAlphaInner})`);
+        haloGrad.addColorStop(HB.haloMidStop, `rgba(${HB.haloColorMid}, ${baseAlpha * HB.haloAlphaMid})`);
+        haloGrad.addColorStop(1, `rgba(${HB.haloColorEdge}, 0)`);
         ctx.fillStyle = haloGrad;
         ctx.beginPath();
-        ctx.ellipse(r.x, r.y, haloR * 2, haloR, 0, 0, Math.PI * 2);
+        ctx.ellipse(r.x, r.y, haloR * 2, haloR * 2 * HB.haloYScale, 0, 0, Math.PI * 2);
         ctx.fill();
 
         // 2. Outer pulsing ring
-        const pulseRingR = size * (0.6 + Math.sin(this.time * 4) * 0.15);
-        ctx.strokeStyle = `rgba(120, 255, 160, ${baseAlpha * 0.6})`;
-        ctx.lineWidth = 2.5;
-        ctx.shadowColor = `rgba(100, 255, 140, ${baseAlpha})`;
-        ctx.shadowBlur = 15;
+        const pulseRingR = size * (HB.ringRadiusBase + Math.sin(this.time * HB.ringPulseFreq) * HB.ringRadiusAmp);
+        ctx.strokeStyle = `rgba(${HB.ringColor}, ${baseAlpha * HB.ringAlpha})`;
+        ctx.lineWidth = HB.ringLineWidth;
+        ctx.shadowColor = `rgba(${HB.ringShadowColor}, ${baseAlpha})`;
+        ctx.shadowBlur = HB.ringShadowBlur;
         ctx.beginPath();
-        ctx.ellipse(r.x, r.y, pulseRingR, pulseRingR * 0.5, 0, 0, Math.PI * 2);
+        ctx.ellipse(r.x, r.y, pulseRingR, pulseRingR * HB.ringYScale, 0, 0, Math.PI * 2);
         ctx.stroke();
         ctx.shadowBlur = 0;
 
         // 3. Rising green plus signs (large + strong glow)
-        const plusCount = 4;
+        const plusCount = HB.emitter.plusCount;
         for (let pi = 0; pi < plusCount; pi++) {
-          const cycleOffset = pi * (2.0 / plusCount);
-          const cycleTime = (this.time + cycleOffset + r.id * 0.5) % 2.0;
-          const riseProgress = cycleTime / 2.0;
+          const cycleOffset = pi * (HB.emitter.plusCycle / plusCount);
+          const cycleTime = (this.time + cycleOffset + r.id * HB.plusIdPhase) % HB.emitter.plusCycle;
+          const riseProgress = cycleTime / HB.emitter.plusCycle;
 
-          const riseHeight = 55;
-          const plusY = r.y - riseProgress * riseHeight;
-          const orbitAngle = this.time * 2 + pi * 1.57 + r.id;
-          const orbitR = 16 * (0.4 + riseProgress);
+          const plusY = r.y - riseProgress * HB.plusRiseHeight;
+          const orbitAngle = this.time * HB.plusOrbitSpeed + pi * HB.emitter.plusOrbitSpread + r.id;
+          const orbitR = HB.plusOrbitRadius * (HB.plusOrbitBase + riseProgress);
           const plusX = r.x + Math.cos(orbitAngle) * orbitR;
 
-          const plusAlpha = baseAlpha * Math.min(1, riseProgress * 3) * (1 - Math.pow(riseProgress, 2));
-          if (plusAlpha <= 0.02) continue;
+          const plusAlpha = baseAlpha * Math.min(1, riseProgress * HB.plusAlphaRiseRate) * (1 - Math.pow(riseProgress, HB.plusAlphaFallExp));
+          if (plusAlpha <= HB.plusAlphaMin) continue;
 
-          const plusSize = 14 + riseProgress * 14;
+          const plusSize = HB.plusSizeBase + riseProgress * HB.plusSizeGrowth;
 
           ctx.save();
           ctx.translate(plusX, plusY);
-          ctx.rotate(Math.sin(this.time * 2 + pi + r.id) * 0.2);
+          ctx.rotate(Math.sin(this.time * HB.plusRotateSpeed + pi + r.id) * HB.plusRotateAmp);
 
           // Strong outer glow
-          ctx.shadowColor = `rgba(80, 255, 120, ${plusAlpha})`;
-          ctx.shadowBlur = 20;
+          ctx.shadowColor = `rgba(${HB.plusGlowColor}, ${plusAlpha})`;
+          ctx.shadowBlur = HB.plusGlowBlur;
 
           // Thick green plus sign
-          ctx.fillStyle = `rgba(100, 255, 150, ${plusAlpha})`;
-          const barW = Math.max(3.5, plusSize * 0.32);
+          ctx.fillStyle = `rgba(${HB.plusColor}, ${plusAlpha})`;
+          const barW = Math.max(HB.plusBarWidthMin, plusSize * HB.plusBarWidthRatio);
           const barL = plusSize;
           ctx.fillRect(-barW / 2, -barL / 2, barW, barL);
           ctx.fillRect(-barL / 2, -barW / 2, barL, barW);
 
           // Bright white center
-          ctx.shadowBlur = 8;
-          ctx.shadowColor = `rgba(200, 255, 220, ${plusAlpha})`;
-          ctx.fillStyle = `rgba(230, 255, 240, ${plusAlpha * 0.9})`;
-          const cw = barW * 1.6;
+          ctx.shadowBlur = HB.plusCenterGlowBlur;
+          ctx.shadowColor = `rgba(${HB.plusCenterGlowColor}, ${plusAlpha})`;
+          ctx.fillStyle = `rgba(${HB.plusCenterColor}, ${plusAlpha * HB.plusCenterAlpha})`;
+          const cw = barW * HB.plusCenterScale;
           ctx.fillRect(-cw / 2, -cw / 2, cw, cw);
 
           ctx.shadowBlur = 0;
@@ -4611,13 +4658,36 @@ export class GameEngine {
         }
 
         // 4. Bright green tint overlay on roach body
-        ctx.fillStyle = `rgba(80, 200, 80, ${baseAlpha * 0.3})`;
+        ctx.fillStyle = `rgba(${HB.tintColor}, ${baseAlpha * HB.tintAlpha})`;
         ctx.beginPath();
-        ctx.ellipse(r.x, r.y, size * 0.52, size * 0.37, 0, 0, Math.PI * 2);
+        ctx.ellipse(r.x, r.y, size * HB.tintWRatio, size * HB.tintHRatio, 0, 0, Math.PI * 2);
         ctx.fill();
       }
     }
     ctx.restore();
+
+    // ===== 超市阵型锚点：头顶彩色菱形标识（V3.1，颜色按怪物类型区分，FormationSystem 每帧维护；护盾略大、隧道工缩小） =====
+    const SM = BALANCE_CONFIG.supermarket;
+    for (const r of this.roaches) {
+      if (!r.anchorMarkColor || r.state !== RoachState.ALIVE) continue;
+      const isShield = r.type === RoachType.SHIELD;
+      const s = isShield ? SM.anchorMarkSizeShield
+        : r.type === RoachType.TUNNEL_WORKER ? SM.anchorMarkSizeWorker
+        : SM.anchorMarkSize;
+      const cy = r.y - (r.size ?? 30) / 2 - SM.anchorMarkOffsetY;
+      ctx.save();
+      ctx.translate(r.x, cy);
+      ctx.rotate(Math.PI / 4); // 正方形旋转45°成菱形
+      ctx.shadowColor = r.anchorMarkColor;
+      ctx.shadowBlur = isShield ? 10 : 6;
+      ctx.fillStyle = r.anchorMarkColor;
+      ctx.fillRect(-s / 2, -s / 2, s, s);
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)'; // 白色描边增强识别度
+      ctx.lineWidth = isShield ? 2 : 1.5;
+      ctx.strokeRect(-s / 2, -s / 2, s, s);
+      ctx.restore();
+    }
 
     // Render egg pods (boss battle)
     if (this.bossBattle.active) {
@@ -4766,6 +4836,21 @@ export class GameEngine {
 
   /** 渲染所有蟑螂敌人 */
   renderRoaches(ctx: CanvasRenderingContext2D) {
+    // 收集护盾修复连线数据（隧道工 → 护盾蟑螂）
+    const repairLinePairs: Array<{ workerX: number; workerY: number; shieldX: number; shieldY: number }> = [];
+    const subCfg = BALANCE_CONFIG.subway;
+    for (const r of this.roaches) {
+      if (r.type !== RoachType.TUNNEL_WORKER || r.state !== RoachState.ALIVE) continue;
+      if (r.shieldFollowTargetId == null) continue;
+      const target = this.roaches.find(o => o.id === r.shieldFollowTargetId && o.state === RoachState.ALIVE && o.type === RoachType.SHIELD);
+      if (!target || (target.shieldBrokenTimer ?? 0) > 0) continue;
+      const dx = target.x - r.x;
+      const dy = target.y - r.y;
+      if (dx * dx + dy * dy > subCfg.shieldRepairRange * subCfg.shieldRepairRange) continue;
+      if ((target.shieldHp ?? 0) >= (target.maxShieldHp ?? subCfg.shieldMaxHp)) continue;
+      repairLinePairs.push({ workerX: r.x, workerY: r.y, shieldX: target.x, shieldY: target.y });
+    }
+
     RoachRenderer.renderRoaches({
       roachImg: this.roachImg, roachFlyingImg: this.roachFlyingImg,
       roachSuicideImg: this.roachSuicideImg, roachTimedSuicideImg: this.roachTimedSuicideImg,
@@ -4777,12 +4862,13 @@ export class GameEngine {
       roachShieldImg: this.roachShieldImg,
       nurseCastFrames: this.nurseCastFrames, mutantTransformFrames: this.mutantTransformFrames,
       imagesLoaded: this.imagesLoaded, time: this.time, deltaTime: this.deltaTime,
+      defenseLineY: this.defenseLineY(), canvasHeight: this.height,
       bossBattle: this.bossBattle, bossAnimState: this.bossAnimState, bossAnimFrames: this.bossAnimFrames,
       onAddParticle: (p) => { this.particles.push(p); },
       onSpawnShockwaveRing: (x, y, count) => { ParticleSpawner.spawnShockwaveRing(this.particles,x, y, count); },
       isStuckByBoard: (id) => this.isStuckByBoard(id),
       showShieldRange: this.showShieldRange,
-      onSpawnShieldAura: (x, y, hw) => { ParticleSpawner.spawnShieldAura(this.particles, x, y, hw); },
+      repairLinePairs,
     }, ctx, this.roaches);
   }
 

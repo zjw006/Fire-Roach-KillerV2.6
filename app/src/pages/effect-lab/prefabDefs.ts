@@ -16,7 +16,7 @@ import type { ConeVariant } from './effectDefs';
 export type AtomKind =
   | 'explosion' | 'shockwave' | 'smoke' | 'fireRing' | 'lightning'
   | 'ash' | 'blood' | 'spark' | 'debris'
-  | 'coneFire' | 'shieldAura' | 'armorSpray' | 'armorPlus';
+  | 'coneFire' | 'armorSpray' | 'armorPlus';
 
 interface StepBase {
   /** 触发时刻（ms，相对一轮开始） */
@@ -32,7 +32,7 @@ export interface AtomStep extends StepBase {
   atom: AtomKind;
   /** burst 类数量（省略则用配方默认） */
   count?: number;
-  /** 持续窗口 ms（coneFire / shieldAura / armorSpray 等 continuous 类） */
+  /** 持续窗口 ms（coneFire / armorSpray 等 continuous 类） */
   duration?: number;
   /** coneFire 喷射方向（弧度，默认 -PI/2 朝上） */
   angle?: number;
@@ -40,8 +40,6 @@ export interface AtomStep extends StepBase {
   range?: number;
   /** coneFire 火焰类型 */
   variant?: ConeVariant;
-  /** shieldAura 半宽 */
-  hw?: number;
   /** armorSpray 目标点（相对锚点） */
   to?: { dx: number; dy: number };
 }
@@ -68,6 +66,11 @@ export interface MarkerStep extends StepBase {
   life?: number;
   /** 虚线边框 */
   dashed?: boolean;
+  /**
+   * 参数关键帧（打点，仅 dx/dy/r/w/h 有意义）：t 按 life 窗口归一化 0~1，
+   * 存在时按关键帧插值覆盖同名常量（如气体护盾矩形虚框的展开动画），随预制体合并导出。
+   */
+  keys?: Partial<Record<ShapeKeyParam, Keyframe[]>>;
 }
 
 /** 序列帧 / 单图贴图步骤（还原游戏内贴图元素，如变异 7 帧、定时炸弹 bomb.png） */
@@ -88,8 +91,8 @@ export interface SpriteStep extends StepBase {
 /** 内联粒子步骤：游戏中不走 ParticleSpawner 的内联粒子逻辑，在此复刻 */
 export interface CustomStep extends StepBase {
   kind: 'custom';
-  fn: 'baitShatter' | 'baitSmell' | 'poisonPuff' | 'fanGust' | 'breachFlash';
-  /** 持续窗口 ms（baitSmell / poisonPuff / fanGust 等每帧生成类） */
+  fn: 'baitShatter' | 'baitSmell' | 'poisonPuff' | 'fanGust' | 'breachFlash' | 'shieldRepair';
+  /** 持续窗口 ms（baitSmell / poisonPuff / fanGust / shieldRepair 等每帧生成类） */
   duration?: number;
 }
 
@@ -107,7 +110,7 @@ export type VfxFn =
   // 掉落道具
   | 'stickyDrop' | 'weaponDrop'
   // 怪物 BUFF/机制
-  | 'nurseHealAura' | 'healBuff' | 'armorRing' | 'slimeBurst' | 'breachWarning' | 'timedBomb';
+  | 'nurseHealAura' | 'healBuff' | 'armorRing' | 'armorCastRing' | 'slimeBurst' | 'breachWarning' | 'timedBomb';
 
 export interface VfxStep extends StepBase {
   kind: 'vfx';
@@ -118,7 +121,173 @@ export interface VfxStep extends StepBase {
   params?: Record<string, number | string>;
 }
 
-export type PrefabStep = AtomStep | TextStep | MarkerStep | SpriteStep | CustomStep | VfxStep;
+// =========================================================================
+// Canvas2D 自由图形（"添加 Canvas2D 图形"功能：形状/大小/颜色/缩放动画）
+// =========================================================================
+
+/** 自由图形形状种类 */
+export type ShapeKind = 'circle' | 'rect' | 'ring' | 'triangle';
+
+/**
+ * 参数关键帧（"打点"）：t = 归一化时间 0~1（相对步骤窗口 at → at+duration），v = 该时刻数值。
+ * 参考 Unity Curve Editor：相邻关键帧间线性插值，端点外钳制到端点值。
+ */
+export interface Keyframe {
+  t: number;
+  v: number;
+}
+
+/** 支持打点的 ShapeStep 数值参数（无打点时回退到步骤同名常量字段） */
+export type ShapeKeyParam =
+  | 'dx' | 'dy'
+  | 'r' | 'w' | 'h'
+  | 'lineWidth' | 'alpha'
+  | 'scaleAmp' | 'scaleFreq'
+  | 'rotSpeed';
+
+/**
+ * 支持参数打点的步骤公共结构（shape / marker 共用）：keys 映射 + 可选数值字段。
+ * KeyframableSlider 编辑器与 PrefabPlayer.evalShapeParam 以此类型抽象，两种步骤均可复用。
+ */
+export type KeyframableStep = {
+  keys?: Partial<Record<ShapeKeyParam, Keyframe[]>>;
+} & Partial<Record<ShapeKeyParam, number>>;
+
+/** 各可打点参数的编辑器元数据（曲线编辑器纵轴范围 / 步进，与常量滑杆一致） */
+export const SHAPE_KEY_META: Record<
+  ShapeKeyParam,
+  { label: string; min: number; max: number; step: number }
+> = {
+  dx: { label: '偏移 X', min: -270, max: 270, step: 1 },
+  dy: { label: '偏移 Y', min: -400, max: 400, step: 1 },
+  r: { label: '大小（半径）', min: 2, max: 270, step: 1 },
+  w: { label: '宽度', min: 4, max: 540, step: 1 },
+  h: { label: '高度', min: 4, max: 540, step: 1 },
+  lineWidth: { label: '线宽', min: 1, max: 20, step: 0.5 },
+  alpha: { label: '透明度', min: 0, max: 1, step: 0.01 },
+  scaleAmp: { label: '缩放振幅', min: 0, max: 1, step: 0.01 },
+  scaleFreq: { label: '缩放频率', min: 0, max: 5, step: 0.05 },
+  rotSpeed: { label: '旋转速度', min: -3, max: 3, step: 0.05 },
+};
+
+/**
+ * Canvas2D 自由图形步骤：编辑器原创图形元素（非游戏渲染器直连技能）。
+ * 参数风格参考现有 Canvas2D 技能的呼吸/摇摆命名（breatheAmplitude → scaleAmp 等），
+ * 但全部参数存于步骤实例本身（不写入 BALANCE_CONFIG），随预制体 steps 一并合并导出。
+ * 数值参数均可打点：keys[param] 存在时按关键帧插值覆盖同名常量。
+ */
+export interface ShapeStep extends StepBase {
+  kind: 'shape';
+  shape: ShapeKind;
+  /** 持续窗口 ms（窗口内每帧渲染） */
+  duration: number;
+  /** 主颜色（填充/描边，CSS 颜色） */
+  color: string;
+  /** 矩形本层透明度 0~1（缺省 1；在颜色选择行内设置，与整体透明度 alpha 叠乘） */
+  fillAlpha?: number;
+  /** circle / ring / triangle 外接半径 px */
+  r: number;
+  /** rect 宽 / 高 px（中心对齐锚点） */
+  w: number;
+  h: number;
+  /** 填充（true）或描边（false）；ring 固定为描边 */
+  fill: boolean;
+  /** 填充渐变：'radial' = 中心实色 → 四周边缘透明的径向渐变（椭圆覆盖矩形；仅 fill=true 时生效，目前仅 rect 支持） */
+  gradient?: 'radial';
+  /** 填充混合模式：'lighter' = 叠加增亮（与背景相加，发光感）；缺省为 source-over 普通覆盖 */
+  blend?: 'lighter';
+  /**
+   * 格子线覆盖层（rect + fill 时生效）：在矩形上叠加横竖格子线，
+   * 线段透明度按椭圆径向衰减（与径向渐隐一致，边缘渐隐消失）。
+   * null = 显式移除（stepOverrides 补丁语义：undefined 会被 JSON 序列化丢弃，null 可随导出保留移除状态）。
+   */
+  grid?: {
+    /** 格子间隔 px */
+    gap: number;
+    /** 线宽 px */
+    lineWidth: number;
+    /** 线条颜色（CSS 颜色，建议亮于主色） */
+    color: string;
+    /** 本层透明度 0~1（缺省 1，在颜色选择行内设置，与整体透明度叠乘） */
+    alpha?: number;
+  } | null;
+  /**
+   * 扩散粒子（rect + fill + gradient='radial' 时生效）：
+   * 粒子从图形中心生成，向四周随机方向匀速扩散，飞行中渐隐并轻微缩小，
+   * 到达椭圆边缘附近完全消失；各粒子按相位错开循环，形成持续扩散。
+   * 建议粒子颜色亮于主色（如主色 #3b82f6 → 粒子 #e0f2fe）。
+   * null = 显式移除（同 grid 的补丁序列化语义）。
+   */
+  sparks?: {
+    /** 同时在场粒子数（各自按 i/count 错相循环发射） */
+    count: number;
+    /** 单粒子生命周期 ms（中心 → 椭圆边缘的飞行时间） */
+    life: number;
+    /** 粒子半径 px */
+    size: number;
+    /** 粒子颜色（CSS 颜色） */
+    color: string;
+    /** 本层透明度 0~1（缺省 1，在颜色选择行内设置，与整体透明度叠乘） */
+    alpha?: number;
+    /** 叠加混合方式（缺省 'lighter'：叠加增亮，保证粒子亮度高于渐变底） */
+    blend?: GlobalCompositeOperation;
+  } | null;
+  /** 描边线宽 px（fill=false 或 ring 时生效） */
+  lineWidth: number;
+  /** 整体透明度 0~1 */
+  alpha: number;
+  /** 缩放动画振幅（0 = 关闭；0.2 = ±20% 呼吸缩放，参考 breatheAmplitude） */
+  scaleAmp: number;
+  /** 缩放动画频率（次/秒，参考 breatheTimeScale） */
+  scaleFreq: number;
+  /** 旋转速度（圈/秒，0 = 不旋转） */
+  rotSpeed: number;
+  /** 结尾淡出比例 0~1（窗口最后该比例内线性淡出，0 = 不淡出） */
+  fadeOut: number;
+  /** 参数关键帧（打点）：t 按升序存放，存在时覆盖同名常量参数，随预制体合并导出 */
+  keys?: Partial<Record<ShapeKeyParam, Keyframe[]>>;
+}
+
+/** 各形状的新建默认参数（"添加 Canvas2D 图形"选择器点击后生成的初始步骤） */
+export const SHAPE_KIND_META: Record<
+  ShapeKind,
+  { label: string; defaults: Omit<ShapeStep, 'kind' | 'shape' | 'at'> }
+> = {
+  circle: {
+    label: '圆形',
+    defaults: {
+      duration: 1500, color: '#34d399', r: 40, w: 80, h: 80,
+      fill: true, lineWidth: 2, alpha: 0.85,
+      scaleAmp: 0.15, scaleFreq: 1.5, rotSpeed: 0, fadeOut: 0.3,
+    },
+  },
+  rect: {
+    label: '矩形',
+    defaults: {
+      duration: 1500, color: '#22d3ee', r: 40, w: 120, h: 70,
+      fill: false, lineWidth: 2, alpha: 0.85,
+      scaleAmp: 0.1, scaleFreq: 1.2, rotSpeed: 0, fadeOut: 0.3,
+    },
+  },
+  ring: {
+    label: '圆环',
+    defaults: {
+      duration: 1500, color: '#fbbf24', r: 50, w: 100, h: 100,
+      fill: false, lineWidth: 5, alpha: 0.9,
+      scaleAmp: 0.2, scaleFreq: 1.0, rotSpeed: 0, fadeOut: 0.4,
+    },
+  },
+  triangle: {
+    label: '三角形',
+    defaults: {
+      duration: 1500, color: '#f472b6', r: 45, w: 90, h: 90,
+      fill: true, lineWidth: 2, alpha: 0.85,
+      scaleAmp: 0.12, scaleFreq: 1.5, rotSpeed: 0.5, fadeOut: 0.3,
+    },
+  },
+};
+
+export type PrefabStep = AtomStep | TextStep | MarkerStep | SpriteStep | CustomStep | VfxStep | ShapeStep;
 
 // =========================================================================
 // 预制体
@@ -421,24 +590,6 @@ export const PREFABS: EffectPrefab[] = [
     ],
   },
   {
-    id: 'p_power_boost',
-    name: '火力全开',
-    en: 'POWER BOOST',
-    desc: '8 秒内伤害 ×2（700 金币，10s 冷却）：喷嘴强化粒子喷射（橙色粒子 + 辉光）+ 增强火焰锥',
-    category: 'shop',
-    source: 'CONSUMABLE_DEFS.power_boost + RenderUtils.renderMuzzleFlash（powerBoostTimer>0 触发）',
-    duration: 3000,
-    anchor: { x: 270, y: 620 },
-    atoms: ['coneFire'],
-    steps: [
-      { kind: 'text', text: '>>> 火力全开 8秒 <<<', color: '#ef4444', at: 0, dy: -380, fontSize: 16 },
-      // Canvas 直绘：枪口强化粒子 + 增强火焰锥（从喷嘴喷出）
-      { kind: 'vfx', fn: 'flameCone', at: 250, duration: 2200, params: { range: 240, weapon: 'flamethrower' } },
-      { kind: 'vfx', fn: 'muzzleFlash', at: 250, duration: 2200 },
-      { kind: 'atom', atom: 'coneFire', at: 250, duration: 2200, range: 240, angle: -Math.PI / 2, dy: -322 },
-    ],
-  },
-  {
     id: 'p_shield',
     name: '临时护盾',
     en: 'DEFENSE SHIELD',
@@ -567,15 +718,17 @@ export const PREFABS: EffectPrefab[] = [
     id: 's_armor_spray',
     name: '护甲喷涂',
     en: 'ARMOR SPRAY',
-    desc: '隧道工向 300px 内同伴喷射灰蓝护甲流（+150 护甲），命中后目标头顶飘 + 号并套上旋转六边形护甲环',
+    desc: '隧道工向 300px 内同伴喷射灰蓝护甲流（+150 护甲）：施法瞬间脚下 0.5s 范围光圈脉冲（30%→100% 射程扩散渐隐），命中后目标头顶飘 + 号并套上旋转六边形护甲环',
     category: 'skill',
-    source: 'RoachAISystem:886-888（spawnArmorSprayStream + spawnArmorHealPlus）+ RoachRenderer.ts:806-845 ARMOR SHIELD EFFECT（render.roach.shield 驱动）',
+    source: 'RoachAISystem:886-888（spawnArmorSprayStream + spawnArmorHealPlus）+ RoachRenderer.ts:673-695 施法警示光圈（armorSprayCastTimer 0.5s）+ RoachRenderer.ts:806-845 ARMOR SHIELD EFFECT（render.roach.shield 驱动）',
     duration: 2400,
     anchor: { x: 170, y: 480 },
     atoms: ['armorSpray'],
     steps: [
       { kind: 'text', text: '护甲喷涂!', color: '#a8a29e', at: 0, dy: -40 },
       { kind: 'marker', shape: 'circle', r: 16, color: '#94a3b8', life: 1000, at: 0 },
+      // Canvas 直绘施法光圈：喷涂瞬间一次范围脉冲（300px 射程，0.3→1.0 扩散 + 渐隐，压扁椭圆透视）
+      { kind: 'vfx', fn: 'armorCastRing', at: 150, duration: 500 },
       { kind: 'marker', shape: 'circle', r: 16, color: '#cbd5e1', life: 1600, at: 0, dx: 200, dy: -60 },
       { kind: 'atom', atom: 'armorSpray', at: 150, duration: 700, to: { dx: 200, dy: -60 } },
       { kind: 'atom', atom: 'armorPlus', at: 900, dx: 200, dy: -60 },
@@ -584,19 +737,51 @@ export const PREFABS: EffectPrefab[] = [
     ],
   },
   {
+    id: 's_shield_repair',
+    name: '护盾修理',
+    en: 'SHIELD REPAIR',
+    desc: '隧道工跟随护盾蟑螂持续修盾（10 点/秒，射程 220px）：目标身上青色修理火花持续上飘 + 护盾增亮，施法者头顶每 2s 飘「护盾修理!」',
+    category: 'skill',
+    source: 'RoachAISystem:892-926 updateTunnelWorker 跟随修理段（BALANCE subway.shieldRepairPerSec/shieldRepairRange + particle.shieldRepair 火花配方 + TEXT_CONFIG.combat.shieldRepair）',
+    duration: 3200,
+    anchor: { x: 200, y: 540 },
+    atoms: [],
+    steps: [
+      // 施法者：隧道工（灰色标注 + 2s 节流修盾文字，颜色与游戏一致 #a8a29e）
+      { kind: 'marker', shape: 'circle', r: 16, color: '#94a3b8', life: 1000, at: 0 },
+      { kind: 'text', text: '护盾修理!', color: '#a8a29e', at: 0, dy: -50 },
+      { kind: 'text', text: '护盾修理!', color: '#a8a29e', at: 2000, dy: -50 },
+      // 目标：护盾蟑螂 + 200×360 气体护盾虚框（青色 #67e8f9，修理射程 220px 内）
+      { kind: 'marker', shape: 'circle', r: 16, color: '#67e8f9', life: 3000, at: 100, dx: 100, dy: -120 },
+      { kind: 'marker', shape: 'rect', w: 200, h: 360, color: '#67e8f9', life: 3000, at: 100, dx: 100, dy: -300, dashed: true },
+      // 持续修理火花：青色上飘（particle.shieldRepair 配方，每帧 90% 概率，窗口覆盖整个修理过程）
+      { kind: 'custom', fn: 'shieldRepair', at: 200, duration: 2800, dx: 100, dy: -120 },
+    ],
+  },
+  {
     id: 's_shield_up',
     name: '气体护盾展开',
     en: 'GAS SHIELD',
-    desc: '护盾蟑螂展开 200×360 气体护盾矩形（半宽 100，向上延伸），青色能量粒子充满保护区',
+    desc: '护盾蟑螂展开 200×360 气体护盾矩形（半宽 100，向上延伸）',
     category: 'skill',
-    source: 'BALANCE subway.shieldRectHalfWidth/Height + spawnShieldAura；FormationSystem 盾墙锚点',
+    source: 'BALANCE subway.shieldRectHalfWidth/Height；FormationSystem 盾墙锚点',
     duration: 3200,
     anchor: { x: 270, y: 480 },
-    atoms: ['shieldAura'],
+    atoms: [],
     steps: [
       { kind: 'text', text: '护盾重组!', color: '#67e8f9', at: 0, dy: -200 },
-      { kind: 'marker', shape: 'rect', w: 200, h: 360, color: '#67e8f9', life: 2400, at: 100, dy: -180, dashed: true },
-      { kind: 'atom', atom: 'shieldAura', at: 150, duration: 2200, hw: 100 },
+      // Canvas2D 蓝色渐变矩形光带：200×50，贴护盾区域底部内侧（区域底边 dy=0，光带中心 dy=-25），中心实蓝 → 四周渐隐
+      {
+        kind: 'shape', shape: 'rect', at: 100, dy: -25,
+        duration: 2400, color: '#3b82f6', fillAlpha: 1,
+        r: 0, w: 200, h: 50, fill: true, gradient: 'radial', blend: 'lighter',
+        // 围绕原大小的循环缩放震动（小幅高频，无缩放消失）
+        lineWidth: 1, alpha: 1, scaleAmp: 0.05, scaleFreq: 6, rotSpeed: 0, fadeOut: 0,
+        // 格子线：横竖 5px 间隔、1px 线宽，边缘随椭圆径向渐隐
+        grid: { gap: 5, lineWidth: 1, color: '#e0f2fe', alpha: 1 },
+        // 扩散粒子：中心向四周扩散渐隐，900ms 生命，12 颗错相循环
+        sparks: { count: 12, life: 900, size: 2.5, color: '#e0f2fe', alpha: 1 },
+      },
     ],
   },
   {

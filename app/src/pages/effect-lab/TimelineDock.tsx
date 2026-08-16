@@ -2,21 +2,27 @@
  * @fileoverview 特效编辑器时间轴坞（参考 Unreal Cascade / Unity Particle System 时间轴）
  * @description 预制体模式：多轨时间轴 —— 按步骤类型（特效/内联/贴图/文字/标注）分轨，
  *              色块表示步骤的时间窗口，播放头可点击/拖拽 seek（由父组件以固定步长快进模拟实现）。
+ *              色块内叠加步骤自身的时间打点：shape 参数关键帧菱形点与结尾淡出遮罩、
+ *              sprite 序列帧帧边界竖线、vfx 内部阶段/周期刻度（护士治疗三阶段带、
+ *              定时炸弹引信爆炸点、史莱姆爆发/苍蝇拍循环周期线）。
  *              原子模式：生命周期曲线 —— Alpha（渲染统一线性淡出）与 Size over Lifetime
  *              （由物理配置 sizeDecay/sizeGrowth 推导的近似可视化，对应 Unity 的曲线模块）。
  *              仅供开发工具 EffectLab 使用，不参与游戏运行时逻辑。
  */
 
 import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { BALANCE_CONFIG } from '@/game/data';
 import { clamp } from './effectLabUtils';
+import { SHAPE_KIND_META } from './prefabDefs';
 import type { EffectPrefab, PrefabStep } from './prefabDefs';
 
 /** 轨道顺序（自上而下）与步骤类型配色（与检查器步骤列表一致） */
-const KIND_ORDER: PrefabStep['kind'][] = ['atom', 'custom', 'vfx', 'sprite', 'text', 'marker'];
+const KIND_ORDER: PrefabStep['kind'][] = ['atom', 'custom', 'vfx', 'shape', 'sprite', 'text', 'marker'];
 const KIND_COLOR: Record<PrefabStep['kind'], string> = {
   atom: '#fb923c',
   custom: '#f472b6',
   vfx: '#34d399',
+  shape: '#fbbf24',
   sprite: '#c084fc',
   text: '#4ade80',
   marker: '#22d3ee',
@@ -25,6 +31,7 @@ const KIND_LABEL: Record<PrefabStep['kind'], string> = {
   atom: '特效',
   custom: '内联',
   vfx: '渲染',
+  shape: '图形',
   sprite: '贴图',
   text: '文字',
   marker: '标注',
@@ -32,7 +39,7 @@ const KIND_LABEL: Record<PrefabStep['kind'], string> = {
 
 /** 步骤在时间轴上的可视窗口（ms）：持续型取 duration，瞬时型取 life，否则给最小可读宽度 */
 function stepSpan(s: PrefabStep): number {
-  if ((s.kind === 'atom' || s.kind === 'custom' || s.kind === 'vfx') && s.duration) {
+  if ((s.kind === 'atom' || s.kind === 'custom' || s.kind === 'vfx' || s.kind === 'shape') && s.duration) {
     return s.duration;
   }
   if (s.kind === 'text' || s.kind === 'marker') return s.life ?? 800;
@@ -51,6 +58,8 @@ function stepLabel(s: PrefabStep): string {
       return s.fn;
     case 'vfx':
       return s.fn;
+    case 'shape':
+      return SHAPE_KIND_META[s.shape].label;
     case 'text':
       return s.text;
     case 'marker':
@@ -58,6 +67,161 @@ function stepLabel(s: PrefabStep): string {
     case 'sprite':
       return s.frames ? `序列帧×${s.frames.length}` : (s.src?.split('/').pop() ?? '贴图');
   }
+}
+
+/**
+ * 步骤色块内的时间打点可视化（相对步骤窗口 at → at+span 定位）：
+ * - shape / marker：keys 参数关键帧 → 底部菱形点（多参数同刻合并）；shape fadeOut → 末端暗化遮罩
+ * - sprite：序列帧 → 每帧边界竖线（frameMs，默认 200ms）
+ * - vfx nurseHealAura：charging/spraying/dissipating 三阶段色带 + 分界线
+ * - vfx timedBomb：每个引信周期（fuseDuration）结束 → 爆炸竖线
+ * - vfx slimeBurst / swatter：每次爆发/挥拍周期 → 循环刻度竖线
+ */
+function StepInnerMarks({ s, span }: { s: PrefabStep; span: number }) {
+  if (span <= 0) return null;
+  const toPct = (ms: number) => (ms / span) * 100;
+
+  // shape / marker：参数关键帧菱形（shape 附加结尾淡出遮罩）
+  if (s.kind === 'shape' || s.kind === 'marker') {
+    const ts = new Set<number>();
+    if (s.keys) {
+      for (const arr of Object.values(s.keys)) {
+        for (const k of arr ?? []) ts.add(Math.round(k.t * 100) / 100);
+      }
+    }
+    // 菱形配色跟随轨道色（shape 琥珀 / marker 青）
+    const dotColor = s.kind === 'marker' ? '#cffafe' : '#fef3c7';
+    return (
+      <>
+        {s.kind === 'shape' && s.fadeOut > 0 && (
+          <span
+            className="absolute inset-y-0 right-0"
+            style={{
+              width: `${s.fadeOut * 100}%`,
+              background: 'linear-gradient(to right, transparent, rgba(0,0,0,0.5))',
+            }}
+          />
+        )}
+        {[...ts].map((t) => (
+          <span
+            key={t}
+            className="absolute"
+            style={{
+              left: `${t * 100}%`,
+              bottom: 1,
+              width: 5,
+              height: 5,
+              transform: 'translateX(-50%) rotate(45deg)',
+              background: dotColor,
+              boxShadow: '0 0 3px rgba(0,0,0,0.9)',
+            }}
+          />
+        ))}
+      </>
+    );
+  }
+
+  // sprite：序列帧帧边界竖线
+  if (s.kind === 'sprite' && s.frames && s.frames.length > 1) {
+    const frameMs = s.frameMs ?? 200;
+    const lines: number[] = [];
+    for (let i = 1; i < s.frames.length; i++) {
+      const ms = i * frameMs;
+      if (ms < span) lines.push(ms);
+    }
+    return (
+      <>
+        {lines.map((ms) => (
+          <span
+            key={ms}
+            className="absolute inset-y-0 w-px"
+            style={{ left: `${toPct(ms)}%`, background: 'rgba(255,255,255,0.22)' }}
+          />
+        ))}
+      </>
+    );
+  }
+
+  // vfx：护士治疗三阶段色带 + 分界线
+  if (s.kind === 'vfx' && s.fn === 'nurseHealAura') {
+    const ph = BALANCE_CONFIG.roachAI.nurseHealPhases;
+    const ch = ph.charging * 1000;
+    const sp = ch + ph.spraying * 1000;
+    const chPct = Math.min(toPct(ch), 100);
+    const spPct = Math.min(toPct(sp), 100);
+    return (
+      <>
+        {/* charging 暗带 → spraying 亮带 → dissipating 保持底色渐隐 */}
+        <span
+          className="absolute inset-y-0 left-0"
+          style={{ width: `${chPct}%`, background: 'rgba(0,0,0,0.28)' }}
+        />
+        <span
+          className="absolute inset-y-0"
+          style={{
+            left: `${chPct}%`,
+            width: `${Math.max(spPct - chPct, 0)}%`,
+            background: 'rgba(255,255,255,0.10)',
+          }}
+        />
+        {ch < span && (
+          <span
+            className="absolute inset-y-0 w-px"
+            style={{ left: `${chPct}%`, background: 'rgba(255,255,255,0.45)' }}
+          />
+        )}
+        {sp < span && (
+          <span
+            className="absolute inset-y-0 w-px"
+            style={{ left: `${spPct}%`, background: 'rgba(255,255,255,0.45)' }}
+          />
+        )}
+      </>
+    );
+  }
+
+  // vfx：定时炸弹 —— 每个引信周期结束 = 爆炸点
+  if (s.kind === 'vfx' && s.fn === 'timedBomb') {
+    const fuse = BALANCE_CONFIG.timedBomb.placed.fuseDuration * 1000;
+    const booms: number[] = [];
+    for (let ms = fuse; ms < span; ms += fuse) booms.push(ms);
+    return (
+      <>
+        {booms.map((ms) => (
+          <span
+            key={ms}
+            className="absolute inset-y-0 w-[2px]"
+            style={{ left: `${toPct(ms)}%`, background: 'rgba(254,202,202,0.7)' }}
+          />
+        ))}
+      </>
+    );
+  }
+
+  // vfx：史莱姆爆发 / 苍蝇拍 —— 每次爆发/挥拍周期刻度线
+  if (s.kind === 'vfx' && (s.fn === 'slimeBurst' || s.fn === 'swatter')) {
+    const cycleSec =
+      s.fn === 'slimeBurst'
+        ? BALANCE_CONFIG.slimeBurst.duration
+        : BALANCE_CONFIG.render.renderUtils.swatter.animDuration;
+    const cycle = cycleSec * 1000;
+    if (cycle <= 0 || cycle >= span) return null;
+    const marks: number[] = [];
+    for (let ms = cycle; ms < span; ms += cycle) marks.push(ms);
+    return (
+      <>
+        {marks.map((ms) => (
+          <span
+            key={ms}
+            className="absolute inset-y-0 w-px"
+            style={{ left: `${toPct(ms)}%`, background: 'rgba(255,255,255,0.3)' }}
+          />
+        ))}
+      </>
+    );
+  }
+
+  return null;
 }
 
 /** 原子模式生命周期曲线输入（父组件从物理配置推导） */
@@ -205,9 +369,23 @@ function PrefabTracks({
             <div key={k} className="relative flex-1 border-b border-[#242427] last:border-b-0">
               {prefab.steps.map((s, i) => {
                 if (s.kind !== k) return null;
+                const span = stepSpan(s);
                 const left = (s.at / duration) * 100;
-                const width = Math.max((stepSpan(s) / duration) * 100, 0.8);
-                const active = frac * duration >= s.at && frac * duration <= s.at + stepSpan(s);
+                const width = Math.max((span / duration) * 100, 0.8);
+                const active = frac * duration >= s.at && frac * duration <= s.at + span;
+                // 打点摘要（title）：shape/marker 关键帧数 / sprite 帧边界 / vfx 阶段刻度
+                const keyCount =
+                  (s.kind === 'shape' || s.kind === 'marker') && s.keys
+                    ? Object.values(s.keys).reduce((n, a) => n + (a?.length ?? 0), 0)
+                    : 0;
+                const markInfo =
+                  keyCount > 0
+                    ? ` · ◆×${keyCount}`
+                    : s.kind === 'sprite' && s.frames && s.frames.length > 1
+                      ? ` · ${s.frames.length}帧@${s.frameMs ?? 200}ms`
+                      : s.kind === 'vfx' && s.fn === 'nurseHealAura'
+                        ? ' · 3阶段'
+                        : '';
                 return (
                   <div
                     key={i}
@@ -219,10 +397,14 @@ function PrefabTracks({
                       background: `${KIND_COLOR[k]}${active ? '55' : '26'}`,
                       border: `1px solid ${KIND_COLOR[k]}${active ? '' : '66'}`,
                     }}
-                    title={`${s.at}ms · ${KIND_LABEL[k]} · ${stepLabel(s)}`}
+                    title={`${s.at}ms · ${KIND_LABEL[k]} · ${stepLabel(s)}${markInfo}`}
                   >
+                    {/* 步骤内部时间打点层（关键帧/帧边界/阶段刻度），裁剪在色块内 */}
+                    <span className="pointer-events-none absolute inset-0">
+                      <StepInnerMarks s={s} span={span} />
+                    </span>
                     <span
-                      className="truncate font-mono text-[8px] leading-3"
+                      className="relative truncate font-mono text-[8px] leading-3"
                       style={{ color: KIND_COLOR[k] }}
                     >
                       {stepLabel(s)}

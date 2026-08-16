@@ -42,10 +42,11 @@ export class NurseRenderer {
 
   private static getChargeGlowGradient(ctx: CanvasRenderingContext2D): CanvasGradient {
     if (!this._chargeGlowGrad) {
+      const cfg = BALANCE_CONFIG.render.nurseHealVFX.charge;
       const grad = ctx.createRadialGradient(0, 0, 0.3, 0, 0, 1.2);
-      grad.addColorStop(0, 'rgba(100, 240, 150, 0)');
-      grad.addColorStop(0.85, 'rgba(100, 240, 150, 0.2)');
-      grad.addColorStop(1, 'rgba(140, 255, 190, 0.4)');
+      grad.addColorStop(0, cfg.glowColor0);
+      grad.addColorStop(0.85, cfg.glowColor1);
+      grad.addColorStop(1, cfg.glowColor2);
       this._chargeGlowGrad = grad;
     }
     return this._chargeGlowGrad;
@@ -53,10 +54,11 @@ export class NurseRenderer {
 
   private static getSprayBlobGradient(ctx: CanvasRenderingContext2D): CanvasGradient {
     if (!this._sprayBlobGrad) {
+      const cfg = BALANCE_CONFIG.render.nurseHealVFX.spray;
       const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
-      grad.addColorStop(0, 'rgba(100, 148, 100, 1)');
-      grad.addColorStop(0.5, 'rgba(90, 138, 90, 0.5)');
-      grad.addColorStop(1, 'rgba(80, 120, 80, 0)');
+      grad.addColorStop(0, cfg.blobColor0);
+      grad.addColorStop(0.5, cfg.blobColor1);
+      grad.addColorStop(1, cfg.blobColor2);
       this._sprayBlobGrad = grad;
     }
     return this._sprayBlobGrad;
@@ -64,10 +66,11 @@ export class NurseRenderer {
 
   private static getSprayRingGlowGradient(ctx: CanvasRenderingContext2D): CanvasGradient {
     if (!this._sprayRingGlowGrad) {
+      const cfg = BALANCE_CONFIG.render.nurseHealVFX.spray;
       const grad = ctx.createRadialGradient(0, 0, 0.5, 0, 0, 1.1);
-      grad.addColorStop(0, 'rgba(80, 220, 120, 0)');
-      grad.addColorStop(0.8, 'rgba(80, 220, 120, 0.15)');
-      grad.addColorStop(1, 'rgba(120, 255, 170, 0.35)');
+      grad.addColorStop(0, cfg.ringGlowColor0);
+      grad.addColorStop(0.8, cfg.ringGlowColor1);
+      grad.addColorStop(1, cfg.ringGlowColor2);
       this._sprayRingGlowGrad = grad;
     }
     return this._sprayRingGlowGrad;
@@ -75,9 +78,10 @@ export class NurseRenderer {
 
   private static getDissipateGlowGradient(ctx: CanvasRenderingContext2D): CanvasGradient {
     if (!this._dissipateGlowGrad) {
+      const cfg = BALANCE_CONFIG.render.nurseHealVFX.dissipate;
       const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
-      grad.addColorStop(0, 'rgba(90, 220, 130, 0.08)');
-      grad.addColorStop(1, 'rgba(90, 220, 130, 0)');
+      grad.addColorStop(0, cfg.glowColor0);
+      grad.addColorStop(1, cfg.glowColor1);
       this._dissipateGlowGrad = grad;
     }
     return this._dissipateGlowGrad;
@@ -128,6 +132,7 @@ export class NurseRenderer {
     const tickData = NurseRenderer.getTickData();
 
     ctx.save();
+    ctx.globalCompositeOperation = vfxCfg.blend; // 叠加混合集中于 vfx-balance nurseHealVFX.blend
     for (const r of roaches) {
       if (r.type !== RoachType.NURSE || r.state !== RoachState.ALIVE) continue;
       if (!r.healPhase || r.healPhase === 'idle') continue;
@@ -161,14 +166,14 @@ export class NurseRenderer {
             ctx.restore();
 
             // Solid ring boundary
-            ctx.strokeStyle = `rgba(120, 255, 170, ${alpha * chgCfg.ringAlphaMultiplier})`;
+            ctx.strokeStyle = `rgba(${chgCfg.ringColor}, ${alpha * chgCfg.ringAlphaMultiplier})`;
             ctx.lineWidth = chgCfg.ringLineWidth;
             ctx.beginPath();
             ctx.ellipse(r.x, footY, ringR, ringRY, 0, 0, Math.PI * 2);
             ctx.stroke();
 
             // Inner fill
-            ctx.fillStyle = `rgba(100, 230, 150, ${alpha * chgCfg.fillAlpha})`;
+            ctx.fillStyle = `rgba(${chgCfg.fillColor}, ${alpha * chgCfg.fillAlpha})`;
             ctx.beginPath();
             ctx.ellipse(r.x, footY, ringR * 0.85, ringRY * 0.85, 0, 0, Math.PI * 2);
             ctx.fill();
@@ -176,13 +181,13 @@ export class NurseRenderer {
 
           // 2. Center pulse dot
           const dotPulse = 1 + Math.sin(time * chgCfg.dotPulseFreq) * chgCfg.dotPulseAmp;
-          ctx.fillStyle = `rgba(140, 255, 190, ${alpha * chgCfg.dotAlpha})`;
+          ctx.fillStyle = `rgba(${chgCfg.dotColor}, ${alpha * chgCfg.dotAlpha})`;
           ctx.beginPath();
           ctx.arc(r.x, footY, chgCfg.dotBaseSize * dotPulse * expandScale, 0, Math.PI * 2);
           ctx.fill();
 
           // 3. ECG-like pulse line
-          ctx.strokeStyle = `rgba(100, 230, 150, ${alpha * chgCfg.ecgAlpha})`;
+          ctx.strokeStyle = `rgba(${chgCfg.ecgColor}, ${alpha * chgCfg.ecgAlpha})`;
           ctx.lineWidth = chgCfg.ecgLineWidth;
           ctx.beginPath();
           for (let ex = -chgCfg.ecgRange; ex <= chgCfg.ecgRange; ex += chgCfg.ecgStep) {
@@ -252,13 +257,13 @@ export class NurseRenderer {
           ctx.restore();
 
           // 2. Inner fill
-          ctx.fillStyle = `rgba(90, 210, 130, ${ringAlpha * spCfg.ringFillAlpha})`;
+          ctx.fillStyle = `rgba(${spCfg.ringFillColor}, ${ringAlpha * spCfg.ringFillAlpha})`;
           ctx.beginPath();
           ctx.ellipse(r.x, footY, healRange * 0.9, healRange * 0.32, 0, 0, Math.PI * 2);
           ctx.fill();
 
           // 3. Main ring boundary
-          ctx.strokeStyle = `rgba(100, 245, 150, ${ringAlpha * 0.85})`;
+          ctx.strokeStyle = `rgba(${spCfg.ringStrokeColor}, ${ringAlpha * spCfg.ringStrokeAlphaRatio})`;
           ctx.lineWidth = spCfg.ringStrokeWidth;
           ctx.beginPath();
           ctx.ellipse(r.x, footY, healRange * 0.9, healRange * 0.32, 0, 0, Math.PI * 2);
@@ -266,7 +271,7 @@ export class NurseRenderer {
 
           // 4. Inner dashed ring (save/restore to prevent dash leak)
           ctx.save();
-          ctx.strokeStyle = `rgba(130, 255, 180, ${ringAlpha * spCfg.ringInnerAlpha})`;
+          ctx.strokeStyle = `rgba(${spCfg.ringInnerColor}, ${ringAlpha * spCfg.ringInnerAlpha})`;
           ctx.lineWidth = spCfg.ringInnerWidth;
           ctx.setLineDash(spCfg.ringInnerDash as unknown as number[]);
           ctx.beginPath();
@@ -290,7 +295,7 @@ export class NurseRenderer {
             const ny = cosA;
             const halfLen = td.len * 0.5;
 
-            ctx.strokeStyle = `rgba(160, 255, 200, ${ringAlpha * spCfg.tickAlpha})`;
+            ctx.strokeStyle = `rgba(${spCfg.tickColor}, ${ringAlpha * spCfg.tickAlpha})`;
             ctx.lineWidth = td.width;
             ctx.beginPath();
             ctx.moveTo(tx + nx * halfLen, ty + ny * halfLen);
@@ -299,7 +304,7 @@ export class NurseRenderer {
           }
 
           // 6. Crosshair lines
-          ctx.strokeStyle = `rgba(140, 255, 180, ${ringAlpha * spCfg.crosshairAlpha})`;
+          ctx.strokeStyle = `rgba(${spCfg.crosshairColor}, ${ringAlpha * spCfg.crosshairAlpha})`;
           ctx.lineWidth = spCfg.crosshairWidth;
           ctx.beginPath();
           ctx.moveTo(r.x, footY - healRange * 0.32);
@@ -318,7 +323,7 @@ export class NurseRenderer {
           const footY = r.y + vfxCfg.footYOffset;
 
           // Fading ring boundary
-          ctx.strokeStyle = `rgba(100, 245, 150, ${fadeAlpha * dissCfg.ringAlpha})`;
+          ctx.strokeStyle = `rgba(${dissCfg.ringColor}, ${fadeAlpha * dissCfg.ringAlpha})`;
           ctx.lineWidth = dissCfg.ringWidth;
           ctx.beginPath();
           ctx.ellipse(r.x, footY, healRange * 0.9 * fadeAlpha, healRange * 0.32 * fadeAlpha, 0, 0, Math.PI * 2);
@@ -336,7 +341,7 @@ export class NurseRenderer {
           ctx.restore();
 
           // Shrinking center dot
-          ctx.fillStyle = `rgba(140, 255, 190, ${fadeAlpha * dissCfg.dotAlpha})`;
+          ctx.fillStyle = `rgba(${dissCfg.dotColor}, ${fadeAlpha * dissCfg.dotAlpha})`;
           ctx.beginPath();
           ctx.arc(r.x, footY, dissCfg.dotBaseSize * fadeAlpha, 0, Math.PI * 2);
           ctx.fill();

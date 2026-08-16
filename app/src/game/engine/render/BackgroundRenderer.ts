@@ -36,37 +36,43 @@ export interface FireZoneRenderConfig {
 // 火焰颜色计算（从 engine.ts 提取的纯函数）
 // =============================================================================
 
-/** 根据位置偏移和武器类型计算火焰颜色 */
+/** 根据位置偏移和武器类型计算火焰颜色（颜色/透明度参数集中于 vfx-balance render.fireZone.flame*） */
 function getFlameColor(t: number, weapon: string = 'flamethrower'): string {
+  const fz = BALANCE_CONFIG.render.fireZone;
   let r: number, g: number, b: number;
 
   if (weapon === 'sticky') {
-    r = 250;
-    g = 200 + t * 55;
-    b = 50 + t * 50;
+    const c = fz.flameSticky;
+    r = c.r;
+    g = c.gBase + t * c.gRange;
+    b = c.bBase + t * c.bRange;
   } else if (weapon === 'poison') {
-    r = 150 - t * 100;
-    g = 100 + t * 100;
-    b = 200 - t * 50;
+    const c = fz.flamePoison;
+    r = c.rBase + t * c.rRange;
+    g = c.gBase + t * c.gRange;
+    b = c.bBase + t * c.bRange;
   } else if (weapon === 'shotgun') {
-    r = 255;
-    g = 150 + t * 105;
-    b = 50 + t * 100;
+    const c = fz.flameShotgun;
+    r = c.r;
+    g = c.gBase + t * c.gRange;
+    b = c.bBase + t * c.bRange;
   } else {
     if (t < 0.5) {
+      const c = fz.flameDefaultFirst;
       const s = t * 2;
-      r = 60 + s * 140;
-      g = 140 - s * 80;
-      b = 255 - s * 100;
+      r = c.rBase + s * c.rRange;
+      g = c.gBase + s * c.gRange;
+      b = c.bBase + s * c.bRange;
     } else {
+      const c = fz.flameDefaultSecond;
       const s = (t - 0.5) * 2;
-      r = 200 + s * 55;
-      g = 60 - s * 60;
-      b = 155 - s * 155;
+      r = c.rBase + s * c.rRange;
+      g = c.gBase + s * c.gRange;
+      b = c.bBase + s * c.bRange;
     }
   }
 
-  const a = 0.75 * (1 - t) * (1 - t);
+  const a = fz.flameAlphaBase * (1 - t) * (1 - t);
   return `rgba(${r}, ${g}, ${b}, ${a})`;
 }
 
@@ -138,11 +144,16 @@ export class BackgroundRenderer {
     // 修复 P2：夜晚叠加移到暗角之前（避免覆盖暗角）
     if (scene.weather === WeatherType.NIGHT) {
       const nightAlpha = cfgBg.nightBaseAlpha + (cfg.lightningFlash > 0 ? cfgBg.nightFlashAlpha : 0);
+      ctx.save();
+      ctx.globalCompositeOperation = cfgBg.nightBlend; // 叠加混合集中于 vfx-balance background.nightBlend
       ctx.fillStyle = cfgBg.nightColor.replace('{alpha}', String(nightAlpha));
       ctx.fillRect(0, 0, w, h);
+      ctx.restore();
     }
 
     // Vignette gradient
+    ctx.save();
+    ctx.globalCompositeOperation = cfgBg.vignetteBlend; // 叠加混合集中于 vfx-balance background.vignetteBlend
     const grad = ctx.createRadialGradient(
       w / 2, h / 2, h * cfgBg.vignetteInnerRadius,
       w / 2, h / 2, h * cfgBg.vignetteOuterRadius
@@ -151,6 +162,7 @@ export class BackgroundRenderer {
     grad.addColorStop(1, cfgBg.vignetteOuterColor);
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, w, h);
+    ctx.restore();
   }
 
   /** 渲染火焰区域（玩家武器火焰特效） */
@@ -174,7 +186,7 @@ export class BackgroundRenderer {
     }
 
     ctx.save();
-    ctx.globalCompositeOperation = 'screen';
+    ctx.globalCompositeOperation = rcfg.blend; // 叠加混合集中于 vfx-balance fireZone.blend
 
     for (let gi = 0; gi < gunXs.length; gi++) {
       const gunX = gunXs[gi];
@@ -216,10 +228,10 @@ export class BackgroundRenderer {
 
       const glowSize = rcfg.coreGlowSize * flameScale * talentScale;
       const coreGrad = ctx.createRadialGradient(gunX, gunNozzleY, 0, gunX, gunNozzleY, glowSize);
-      coreGrad.addColorStop(0, `rgba(${coreColor}, 0.9)`);
-      coreGrad.addColorStop(0.3, `rgba(${coreColor}, 0.5)`);
-      coreGrad.addColorStop(0.6, `rgba(${coreColor}, 0.3)`);
-      coreGrad.addColorStop(1, 'rgba(255, 0, 0, 0)');
+      coreGrad.addColorStop(0, `rgba(${coreColor}, ${rcfg.coreGradAlpha0})`);
+      coreGrad.addColorStop(0.3, `rgba(${coreColor}, ${rcfg.coreGradAlpha1})`);
+      coreGrad.addColorStop(0.6, `rgba(${coreColor}, ${rcfg.coreGradAlpha2})`);
+      coreGrad.addColorStop(1, rcfg.coreGradEndColor);
       ctx.fillStyle = coreGrad;
       ctx.beginPath();
       ctx.arc(gunX, gunNozzleY, glowSize, 0, Math.PI * 2);
@@ -232,7 +244,7 @@ export class BackgroundRenderer {
           const ripplePhase = (cfg.time * rcfg.boostRippleFreq + ri * rcfg.boostRippleSpacing) % rcfg.boostRippleMaxPhase;
           const rippleRadius = rcfg.boostRippleRadiusBase + ripplePhase * rcfg.boostRippleRadiusGrowth;
           const rippleAlpha = boostAlpha * (1 - ripplePhase / rcfg.boostRippleMaxPhase);
-          ctx.strokeStyle = `rgba(255, 255, 255, ${rippleAlpha})`;
+          ctx.strokeStyle = `rgba(${rcfg.boostRippleColor}, ${rippleAlpha})`;
           ctx.lineWidth = rcfg.boostRippleLineWidth;
           ctx.beginPath();
           ctx.arc(gunX, gunNozzleY, rippleRadius * flameScale, 0, Math.PI * 2);

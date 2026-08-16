@@ -5,7 +5,7 @@
 
 import { GameState, ParticleType } from '../../types';
 import type { Player, Particle, ConsumableDef } from '../../types';
-import { BALANCE_CONFIG, TEXT_CONFIG, RENDER_COLOR } from '../../data';
+import { BALANCE_CONFIG, TEXT_CONFIG } from '../../data';
 
 // =============================================================================
 // 回调接口拆分（修复 P1：20+ 回调按职责分组）
@@ -353,18 +353,19 @@ export class ConsumableSystem {
 
     if (player.baitTimer > 0) {
       player.baitTimer -= dt;
-      // 持续气味粒子
+      // 持续气味粒子（参数见 BALANCE_CONFIG.bait.smell）
+      const SM = BALANCE_CONFIG.bait.smell;
       if (this.baitTarget.active && this.cfg.getParticleCount() < this.cfg.getParticleLimit() - 20) {
-        for (let i = 0; i < 2; i++) {
+        for (let i = 0; i < SM.emitter.perFrame; i++) {
           this.cfg.onAddParticle({
-            x: this.baitTarget.x + (Math.random() - 0.5) * 30,
-            y: this.baitTarget.y - Math.random() * 10,
-            vx: (Math.random() - 0.5) * 8,
-            vy: -(15 + Math.random() * 20),
-            life: 1.2 + Math.random() * 0.8,
-            maxLife: 2,
-            color: Math.random() < 0.5 ? RENDER_COLOR.armorStart : '#fcd34d',
-            size: 2 + Math.random() * 2.5,
+            x: this.baitTarget.x + (Math.random() - 0.5) * SM.emitter.spreadX,
+            y: this.baitTarget.y - Math.random() * SM.emitter.spreadY,
+            vx: (Math.random() - 0.5) * SM.vxRange,
+            vy: -(SM.vyMin + Math.random() * SM.vyRange),
+            life: SM.lifeMin + Math.random() * SM.lifeRange,
+            maxLife: SM.maxLife,
+            color: Math.random() < 0.5 ? SM.color : SM.colorAlt,
+            size: SM.sizeMin + Math.random() * SM.sizeRange,
             type: ParticleType.SMOKE,
           });
         }
@@ -443,34 +444,35 @@ export class ConsumableSystem {
         this.baitThrowAnim.y = this.baitThrowAnim.targetY - height;
       } else {
         this.baitThrowAnim.active = false;
-        // 粉碎效果：黄色爆裂模拟诱饵罐破碎 + 气味释放
-        for (let i = 0; i < 15; i++) {
+        // 粉碎效果：黄色爆裂模拟诱饵罐破碎 + 气味释放（参数见 BALANCE_CONFIG.bait.shatter）
+        const SH = BALANCE_CONFIG.bait.shatter;
+        for (let i = 0; i < SH.emitter.burstCount; i++) {
           const angle = Math.random() * Math.PI * 2;
-          const dist = Math.random() * 60;
+          const dist = Math.random() * SH.emitter.burstSpreadDist;
           this.cfg.onAddParticle({
             x: this.baitThrowAnim.targetX + Math.cos(angle) * dist,
-            y: this.baitThrowAnim.targetY + Math.sin(angle) * dist * 0.3,
-            vx: Math.cos(angle) * (30 + Math.random() * 40),
-            vy: Math.sin(angle) * (15 + Math.random() * 25) - 20,
-            life: 1.5 + Math.random(),
-            maxLife: 2.5,
-            color: RENDER_COLOR.armorStart,
-            size: 2 + Math.random() * 3,
+            y: this.baitThrowAnim.targetY + Math.sin(angle) * dist * SH.emitter.burstYScale,
+            vx: Math.cos(angle) * (SH.burstVxMin + Math.random() * SH.burstVxRange),
+            vy: Math.sin(angle) * (SH.burstVyMin + Math.random() * SH.burstVyRange) + SH.burstVyBias,
+            life: SH.burstLifeMin + Math.random() * SH.burstLifeRange,
+            maxLife: SH.burstMaxLife,
+            color: SH.burstColor,
+            size: SH.burstSizeMin + Math.random() * SH.burstSizeRange,
             type: ParticleType.EMBER,
           });
         }
         // 玻璃碎片
-        for (let i = 0; i < 8; i++) {
+        for (let i = 0; i < SH.emitter.glassCount; i++) {
           const angle = Math.random() * Math.PI * 2;
           this.cfg.onAddParticle({
             x: this.baitThrowAnim.targetX,
             y: this.baitThrowAnim.targetY,
-            vx: Math.cos(angle) * (40 + Math.random() * 60),
-            vy: Math.sin(angle) * (20 + Math.random() * 30) - 30,
-            life: 1 + Math.random() * 0.8,
-            maxLife: 1.8,
-            color: '#e5e7eb',
-            size: 1 + Math.random() * 2,
+            vx: Math.cos(angle) * (SH.glassVxMin + Math.random() * SH.glassVxRange),
+            vy: Math.sin(angle) * (SH.glassVyMin + Math.random() * SH.glassVyRange) + SH.glassVyBias,
+            life: SH.glassLifeMin + Math.random() * SH.glassLifeRange,
+            maxLife: SH.glassMaxLife,
+            color: SH.glassColor,
+            size: SH.glassSizeMin + Math.random() * SH.glassSizeRange,
             type: ParticleType.SPARK,
           });
         }
@@ -509,52 +511,55 @@ export class ConsumableSystem {
     time: number
   ): void {
     if (!baitThrowAnim.active) return;
+    // 参数见 BALANCE_CONFIG.bait.throw
+    const TR = BALANCE_CONFIG.bait.throw;
     ctx.save();
+    ctx.globalCompositeOperation = TR.blend; // 叠加混合集中于 vfx-balance bait.throw.blend
     const { x, y, targetX, targetY } = baitThrowAnim;
     // Shadow on ground below
     const shadowY = targetY;
     const height = shadowY - y;
-    const shadowScale = Math.max(0.3, 1 - height / 200);
-    ctx.globalAlpha = 0.2 * shadowScale;
-    ctx.fillStyle = '#000';
+    const shadowScale = Math.max(TR.shadowMinScale, 1 - height / TR.shadowHeightRef);
+    ctx.globalAlpha = TR.shadowAlpha * shadowScale;
+    ctx.fillStyle = TR.shadowColor;
     ctx.beginPath();
-    ctx.ellipse(x, shadowY, 10 * shadowScale, 4 * shadowScale, 0, 0, Math.PI * 2);
+    ctx.ellipse(x, shadowY, TR.shadowRadiusX * shadowScale, TR.shadowRadiusY * shadowScale, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalAlpha = 1;
     // Bait jar body
     ctx.translate(x, y);
-    const jarW = 14, jarH = 18;
-    ctx.fillStyle = RENDER_COLOR.baitJar;
+    const jarW = TR.jarW, jarH = TR.jarH;
+    ctx.fillStyle = TR.jarColor;
     ctx.beginPath();
-    ctx.roundRect(-jarW / 2, -jarH / 2, jarW, jarH, 4);
+    ctx.roundRect(-jarW / 2, -jarH / 2, jarW, jarH, TR.jarCorner);
     ctx.fill();
-    ctx.fillStyle = RENDER_COLOR.baitJarRim;
+    ctx.fillStyle = TR.rimColor;
     ctx.beginPath();
-    ctx.roundRect(-jarW / 2 + 2, -jarH / 2 + 2, jarW - 6, jarH - 6, 2);
+    ctx.roundRect(-jarW / 2 + TR.rimInset, -jarH / 2 + TR.rimInset, jarW - TR.rimShrink, jarH - TR.rimShrink, TR.rimCorner);
     ctx.fill();
-    ctx.fillStyle = RENDER_COLOR.baitJarAccent;
-    ctx.fillRect(-jarW / 2 - 1, -jarH / 2 - 3, jarW + 2, 5);
-    ctx.fillStyle = RENDER_COLOR.baitJarText;
-    ctx.fillRect(-jarW / 2 + 1, -2, jarW - 2, 4);
-    ctx.fillStyle = '#fff';
-    ctx.globalAlpha = 0.6 + 0.4 * Math.sin(time * 8);
+    ctx.fillStyle = TR.accentColor;
+    ctx.fillRect(-jarW / 2 - TR.accentOverhang, -jarH / 2 - TR.accentOffsetY, jarW + TR.accentOverhang * 2, TR.accentHeight);
+    ctx.fillStyle = TR.labelColor;
+    ctx.fillRect(-jarW / 2 + TR.labelInset, -TR.labelOffsetY, jarW - TR.labelShrink, TR.labelHeight);
+    ctx.fillStyle = TR.glintColor;
+    ctx.globalAlpha = TR.glintAlphaBase + TR.glintAlphaAmp * Math.sin(time * TR.glintFreq);
     ctx.beginPath();
-    ctx.arc(-3, -3, 1.5, 0, Math.PI * 2);
+    ctx.arc(TR.glintX, TR.glintY, TR.glintRadius, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
     // Trail dots
     const dx = targetX - x;
     const dy = targetY - y;
-    for (let i = 1; i <= 3; i++) {
-      const t = i / 4;
-      const trailProgress = Math.max(0, 1 - baitThrowAnim.timer / 0.8 - t * 0.15);
+    for (let i = 1; i <= TR.emitter.trailCount; i++) {
+      const t = i / (TR.emitter.trailCount + 1);
+      const trailProgress = Math.max(0, 1 - baitThrowAnim.timer / BALANCE_CONFIG.consumable.baitThrowAnimDuration - t * TR.trailDecay);
       if (trailProgress <= 0) continue;
-      const trailX = x - dx * t * 0.3;
-      const trailY = y - dy * t * 0.3;
-      ctx.globalAlpha = 0.4 * (1 - t);
-      ctx.fillStyle = RENDER_COLOR.armorStart;
+      const trailX = x - dx * t * TR.trailDistRatio;
+      const trailY = y - dy * t * TR.trailDistRatio;
+      ctx.globalAlpha = TR.trailAlpha * (1 - t);
+      ctx.fillStyle = TR.trailColor;
       ctx.beginPath();
-      ctx.arc(trailX, trailY, 2 - t * 0.5, 0, Math.PI * 2);
+      ctx.arc(trailX, trailY, TR.trailRadiusBase - t * TR.trailRadiusDecay, 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.globalAlpha = 1;
@@ -570,28 +575,31 @@ export class ConsumableSystem {
     time: number
   ): void {
     if (!baitTarget.active || baitTimer <= 0) return;
+    // 参数见 BALANCE_CONFIG.bait.mark
+    const MK = BALANCE_CONFIG.bait.mark;
     ctx.save();
+    ctx.globalCompositeOperation = MK.blend; // 叠加混合集中于 vfx-balance bait.mark.blend
     const { x, y } = baitTarget;
-    const pulse = 0.7 + 0.3 * Math.sin(time * 4);
-    const auraGrad = ctx.createRadialGradient(x, y, 0, x, y, 50 * pulse);
-    auraGrad.addColorStop(0, 'rgba(251, 191, 36, 0.25)');
-    auraGrad.addColorStop(0.5, 'rgba(251, 191, 36, 0.1)');
-    auraGrad.addColorStop(1, 'rgba(251, 191, 36, 0)');
+    const pulse = MK.pulseBase + MK.pulseAmp * Math.sin(time * MK.pulseFreq);
+    const auraGrad = ctx.createRadialGradient(x, y, 0, x, y, MK.auraRadiusX * pulse);
+    auraGrad.addColorStop(0, `rgba(${MK.auraColor}, ${MK.auraAlphaInner})`);
+    auraGrad.addColorStop(MK.auraMidStop, `rgba(${MK.auraColor}, ${MK.auraAlphaMid})`);
+    auraGrad.addColorStop(1, `rgba(${MK.auraColor}, 0)`);
     ctx.fillStyle = auraGrad;
     ctx.beginPath();
-    ctx.ellipse(x, y, 50 * pulse, 20 * pulse, 0, 0, Math.PI * 2);
+    ctx.ellipse(x, y, MK.auraRadiusX * pulse, MK.auraRadiusY * pulse, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.globalAlpha = 0.6 * (baitTimer / 3);
-    for (let i = 0; i < 5; i++) {
-      const angle = (i / 5) * Math.PI * 2 + time * 0.5;
-      const dist = 8 + Math.sin(i * 3) * 4;
+    ctx.globalAlpha = MK.shardAlpha * (baitTimer / BALANCE_CONFIG.consumable.baitDuration);
+    for (let i = 0; i < MK.emitter.shardCount; i++) {
+      const angle = (i / MK.emitter.shardCount) * Math.PI * 2 + time * MK.shardRotateSpeed;
+      const dist = MK.shardDistBase + Math.sin(i * MK.shardDistFreq) * MK.shardDistAmp;
       const sx = x + Math.cos(angle) * dist;
-      const sy = y + Math.sin(angle) * dist * 0.4;
-      ctx.fillStyle = RENDER_COLOR.glass;
+      const sy = y + Math.sin(angle) * dist * MK.shardYScale;
+      ctx.fillStyle = MK.shardColor;
       ctx.beginPath();
       ctx.moveTo(sx, sy);
-      ctx.lineTo(sx + Math.cos(angle + 0.3) * 4, sy + Math.sin(angle + 0.3) * 2);
-      ctx.lineTo(sx + Math.cos(angle - 0.2) * 3, sy + Math.sin(angle - 0.2) * 1.5);
+      ctx.lineTo(sx + Math.cos(angle + MK.shardAngle1) * MK.shardLen1, sy + Math.sin(angle + MK.shardAngle1) * MK.shardWid1);
+      ctx.lineTo(sx + Math.cos(angle - MK.shardAngle2) * MK.shardLen2, sy + Math.sin(angle - MK.shardAngle2) * MK.shardWid2);
       ctx.closePath();
       ctx.fill();
     }

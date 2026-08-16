@@ -125,7 +125,7 @@ export const ENEMY_DEFS: Record<RoachType, {
   [RoachType.TIMED_SUICIDE]: {
     name: '定时自爆蟑螂',
     description: '到达防线前64px放置炸弹，2秒后变身大蟑螂。被杀死后尸体原地爆炸',
-    hp: 30,          // 高血量（生存能力强）
+    hp: 20,          // 中等血量（30→20，超市量产化后下调，靠闪避与阵型保护生存）
     speed: 1.4,      // 较快，需要快速接近防线
     reward: 40,      // 高奖励（医院场景精英）
     color: '#f59e0b', // 琥珀色（警告色）
@@ -136,7 +136,7 @@ export const ENEMY_DEFS: Record<RoachType, {
   [RoachType.TUNNEL_WORKER]: {
     name: '隧道工蟑螂',
     description: '背着工具箱的蟑螂，定期为周围血量最高的蟑螂添加护甲',
-    hp: 40,          // 较高血量（辅助单位，平衡下调：60→40）
+    hp: 18,          // 中低血量（提高：13→30 后回调至 18，避免过肉）
     speed: 0.6,      // 缓慢
     reward: 30,      // 高奖励（优先击杀目标）
     color: '#78716c', // 暗灰色（工具箱金属感）
@@ -146,7 +146,7 @@ export const ENEMY_DEFS: Record<RoachType, {
   [RoachType.SUBWAY_ELITE]: {
     name: '地铁蟑螂精英',
     description: '从空中掠过，速度极快，不受地面阻挡影响',
-    hp: 80,          // 较高血量（精英单位）
+    hp: 27,          // 较高血量（精英单位，平衡下调：80→27，地铁总血量~1800）
     speed: 2.4,      // 与飞行蟑螂一致，速度极快
     reward: 4,       // 与飞行蟑螂一致
     color: '#4a5a6a', // 灰蓝色（与飞行蟑螂一致）
@@ -156,7 +156,7 @@ export const ENEMY_DEFS: Record<RoachType, {
   [RoachType.SHIELD]: {
     name: '护盾蟑螂',
     description: '释放气体护盾保护身后同伴，矩形范围内的蟑螂免疫火焰直射',
-    hp: 60,          // 高血量（阵型锚点，平衡下调：100→60，减少护盾持续压制时间）
+    hp: 20,          // 高血量（阵型锚点，平衡下调：100→60→20，地铁总血量~1800）
     speed: 0.5,      // 极慢（阵型锚点）
     reward: 35,      // 高奖励（优先击杀目标）
     color: '#67e8f9', // 淡青色（气体护盾视觉基调）

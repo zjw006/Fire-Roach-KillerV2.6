@@ -126,7 +126,6 @@ export const ParticleType = {
   EXPLOSION: 'explosion',
   RAIN: 'rain',
   LIGHTNING: 'lightning',
-  SHIELD: 'shield',
 } as const;
 export type ParticleType = typeof ParticleType[keyof typeof ParticleType];
 
@@ -144,6 +143,12 @@ export interface Particle {
   /** 可选：渲染文字而非图形（用于浮动数值、图标等） */
   text?: string;
   textColor?: string;
+  /** 可选：文字纵向渐变底部颜色（设置后 textColor→textColor2 线性渐变，如护盾修复+号红黄渐变） */
+  textColor2?: string;
+  /** 可选：叠加混合模式覆盖（缺省按粒子类型默认，如 SPARK 为 screen；护甲喷涂粒子用 lighter 提亮） */
+  blend?: GlobalCompositeOperation;
+  /** 可选：BLOOD 液滴内核颜色覆盖（缺省用 render.particleType.blood.coreColor 暗绿） */
+  coreColor?: string;
   /** 变异蟑螂出生时是否带有绿色粘液特效 */
   isSlime?: boolean;
 }
@@ -462,10 +467,17 @@ export interface Roach {
   shieldBrokenTimer?: number;
   // Shield roach: 护盾受击闪白计时（秒，用于受损视觉反馈）
   shieldHitFlash?: number;
+  // Shield roach: 火焰命中闪白计时（秒，仅火焰直射路径设置，用于区分火焰命中触发光带增强震动）
+  shieldFlameHitFlash?: number;
   // Tunnel worker: 跟随修理的护盾蟑螂目标 ID
   shieldFollowTargetId?: number | null;
   // Tunnel worker: 修盾浮动文字节流计时（秒）
   shieldRepairTextTimer?: number;
+  // ===== SUPERMARKET FORMATION (V3.1) =====
+  // 阵型实例 ID（undefined = 未编入阵型；破阵后清除且永久不再编入）
+  formationId?: number;
+  // 锚点菱形标识颜色（由 FormationSystem 每帧维护，渲染层读取；非锚点为 undefined）
+  anchorMarkColor?: string;
 }
 
 /** 列车横扫碾压状态（地铁场景专属） */
@@ -627,6 +639,43 @@ export interface ConsumableDef {
   cooldown?: number;
 }
 
+/** 超市阵型模板（V4.0：C 飞行横排已废弃——飞行单位全部改为自由杂兵，不再入阵） */
+export type FormationTemplate = 'A' | 'B' | 'D' | 'E' | 'F' | 'G' | 'H';
+
+/**
+ * 超市 V4.0：阵型组配置（特种三排结构）
+ * - 前排：装甲/护盾（承伤盾墙，主锚点从前排选取）
+ * - 中排：分裂/定时自爆/隧道工（功能输出，隧道工硬上限 2）
+ * - 后排：护士（唯一治疗，硬上限 1）
+ * 小/大/飞行/地面自爆/地铁精英一律禁入阵列（仅作自由杂兵），配置超限运行期自动截断
+ */
+export interface FormationGroupConfig {
+  /** 模板随机池（多选一时随机；第10波用） */
+  templates: FormationTemplate[];
+  /** 前排：装甲蟑螂数 */
+  armored?: number;
+  /** 前排：护盾蟑螂数 */
+  shield?: number;
+  /** 中排：分裂蟑螂数 */
+  splitting?: number;
+  /** 中排：定时自爆蟑螂数 */
+  timedSuicide?: number;
+  /** 中排：隧道工数（>2 运行期截断） */
+  tunnelWorker?: number;
+  /** 后排：护士数（>1 运行期截断） */
+  nurse?: number;
+}
+
+/** 超市 V4.0：阵列推进期持续穿插投放配置（自由杂兵，走原生 AI，不入阵；阵列生成后开始投放） */
+export interface TrickleConfig {
+  /** 穿插类型池（等概率随机） */
+  types: RoachType[];
+  /** 投放总量 */
+  total: number;
+  /** 投放间隔（秒，自爆类实际间隔在此基础上加大抖动挫开） */
+  intervalSec: number;
+}
+
 /** 单波次敌人配置 */
 export interface WaveConfig {
   wave: number;
@@ -656,6 +705,10 @@ export interface WaveConfig {
   spawnInterval?: number;
   /** 波次名称 */
   name?: string;
+  /** 超市 V4.0：阵型组（热场杂兵队列清空后全部组同帧整组生成，多组按纵深错位出生线；各组独立锚点/独立破阵） */
+  formationGroups?: FormationGroupConfig[];
+  /** 超市 V4.0：阵列推进期持续穿插投放（自由杂兵消耗/偷袭） */
+  trickle?: TrickleConfig;
 }
 
 /** 经济统计与成就追踪数据 */

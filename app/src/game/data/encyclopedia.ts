@@ -93,7 +93,7 @@ const ENCYCLOPEDIA_META: Partial<Record<RoachType, {
     image: '/assets/roach_tunnel_worker.png',
     description: '背着工具箱的地铁蟑螂，会为同伴喷涂护甲，是优先击杀的辅助单位。',
     funFact: '它在地铁干了三十年维修工，退休金被蟑螂女王克扣了一半。它的工具箱里除了扳手，还有半块发霉的披萨。',
-    special: '护甲喷涂：每6秒为周围血量最高的蟑螂添加护甲150',
+    special: '护甲喷涂：每10秒为周围血量最高的蟑螂添加护甲150',
   },
   [RoachType.SUBWAY_ELITE]: {
     id: 'roach_subway_elite',

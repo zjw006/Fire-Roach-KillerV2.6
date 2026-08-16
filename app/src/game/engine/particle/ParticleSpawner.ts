@@ -88,42 +88,6 @@ export class ParticleSpawner {
     }
   }
 
-  // ========== 护盾蟑螂气体光环粒子 ==========
-
-  /**
-   * 在护盾蟑螂下方生成持续的护盾能量粒子（气体光环效果）
-   * 使用 SHIELD 类型（渲染为圆环），每帧少量生成，营造脉冲能量场
-   * @param particles 粒子数组
-   * @param x 护盾蟑螂 X 坐标
-   * @param y 护盾蟑螂 Y 坐标（护盾起始线 = 本体下缘）
-   * @param hw 护盾矩形半宽
-   */
-  static spawnShieldAura(particles: Particle[], x: number, y: number, hw: number): void {
-    const cfg = BALANCE_CONFIG.particle.shieldAura;
-    const count = cfg.countPerFrame;
-    // 粒子沿护盾矩形整个高度分布（Y 轴拉长后能量场充满保护区），而非仅底部一条线
-    const rh = BALANCE_CONFIG.subway.shieldRectHeight;
-
-    for (let i = 0; i < count; i++) {
-      // 在护盾矩形下缘水平随机分布
-      const radius = hw * (cfg.radiusMin + Math.random() * (cfg.radiusMax - cfg.radiusMin));
-      const px = x + (Math.random() - 0.5) * 2 * radius;
-      const py = y - Math.random() * rh; // 从起始线向上延伸至护盾顶缘
-
-      const life = cfg.lifeMin + Math.random() * (cfg.lifeMax - cfg.lifeMin);
-      const size = cfg.sizeMin + Math.random() * (cfg.sizeMax - cfg.sizeMin);
-
-      particles.push({
-        x: px, y: py,
-        vx: 0, vy: 0, // 静止悬浮，不移动
-        life, maxLife: life,
-        size,
-        color: `hsla(${cfg.hue}, ${cfg.saturation}%, ${cfg.lightnessMin + Math.random() * (cfg.lightnessMax - cfg.lightnessMin)}%, ${cfg.alphaMin + Math.random() * (cfg.alphaMax - cfg.alphaMin)})`,
-        type: ParticleType.SHIELD,
-      });
-    }
-  }
-
   // ========== 隧道工护甲喷涂粒子 ==========
 
   /**
@@ -138,8 +102,8 @@ export class ParticleSpawner {
     const cfg = BALANCE_CONFIG.particle.armorSpray;
     const baseAngle = Math.atan2(toY - fromY, toX - fromX);
 
-    for (let i = 0; i < cfg.streamCount; i++) {
-      const angle = baseAngle + (Math.random() - 0.5) * cfg.streamSpread;
+    for (let i = 0; i < cfg.emitter.streamCount; i++) {
+      const angle = baseAngle + (Math.random() - 0.5) * cfg.emitter.streamSpread;
       const speed = cfg.streamSpeedMin + Math.random() * (cfg.streamSpeedMax - cfg.streamSpeedMin);
       const life = cfg.streamLifeMin + Math.random() * (cfg.streamLifeMax - cfg.streamLifeMin);
       const size = cfg.streamSizeMin + Math.random() * (cfg.streamSizeMax - cfg.streamSizeMin);
@@ -154,6 +118,7 @@ export class ParticleSpawner {
         size,
         color,
         type: ParticleType.SPARK,
+        blend: cfg.blend, // lighter 叠加提亮（vfx-balance particle.armorSpray.blend）
       });
     }
   }
@@ -167,7 +132,7 @@ export class ParticleSpawner {
   static spawnArmorHealPlus(particles: Particle[], x: number, y: number): void {
     const cfg = BALANCE_CONFIG.particle.armorSpray;
     particles.push({
-      x, y: y - 40, // 头顶偏移
+      x, y: y - cfg.plusOffsetY, // 头顶偏移（vfx-balance particle.armorSpray.plusOffsetY）
       vx: 0, vy: cfg.plusVy,
       life: cfg.plusLife, maxLife: cfg.plusLife,
       size: cfg.plusSize,
@@ -175,6 +140,55 @@ export class ParticleSpawner {
       type: ParticleType.SPARK,
       text: '+',
       textColor: cfg.plusColor,
+      blend: cfg.blend, // lighter 叠加提亮（vfx-balance particle.armorSpray.blend）
+    });
+  }
+
+  /**
+   * 修盾时被修理目标（护盾蟑螂）身上的上升粒子（lighter 叠加，循环生成）
+   * @param particles 粒子数组
+   * @param x 被修理目标 X 坐标
+   * @param y 被修理目标 Y 坐标
+   */
+  static spawnShieldRepairWorkerParticles(particles: Particle[], x: number, y: number): void {
+    const cfg = BALANCE_CONFIG.particle.shieldRepair.workerParticle;
+    for (let i = 0; i < cfg.count; i++) {
+      const life = cfg.lifeMin + Math.random() * (cfg.lifeMax - cfg.lifeMin);
+      const size = cfg.sizeMin + Math.random() * (cfg.sizeMax - cfg.sizeMin);
+      const alpha = cfg.alphaMin + Math.random() * (cfg.alphaMax - cfg.alphaMin);
+      particles.push({
+        x: x + (Math.random() - 0.5) * 20, // 在被修理目标身上小范围随机偏移
+        y: y + (Math.random() - 0.5) * 20,
+        vx: (Math.random() - 0.5) * cfg.vxSpread * 2,
+        vy: cfg.vyMin + Math.random() * (cfg.vyMax - cfg.vyMin),
+        life, maxLife: life,
+        size,
+        color: `rgba(${cfg.color}, ${alpha})`,
+        type: ParticleType.SPARK,
+        blend: cfg.blend,
+      });
+    }
+  }
+
+  /**
+   * 护盾蟑螂被修理时头顶的+号粒子（上升）
+   * @param particles 粒子数组
+   * @param x 护盾蟑螂 X 坐标
+   * @param y 护盾蟑螂 Y 坐标
+   */
+  static spawnShieldRepairPlus(particles: Particle[], x: number, y: number): void {
+    const cfg = BALANCE_CONFIG.particle.shieldRepair.shieldPlus;
+    particles.push({
+      x, y: y - cfg.offsetY,
+      vx: 0, vy: cfg.vy,
+      life: cfg.life, maxLife: cfg.life,
+      size: cfg.size,
+      color: cfg.color,
+      type: ParticleType.SPARK,
+      text: '+',
+      textColor: cfg.color,
+      textColor2: cfg.color2,
+      blend: cfg.blend,
     });
   }
 
@@ -195,10 +209,10 @@ export class ParticleSpawner {
     const isIce = type === 'ice';
     const isPoison = type === 'poison';
 
-    const count = Math.floor(cfg.countMin + Math.random() * cfg.countMax);
+    const count = Math.floor(cfg.emitter.countMin + Math.random() * cfg.emitter.countMax);
     for (let i = 0; i < count; i++) {
       const rDist = Math.random() * range;
-      const rAngle = angle + (Math.random() - 0.5) * cfg.angleSpread;
+      const rAngle = angle + (Math.random() - 0.5) * cfg.emitter.angleSpread;
       const px = x + Math.cos(rAngle) * rDist;
       const py = y + Math.sin(rAngle) * rDist;
       const life = cfg.lifeMin + Math.random() * cfg.lifeMax;
@@ -281,8 +295,8 @@ export class ParticleSpawner {
     for (let i = 0; i < count; i++) {
       const life = cfg.lifeMin + Math.random() * cfg.lifeMax;
       particles.push({
-        x: x + (Math.random() - 0.5) * cfg.offsetX,
-        y: y + (Math.random() - 0.5) * cfg.offsetY,
+        x: x + (Math.random() - 0.5) * cfg.emitter.offsetX,
+        y: y + (Math.random() - 0.5) * cfg.emitter.offsetY,
         vx: (Math.random() - 0.5) * cfg.vxRange,
         vy: cfg.vyBase - Math.random() * cfg.vyRange,
         life, maxLife: life,
@@ -321,8 +335,38 @@ export class ParticleSpawner {
     );
   }
 
-  // ========== 火花粒子 ==========
+  // ========== 破盾粒子（护盾蟑螂护盾破碎瞬间的玻璃碎屑辉光点） ==========
 
+  /**
+   * 生成破盾碎屑粒子（SPARK 类型辉光小点 + 近白淡蓝 + lighter 叠加，模拟玻璃渣四溅的闪光；
+   * 出生点沿护盾光带区域水平散布）
+   * @param particles 粒子数组
+   * @param x 光带中心 X 坐标（护盾蟑螂中心 X）
+   * @param y 光带中心 Y 坐标（护盾蟑螂本体下缘 - 光带半高）
+   */
+  static spawnShieldBreakParticles(particles: Particle[], x: number, y: number): void {
+    const cfg = BALANCE_CONFIG.particle.shieldBreak;
+    const sub = BALANCE_CONFIG.subway;
+    for (let i = 0; i < cfg.count; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = cfg.speedMin + Math.random() * (cfg.speedMax - cfg.speedMin);
+      const life = cfg.lifeMin + Math.random() * (cfg.lifeMax - cfg.lifeMin);
+      particles.push({
+        // 光带区域内散布：宽 2×shieldRectHalfWidth、高 shieldBandHeight
+        x: x + (Math.random() - 0.5) * sub.shieldRectHalfWidth * 2,
+        y: y + (Math.random() - 0.5) * sub.shieldBandHeight,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed + cfg.vyBias,
+        life, maxLife: life,
+        size: cfg.sizeMin + Math.random() * (cfg.sizeMax - cfg.sizeMin),
+        color: `rgba(${Math.round(cfg.rMin + Math.random() * (cfg.rMax - cfg.rMin))}, ${Math.round(cfg.gMin + Math.random() * (cfg.gMax - cfg.gMin))}, ${Math.round(cfg.bMin + Math.random() * (cfg.bMax - cfg.bMin))}, ${(cfg.alphaMin + Math.random() * (cfg.alphaMax - cfg.alphaMin)).toFixed(2)})`,
+        type: ParticleType.SPARK,
+        blend: cfg.blend, // lighter 叠加提亮（vfx-balance particle.shieldBreak.blend）
+      });
+    }
+  }
+
+  // ========== 火花粒子 ==========
   static spawnSparkParticles(particles: Particle[], x: number, y: number, count: number): void {
     const cfg = BALANCE_CONFIG.particle.spark;
     ParticleSpawner.spawnRadial(
@@ -360,7 +404,7 @@ export class ParticleSpawner {
       cfg.sizeMin, cfg.sizeMax,
       () => `hsl(${cfg.hueMin + Math.random() * cfg.hueMax}, ${cfg.saturation}%, ${cfg.lightnessMin + Math.random() * cfg.lightnessMax}%)`,
       ParticleType.ASH,
-      cfg.offsetXY,
+      cfg.emitter.offsetXY,
     );
   }
 
@@ -404,7 +448,7 @@ export class ParticleSpawner {
       });
     }
     // 内层白色核心爆发
-    for (let i = 0; i < cfg.innerCount; i++) {
+    for (let i = 0; i < cfg.emitter.innerCount; i++) {
       const angle = Math.random() * Math.PI * 2;
       const speed = cfg.innerSpeedMin + Math.random() * cfg.innerSpeedMax;
       const life = cfg.innerLifeMin + Math.random() * cfg.innerLifeMax;
@@ -431,11 +475,11 @@ export class ParticleSpawner {
   ): void {
     const cfg = BALANCE_CONFIG.particle.lightning;
     // 顶部闪电弧
-    for (let i = 0; i < cfg.topCount; i++) {
-      const px = x + (Math.random() - 0.5) * width * cfg.topWidthRatio;
+    for (let i = 0; i < cfg.emitter.topCount; i++) {
+      const px = x + (Math.random() - 0.5) * width * cfg.emitter.topWidthRatio;
       const life = cfg.topLifeMin + Math.random() * cfg.topLifeMax;
       particles.push({
-        x: px, y: y + Math.random() * cfg.topYRange,
+        x: px, y: y + Math.random() * cfg.emitter.topYRange,
         vx: (Math.random() - 0.5) * cfg.topVxRange,
         vy: cfg.topVyMin + Math.random() * cfg.topVyMax,
         life, maxLife: life,
@@ -445,7 +489,7 @@ export class ParticleSpawner {
       });
     }
     // 全屏闪电
-    for (let i = 0; i < cfg.fullCount; i++) {
+    for (let i = 0; i < cfg.emitter.fullCount; i++) {
       const px = x + (Math.random() - 0.5) * width;
       const py = Math.random() * height;
       const life = cfg.fullLifeMin + Math.random() * cfg.fullLifeMax;

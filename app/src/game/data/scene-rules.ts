@@ -55,7 +55,8 @@ export const SCENE_ROACH_TYPES: Record<SceneType, RoachType[]> = {
   [SceneType.STREET]: [RoachType.SMALL, RoachType.LARGE, RoachType.FLYING, RoachType.ARMORED, RoachType.SPLITTING, RoachType.SUICIDE, RoachType.FLYING_SUICIDE],
   [SceneType.HOSPITAL]: [RoachType.SMALL, RoachType.LARGE, RoachType.FLYING, RoachType.ARMORED, RoachType.SPLITTING, RoachType.SUICIDE, RoachType.FLYING_SUICIDE, RoachType.QUEEN, RoachType.NURSE, RoachType.MUTANT, RoachType.TIMED_SUICIDE],
   [SceneType.SUBWAY]: [RoachType.SMALL, RoachType.LARGE, RoachType.FLYING, RoachType.ARMORED, RoachType.SUICIDE, RoachType.FLYING_SUICIDE, RoachType.TUNNEL_WORKER, RoachType.SUBWAY_ELITE, RoachType.SHIELD],
-  [SceneType.SUPERMARKET]: [RoachType.SMALL, RoachType.LARGE, RoachType.FLYING, RoachType.ARMORED, RoachType.SPLITTING, RoachType.SUICIDE, RoachType.FLYING_SUICIDE, RoachType.QUEEN],
+  // Supermarket V3.1: 无女王；医院/地铁专属怪下放（护士、定时自爆、隧道工、地铁精英、护盾蟑螂）；分裂蟑螂仅供 E/G 阵型波次补位
+  [SceneType.SUPERMARKET]: [RoachType.SMALL, RoachType.LARGE, RoachType.FLYING, RoachType.ARMORED, RoachType.SPLITTING, RoachType.SUICIDE, RoachType.FLYING_SUICIDE, RoachType.NURSE, RoachType.TIMED_SUICIDE, RoachType.TUNNEL_WORKER, RoachType.SUBWAY_ELITE, RoachType.SHIELD],
   [SceneType.SCHOOL]: [RoachType.SMALL, RoachType.LARGE, RoachType.FLYING, RoachType.ARMORED, RoachType.SPLITTING, RoachType.SUICIDE, RoachType.FLYING_SUICIDE, RoachType.QUEEN],
   [SceneType.NEST]: [RoachType.SMALL, RoachType.LARGE, RoachType.FLYING, RoachType.ARMORED, RoachType.SPLITTING, RoachType.SUICIDE, RoachType.FLYING_SUICIDE, RoachType.QUEEN],
 };
@@ -117,9 +118,9 @@ export const SCENE_GROUND_BOUNDS: Record<SceneType, [number, number, number, num
   // Hospital: narrow corridor (窄走廊，增强沉浸感)
   [SceneType.HOSPITAL]: [232,416, 333,449, 141,512, 401,486, 50,490,810],
   // Subway: wide platform (宽平台)
-  [SceneType.SUBWAY]:   [58,472, 190,472,  58,530, 456,530,  58,456,810],
-  // Supermarket: aisles (货架通道)
-  [SceneType.SUPERMARKET]: [200,430, 380,430,  90,610, 450,610,  0,530,800],
+  [SceneType.SUBWAY]:   [222,308, 380,308,  92,522, 484,522,  92,484,810],
+  // Supermarket: aisles (货架通道；远点 215/329@348，中点 60/485@581，近点 60/485@810)
+  [SceneType.SUPERMARKET]: [215,348, 329,348,  60,581, 485,581,  60,485,810],
   // School: classroom (教室)
   [SceneType.SCHOOL]:   [210,435, 370,435,  95,615, 455,615,  0,530,800],
   // Nest: organic tunnel (有机隧道)

@@ -59,12 +59,13 @@ export class StickySystem {
   }
 
   // ========== 透视缩放（用于粘板渲染和碰撞） ==========
-  /** 计算透视缩放：越高（离底部越远）越小 */
+  /** 计算透视缩放：越高（离底部越远）越小；底部防线处 1.0，地平线处 0.3 */
   getPerspectiveScale(y: number): number {
     const bottomY = this.config.getDefenseLineY();
     const topY = this.config.canvasHeight * 0.2;
     const t = Math.max(0, Math.min(1, (bottomY - y) / (bottomY - topY)));
-    return 0.3 + t * 0.7;
+    // t=0 在底部（近，scale=1.0），t=1 在顶部（远，scale=0.3）
+    return 1.0 - t * 0.7;
   }
 
   // ========== 粘液弹喷射（10个追踪水滴） ==========

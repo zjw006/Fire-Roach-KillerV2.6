@@ -5,7 +5,7 @@
 
 import { RoachType, RoachState } from '../../types';
 import type { FanState, Roach } from '../../types';
-import { TEXT_CONFIG, RENDER_COLOR, RENDER_FONT, BALANCE_CONFIG } from '../../data';
+import { TEXT_CONFIG, RENDER_FONT, BALANCE_CONFIG } from '../../data';
 
 /**
  * 风扇系统配置接口（修复 P2：统一为 getter 函数，消除函数/值不一致）
@@ -223,18 +223,19 @@ export class FanSystem {
     const SOURCE_WIDTH = W * fanCfg.sourceWidthRatio;
 
     ctx.save();
+    ctx.globalCompositeOperation = fanCfg.blend; // 叠加混合集中于 vfx-balance fan.blend
 
     // ===== 透视气流线 =====
     // 修复 P1：用 save/restore 包裹 globalAlpha 修改
     ctx.save();
-    for (let i = 0; i < fanCfg.waveCount; i++) {
-      const srcX = (i / (fanCfg.waveCount - 1)) * SOURCE_WIDTH + (W - SOURCE_WIDTH) / 2;
+    for (let i = 0; i < fanCfg.emitter.waveCount; i++) {
+      const srcX = (i / (fanCfg.emitter.waveCount - 1)) * SOURCE_WIDTH + (W - SOURCE_WIDTH) / 2;
       const waveSpeed = fanCfg.waveSpeedBase + i * fanCfg.waveSpeedIncrement;
       const wavePhase = t * waveSpeed + i * fanCfg.wavePhaseMultiplier;
       const baseAmplitude = fanCfg.waveAmplitudeBase + i * fanCfg.waveAmplitudeIncrement;
 
       ctx.globalAlpha = fanCfg.waveAlphaBase + Math.sin(wavePhase * 0.5) * fanCfg.waveAlphaAmp;
-      ctx.strokeStyle = i % 3 === 0 ? RENDER_COLOR.fanWaveSecondary : RENDER_COLOR.fanWavePrimary;
+      ctx.strokeStyle = i % 3 === 0 ? fanCfg.waveSecondaryColor : fanCfg.wavePrimaryColor;
       ctx.lineWidth = fanCfg.waveStrokeBase + Math.sin(wavePhase) * fanCfg.waveStrokeAmp;
       ctx.beginPath();
 
@@ -254,9 +255,9 @@ export class FanSystem {
 
     // ===== 透视阵风前沿 =====
     ctx.save();
-    for (let g = 0; g < fanCfg.gustCount; g++) {
+    for (let g = 0; g < fanCfg.emitter.gustCount; g++) {
       const gustSpeed = fanCfg.gustSpeedBase + g * fanCfg.gustSpeedIncrement;
-      const gustPhase = (t * gustSpeed + g / fanCfg.gustCount) % 1.0;
+      const gustPhase = (t * gustSpeed + g / fanCfg.emitter.gustCount) % 1.0;
       const gustY = dl - gustPhase * RANGE;
       const gustAlpha = Math.sin(gustPhase * Math.PI) * fanCfg.gustAlphaBase;
       if (gustAlpha <= 0 || gustY < fanTopY) continue;
@@ -267,14 +268,14 @@ export class FanSystem {
       const gustHeight = fanCfg.gustHeightBase + g * fanCfg.gustHeightIncrement;
 
       const grad = ctx.createLinearGradient(0, gustY - gustHeight / 2, 0, gustY + gustHeight / 2);
-      grad.addColorStop(0, 'rgba(167, 139, 250, 0)');
-      grad.addColorStop(0.5, `rgba(196, 181, 253, ${gustAlpha})`);
-      grad.addColorStop(1, 'rgba(167, 139, 250, 0)');
+      grad.addColorStop(0, fanCfg.gustEdgeColor);
+      grad.addColorStop(0.5, fanCfg.gustMidColor.replace('{alpha}', gustAlpha.toFixed(3)));
+      grad.addColorStop(1, fanCfg.gustEdgeColor);
       ctx.fillStyle = grad;
       ctx.fillRect(W / 2 - gustHalfWidth, gustY - gustHeight / 2, gustHalfWidth * 2, gustHeight);
 
       ctx.globalAlpha = gustAlpha * 1.5;
-      ctx.strokeStyle = RENDER_COLOR.fanGust;
+      ctx.strokeStyle = fanCfg.gustLineColor;
       ctx.lineWidth = 1.5;
       // Left edge
       ctx.beginPath();
@@ -299,7 +300,7 @@ export class FanSystem {
 
     // ===== 透视粒子（修复 P2：手动变换替代 save/restore 嵌套） =====
     ctx.save();
-    for (let p = 0; p < fanCfg.particleCount; p++) {
+    for (let p = 0; p < fanCfg.emitter.particleCount; p++) {
       const riseSpeed = fanCfg.particleRiseSpeedBase + (p % 5) * fanCfg.particleRiseSpeedIncrement;
       const phase = (p * 137.5 + t * riseSpeed) % RANGE;
       const py = dl - phase;
@@ -312,7 +313,7 @@ export class FanSystem {
       const pAlpha = (fanCfg.particleAlphaBase + Math.sin(t * 2.5 + p * 1.7) * fanCfg.particleAlphaAmp) * (0.5 + normalizedY * 0.5);
 
       ctx.globalAlpha = Math.max(0, pAlpha);
-      ctx.fillStyle = p % 2 === 0 ? RENDER_COLOR.fanParticleLight : RENDER_COLOR.fanParticleDark;
+      ctx.fillStyle = p % 2 === 0 ? fanCfg.particleLightColor : fanCfg.particleDarkColor;
       
       // 修复 P2：手动变换替代 save/restore 嵌套，减少 GPU 状态切换
       const angle = Math.sin(t + p * 0.5) * fanCfg.particleRotateAmp - 0.1;
@@ -335,7 +336,7 @@ export class FanSystem {
     // ===== 风扇源轮廓 =====
     ctx.save();
     ctx.globalAlpha = fanCfg.sourceAlpha;
-    ctx.strokeStyle = RENDER_COLOR.fanWaveSecondary;
+    ctx.strokeStyle = fanCfg.waveSecondaryColor;
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(W / 2 - SOURCE_WIDTH / 2, dl);
@@ -352,9 +353,9 @@ export class FanSystem {
 
     // ===== 源发光 =====
     const sourceGrad = ctx.createRadialGradient(W / 2, dl, 0, W / 2, dl, SOURCE_WIDTH / 2);
-    sourceGrad.addColorStop(0, `rgba(167, 139, 250, ${fanCfg.sourceGlowAlpha})`);
-    sourceGrad.addColorStop(0.5, `rgba(196, 181, 253, ${fanCfg.sourceGlowMidAlpha})`);
-    sourceGrad.addColorStop(1, 'rgba(167, 139, 250, 0)');
+    sourceGrad.addColorStop(0, fanCfg.sourceGlowInnerColor.replace('{alpha}', String(fanCfg.sourceGlowAlpha)));
+    sourceGrad.addColorStop(0.5, fanCfg.sourceGlowMidColor.replace('{alpha}', String(fanCfg.sourceGlowMidAlpha)));
+    sourceGrad.addColorStop(1, fanCfg.sourceGlowFadeColor);
     ctx.fillStyle = sourceGrad;
     ctx.fillRect(W / 2 - SOURCE_WIDTH / 2, fanTopY, SOURCE_WIDTH, RANGE);
 
@@ -363,11 +364,11 @@ export class FanSystem {
     const iconCY = dl - fanCfg.iconYOffset;
     const iconSize = fanCfg.iconSize;
 
-    ctx.fillStyle = 'rgba(229, 231, 235, 0.9)';
+    ctx.fillStyle = fanCfg.iconBgColor;
     ctx.beginPath();
     ctx.arc(iconCX, iconCY, iconSize, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = 'rgba(156, 163, 175, 0.8)';
+    ctx.strokeStyle = fanCfg.iconStrokeColor;
     ctx.lineWidth = 2.5;
     ctx.stroke();
 
@@ -375,23 +376,23 @@ export class FanSystem {
       const angle = fan.bladeAngle + (i * Math.PI * 2 / 3);
       const bx = iconCX + Math.cos(angle) * iconSize * fanCfg.bladeRadiusRatio;
       const by = iconCY + Math.sin(angle) * iconSize * fanCfg.bladeRadiusRatio;
-      ctx.fillStyle = RENDER_COLOR.fanIconBlade;
+      ctx.fillStyle = fanCfg.iconBladeColor;
       ctx.beginPath();
       ctx.ellipse(bx, by, fanCfg.bladeSize, fanCfg.bladeLength, angle + Math.PI / 2, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    ctx.fillStyle = RENDER_COLOR.fanIconCenter;
+    ctx.fillStyle = fanCfg.iconCenterColor;
     ctx.beginPath();
     ctx.arc(iconCX, iconCY, fanCfg.centerSize, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = RENDER_COLOR.fanIconPrimary;
+    ctx.fillStyle = fanCfg.iconPrimaryColor;
     ctx.font = RENDER_FONT.boldMedium;
     ctx.textAlign = 'center';
     ctx.fillText(TEXT_CONFIG.combat.fanTimer.text(fan.timer.toFixed(1)), iconCX, iconCY - iconSize - fanCfg.iconTimerYOffset);
 
-    ctx.fillStyle = 'rgba(167, 139, 250, 0.7)';
+    ctx.fillStyle = fanCfg.iconBlowingColor;
     ctx.font = RENDER_FONT.small;
     ctx.fillText(TEXT_CONFIG.combat.fanBlowing.text, iconCX, iconCY - iconSize - fanCfg.iconBlowingYOffset);
 

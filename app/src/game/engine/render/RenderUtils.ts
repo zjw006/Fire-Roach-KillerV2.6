@@ -70,11 +70,12 @@ export class RenderUtils {
 
   private static getSprayConeGradient(ctx: CanvasRenderingContext2D): CanvasGradient {
     if (!this._sprayConeGrad) {
+      const cfg = BALANCE_CONFIG.render.renderUtils.insecticide;
       const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
-      grad.addColorStop(0, 'rgba(80, 255, 100, 0.5)');
-      grad.addColorStop(0.4, 'rgba(60, 220, 80, 0.3)');
-      grad.addColorStop(0.7, 'rgba(40, 180, 60, 0.15)');
-      grad.addColorStop(1, 'rgba(20, 120, 40, 0)');
+      grad.addColorStop(0, cfg.sprayConeColor0);
+      grad.addColorStop(0.4, cfg.sprayConeColor1);
+      grad.addColorStop(0.7, cfg.sprayConeColor2);
+      grad.addColorStop(1, cfg.sprayConeColor3);
       this._sprayConeGrad = grad;
     }
     return this._sprayConeGrad;
@@ -82,9 +83,10 @@ export class RenderUtils {
 
   private static getNozzleGlowGradient(ctx: CanvasRenderingContext2D): CanvasGradient {
     if (!this._nozzleGlowGrad) {
+      const cfg = BALANCE_CONFIG.render.renderUtils.insecticide;
       const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
-      grad.addColorStop(0, 'rgba(150, 255, 150, 0.8)');
-      grad.addColorStop(1, 'rgba(50, 200, 50, 0)');
+      grad.addColorStop(0, cfg.nozzleGlowColor0);
+      grad.addColorStop(1, cfg.nozzleGlowColor1);
       this._nozzleGlowGrad = grad;
     }
     return this._nozzleGlowGrad;
@@ -141,6 +143,7 @@ export class RenderUtils {
 
     const alpha = Math.min(1, timer / cfg.fadeInDuration) * (cfg.baseAlpha + Math.sin(time * cfg.pulseFreq) * cfg.pulseAmp);
     ctx.save();
+    ctx.globalCompositeOperation = cfg.blend; // 叠加混合集中于 vfx-balance renderUtils.radarLaser.blend
 
     // 外部辉光
     ctx.strokeStyle = `rgba(${cfg.colorBody}, ${alpha * cfg.outerGlowAlpha})`;
@@ -208,6 +211,7 @@ export class RenderUtils {
     const pulseAlpha = cfg.pulseBaseAlpha + cfg.pulseAmpAlpha * Math.sin(time * cfg.pulseFreq) * progress;
 
     ctx.save();
+    ctx.globalCompositeOperation = cfg.blend; // 叠加混合集中于 vfx-balance renderUtils.insecticide.blend
     ctx.globalAlpha = pulseAlpha;
 
     // 径向渐变喷雾锥体（缓存渐变）
@@ -289,7 +293,7 @@ export class RenderUtils {
     const headY = currentY;
 
     ctx.save();
-    ctx.globalCompositeOperation = 'screen';
+    ctx.globalCompositeOperation = cfg.blend; // 叠加混合集中于 vfx-balance renderUtils.swatter.blend
 
     // 辉光（缓存渐变）
     ctx.save();
@@ -390,7 +394,7 @@ export class RenderUtils {
     }
 
     ctx.save();
-    ctx.globalCompositeOperation = 'screen';
+    ctx.globalCompositeOperation = cfg.blend; // 叠加混合集中于 vfx-balance renderUtils.muzzleFlash.blend
 
     for (let gi = 0; gi < gunXs.length; gi++) {
       const mx = gunXs[gi];
@@ -459,7 +463,7 @@ export class RenderUtils {
     const c = cfg.typeColors[item.type] || cfg.defaultColor;
 
     ctx.save();
-    ctx.globalCompositeOperation = 'screen';
+    ctx.globalCompositeOperation = cfg.blend; // 叠加混合集中于 vfx-balance renderUtils.itemPlacement.blend
 
     // Large filled area
     ctx.fillStyle = `rgba(${c}, ${cfg.fillAlpha})`;
@@ -556,6 +560,7 @@ export class RenderUtils {
     const dl = defenseLineY;
 
     ctx.save();
+    ctx.globalCompositeOperation = cfg.blend; // 叠加混合集中于 vfx-balance renderUtils.defenseLine.blend
     ctx.strokeStyle = defenseLineColor;
     ctx.lineWidth = cfg.lineWidth;
     ctx.setLineDash([...cfg.dash]);
@@ -573,7 +578,7 @@ export class RenderUtils {
     ctx.fillRect(0, dl, w, cfg.fillHeight);
     ctx.restore();
 
-    ctx.fillStyle = `rgba(255, 255, 255, ${cfg.labelAlpha})`;
+    ctx.fillStyle = `rgba(${cfg.labelColor}, ${cfg.labelAlpha})`;
     ctx.font = cfg.labelFont;
     ctx.textAlign = 'center';
     ctx.fillText(TEXT_CONFIG.combat.defenseLine.text, w / 2, dl + cfg.labelOffsetY);
@@ -583,6 +588,7 @@ export class RenderUtils {
       const shieldAlpha = cfg.shieldAlphaBase + Math.sin(time * cfg.shieldAlphaFreq) * cfg.shieldAlphaAmp;
       const shieldY = dl - cfg.shieldYOffset;
       ctx.save();
+      ctx.globalCompositeOperation = cfg.shieldBlend; // 叠加混合集中于 vfx-balance renderUtils.defenseLine.shieldBlend
       ctx.shadowColor = cfg.shieldGlowColor;
       ctx.shadowBlur = cfg.shieldGlowBase + Math.sin(time * cfg.shieldGlowFreq) * cfg.shieldGlowAmp;
       ctx.strokeStyle = `rgba(${cfg.shieldColor}, ${shieldAlpha})`;

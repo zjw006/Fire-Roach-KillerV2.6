@@ -1,4 +1,6 @@
 import type { ConsumableDef } from '../types';
+import { RoachType } from '../types';
+import { SHIELD_BAND_HEIGHT, SHIELD_BREAK_BLEND, SHIELD_BREAK_CRACK_ALPHA, SHIELD_BREAK_CRACK_COLOR, SHIELD_BREAK_CRACK_COUNT, SHIELD_BREAK_CRACK_LINE_WIDTH, SHIELD_BREAK_DURATION, SHIELD_BREAK_FLASH_ALPHA, SHIELD_BREAK_FLASH_COLOR, SHIELD_BREAK_SHARD_COUNT, SHIELD_BREAK_SHARD_EDGE_ALPHA, SHIELD_BREAK_SHARD_EDGE_COLOR, SHIELD_BREAK_SHARD_FILL_ALPHA, SHIELD_BREAK_SHARD_FILL_COLOR, SHIELD_BREAK_SHARD_FLY, SHIELD_BREAK_SHARD_SIZE_MAX, SHIELD_BREAK_SHARD_SIZE_MIN, SHIELD_DOME_ALLY_WIDEN, SHIELD_DOME_BREATH_AMP, SHIELD_DOME_BREATH_FREQ, SHIELD_DOME_CRACK_ALPHA, SHIELD_DOME_CRACK_COLOR, SHIELD_DOME_CRACK_COUNT, SHIELD_DOME_CRACK_LINE_WIDTH, SHIELD_DOME_DEBRIS_COLOR, SHIELD_DOME_DEBRIS_COUNT, SHIELD_DOME_DEBRIS_HP_THRESHOLD, SHIELD_DOME_DEBRIS_LIFE, SHIELD_DOME_DEBRIS_SIZE, SHIELD_DOME_EDGE_ALPHA, SHIELD_DOME_EDGE_COLOR, SHIELD_DOME_FILL_ALPHA_BOTTOM, SHIELD_DOME_FILL_ALPHA_TOP, SHIELD_DOME_FILL_COLOR, SHIELD_DOME_FLARE_EXTRA, SHIELD_DOME_GAP_ALPHA, SHIELD_DOME_GAP_COLOR, SHIELD_DOME_GAP_GLOW_BLUR, SHIELD_DOME_GAP_LINE_WIDTH, SHIELD_DOME_HEIGHT, SHIELD_DOME_RIM_ALPHA, SHIELD_DOME_RIM_COLOR, SHIELD_DOME_RIM_LINE_WIDTH, SHIELD_DOME_RING_COUNT, SHIELD_DOME_SCORCH_ALPHA, SHIELD_DOME_SCORCH_COLOR, SHIELD_DOME_SCORCH_COUNT, SHIELD_DOME_SEGMENT_COUNT, SHIELD_RECT_COLOR, SHIELD_RECT_FILL_ALPHA_MID, SHIELD_RECT_FILL_ALPHA_NEAR, SHIELD_RECT_HEIGHT, SHIELD_RECT_STROKE_ALPHA_SCALE, SHIELD_RECT_STROKE_COLOR, SHIELD_RECT_STROKE_FLASH_ALPHA } from './vfx-balance';
 
 // ========== 消耗品定义（关卡内商店，一次性使用） ==========
 /**
@@ -313,21 +315,6 @@ export const BALANCE_ITEMS = {
     } as Record<string, number>,
   },
 
-  // ===== 毒雾粒子 =====
-  // 毒气弹爆炸后产生的毒雾粒子效果参数
-  poisonCloud: {
-    particleCount: 20,           // 粒子总数
-    speedMin: 40,                // 最小速度（像素/秒）
-    speedMax: 80,                // 最大速度（像素/秒）
-    lifeMin: 0.5,                // 最小存活时间（秒）
-    lifeMax: 0.8,                // 最大存活时间（秒）
-    maxLife: 1.3,                // 最大存活时间上限（秒）
-    sizeMin: 4,                  // 最小粒子大小（像素）
-    sizeMax: 12,                 // 最大粒子大小（像素）
-    fireZoneDps: 25,             // 火焰区域 DPS
-    fireZoneLife: 6,             // 火焰区域存活时间（秒）
-  },
-
   // ===== 杀虫剂喷雾 =====
   // 双侧毒气喷射系统参数
   insecticide: {
@@ -356,75 +343,16 @@ export const BALANCE_ITEMS = {
     warningThreshold: 1,         // 即将结束警告阈值（秒）
   },
 
-  // ===== 风扇系统 =====
-  // 强力风扇：全场减速，将蟑螂吹退
-  fan: {
-    pushForce: 0.5,              // 推力系数
-    defaultDuration: 4,          // 默认持续时间（秒）
-    defaultSlowFactor: 0.3,      // 默认减速系数（30%）
-    defaultBladeSpeed: 15,       // 默认扇叶转速
-    fanTopYRatio: 0.5,           // 风扇顶部 Y 坐标占屏幕高度比例
-    effects: {                   // 不同蟑螂类型的风扇效果：[减速系数, 推退距离]
-      flying: [0.70, 120],       // 飞行蟑螂受风力影响较小
-      flyingSuicide: [0.65, 100],
-      small: [0.60, 80],
-      large: [0.40, 50],
-      splitting: [0.40, 50],
-      suicide: [0.30, 35],
-      armored: [0.20, 25],       // 装甲蟑螂几乎不受影响
-      queen: [0.10, 15],         // 女王几乎不受影响
-      default: [0.40, 50],
-    } as Record<string, [number, number]>,
-    waveCount: 18,               // 风扇波纹数量
-    waveSpeedBase: 2.0,          // 波纹基础速度
-    waveSpeedIncrement: 0.3,     // 波纹速度增量
-    waveAmplitudeBase: 14,       // 波纹基础振幅（像素）
-    waveAmplitudeIncrement: 1.5, // 波纹振幅增量
-    waveAlphaBase: 0.04,         // 波纹基础透明度
-    waveAlphaAmp: 0.03,          // 波纹透明度变化幅度
-    waveLineYStep: 5,            // 波纹线 Y 步进（像素）
-    wavePhaseMultiplier: 2.7,    // 波纹相位倍率
-    waveStrokeBase: 2.0,         // 波纹基础线宽
-    waveStrokeAmp: 1.0,          // 波纹线宽变化幅度
-    perspectiveScaleMin: 0.08,   // 透视缩放最小值
-    sourceWidthRatio: 0.7,       // 风源宽度占屏幕比例
-    gustCount: 5,                // 阵风数量
-    gustHeightBase: 45,          // 阵风基础高度（像素）
-    gustHeightIncrement: 12,     // 阵风高度增量
-    gustAlphaBase: 0.15,         // 阵风基础透明度
-    gustSpeedBase: 0.5,          // 阵风基础速度
-    gustSpeedIncrement: 0.3,     // 阵风速度增量
-    particleCount: 28,           // 风粒子数量
-    particleRiseSpeedBase: 50,   // 粒子基础上升速度（像素/秒）
-    particleRiseSpeedIncrement: 30, // 粒子上升速度增量
-    particleAlphaBase: 0.15,     // 粒子基础透明度
-    particleAlphaAmp: 0.1,       // 粒子透明度变化幅度
-    particleSizeBase: 1.8,       // 粒子基础大小（像素）
-    particleSizeAmp: 0.6,        // 粒子大小变化幅度
-    particleRotateAmp: 0.3,      // 粒子旋转幅度
-    particleSizeLength: 5,       // 粒子长度（像素）
-    sourceAlpha: 0.08,           // 风源透明度
-    sourceGlowAlpha: 0.18,       // 风源发光透明度
-    sourceGlowMidAlpha: 0.06,    // 风源中间发光透明度
-    iconSize: 22,                // 风扇图标大小（像素）
-    iconYOffset: 30,             // 风扇图标 Y 偏移
-    iconTimerYOffset: 8,         // 风扇计时器 Y 偏移
-    iconBlowingYOffset: 20,      // 风扇吹动状态 Y 偏移
-    bladeSize: 4,                // 扇叶大小（像素）
-    bladeLength: 8,              // 扇叶长度（像素）
-    bladeRadiusRatio: 0.55,      // 扇叶半径比例
-    centerSize: 4,               // 风扇中心大小（像素）
-    activationScreenShake: 4,    // 激活时屏幕震动强度
-    activationTextYRatio: 0.3,   // 激活文字 Y 比例
-    activationTextYOffset: 20,   // 激活文字 Y 偏移（像素）
-  },
-
   // ===== 经济系统 =====
   // 金币和天赋点经济参数
   economy: {
     initialMoney: { easy: 5000, normal: 5000, hard: 100 }, // 初始金币（不同难度）
     talentCostScaling: 1.5,      // 天赋升级费用倍率（每级 1.5x）
     hardModeRewardPenalty: 0.8,  // 困难模式奖励削减系数（80%）
+    // 天赋点奖励：每关胜利发放 = floor(coefficient × 场景倍率)，集中于此便于调整
+    // 系数=33 → 厨房33/下水道39/垃圾场49/地下室59，到地下室合计 180 点，
+    // 恰够升级"火焰强化(100)"或"射程延伸(120)"其中之一（二选一，不能都升）
+    talentPointReward: { coefficient: 33 },
   },
 
   // ===== 地铁场景：列车系统（场景被动事件） =====
@@ -467,19 +395,74 @@ export const BALANCE_ITEMS = {
   // ===== 地铁场景：隧道工 / 精英 / 护盾蟑螂 / 斩螂·110 =====
   subway: {
     // 隧道工蟑螂
-    armorSprayInterval: 6,         // 护甲喷涂间隔（秒）
-    armorSprayAmount: 150,         // 单次喷涂护甲值（提高 BUFF 效果，原 50）
+    armorSprayInterval: 10,        // 护甲喷涂间隔（秒，6→10 降低加护甲速度）
+    armorSprayAmount: 200,         // 单次喷涂护甲值（提高：150→200）
     armorSprayRange: 300,          // 喷涂范围（像素，增强施法范围，原 200）
     // 地铁精英
     eliteChargeDelay: 2,           // 出场后进入冲刺的延迟（秒）
     eliteChargeSpeed: 460,         // 冲刺速度（像素/秒）
     eliteChargeEdgeMargin: 30,     // 冲刺到屏幕边缘停止的余量（像素）
     // 护盾蟑螂（气体护盾）
-    shieldMaxHp: 50,               // 气体护盾容量（平衡下调：120→50，降低对火焰输出的吸收）
+    shieldMaxHp: 100,              // 气体护盾容量（提高：50→100，增强护盾生存力）
     shieldRegenPerSec: 2,          // 护盾完好时自然恢复（点/秒，5→2，放缓自然回盾）
     shieldRebuildDelay: 10,        // 护盾破碎后重新生成延迟（秒）
     shieldRectHalfWidth: 100,      // 护盾矩形保护区半宽（像素，总宽200）
-    shieldRectHeight: 360,         // 护盾矩形保护区高度（像素，从护盾蟑螂向上延伸，Y轴拉长一倍，原 180）
+    shieldRectHeight: SHIELD_RECT_HEIGHT, // 护盾矩形保护区高度（像素，从护盾蟑螂向上延伸）——数值集中于 vfx-balance.ts，此处引用保持访问路径不变
+    shieldBandHeight: SHIELD_BAND_HEIGHT, // 底部光带高度（像素，破盾特效/碎裂粒子散布定位沿用）——数值集中于 vfx-balance.ts，此处引用保持访问路径不变
+    // --- 护盾半圆甲壳造型（暗红甲壳 + 分段硬甲 + 缝隙暗金微光）——数值集中于 vfx-balance.ts，此处引用保持访问路径不变 ---
+    shieldDomeHeight: SHIELD_DOME_HEIGHT,                    // 甲壳视觉高度（像素，200×100 半圆观感，与实际判定区解耦）
+    shieldDomeFillColor: SHIELD_DOME_FILL_COLOR,             // 甲壳填充 RGB（暗红）
+    shieldDomeFillAlphaBottom: SHIELD_DOME_FILL_ALPHA_BOTTOM, // 底部填充透明度
+    shieldDomeFillAlphaTop: SHIELD_DOME_FILL_ALPHA_TOP,       // 顶部填充透明度
+    shieldDomeRimColor: SHIELD_DOME_RIM_COLOR,               // 外缘描边 RGB
+    shieldDomeRimAlpha: SHIELD_DOME_RIM_ALPHA,               // 外缘描边透明度
+    shieldDomeRimLineWidth: SHIELD_DOME_RIM_LINE_WIDTH,      // 外缘描边线宽（像素）
+    shieldDomeSegmentCount: SHIELD_DOME_SEGMENT_COUNT,       // 放射分段数
+    shieldDomeRingCount: SHIELD_DOME_RING_COUNT,             // 同心环纹数
+    shieldDomeGapColor: SHIELD_DOME_GAP_COLOR,               // 缝隙暗金 RGB
+    shieldDomeGapAlpha: SHIELD_DOME_GAP_ALPHA,               // 缝隙金光基准透明度
+    shieldDomeGapLineWidth: SHIELD_DOME_GAP_LINE_WIDTH,      // 缝隙线宽（像素）
+    shieldDomeGapGlowBlur: SHIELD_DOME_GAP_GLOW_BLUR,        // 缝隙金光辉光半径（像素）
+    shieldDomeEdgeColor: SHIELD_DOME_EDGE_COLOR,             // 段缘翘起高光 RGB
+    shieldDomeEdgeAlpha: SHIELD_DOME_EDGE_ALPHA,             // 段缘高光透明度
+    shieldDomeBreathAmp: SHIELD_DOME_BREATH_AMP,             // 呼吸胀缩振幅
+    shieldDomeBreathFreq: SHIELD_DOME_BREATH_FREQ,           // 呼吸频率（Hz）
+    shieldDomeFlareExtra: SHIELD_DOME_FLARE_EXTRA,           // 底部外张沿基础宽度（像素）
+    shieldDomeAllyWiden: SHIELD_DOME_ALLY_WIDEN,             // 同类靠近底部加宽步进（像素）
+    shieldDomeCrackCount: SHIELD_DOME_CRACK_COUNT,           // 受击裂纹条数
+    shieldDomeCrackColor: SHIELD_DOME_CRACK_COLOR,           // 受击裂纹 RGB
+    shieldDomeCrackAlpha: SHIELD_DOME_CRACK_ALPHA,           // 受击裂纹峰值透明度
+    shieldDomeCrackLineWidth: SHIELD_DOME_CRACK_LINE_WIDTH,  // 受击裂纹线宽（像素）
+    shieldDomeScorchCount: SHIELD_DOME_SCORCH_COUNT,         // 焦黑灼痕斑块数
+    shieldDomeScorchColor: SHIELD_DOME_SCORCH_COLOR,         // 焦黑灼痕 RGB
+    shieldDomeScorchAlpha: SHIELD_DOME_SCORCH_ALPHA,         // 焦黑灼痕峰值透明度
+    shieldDomeDebrisCount: SHIELD_DOME_DEBRIS_COUNT,         // 边缘碎屑数量
+    shieldDomeDebrisLife: SHIELD_DOME_DEBRIS_LIFE,           // 碎屑生命周期（毫秒）
+    shieldDomeDebrisSize: SHIELD_DOME_DEBRIS_SIZE,           // 碎屑半径（像素）
+    shieldDomeDebrisColor: SHIELD_DOME_DEBRIS_COLOR,         // 碎屑 RGB
+    shieldDomeDebrisHpThreshold: SHIELD_DOME_DEBRIS_HP_THRESHOLD, // 碎屑剥落 HP 阈值
+    shieldBreakDuration: SHIELD_BREAK_DURATION,              // 破盾玻璃碎裂持续时间（秒）——数值集中于 vfx-balance.ts，此处引用保持访问路径不变
+    shieldBreakFlashColor: SHIELD_BREAK_FLASH_COLOR,         // 破盾瞬间闪光 RGB 通道（纯白）——数值集中于 vfx-balance.ts，此处引用保持访问路径不变
+    shieldBreakFlashAlpha: SHIELD_BREAK_FLASH_ALPHA,         // 破盾瞬间闪光峰值透明度——数值集中于 vfx-balance.ts，此处引用保持访问路径不变
+    shieldBreakCrackCount: SHIELD_BREAK_CRACK_COUNT,         // 破盾放射状裂纹数量——数值集中于 vfx-balance.ts，此处引用保持访问路径不变
+    shieldBreakCrackColor: SHIELD_BREAK_CRACK_COLOR,         // 破盾裂纹 RGB 通道（#e0f2fe）——数值集中于 vfx-balance.ts，此处引用保持访问路径不变
+    shieldBreakCrackAlpha: SHIELD_BREAK_CRACK_ALPHA,         // 破盾裂纹峰值透明度——数值集中于 vfx-balance.ts，此处引用保持访问路径不变
+    shieldBreakCrackLineWidth: SHIELD_BREAK_CRACK_LINE_WIDTH, // 破盾裂纹线宽（像素）——数值集中于 vfx-balance.ts，此处引用保持访问路径不变
+    shieldBreakShardCount: SHIELD_BREAK_SHARD_COUNT,         // 破盾三角碎片数量——数值集中于 vfx-balance.ts，此处引用保持访问路径不变
+    shieldBreakShardFly: SHIELD_BREAK_SHARD_FLY,             // 破盾碎片飞散距离（像素）——数值集中于 vfx-balance.ts，此处引用保持访问路径不变
+    shieldBreakShardSizeMin: SHIELD_BREAK_SHARD_SIZE_MIN,    // 破盾碎片最小边长（像素）——数值集中于 vfx-balance.ts，此处引用保持访问路径不变
+    shieldBreakShardSizeMax: SHIELD_BREAK_SHARD_SIZE_MAX,    // 破盾碎片最大边长（像素）——数值集中于 vfx-balance.ts，此处引用保持访问路径不变
+    shieldBreakShardFillColor: SHIELD_BREAK_SHARD_FILL_COLOR, // 破盾碎片填充 RGB 通道（#bfdbfe）——数值集中于 vfx-balance.ts，此处引用保持访问路径不变
+    shieldBreakShardFillAlpha: SHIELD_BREAK_SHARD_FILL_ALPHA, // 破盾碎片填充峰值透明度——数值集中于 vfx-balance.ts，此处引用保持访问路径不变
+    shieldBreakShardEdgeColor: SHIELD_BREAK_SHARD_EDGE_COLOR, // 破盾碎片描边 RGB 通道（#eff6ff）——数值集中于 vfx-balance.ts，此处引用保持访问路径不变
+    shieldBreakShardEdgeAlpha: SHIELD_BREAK_SHARD_EDGE_ALPHA, // 破盾碎片描边峰值透明度——数值集中于 vfx-balance.ts，此处引用保持访问路径不变
+    shieldBreakBlend: SHIELD_BREAK_BLEND,                    // 破盾特效叠加混合方式（lighter）——数值集中于 vfx-balance.ts，此处引用保持访问路径不变
+    shieldRectColor: SHIELD_RECT_COLOR,           // 护盾矩形调试框填充 RGB 通道——数值集中于 vfx-balance.ts，此处引用保持访问路径不变
+    shieldRectFillAlphaNear: SHIELD_RECT_FILL_ALPHA_NEAR, // 矩形填充近端透明度系数——数值集中于 vfx-balance.ts
+    shieldRectFillAlphaMid: SHIELD_RECT_FILL_ALPHA_MID,   // 矩形填充中段透明度系数——数值集中于 vfx-balance.ts
+    shieldRectStrokeColor: SHIELD_RECT_STROKE_COLOR,      // 矩形线框 RGB 通道——数值集中于 vfx-balance.ts
+    shieldRectStrokeAlphaScale: SHIELD_RECT_STROKE_ALPHA_SCALE, // 线框透明度放大系数——数值集中于 vfx-balance.ts
+    shieldRectStrokeFlashAlpha: SHIELD_RECT_STROKE_FLASH_ALPHA, // 线框受击闪白附加透明度——数值集中于 vfx-balance.ts
     shieldFireZoneErosionMult: 2,  // 火墙对护盾的侵蚀倍率
     shieldRepairPerSec: 10,        // 隧道工修理护盾速度（点/秒，25→10，削弱持续回盾）
     shieldRepairRange: 220,        // 隧道工修理射程（像素，增强施法范围，原 150）
@@ -492,5 +475,81 @@ export const BALANCE_ITEMS = {
     // 斩螂·110
     knifeDashDuration: 0.18,       // 刀刃飞跃单程时长（秒）
     knifeKillDelay: 0.18,          // 到达目标后击杀延迟（秒）
+  },
+
+  // ===== 超市场景：阵型系统（V4.0 特种三排阵列：A三线/B楔形/D方阵/E纵队/F穿插/G同心圆/H双锋） =====
+  supermarket: {
+    // 通用
+    formationBlend: 0.7,         // 移动混合权重：70% 跟随阵型槽位 + 30% 向防线推进
+    gatherSpeedMult: 0.8,        // 集结阶段阵型原点推进速度倍率（聚拢期放慢）
+    gatherTolerance: 36,         // 集结完成判定：已就位成员距槽位平均距离（像素）
+    gatherTimeout: 12,           // 集结超时（秒，超时强制进入推进，防止刷怪过慢卡集结）
+    defenseHoldDist: 50,         // 阵型原点推进到距防线此距离处停住（像素）
+    // 阵列三排成员表（V4.0 硬约束：小/大/飞行/地面自爆/精英一律禁入，仅作自由杂兵）
+    rowFrontTypes: [RoachType.ARMORED, RoachType.SHIELD],                          // 前排：承伤盾墙，主锚点来源
+    rowMidTypes: [RoachType.SPLITTING, RoachType.TIMED_SUICIDE, RoachType.TUNNEL_WORKER], // 中排：功能输出
+    rowBackTypes: [RoachType.NURSE],                                               // 后排：唯一治疗
+    maxNursePerFormation: 1,     // 护士硬上限（每阵列），配置超出运行期截断
+    maxTunnelerPerFormation: 2,  // 隧道工硬上限（每阵列），配置超出运行期截断
+    maxShieldPerFormation: 1,    // 护盾蟑螂硬上限（每阵列），配置超出运行期截断
+    spawnCapacityGuard: 36,      // 场上蟑螂 ≥ 此值时延迟阵列组/穿插生成（硬上限 40 前留余量，防静默丢弃）
+    formationWaitClear: 2,       // 阵型组出场条件：热场杂兵队列清空且场上存活 ≤ 此值（热场被基本清完，阵列才登场）
+    formationWaitTimeout: 18,    // 队列清空后阵型组最长等待（秒，防残血杂兵卡死波次兜底强制出场）
+    groupDepthGap: 90,           // 多阵型组生成：后续组出生线纵深错位（像素，更靠近玩家，避免阵面重叠）
+    groupStaggerSec: 8,          // 相邻阵型组错时生成间隔（秒，V4.0 各组错时生成；首组在热场清完后立即出场）
+    trickleJitterMin: 0.7,       // 穿插投放间隔抖动下限倍率（实际间隔 = intervalSec × 抖动）
+    trickleJitterMax: 1.3,       // 穿插投放间隔抖动上限倍率
+    trickleSuicideJitterMax: 2.2,// 自爆类穿插间隔抖动上限倍率（下限同 trickleJitterMin，挫开时间）
+    trickleSuicideYStep: 60,     // 自爆类穿插出生 Y 递进错位（像素，3 档循环 + 随机微抖，挫开位置）
+    trickleSuicideMinAlive: 8,   // 自爆类（普通/飞行自爆）穿插仅在场上存活蟑螂 ≥ 此值时投放（画面有一定蟑螂才生成）
+    trickleSuicideWaitTimeout: 12, // 自爆类穿插等待上限（秒，超时强制投放兜底，防胜利判定卡死）
+    // 定时炸弹防线伤害（超市专用：定时自爆为量产单位且阵型推进贴防线，尸体炸弹常在防线旁引爆，数值较医院全局下调）
+    corpseBombDefenseDamage: 6,              // 尸体炸弹防线伤害（医院为引擎全局 12）
+    corpseBombDefenseRadius: 45,             // 尸体炸弹防线伤害半径（< defenseHoldDist 50：阵型驻停期被击杀不掉防线血，仅贴线击杀才掉；医院为引擎全局 120）
+    placedBombDefenseDamage: { easy: 4, hard: 10 }, // 放置炸弹防线伤害（医院为引擎全局 easy 8 / hard 20）
+    suicideExplodeDefenseDamage: { easy: 3, hard: 8 }, // 自爆爆炸防线伤害（超市穿插自爆为量产消耗品；其它场景为引擎全局 easy 5 / hard 15）
+    defenseHpMult: 1.75,         // 超市防线总池倍率（阵型+穿插全程持续施压、波次间无修复，80 → 140）
+    // 模板A：三线散兵线
+    laneWidthRatio: 0.9,         // 单路宽度占该路可用地面宽度比例
+    laneDepth: 60,               // 单路纵深（像素，前排+depth/2，中后排-depth/2；前中排 Y 间距 60 ≥ 30 下限）
+    // 模板D：装甲方阵
+    phalanxWidthRatio: 0.5,      // 方阵宽度占地面可用宽度比例
+    phalanxDepth: 60,            // 方阵纵深（像素，前排+depth/2，后排锚点-depth/2）
+    // 模板B：楔形冲锋阵（尖端装甲单锚点承伤，两翼前排护盾；中排分裂/定时自爆，右翼Z字）
+    wedgeWidthRatio: 0.7,        // 楔形宽度占地面可用宽度比例
+    wedgeDepth: 50,              // 楔形纵深（像素，尖端在前+depth/2，翼尾靠后-depth/2）
+    // 模板E：混合纵队阵（双独立纵队：前排装甲/护盾锚点→中排功能层，单列独立破阵）
+    columnWidthRatio: 0.7,       // 双列总宽占地面可用宽度比例
+    columnDepth: 60,             // 单列纵深（像素，前后排层叠）
+    columnLayerYGap: 30,         // 同列相邻层 Y 间距（像素，≥ 30 下限，保证纵队纵深不重叠）
+    columnOriginXRatio: 0.24,    // 双列中心间距占地面宽度比例（远端紧贴、近端随透视拉开）
+    // 模板F：Z字穿插纵队（A列直线前排 + B列Z字定时自爆主力）
+    zigzagWidthRatio: 0.6,       // 双列总宽占地面可用宽度比例
+    zigzagDepth: 50,             // 纵队纵深（像素，单列前后端 Y 间距 ≥ 30 下限）
+    zigzagAmp: 30,               // Z字摆动幅度（像素，B列槽位横向叠加）
+    zigzagPeriod: 80,            // Z字摆动周期（按阵型原点推进距离，像素）
+    // 模板G：同心圆护卫阵（外环装甲/护盾+内环中排旋转保护圆心护士，全锚点击杀才破阵）
+    ringWidthRatio: 0.5,         // 外环直径占地面可用宽度比例
+    ringInnerRatio: 0.45,        // 内环半径占外环半径比例
+    ringDepthSquash: 0.55,       // 环形纵向压缩比（透视椭圆，sin 分量乘此系数）
+    ringRotateSpeed: 0.26,       // 环形旋转速度（弧度/秒，≈15°/s）
+    // 模板H：双锋护卫阵（双装甲/护盾走廊 + 中军隧道工/护士双锚点，双锚全灭才破阵）
+    corridorWidthRatio: 0.8,     // 双走廊总宽占地面可用宽度比例
+    corridorDepth: 80,           // 走廊纵深（像素）
+    corridorXRatio: 0.32,        // 走廊中心横向偏移比例（±，远端紧贴、近端大幅展开）
+    // 破阵判定（三重条件，触发即永久散乱）
+    breakOutRatio: 0.3,          // 30% 成员横向脱离阵型半宽 → 破阵
+    // 破阵判定②：按模板存活比例阈值（A 50%、D 70%、B 40%、E/F 50%；G/H 无此档——仅全锚灭+脱离判定）
+    breakAliveRatio: { A: 0.5, D: 0.7, B: 0.4, E: 0.5, F: 0.5 },
+    // 锚点菱形标识（颜色按怪物类型区分）
+    anchorMarkSize: 9,           // 菱形对角线半长（像素）
+    anchorMarkSizeShield: 12,    // 护盾蟑螂菱形对角线半长（像素，略大于普通锚点——护盾是阵型防护核心）
+    anchorMarkSizeWorker: 6,     // 隧道工（工程师）菱形对角线半长（像素，缩小弱化提醒）
+    anchorMarkOffsetY: 30,       // 菱形头顶偏移（像素）
+    anchorMarkColorArmored: '#fb923c', // 装甲锚点（前排主锚）：橙
+    anchorMarkColorShield: '#22d3ee',  // 护盾锚点（前排主锚）：青
+    anchorMarkColorNurse: '#4ade80',   // 护士锚点（后排）：绿
+    anchorMarkColorWorker: '#facc15',  // 隧道工锚点（中排）：黄
+    anchorMarkColorDefault: '#38bdf8', // 其它锚点：蓝
   },
 } as const;

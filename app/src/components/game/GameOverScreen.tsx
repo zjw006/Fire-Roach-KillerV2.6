@@ -37,11 +37,11 @@ interface GameOverScreenProps {
   onOpenAchievements?: () => void;
   /** 打开商店回调 */
   onOpenShop?: () => void;
+  /** 天赋系统是否已解锁（通关地下室后），用于显示常驻天赋加点入口 */
+  talentUnlocked?: boolean;
 }
 
-export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, gameMode, currentScene, isVictory, hasNextScene, nextSceneName, onRestart, onQuit, onNextScene, talentPoints, bossDefeated, onOpenTalentTree, audio, victoryGoldReward, onSettleGold, unclaimedAchievementCount, onOpenAchievements, onOpenShop}) => {
-  /** 判断当前场景和模式类型 */
-  const isBasement = currentScene === 'basement';
+export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, gameMode, isVictory, hasNextScene, nextSceneName, onRestart, onQuit, onNextScene, talentPoints, bossDefeated, onOpenTalentTree, audio, victoryGoldReward, onSettleGold, unclaimedAchievementCount, onOpenAchievements, onOpenShop, talentUnlocked}) => {
   const isBossMode = bossDefeated;
   const isEndless = gameMode === 'endless';
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -211,9 +211,8 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, g
           ))}
         </div>
 
-        {/* Basement talent guide */}
-        {/** 地下室通关后引导玩家前往天赋树加点 */}
-        {isBasement && talentPoints && talentPoints > 0 && onOpenTalentTree && (
+        {/* 天赋加点入口（通关地下室解锁后常驻显示，有未用天赋点时出现） */}
+        {talentUnlocked && talentPoints && talentPoints > 0 && onOpenTalentTree && (
           <div className="bg-gradient-to-r from-yellow-900/60 to-orange-900/60 border border-yellow-500/40 rounded-xl p-3 mb-4 flex items-center gap-3 animate-pulse">
             <Lightbulb size={24} className="text-yellow-400 shrink-0" />
             <div className="flex-1">

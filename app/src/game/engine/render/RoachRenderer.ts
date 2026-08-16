@@ -32,6 +32,10 @@ export interface RoachRendererConfig {
   // 游戏状态
   time: number;
   deltaTime: number;
+  /** 防线 Y 坐标（地面蟑螂透视缩放下缘） */
+  defenseLineY: number;
+  /** 画布高度（地面蟑螂透视缩放地平线 = 高度 × horizonRatio） */
+  canvasHeight: number;
 
   // Boss 状态
   bossBattle: BossBattleState;
@@ -46,13 +50,20 @@ export interface RoachRendererConfig {
   // 调试开关
   /** 是否显示护盾蟑螂的护盾范围框（调试用） */
   showShieldRange: boolean;
-
-  // 护盾粒子特效回调
-  /** 生成护盾蟑螂气体光环粒子（渲染时逐帧调用） */
-  onSpawnShieldAura?: (x: number, y: number, hw: number) => void;
+  /** 护盾修复连线数据：{ workerX, workerY, shieldX, shieldY } */
+  repairLinePairs: Array<{ workerX: number; workerY: number; shieldX: number; shieldY: number }>;
 }
 
 export class RoachRenderer {
+
+  /**
+   * 确定性伪随机（0~1）：渲染器无状态，以「时间槽 + 序号 + 蟑螂 id」为种子，
+   * 保证同一帧/同一槽内多次渲染结果一致（护盾光带扩散粒子用）。
+   */
+  private static hash01(n: number): number {
+    const x = Math.sin(n * 127.1 + 311.7) * 43758.5453;
+    return x - Math.floor(x);
+  }
 
   static renderRoaches(config: RoachRendererConfig, ctx: CanvasRenderingContext2D, roaches: Roach[]) {
     // ===== RENDER ORDER: sort by z-index (charging BOSS last) for single-pass rendering =====
@@ -63,8 +74,52 @@ export class RoachRenderer {
       return aTop - bTop;
     });
     for (const r of sorted) {
-      RoachRenderer.renderRoach(config, ctx, r);
+      RoachRenderer.renderRoach(config, ctx, r, roaches);
     }
+
+    // 渲染护盾修复连线（隧道工 → 护盾蟑螂）
+    RoachRenderer.renderShieldRepairLines(config, ctx);
+  }
+
+  /**
+   * 渲染护盾修复连线（隧道工 → 护盾蟑螂）
+   * 虚线流动动画，青色发光，替换旧粒子特效
+   */
+  private static renderShieldRepairLines(config: RoachRendererConfig, ctx: CanvasRenderingContext2D): void {
+    const pairs = config.repairLinePairs;
+    if (!pairs || pairs.length === 0) return;
+    if (typeof config.time !== 'number') return;
+
+    const lineCfg = BALANCE_CONFIG.particle.shieldRepairLine;
+    const dashOffset = (config.time * lineCfg.flowSpeed) % (lineCfg.dashLen + lineCfg.dashGap);
+    const pulse = lineCfg.alphaBase + Math.sin(config.time * lineCfg.alphaPulseFreq) * lineCfg.alphaPulseAmp;
+    const alpha = Math.max(0, Math.min(1, pulse));
+
+    ctx.save();
+    for (const pair of pairs) {
+      // 发光底层
+      ctx.strokeStyle = `rgba(${lineCfg.glowColor}, ${alpha * lineCfg.glowAlphaRatio})`;
+      ctx.lineWidth = lineCfg.lineWidth + 4;
+      ctx.shadowColor = `rgba(${lineCfg.glowColor}, ${alpha * lineCfg.glowAlphaRatio})`;
+      ctx.shadowBlur = lineCfg.glowBlur;
+      ctx.beginPath();
+      ctx.moveTo(pair.workerX, pair.workerY);
+      ctx.lineTo(pair.shieldX, pair.shieldY);
+      ctx.stroke();
+
+      // 主虚线层（流动）
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = `rgba(${lineCfg.color}, ${alpha})`;
+      ctx.lineWidth = lineCfg.lineWidth;
+      ctx.setLineDash([lineCfg.dashLen, lineCfg.dashGap]);
+      ctx.lineDashOffset = -dashOffset;
+      ctx.beginPath();
+      ctx.moveTo(pair.workerX, pair.workerY);
+      ctx.lineTo(pair.shieldX, pair.shieldY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    ctx.restore();
   }
 
   /**
@@ -262,6 +317,7 @@ export class RoachRenderer {
     h: number
   ): void {
     const healRange = BALANCE_CONFIG.render.nurseHealVFX.healRange;
+    const ring = BALANCE_CONFIG.render.roach.nurseHealRing; // 颜色/透明度/混合集中于 vfx-balance render.roach.nurseHealRing
     const phase = r.healPhase!;
     const timer = r.healPhaseTimer || 0;
     let ringAlpha = 0;
@@ -269,36 +325,38 @@ export class RoachRenderer {
 
     if (phase === 'charging') {
       const progress = 1 - timer / 1.0;
-      ringAlpha = progress * 0.5;
+      ringAlpha = progress * ring.chargeAlphaScale;
       ringScale = 0.3 + progress * 0.7;
     } else if (phase === 'spraying') {
       const pulse = 1 + Math.sin(config.time * 4) * 0.08;
-      ringAlpha = 0.45 * pulse;
+      ringAlpha = ring.sprayAlphaBase * pulse;
       ringScale = 1;
     } else if (phase === 'dissipating') {
       const progress = 1 - timer / 1.0;
-      ringAlpha = (1 - progress) * 0.3;
+      ringAlpha = (1 - progress) * ring.dissipateAlphaScale;
       ringScale = 1 + progress * 0.2;
     }
 
+    ctx.save();
+    ctx.globalCompositeOperation = ring.blend;
     const rangeR = healRange * ringScale;
     const grad = ctx.createRadialGradient(0, 0, rangeR * 0.6, 0, 0, rangeR);
-    grad.addColorStop(0, `rgba(80, 200, 100, 0)`);
-    grad.addColorStop(0.7, `rgba(80, 200, 100, ${ringAlpha * 0.25})`);
-    grad.addColorStop(0.9, `rgba(100, 230, 130, ${ringAlpha * 0.5})`);
-    grad.addColorStop(1, `rgba(120, 255, 150, ${ringAlpha * 0.15})`);
+    grad.addColorStop(0, `rgba(${ring.gradColorInner}, 0)`);
+    grad.addColorStop(0.7, `rgba(${ring.gradColorInner}, ${ringAlpha * ring.gradMidAlphaRatio})`);
+    grad.addColorStop(0.9, `rgba(${ring.gradColorMid}, ${ringAlpha * ring.gradEdgeAlphaRatio})`);
+    grad.addColorStop(1, `rgba(${ring.gradColorEdge}, ${ringAlpha * ring.gradTipAlphaRatio})`);
     ctx.fillStyle = grad;
     ctx.beginPath();
-    ctx.ellipse(0, h * 0.1, rangeR, rangeR * 0.35, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, h * 0.1, rangeR, rangeR * 0.333, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.strokeStyle = `rgba(100, 240, 140, ${ringAlpha * 0.7})`;
+    ctx.strokeStyle = `rgba(${ring.strokeColor}, ${ringAlpha * ring.strokeAlphaRatio})`;
     ctx.lineWidth = 2.5;
     ctx.beginPath();
     ctx.ellipse(0, h * 0.1, rangeR * 0.85, rangeR * 0.3, 0, 0, Math.PI * 2);
     ctx.stroke();
 
-    ctx.fillStyle = `rgba(90, 210, 120, ${ringAlpha * 0.12})`;
+    ctx.fillStyle = `rgba(${ring.innerFillColor}, ${ringAlpha * ring.innerFillAlphaRatio})`;
     ctx.beginPath();
     ctx.ellipse(0, h * 0.1, rangeR * 0.5, rangeR * 0.18, 0, 0, Math.PI * 2);
     ctx.fill();
@@ -310,13 +368,14 @@ export class RoachRenderer {
       const dashX = Math.cos(a) * rangeR * 0.85;
       const dashY = Math.sin(a) * rangeR * 0.3 + h * 0.1;
       const dashLen = 6 + Math.sin(config.time * 3 + di) * 2;
-      ctx.strokeStyle = `rgba(140, 255, 170, ${ringAlpha * 0.6})`;
+      ctx.strokeStyle = `rgba(${ring.dashColor}, ${ringAlpha * ring.dashAlphaRatio})`;
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(dashX - Math.cos(a) * dashLen * 0.5, dashY - Math.sin(a) * dashLen * 0.15);
       ctx.lineTo(dashX + Math.cos(a) * dashLen * 0.5, dashY + Math.sin(a) * dashLen * 0.15);
       ctx.stroke();
     }
+    ctx.restore();
   }
 
   /** Render mutant body with transformation animation */
@@ -508,28 +567,45 @@ export class RoachRenderer {
     ctx.restore();
 
     // Action-specific overlays (outside save/restore)
-    if (action === 'charge') {
-      const glowAlpha = 0.15 + Math.sin(t * 6) * 0.1;
-      ctx.fillStyle = `rgba(255, 60, 0, ${glowAlpha})`;
+    // 颜色/透明度/混合集中于 vfx-balance render.roach.bossOverlay
+    const bo = BALANCE_CONFIG.render.roach.bossOverlay;
+    if (action === 'charge' || action === 'summon') {
+      const isCharge = action === 'charge';
+      const glowAlpha = isCharge
+        ? bo.chargeAlphaBase + Math.sin(t * 6) * bo.chargeAlphaAmp
+        : bo.summonAlphaBase + Math.sin(t * 5) * bo.summonAlphaAmp;
+      ctx.save();
+      ctx.globalCompositeOperation = bo.blend;
+      ctx.fillStyle = `rgba(${isCharge ? bo.chargeColor : bo.summonColor}, ${glowAlpha})`;
       ctx.beginPath();
-      ctx.ellipse(0, bossH * 0.1, bossW * 0.55, bossH * 0.45, 0, 0, Math.PI * 2);
+      if (isCharge) ctx.ellipse(0, bossH * 0.1, bossW * 0.55, bossH * 0.45, 0, 0, Math.PI * 2);
+      else ctx.ellipse(0, 0, bossW * 0.6, bossH * 0.5, 0, 0, Math.PI * 2);
       ctx.fill();
-    }
-    if (action === 'summon') {
-      const glowAlpha = 0.1 + Math.sin(t * 5) * 0.08;
-      ctx.fillStyle = `rgba(168, 85, 247, ${glowAlpha})`;
-      ctx.beginPath();
-      ctx.ellipse(0, 0, bossW * 0.6, bossH * 0.5, 0, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.restore();
     }
   }
 
-  static renderRoach(config: RoachRendererConfig, ctx: CanvasRenderingContext2D, r: Roach) {
+  /**
+   * 地面蟑螂透视缩放：远小近大（防线处 maxScale → 地平线处 minScale）。
+   * BOSS 与飞行单位（飞行/飞行自爆/地铁精英）不缩放。
+   */
+  private static groundPerspectiveScale(config: RoachRendererConfig, r: Roach): number {
+    if (r.isBoss) return 1;
+    if (r.type === RoachType.FLYING || r.type === RoachType.FLYING_SUICIDE || r.type === RoachType.SUBWAY_ELITE) return 1;
+    const pc = BALANCE_CONFIG.render.roach.perspective;
+    const bottomY = config.defenseLineY;
+    const topY = config.canvasHeight * pc.horizonRatio;
+    const t = Math.max(0, Math.min(1, (bottomY - r.y) / (bottomY - topY)));
+    return pc.maxScale - t * (pc.maxScale - pc.minScale);
+  }
+
+  static renderRoach(config: RoachRendererConfig, ctx: CanvasRenderingContext2D, r: Roach, roaches: Roach[] = []) {
     // ===== DEATH RENDERING =====
     if (RoachRenderer.renderRoachDeath(config, ctx, r)) return;
 
     const def = ENEMY_DEFS[r.type];
-    const size = r.isBoss ? def.size : def.size * (BALANCE_CONFIG.render.roach.sizeWobbleBase + Math.sin(config.time * 3 + r.wobbleOffset) * BALANCE_CONFIG.render.roach.sizeWobbleAmp);
+    const perspScale = RoachRenderer.groundPerspectiveScale(config, r);
+    const size = r.isBoss ? def.size : def.size * perspScale * (BALANCE_CONFIG.render.roach.sizeWobbleBase + Math.sin(config.time * 3 + r.wobbleOffset) * BALANCE_CONFIG.render.roach.sizeWobbleAmp);
     const w = size * BALANCE_CONFIG.render.roach.bodyWidthRatio;
     const h = size;
 
@@ -545,11 +621,12 @@ export class RoachRenderer {
     // Damage flash - BOSS gets bright RED flash
     if (r.damageFlash > 0) {
       if (r.isBoss && r.type === RoachType.QUEEN) {
-        // Strong red flash for BOSS
+        // Strong red flash for BOSS（颜色/透明度/混合集中于 vfx-balance render.roach.bossDamageFlash）
+        const bf = BALANCE_CONFIG.render.roach.bossDamageFlash;
         ctx.filter = `brightness(${1 + r.damageFlash * 0.5}) saturate(2) hue-rotate(-30deg)`;
         // Additional red glow overlay
-        ctx.globalCompositeOperation = 'source-atop';
-        ctx.fillStyle = `rgba(255, 0, 0, ${Math.min(0.6, r.damageFlash * 0.3)})`;
+        ctx.globalCompositeOperation = bf.blend;
+        ctx.fillStyle = `rgba(${bf.color}, ${Math.min(bf.alphaMax, r.damageFlash * bf.alphaScale)})`;
         const sz = r.size || 60;
         ctx.fillRect(-sz, -sz, sz * 2, sz * 2);
         ctx.globalCompositeOperation = 'source-over';
@@ -567,6 +644,7 @@ export class RoachRenderer {
     if ((r.type === RoachType.SUICIDE || r.type === RoachType.FLYING_SUICIDE) && r.hp < r.maxHp * 0.5) {
       const smokeIntensity = 1 - (r.hp / (r.maxHp * 0.5)); // 0→1 as HP drops from 50% to 0%
       if (Math.random() < smokeIntensity * 0.6) {
+        const sf = BALANCE_CONFIG.render.roach.suicideFlame; // 黑烟颜色/透明度集中于 vfx-balance
         config.onAddParticle({
           x: r.x + (Math.random() - 0.5) * (r.size || 30) * 0.8,
           y: r.y + (Math.random() - 0.5) * (r.size || 30) * 0.5,
@@ -575,7 +653,7 @@ export class RoachRenderer {
           life: 0.4 + Math.random() * 0.3,
           maxLife: 0.7,
           size: 3 + Math.random() * 5 * smokeIntensity,
-          color: `rgba(30, 30, 30, ${0.5 + smokeIntensity * 0.4})`,
+          color: `rgba(${sf.smokeColor}, ${sf.smokeAlphaBase + smokeIntensity * sf.smokeAlphaRange})`,
           type: ParticleType.ASH,
         });
       }
@@ -584,14 +662,15 @@ export class RoachRenderer {
     // Rotation: downward (vy>0) = 0°, upward (vy<=0) = 180°
     // Skip for BOSS — handled separately below with proper rotation
     // Nurse roach: never flip vertically (no reversal when hit by flame)
-    if (r.vy <= 0 && !r.isBoss && r.type !== RoachType.NURSE) ctx.scale(1, -1);
+    if (r.vy <= 0 && !r.isBoss && r.type !== RoachType.NURSE && r.type !== RoachType.TUNNEL_WORKER && r.type !== RoachType.SUBWAY_ELITE) ctx.scale(1, -1);
 
     // ===== BODY RENDERING =====
     RoachRenderer.renderRoachBody(config, ctx, r, def, w, h, size);
 
     // ===== STUCK TINT OVERLAY (cheap translucent yellow, no ctx.filter) =====
     if (stuckByBoard) {
-      ctx.fillStyle = 'rgba(240, 210, 60, 0.28)';
+      const stickyCfg = BALANCE_CONFIG.render.drop.sticky; // 颜色/透明度集中于 vfx-balance render.drop.sticky
+      ctx.fillStyle = stickyCfg.stuckTintColor.replace('{alpha}', String(stickyCfg.stuckTintAlpha));
       ctx.beginPath();
       ctx.ellipse(0, 0, w * 0.55, h * 0.5, 0, 0, Math.PI * 2);
       ctx.fill();
@@ -602,25 +681,28 @@ export class RoachRenderer {
     if (r.type === RoachType.TUNNEL_WORKER) {
       // 施法范围光圈（喷涂瞬间一次脉冲，类似护士施法特效）
       if (r.armorSprayCastTimer !== undefined && r.armorSprayCastTimer > 0 && r.state === RoachState.ALIVE) {
+        const ring = BALANCE_CONFIG.render.roach.armorCastRing; // 参数集中于 vfx-balance render.roach.armorCastRing
         const castRange = BALANCE_CONFIG.subway.armorSprayRange;
-        const progress = 1 - r.armorSprayCastTimer / 0.5; // 0→1
-        const ringScale = 0.3 + progress * 0.7;            // 从 30% 扩散到 100%
-        const ringAlpha = (1 - progress) * 0.55;           // 渐隐
+        const progress = 1 - r.armorSprayCastTimer / ring.duration; // 0→1
+        const ringScale = ring.startScale + progress * (1 - ring.startScale); // 从起始比例扩散到 100%
+        const ringAlpha = (1 - progress) * ring.maxAlpha;           // 渐隐
         const rangeR = castRange * ringScale;
-        const grad = ctx.createRadialGradient(0, h * 0.1, rangeR * 0.5, 0, h * 0.1, rangeR);
-        grad.addColorStop(0, 'rgba(148, 163, 184, 0)');
-        grad.addColorStop(0.7, `rgba(148, 163, 184, ${ringAlpha * 0.3})`);
-        grad.addColorStop(0.9, `rgba(203, 213, 225, ${ringAlpha * 0.6})`);
-        grad.addColorStop(1, `rgba(226, 232, 240, ${ringAlpha * 0.2})`);
+        const footY = h * ring.footOffsetRatio;                     // 圆心贴脚下
+        const grad = ctx.createRadialGradient(0, footY, rangeR * ring.gradInnerRatio, 0, footY, rangeR);
+        grad.addColorStop(0, `rgba(${ring.colorMid}, 0)`);
+        grad.addColorStop(ring.stopMid, `rgba(${ring.colorMid}, ${ringAlpha * ring.fillMidAlphaRatio})`);
+        grad.addColorStop(ring.stopEdge, `rgba(${ring.colorEdge}, ${ringAlpha * ring.fillEdgeAlphaRatio})`);
+        grad.addColorStop(1, `rgba(${ring.colorTip}, ${ringAlpha * ring.fillTipAlphaRatio})`);
         ctx.save();
+        ctx.globalCompositeOperation = ring.blend; // lighter 叠加提亮（vfx-balance render.roach.armorCastRing.blend）
         ctx.fillStyle = grad;
         ctx.beginPath();
-        ctx.ellipse(0, h * 0.1, rangeR, rangeR * 0.35, 0, 0, Math.PI * 2);
+        ctx.ellipse(0, footY, rangeR, rangeR * ring.flatten, 0, 0, Math.PI * 2);
         ctx.fill();
-        ctx.strokeStyle = `rgba(203, 213, 225, ${ringAlpha * 0.8})`;
-        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = `rgba(${ring.colorEdge}, ${ringAlpha * ring.strokeAlphaRatio})`;
+        ctx.lineWidth = ring.lineWidth;
         ctx.beginPath();
-        ctx.ellipse(0, h * 0.1, rangeR * 0.85, rangeR * 0.3, 0, 0, Math.PI * 2);
+        ctx.ellipse(0, footY, rangeR * ring.strokeScale, rangeR * ring.strokeFlatten, 0, 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
       }
@@ -629,14 +711,16 @@ export class RoachRenderer {
     // ===== HOSPITAL EXCLUSIVE: MUTANT TRANSFORMATION VISUAL =====
     // Purple swirling glow during the 0.5s pre-transformation pause
     if (r.type === RoachType.MUTANT && r.transformTimer && r.transformTimer > 0) {
+      const mt = BALANCE_CONFIG.render.roach.mutantTransform; // 颜色/透明度/混合集中于 vfx-balance
       const progress = 1 - r.transformTimer / 1.0; // 0→1
-      const swirlAlpha = 0.4 + progress * 0.4;
+      const swirlAlpha = mt.swirlAlphaBase + progress * mt.swirlAlphaRange;
       const swirlR = Math.max(w, h) * (0.8 + progress * 0.6);
       // Outer purple ring
       ctx.save();
-      ctx.strokeStyle = `rgba(217, 70, 239, ${swirlAlpha})`;
+      ctx.globalCompositeOperation = mt.blend;
+      ctx.strokeStyle = `rgba(${mt.swirlColor}, ${swirlAlpha})`;
       ctx.lineWidth = 3;
-      ctx.shadowColor = `rgba(217, 70, 239, ${swirlAlpha * 0.8})`;
+      ctx.shadowColor = `rgba(${mt.swirlColor}, ${swirlAlpha * mt.shadowAlphaRatio})`;
       ctx.shadowBlur = 15;
       ctx.beginPath();
       for (let si = 0; si < 8; si++) {
@@ -650,13 +734,13 @@ export class RoachRenderer {
       ctx.stroke();
       // Inner glow
       const glowGrad = ctx.createRadialGradient(0, 0, swirlR * 0.2, 0, 0, swirlR);
-      glowGrad.addColorStop(0, `rgba(217, 70, 239, ${swirlAlpha * 0.15})`);
-      glowGrad.addColorStop(1, `rgba(217, 70, 239, 0)`);
+      glowGrad.addColorStop(0, `rgba(${mt.swirlColor}, ${swirlAlpha * mt.glowAlphaRatio})`);
+      glowGrad.addColorStop(1, `rgba(${mt.swirlColor}, 0)`);
       ctx.fillStyle = glowGrad;
       ctx.fill();
       // Countdown text
       const secsLeft = Math.ceil(r.transformTimer!);
-      ctx.fillStyle = `rgba(255, 255, 255, ${0.8 + progress * 0.2})`;
+      ctx.fillStyle = `rgba(${mt.countdownColor}, ${mt.countdownAlphaBase + progress * mt.countdownAlphaRange})`;
       ctx.font = RENDER_FONT.large;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
@@ -666,15 +750,18 @@ export class RoachRenderer {
 
     // ===== MUTANT SPAWN: Green slime tint overlay (2s) =====
     if (r.wasMutantSpawn && r.slimeTimer && r.slimeTimer > 0 && r.state === RoachState.ALIVE) {
+      const ms = BALANCE_CONFIG.render.roach.mutantSpawnSlime; // 颜色/透明度/混合集中于 vfx-balance
       const slimeProgress = Math.min(1, r.slimeTimer / 2.0);
-      const slimeAlpha = 0.6 * slimeProgress;
+      const slimeAlpha = ms.alphaScale * slimeProgress;
 
+      ctx.save();
+      ctx.globalCompositeOperation = ms.blend;
       // 1. Bright green glow behind the roach
       const glowR = Math.max(w, h) * 0.6;
       const glowGrad = ctx.createRadialGradient(0, 0, glowR * 0.3, 0, 0, glowR);
-      glowGrad.addColorStop(0, `rgba(100, 255, 120, ${slimeAlpha * 0.3})`);
-      glowGrad.addColorStop(0.7, `rgba(60, 200, 80, ${slimeAlpha * 0.5})`);
-      glowGrad.addColorStop(1, `rgba(40, 150, 60, 0)`);
+      glowGrad.addColorStop(0, `rgba(${ms.glowColorInner}, ${slimeAlpha * ms.glowInnerAlphaRatio})`);
+      glowGrad.addColorStop(0.7, `rgba(${ms.glowColorMid}, ${slimeAlpha * ms.glowMidAlphaRatio})`);
+      glowGrad.addColorStop(1, `rgba(${ms.glowColorEdge}, 0)`);
       ctx.fillStyle = glowGrad;
       ctx.beginPath();
       ctx.ellipse(0, 0, glowR, glowR * 0.7, 0, 0, Math.PI * 2);
@@ -685,12 +772,12 @@ export class RoachRenderer {
       ctx.beginPath();
       ctx.ellipse(0, 0, w * 0.5, h * 0.42, 0, 0, Math.PI * 2);
       ctx.clip();
-      ctx.fillStyle = `rgba(80, 200, 80, ${slimeAlpha * 0.5})`;
+      ctx.fillStyle = `rgba(${ms.bodyTintColor}, ${slimeAlpha * ms.bodyTintAlphaRatio})`;
       ctx.fillRect(-w, -h, w * 2, h * 2);
       ctx.restore();
 
       // 3. Outer slime ring (dripping effect)
-      ctx.strokeStyle = `rgba(100, 255, 130, ${slimeAlpha * 0.7})`;
+      ctx.strokeStyle = `rgba(${ms.ringColor}, ${slimeAlpha * ms.ringAlphaRatio})`;
       ctx.lineWidth = 2.5;
       ctx.beginPath();
       ctx.ellipse(0, 0, w * 0.52, h * 0.44, 0, 0, Math.PI * 2);
@@ -704,32 +791,36 @@ export class RoachRenderer {
         const spotX = Math.cos(spotAngle) * spotDist;
         const spotY = Math.sin(spotAngle) * spotDist * 0.7;
         const spotR = 3 + Math.sin(config.time * 3 + si) * 1.5;
-        ctx.fillStyle = `rgba(160, 255, 170, ${slimeAlpha * 0.6})`;
+        ctx.fillStyle = `rgba(${ms.spotColor}, ${slimeAlpha * ms.spotAlphaRatio})`;
         ctx.beginPath();
         ctx.ellipse(spotX, spotY, spotR, spotR * 0.6, spotAngle * 0.3, 0, Math.PI * 2);
         ctx.fill();
       }
+      ctx.restore();
 
       r.slimeTimer -= config.deltaTime;
     }
 
     // Sticky drop wrap overlay (yellow gel blob enclosing the roach)
     if (r.wrappedByDropId !== null && r.state === RoachState.ALIVE) {
+      const wr = BALANCE_CONFIG.render.drop.sticky.wrap; // 颜色/透明度/混合集中于 vfx-balance render.drop.sticky.wrap
       const wrapPulse = 0.85 + Math.sin(config.time * 6 + r.id) * 0.15;
       const wrapRadius = Math.max(w, h) * 0.55 * wrapPulse;
 
+      ctx.save();
+      ctx.globalCompositeOperation = wr.blend;
       // Outer glow
       const glowGrad = ctx.createRadialGradient(0, 0, wrapRadius * 0.5, 0, 0, wrapRadius * 1.3);
-      glowGrad.addColorStop(0, 'rgba(250, 220, 50, 0.15)');
-      glowGrad.addColorStop(0.6, 'rgba(250, 200, 50, 0.25)');
-      glowGrad.addColorStop(1, 'rgba(250, 180, 30, 0)');
+      glowGrad.addColorStop(0, wr.glowColor0);
+      glowGrad.addColorStop(0.6, wr.glowColor1);
+      glowGrad.addColorStop(1, wr.glowColor2);
       ctx.fillStyle = glowGrad;
       ctx.beginPath();
       ctx.arc(0, 0, wrapRadius * 1.3, 0, Math.PI * 2);
       ctx.fill();
 
       // Main gel body - semi-transparent yellow blob
-      ctx.fillStyle = `rgba(250, 220, 50, ${0.35 * wrapPulse})`;
+      ctx.fillStyle = `rgba(${wr.bodyColor}, ${wr.bodyAlpha * wrapPulse})`;
       ctx.beginPath();
       // Create an organic blob shape using multiple arcs
       const blobPoints = 8;
@@ -745,7 +836,7 @@ export class RoachRenderer {
       ctx.fill();
 
       // Gel border highlight
-      ctx.strokeStyle = `rgba(255, 240, 150, ${0.5 * wrapPulse})`;
+      ctx.strokeStyle = `rgba(${wr.borderColor}, ${wr.borderAlpha * wrapPulse})`;
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       for (let b = 0; b <= blobPoints; b++) {
@@ -760,7 +851,7 @@ export class RoachRenderer {
       ctx.stroke();
 
       // Specular highlight (shiny spot on top)
-      ctx.fillStyle = `rgba(255, 255, 220, ${0.4 * wrapPulse})`;
+      ctx.fillStyle = `rgba(${wr.specularColor}, ${wr.specularAlpha * wrapPulse})`;
       ctx.beginPath();
       ctx.ellipse(-wrapRadius * 0.2, -wrapRadius * 0.25, wrapRadius * 0.25, wrapRadius * 0.15, -0.3, 0, Math.PI * 2);
       ctx.fill();
@@ -771,20 +862,24 @@ export class RoachRenderer {
         const bubbleR = wrapRadius * (0.3 + 0.4 * Math.sin(b * 1.7));
         const bubbleX = Math.cos(bubbleAngle) * bubbleR;
         const bubbleY = Math.sin(bubbleAngle) * bubbleR;
-        ctx.fillStyle = `rgba(255, 250, 200, ${0.3 + Math.sin(config.time * 3 + b) * 0.15})`;
+        ctx.fillStyle = `rgba(${wr.bubbleColor}, ${wr.bubbleAlphaBase + Math.sin(config.time * 3 + b) * wr.bubbleAlphaAmp})`;
         ctx.beginPath();
         ctx.arc(bubbleX, bubbleY, 1.5 + Math.sin(config.time * 4 + b) * 0.5, 0, Math.PI * 2);
         ctx.fill();
       }
+      ctx.restore();
     }
 
     // Suicide roach: small flame on back
     if (r.type === RoachType.SUICIDE && r.state === RoachState.ALIVE) {
+      const sf = BALANCE_CONFIG.render.roach.suicideFlame; // 颜色/透明度/混合集中于 vfx-balance
       const flameFlicker = 0.7 + Math.sin(config.time * 10 + r.id) * 0.3;
       const flameH = 8 + Math.sin(config.time * 15 + r.id * 2) * 3;
       const flameW = 6 + Math.cos(config.time * 12 + r.id) * 2;
+      ctx.save();
+      ctx.globalCompositeOperation = sf.blend;
       // Outer flame (orange)
-      ctx.fillStyle = `rgba(255, 100, 20, ${flameFlicker})`;
+      ctx.fillStyle = `rgba(${sf.outerColor}, ${flameFlicker * sf.outerAlpha})`;
       ctx.beginPath();
       ctx.moveTo(0, -h * 0.45);
       ctx.lineTo(-flameW / 2, -h * 0.45 - flameH * 0.6);
@@ -793,7 +888,7 @@ export class RoachRenderer {
       ctx.closePath();
       ctx.fill();
       // Inner flame (yellow)
-      ctx.fillStyle = `rgba(255, 220, 50, ${flameFlicker * 0.9})`;
+      ctx.fillStyle = `rgba(${sf.innerColor}, ${flameFlicker * sf.innerAlpha})`;
       ctx.beginPath();
       ctx.moveTo(0, -h * 0.45);
       ctx.lineTo(-flameW * 0.3, -h * 0.45 - flameH * 0.4);
@@ -801,6 +896,7 @@ export class RoachRenderer {
       ctx.lineTo(flameW * 0.3, -h * 0.45 - flameH * 0.4);
       ctx.closePath();
       ctx.fill();
+      ctx.restore();
     }
 
     // ===== ARMOR SHIELD EFFECT: all roaches with armor buff =====
@@ -816,10 +912,12 @@ export class RoachRenderer {
       const shadowAlphaRatio = isTimedSuicide ? sc.timedSuicideShadowAlphaRatio : sc.normalShadowAlphaRatio;
       const radiusRatio = isTimedSuicide ? sc.timedSuicideRadiusRatio : sc.normalRadiusRatio;
       const glowAlphaRatio = isTimedSuicide ? sc.timedSuicideGlowAlphaRatio : sc.normalGlowAlphaRatio;
+      const blend = isTimedSuicide ? sc.timedSuicideBlend : sc.normalBlend; // 普通护甲环 lighter 提亮（vfx-balance render.roach.shield.*Blend）
 
       const shieldPulse = pulseBase + Math.sin(config.time * 4 + r.id) * 0.15;
       const shieldAlpha = shieldPulse;
       ctx.save();
+      ctx.globalCompositeOperation = blend;
       ctx.strokeStyle = `rgba(${color}, ${shieldAlpha})`;
       ctx.lineWidth = lw;
       ctx.shadowColor = `rgba(${color}, ${shieldAlpha * shadowAlphaRatio})`;
@@ -849,27 +947,29 @@ export class RoachRenderer {
     if (r.type === RoachType.TIMED_SUICIDE && r.breachPhase && r.breachPhase !== 'idle' && r.breachPhase !== 'residue') {
       const phase = r.breachPhase;
       const phaseTimer = r.breachPhaseTimer || 0;
+      const TB = BALANCE_CONFIG.timedBomb;
 
       if (phase === 'warning') {
+        const W = TB.warning;
         // Phase 1: Danger warning
-        // Red blinking light on back (3Hz rapid flash)
-        const blink = Math.sin(config.time * 18) > 0 ? 1 : 0.3;
-        ctx.fillStyle = `rgba(180, 40, 40, ${blink})`;
+        // Red blinking light on back (rapid flash)
+        const blink = Math.sin(config.time * W.blinkFreq) > 0 ? 1 : W.blinkOffAlpha;
+        ctx.fillStyle = `rgba(${W.lightColor}, ${blink})`;
         ctx.beginPath();
-        ctx.arc(0, -h * 0.35, 5, 0, Math.PI * 2);
+        ctx.arc(0, -h * W.lightYRatio, W.lightRadius, 0, Math.PI * 2);
         ctx.fill();
-        // Danger circle on ground (40px radius, irregular, 60% alpha)
+        // Danger circle on ground (irregular)
         ctx.save();
-        ctx.translate(0, h * 0.4);
-        ctx.strokeStyle = `rgba(140, 30, 30, 0.6)`;
-        ctx.lineWidth = 2;
-        ctx.setLineDash([3, 4]);
-        ctx.lineDashOffset = -config.time * 20;
+        ctx.translate(0, h * W.circleYRatio);
+        ctx.strokeStyle = `rgba(${W.circleColor}, ${W.circleAlpha})`;
+        ctx.lineWidth = W.circleLineWidth;
+        ctx.setLineDash([...W.circleDash]);
+        ctx.lineDashOffset = -config.time * W.circleDashSpeed;
         ctx.beginPath();
-        for (let a = 0; a <= Math.PI * 2; a += 0.3) {
-          const rough = 1 + Math.sin(a * 5 + r.id) * 0.12;
-          const rx = Math.cos(a) * 40 * rough;
-          const ry = Math.sin(a) * 20 * rough;
+        for (let a = 0; a <= Math.PI * 2; a += W.circleAngleStep) {
+          const rough = 1 + Math.sin(a * W.circleRoughFreq + r.id) * W.circleRoughAmp;
+          const rx = Math.cos(a) * W.circleRadiusX * rough;
+          const ry = Math.sin(a) * W.circleRadiusY * rough;
           if (a === 0) ctx.moveTo(rx, ry);
           else ctx.lineTo(rx, ry);
         }
@@ -878,43 +978,44 @@ export class RoachRenderer {
         ctx.setLineDash([]);
         ctx.restore();
         // Countdown number (dark red, slight jitter)
-        const jitterX = Math.sin(config.time * 50) * 0.8;
-        const jitterY = Math.cos(config.time * 45) * 0.6;
+        const jitterX = Math.sin(config.time * W.jitterXFreq) * W.jitterXAmp;
+        const jitterY = Math.cos(config.time * W.jitterYFreq) * W.jitterYAmp;
         ctx.font = RENDER_FONT.large;
         ctx.textAlign = 'center';
         ctx.fillStyle = RENDER_COLOR.bombCountdown;
-        ctx.fillText(`${Math.ceil(3.0 - (0.5 - phaseTimer) / 0.5 * 3)}`, jitterX, -h * 0.6 + jitterY);
+        ctx.fillText(`${Math.ceil(3.0 - (0.5 - phaseTimer) / 0.5 * 3)}`, jitterX, -h * W.countdownYRatio + jitterY);
       }
 
       if (phase === 'crouching') {
+        const C = TB.crouching;
         // Phase 2: Crouching + countdown
 
-        // Body squashed 30% (simulate crouching)
-        ctx.scale(1.3, 0.7);
+        // Body squashed (simulate crouching)
+        ctx.scale(C.squashX, C.squashY);
 
-        // Red blinking light on back (3Hz rapid)
-        const blink = Math.sin(config.time * 18) > 0 ? 1 : 0.2;
-        ctx.fillStyle = `rgba(200, 30, 30, ${blink})`;
+        // Red blinking light on back (rapid)
+        const blink = Math.sin(config.time * C.blinkFreq) > 0 ? 1 : C.blinkOffAlpha;
+        ctx.fillStyle = `rgba(${C.lightColor}, ${blink})`;
         ctx.beginPath();
-        ctx.arc(0, -h * 0.25, 6, 0, Math.PI * 2);
+        ctx.arc(0, -h * C.lightYRatio, C.lightRadius, 0, Math.PI * 2);
         ctx.fill();
 
         // Crack lines spreading from center (dark red, hand-drawn feel)
         const crackR = r.crackRadius || 0;
         if (crackR > 0) {
           ctx.save();
-          ctx.translate(0, h * 0.45);
-          ctx.strokeStyle = `rgba(120, 40, 40, 0.5)`;
-          ctx.lineWidth = 1.5;
-          for (let ci = 0; ci < 5; ci++) {
-            const cAngle = (ci / 5) * Math.PI * 2 + r.id * 0.7;
-            const len = crackR * (0.5 + Math.sin(ci * 2.3) * 0.3);
+          ctx.translate(0, h * C.crackYRatio);
+          ctx.strokeStyle = `rgba(${C.crackColor}, ${C.crackAlpha})`;
+          ctx.lineWidth = C.crackLineWidth;
+          for (let ci = 0; ci < C.crackCount; ci++) {
+            const cAngle = (ci / C.crackCount) * Math.PI * 2 + r.id * C.crackIdJitter;
+            const len = crackR * (C.crackLenBase + Math.sin(ci * C.crackLenFreq) * C.crackLenAmp);
             ctx.beginPath();
             ctx.moveTo(0, 0);
-            const steps = 4;
+            const steps = C.crackSteps;
             for (let s = 1; s <= steps; s++) {
-              const sx = Math.cos(cAngle + s * 0.1) * (len * s / steps);
-              const sy = Math.sin(cAngle + s * 0.1) * (len * s / steps * 0.5);
+              const sx = Math.cos(cAngle + s * C.crackAngleStep) * (len * s / steps);
+              const sy = Math.sin(cAngle + s * C.crackAngleStep) * (len * s / steps * C.crackYScale);
               ctx.lineTo(sx, sy);
             }
             ctx.stroke();
@@ -922,11 +1023,11 @@ export class RoachRenderer {
           ctx.restore();
         }
 
-        // Body tremor (2px, 3Hz)
-        const tremor = Math.sin(config.time * 18) * 2;
+        // Body tremor
+        const tremor = Math.sin(config.time * C.tremorFreq) * C.tremorAmp;
         ctx.translate(0, tremor);
 
-        // Enlarged countdown number (150%, dark red锯齿描边)
+        // Enlarged countdown number (dark red锯齿描边)
         const secs = Math.ceil(r.placeTimer || 0);
         ctx.save();
         ctx.font = RENDER_FONT.xLarge;
@@ -934,23 +1035,24 @@ export class RoachRenderer {
         ctx.textBaseline = 'middle';
         // Dark red锯齿描边
         ctx.strokeStyle = RENDER_COLOR.bombCountdown;
-        ctx.lineWidth = 3;
+        ctx.lineWidth = C.countdownLineWidth;
         ctx.lineJoin = 'miter';
-        ctx.strokeText(`${secs}`, 0, -h * 0.8);
+        ctx.strokeText(`${secs}`, 0, -h * C.countdownYRatio);
         ctx.fillStyle = secs <= 1 ? RENDER_COLOR.bombCountdown : RENDER_COLOR.bombCountdownCritical;
-        ctx.fillText(`${secs}`, 0, -h * 0.8);
+        ctx.fillText(`${secs}`, 0, -h * C.countdownYRatio);
         ctx.restore();
       }
 
       if (phase === 'exploding') {
-        // Phase 3: Explosion frame - dark red silhouette expanded to 120%
-        const expandProgress = Math.min(1, phaseTimer / 0.1);
-        const scale = 1.0 + (1.2 - 1.0) * (1 - expandProgress);
+        const E = TB.exploding;
+        // Phase 3: Explosion frame - dark red silhouette expanded
+        const expandProgress = Math.min(1, phaseTimer / E.duration);
+        const scale = 1.0 + (E.maxScale - 1.0) * (1 - expandProgress);
         ctx.scale(scale, scale);
         // Dark red silhouette overlay
-        ctx.fillStyle = `rgba(100, 20, 20, ${0.8 * (1 - expandProgress)})`;
+        ctx.fillStyle = `rgba(${E.silhouetteColor}, ${E.silhouetteAlpha * (1 - expandProgress)})`;
         ctx.beginPath();
-        ctx.ellipse(0, 0, w * 0.5, h * 0.35, 0, 0, Math.PI * 2);
+        ctx.ellipse(0, 0, w * E.silhouetteWRatio, h * E.silhouetteHRatio, 0, 0, Math.PI * 2);
         ctx.fill();
       }
     }
@@ -960,32 +1062,33 @@ export class RoachRenderer {
     // ===== TIMED SUICIDE: "螂家爆破" RESIDUE RENDER =====
     // Rendered OUTSIDE transform (world coordinates) for ground scorch marks
     if (r.type === RoachType.TIMED_SUICIDE && r.breachPhase === 'residue' && r.residueTimer && r.residueTimer > 0) {
-      const fadeAlpha = r.residueTimer / 3.0;
+      const RS = BALANCE_CONFIG.timedBomb.residue;
+      const fadeAlpha = r.residueTimer / RS.fadeDuration;
       ctx.save();
       ctx.translate(r.x, r.y);
-      // Dark scorch mark (80x80, irregular edges like burnt paper)
-      ctx.fillStyle = `rgba(25, 18, 15, ${0.7 * fadeAlpha})`;
+      // Dark scorch mark (irregular edges like burnt paper)
+      ctx.fillStyle = `rgba(${RS.scorchColor}, ${RS.scorchAlpha * fadeAlpha})`;
       ctx.beginPath();
-      for (let a = 0; a <= Math.PI * 2; a += 0.25) {
-        const rough = 1 + Math.sin(a * 4 + r.id * 2) * 0.2;
-        const sr = 40 * rough;
+      for (let a = 0; a <= Math.PI * 2; a += RS.scorchAngleStep) {
+        const rough = 1 + Math.sin(a * RS.scorchRoughFreq + r.id * RS.scorchIdPhase) * RS.scorchRoughAmp;
+        const sr = RS.scorchRadius * rough;
         const sx = Math.cos(a) * sr;
-        const sy = Math.sin(a) * sr * 0.6;
+        const sy = Math.sin(a) * sr * RS.scorchYScale;
         if (a === 0) ctx.moveTo(sx, sy);
         else ctx.lineTo(sx, sy);
       }
       ctx.closePath();
       ctx.fill();
       // 1-2 tiny gear/spring fragments
-      ctx.fillStyle = `rgba(60, 55, 55, ${0.5 * fadeAlpha})`;
+      ctx.fillStyle = `rgba(${RS.fragColor}, ${RS.fragAlpha * fadeAlpha})`;
       ctx.fillRect(-8, 2, 6, 3);
       ctx.fillRect(5, -3, 4, 4);
       // Thin smoke rising
-      if (r.residueTimer > 1.5) {
-        const smokeAlpha = (r.residueTimer - 1.5) / 1.5 * 0.3;
-        ctx.fillStyle = `rgba(80, 75, 75, ${smokeAlpha})`;
+      if (r.residueTimer > RS.smokeThreshold) {
+        const smokeAlpha = (r.residueTimer - RS.smokeThreshold) / RS.smokeFadeDuration * RS.smokeAlpha;
+        ctx.fillStyle = `rgba(${RS.smokeColor}, ${smokeAlpha})`;
         ctx.beginPath();
-        ctx.ellipse(0, -30 - (3.0 - r.residueTimer) * 15, 4, 12, 0, 0, Math.PI * 2);
+        ctx.ellipse(0, -RS.smokeBaseY - (RS.fadeDuration - r.residueTimer) * RS.smokeRiseSpeed, RS.smokeWidth, RS.smokeHeight, 0, 0, Math.PI * 2);
         ctx.fill();
       }
       ctx.restore();
@@ -997,7 +1100,7 @@ export class RoachRenderer {
       const sub = BALANCE_CONFIG.subway;
       const hw = sub.shieldRectHalfWidth;   // 矩形半宽
       const rh = sub.shieldRectHeight;      // 矩形高度（向后方/上方延伸）
-      const originY = r.y + def.size * 0.5; // 护盾起始线 = 本体下缘
+      const originY = r.y + size * 0.5; // 护盾起始线 = 本体下缘
       const hpRatio = Math.max(0, (r.shieldHp ?? 0) / (r.maxShieldHp || 1));
       const flash = Math.min(1, (r.shieldHitFlash ?? 0) / 0.15);
       const pulse = 0.3 + Math.sin(config.time * 2.5 + r.id) * 0.07; // 增亮（原 0.16 ± 0.04）
@@ -1006,29 +1109,271 @@ export class RoachRenderer {
       ctx.save();
 
       // --- 1. 矩形填充（从起始线向上延伸，向尾部渐隐） ---
+      // 颜色/透明度集中于 vfx-balance SHIELD_RECT_*（经 BALANCE_CONFIG.subway 访问）
       const rectGrad = ctx.createLinearGradient(r.x, originY, r.x, originY - rh);
-      rectGrad.addColorStop(0, `rgba(103, 232, 249, ${alpha * 0.75})`);
-      rectGrad.addColorStop(0.6, `rgba(103, 232, 249, ${alpha * 0.45})`);
-      rectGrad.addColorStop(1, 'rgba(103, 232, 249, 0)');
+      rectGrad.addColorStop(0, `rgba(${sub.shieldRectColor}, ${alpha * sub.shieldRectFillAlphaNear})`);
+      rectGrad.addColorStop(0.6, `rgba(${sub.shieldRectColor}, ${alpha * sub.shieldRectFillAlphaMid})`);
+      rectGrad.addColorStop(1, `rgba(${sub.shieldRectColor}, 0)`);
       ctx.fillStyle = rectGrad;
       ctx.fillRect(r.x - hw, originY - rh, hw * 2, rh);
 
       // --- 2. 直线矩形线框（四边笔直：前边/后边/两侧） ---
-      ctx.strokeStyle = `rgba(165, 243, 252, ${Math.min(1, alpha * 2.2 + flash * 0.4)})`;
+      ctx.strokeStyle = `rgba(${sub.shieldRectStrokeColor}, ${Math.min(1, alpha * sub.shieldRectStrokeAlphaScale + flash * sub.shieldRectStrokeFlashAlpha)})`;
       ctx.lineWidth = 2 + flash * 1.5;
       ctx.strokeRect(r.x - hw, originY - rh, hw * 2, rh);
 
       ctx.restore();
     }
 
-    // 护盾气体光环粒子（独立于范围框显示，始终生成）
+    // ===== 护盾蟑螂气体护盾——半圆甲壳造型（常驻特效，不受 showShieldRange 调试开关控制） =====
+    // 半椭圆暗红发光甲壳（视觉 200×shieldDomeHeight，与实际保护区判定 200×shieldRectHeight 解耦）：
+    // 分段硬甲 = 放射肋条 × 同心环纹，缝隙透暗金微光；底部向两侧张开，同类靠近时自动延展加宽。
+    // 动态（全部无状态确定性渲染）：呼吸胀缩 + 金光按环纹相位明暗流转；
+    // 受击裂纹爬散 → 金光汇聚修补；受损变暗 + 焦黑灼痕 + 壳缘碎屑剥落。
     if (r.type === RoachType.SHIELD && r.state === RoachState.ALIVE && (r.shieldHp ?? 0) > 0) {
-      const hw = BALANCE_CONFIG.subway.shieldRectHalfWidth;
-      config.onSpawnShieldAura?.(r.x, r.y + def.size * 0.5, hw);
+      const sub = BALANCE_CONFIG.subway;
+      const hw = sub.shieldRectHalfWidth;   // 甲壳半宽 = 保护区半宽（视觉/判定一致 200 宽）
+      const rh = sub.shieldDomeHeight;      // 甲壳视觉高度（与判定区高度解耦，半圆观感）
+      const originY = r.y + size * 0.5; // 甲壳底边 = 本体下缘
+      const hpRatio = Math.max(0, (r.shieldHp ?? 0) / (r.maxShieldHp || 1));
+      const flash = Math.min(1, (r.shieldHitFlash ?? 0) / 0.15);
+      // 呼吸胀缩：整体缓慢（火焰直射命中时振幅加大）；r.id 错相避免多盾同步
+      const breath = Math.sin(2 * Math.PI * sub.shieldDomeBreathFreq * config.time + r.id);
+      const flameFlash = (r.shieldFlameHitFlash ?? 0) > 0;
+      const swell = 1 + (flameFlash ? 0.08 : sub.shieldDomeBreathAmp) * breath;
+      const dim = 0.35 + 0.65 * hpRatio; // 受损发光变暗
+      // 同类靠近 → 底部向两侧延展加宽（刚好罩住身后同类）：取后方保护区内同类最大横向偏离
+      let widen = 0;
+      for (const o of roaches) {
+        if (o.id === r.id || o.state !== RoachState.ALIVE) continue;
+        const dy = r.y - o.y; // 同类在后方（上方）
+        if (dy < -10 || dy > rh) continue;
+        const dx = Math.abs(o.x - r.x);
+        if (dx > hw + sub.shieldDomeAllyWiden * 2) continue;
+        widen = Math.max(widen, Math.min(sub.shieldDomeAllyWiden * 2, dx - hw + sub.shieldDomeAllyWiden));
+      }
+      const rx = hw * swell;
+      const ry = rh * swell;
+      const flare = sub.shieldDomeFlareExtra + Math.max(0, widen);
+      const repair = 1 + flash * 1.2; // 受击后缝隙金光增强 = 汇聚修补
+
+      ctx.save();
+      ctx.translate(r.x, originY);
+
+      // --- 1. 甲壳主体（暗红半透明，底部实 → 顶部渐隐，source-over） ---
+      const bodyGrad = ctx.createLinearGradient(0, 0, 0, -ry);
+      bodyGrad.addColorStop(0, `rgba(${sub.shieldDomeFillColor}, ${sub.shieldDomeFillAlphaBottom * dim})`);
+      bodyGrad.addColorStop(1, `rgba(${sub.shieldDomeFillColor}, ${sub.shieldDomeFillAlphaTop * dim})`);
+      ctx.fillStyle = bodyGrad;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, rx, ry, 0, Math.PI, Math.PI * 2);
+      ctx.closePath();
+      ctx.fill();
+
+      // --- 2. 焦黑灼痕（受损出现，确定性散布于甲壳面，压在壳体上、金光下） ---
+      if (hpRatio < 1) {
+        const scorchA = (1 - hpRatio) * sub.shieldDomeScorchAlpha;
+        for (let i = 0; i < sub.shieldDomeScorchCount; i++) {
+          const th = Math.PI + Math.PI * (0.18 + 0.64 * RoachRenderer.hash01(i * 31 + r.id * 7));
+          const rr = 0.25 + 0.55 * RoachRenderer.hash01(i * 13 + r.id * 17);
+          const bx = rx * rr * Math.cos(th);
+          const by = ry * rr * Math.sin(th);
+          const br = 14 + 16 * RoachRenderer.hash01(i * 5 + r.id * 11);
+          const sg = ctx.createRadialGradient(bx, by, 0, bx, by, br);
+          sg.addColorStop(0, `rgba(${sub.shieldDomeScorchColor}, ${scorchA})`);
+          sg.addColorStop(1, `rgba(${sub.shieldDomeScorchColor}, 0)`);
+          ctx.fillStyle = sg;
+          ctx.beginPath();
+          ctx.arc(bx, by, br, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      // --- 3. 外缘描边 + 底部张开沿（圆润亮红壳缘；底部圆头粗线微向下弯，超出甲壳半宽 flare） ---
+      ctx.strokeStyle = `rgba(${sub.shieldDomeRimColor}, ${sub.shieldDomeRimAlpha * dim})`;
+      ctx.lineWidth = sub.shieldDomeRimLineWidth;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, rx, ry, 0, Math.PI, Math.PI * 2);
+      ctx.stroke();
+      ctx.lineCap = 'round';
+      ctx.lineWidth = sub.shieldDomeRimLineWidth + 1.5;
+      ctx.beginPath();
+      ctx.moveTo(-rx - flare, 2);
+      ctx.quadraticCurveTo(0, 8 + flare * 0.1, rx + flare, 2);
+      ctx.stroke();
+
+      // --- 4. 分段硬甲缝隙金光（lighter 发光：同心环纹相位错开明暗流转 + 放射肋条 + 段缘翘起高光） ---
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.shadowColor = `rgba(${sub.shieldDomeGapColor}, ${sub.shieldDomeGapAlpha * dim})`;
+      ctx.shadowBlur = sub.shieldDomeGapGlowBlur;
+      for (let k = 1; k <= sub.shieldDomeRingCount; k++) {
+        const s = k / (sub.shieldDomeRingCount + 1);
+        // 明暗流转：各环纹相位错开，金光沿壳面流动
+        const flow = 0.55 + 0.45 * Math.sin(2 * Math.PI * sub.shieldDomeBreathFreq * config.time - k * 0.9 + r.id);
+        ctx.strokeStyle = `rgba(${sub.shieldDomeGapColor}, ${Math.min(1, sub.shieldDomeGapAlpha * dim * flow * repair)})`;
+        ctx.lineWidth = sub.shieldDomeGapLineWidth;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, rx * s, ry * s, 0, Math.PI, Math.PI * 2);
+        ctx.stroke();
+        // 段缘翘起高光：环纹内侧细亮边
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = `rgba(${sub.shieldDomeEdgeColor}, ${sub.shieldDomeEdgeAlpha * dim})`;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, rx * s, ry * s - 2.5, 0, Math.PI, Math.PI * 2);
+        ctx.stroke();
+        ctx.shadowBlur = sub.shieldDomeGapGlowBlur;
+      }
+      const ribFlow = 0.6 + 0.4 * breath;
+      ctx.strokeStyle = `rgba(${sub.shieldDomeGapColor}, ${Math.min(1, sub.shieldDomeGapAlpha * dim * ribFlow * repair)})`;
+      ctx.lineWidth = sub.shieldDomeGapLineWidth;
+      for (let i = 1; i < sub.shieldDomeSegmentCount; i++) {
+        const th = Math.PI + (Math.PI * i) / sub.shieldDomeSegmentCount;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(rx * Math.cos(th), ry * Math.sin(th));
+        ctx.stroke();
+      }
+      ctx.shadowBlur = 0;
+
+      // --- 5. 受击裂纹（击中点沿甲纹向四周爬散：随 flash 消退生长并渐隐；缝隙金光同步增强修补） ---
+      if (flash > 0) {
+        const grow = 1 - flash; // 0→1：裂纹爬散进度
+        ctx.strokeStyle = `rgba(${sub.shieldDomeCrackColor}, ${flash * sub.shieldDomeCrackAlpha})`;
+        ctx.lineWidth = sub.shieldDomeCrackLineWidth;
+        // 击中点：确定性取甲壳中部一点（哈希自蟑螂 id，无状态不闪烁）
+        const hTh = Math.PI + Math.PI * (0.3 + 0.4 * RoachRenderer.hash01(r.id * 3));
+        const hx = rx * 0.45 * Math.cos(hTh);
+        const hy = ry * 0.45 * Math.sin(hTh);
+        for (let i = 0; i < sub.shieldDomeCrackCount; i++) {
+          // 主方向沿放射肋条角散开，叠加哈希抖动 → 沿甲纹锯齿爬行
+          const ang = hTh + (i - (sub.shieldDomeCrackCount - 1) / 2) * 0.28;
+          const maxLen = 6 + (26 + 30 * RoachRenderer.hash01(i * 7 + r.id * 13)) * grow;
+          let px = hx;
+          let py = hy;
+          ctx.beginPath();
+          ctx.moveTo(px, py);
+          for (let seg = 1; seg <= 3; seg++) {
+            const jag = (RoachRenderer.hash01(i * 31 + seg * 17 + r.id * 5) - 0.5) * 0.5;
+            px += Math.cos(ang + jag) * (maxLen / 3);
+            py += Math.sin(ang + jag) * (maxLen / 3);
+            ctx.lineTo(px, py);
+          }
+          ctx.stroke();
+        }
+      }
+
+      // --- 6. 边缘碎屑剥落（护盾 HP 低于阈值：壳缘焦褐碎屑向外下方飘散，确定性循环） ---
+      const dmg = 1 - hpRatio / sub.shieldDomeDebrisHpThreshold;
+      if (dmg > 0) {
+        ctx.globalCompositeOperation = 'source-over';
+        for (let i = 0; i < sub.shieldDomeDebrisCount; i++) {
+          const life = sub.shieldDomeDebrisLife;
+          const t = config.time * 1000 + (i / sub.shieldDomeDebrisCount) * life;
+          const slot = Math.floor(t / life);       // 生命槽位（本轮种子）
+          const p = (t - slot * life) / life;      // 槽内进度 0→1
+          const th = Math.PI + Math.PI * RoachRenderer.hash01(slot * 31 + i * 7 + r.id * 13);
+          const sx = rx * Math.cos(th) + Math.cos(th) * 34 * p; // 壳缘起点向外漂移
+          const sy = ry * Math.sin(th) + p * p * 46;            // p² 加速下落
+          const rot = RoachRenderer.hash01(i * 11 + slot * 3) * Math.PI + p * 5;
+          const ds = sub.shieldDomeDebrisSize * (1 - 0.4 * p);
+          ctx.save();
+          ctx.translate(sx, sy);
+          ctx.rotate(rot);
+          ctx.fillStyle = `rgba(${sub.shieldDomeDebrisColor}, ${(1 - p) * Math.min(1, dmg) * 0.9})`;
+          ctx.fillRect(-ds / 2, -ds / 2, ds, ds * 0.7);
+          ctx.restore();
+        }
+      }
+
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.restore();
+    }
+
+    // ===== SUBWAY EXCLUSIVE: 破盾玻璃碎裂特效（无状态：shieldBrokenTimer 倒计时驱动，仅破碎后 shieldBreakDuration 秒内显示） =====
+    // 光带同位置 + lighter 叠加：瞬间白色闪光 → 放射状锯齿裂纹定格渐隐 → 三角玻璃碎片向外飞散自转（全部确定性 hash，无状态）
+    if (r.type === RoachType.SHIELD && r.state === RoachState.ALIVE && (r.shieldBrokenTimer ?? 0) > 0) {
+      const sub = BALANCE_CONFIG.subway;
+      const elapsed = sub.shieldRebuildDelay - (r.shieldBrokenTimer ?? 0);
+      const dur = sub.shieldBreakDuration;
+      if (elapsed >= 0 && elapsed < dur) {
+        const p = elapsed / dur;                       // 特效进度 0→1
+        const fade = 1 - p;                            // 渐隐系数
+        const hw = sub.shieldRectHalfWidth;            // 光带半宽
+        const bandH = sub.shieldBandHeight;            // 光带高度
+        const yRatio = bandH / (hw * 2);               // y 压缩比（与光带椭圆一致）
+        const originY = r.y + size * 0.5;          // 光带底边 = 本体下缘
+
+        ctx.save();
+        ctx.globalCompositeOperation = sub.shieldBreakBlend;
+        ctx.translate(r.x, originY - bandH / 2);
+
+        // --- 1. 瞬间白色闪光（y 压缩椭圆，前 25% 进度内快速熄灭，玻璃爆裂强高光） ---
+        const flashFade = Math.max(0, 1 - p / 0.25);
+        if (flashFade > 0) {
+          ctx.save();
+          ctx.scale(1, yRatio);
+          const flashGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, hw);
+          flashGrad.addColorStop(0, `rgba(${sub.shieldBreakFlashColor}, ${flashFade * sub.shieldBreakFlashAlpha})`);
+          flashGrad.addColorStop(1, `rgba(${sub.shieldBreakFlashColor}, 0)`);
+          ctx.fillStyle = flashGrad;
+          ctx.fillRect(-hw, -hw, hw * 2, hw * 2);
+          ctx.restore();
+        }
+
+        // --- 2. 放射状裂纹（破碎瞬间定格，前半程渐隐；每条 3 段锯齿折线模拟玻璃裂纹） ---
+        const crackFade = Math.max(0, 1 - p / 0.5);
+        if (crackFade > 0) {
+          ctx.strokeStyle = `rgba(${sub.shieldBreakCrackColor}, ${crackFade * sub.shieldBreakCrackAlpha})`;
+          ctx.lineWidth = sub.shieldBreakCrackLineWidth;
+          for (let i = 0; i < sub.shieldBreakCrackCount; i++) {
+            const ang = RoachRenderer.hash01(i * 7 + r.id * 13) * Math.PI * 2;  // 裂纹主方向
+            const totalLen = hw * (0.6 + 0.4 * RoachRenderer.hash01(i * 3 + r.id * 11)); // 裂纹总长
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            let cx = 0, cy = 0;
+            for (let seg = 1; seg <= 3; seg++) {
+              // 每段沿主方向推进 1/3，方向叠加哈希抖动形成锯齿
+              const segAng = ang + (RoachRenderer.hash01(i * 31 + seg * 17 + r.id * 5) - 0.5) * 0.7;
+              cx += Math.cos(segAng) * (totalLen / 3);
+              cy += Math.sin(segAng) * (totalLen / 3) * yRatio;
+              ctx.lineTo(cx, cy);
+            }
+            ctx.stroke();
+          }
+        }
+
+        // --- 3. 三角玻璃碎片（向外飞散 + 自转 + 轻微下落；淡蓝半透明填充 + 近白描边，全程渐隐） ---
+        for (let i = 0; i < sub.shieldBreakShardCount; i++) {
+          const ang = RoachRenderer.hash01(i * 7 + r.id * 13) * Math.PI * 2;          // 飞散方向
+          const d = p * sub.shieldBreakShardFly * (0.5 + 0.5 * RoachRenderer.hash01(i * 3 + r.id * 11)); // 飞散距离（有快有慢）
+          const size = sub.shieldBreakShardSizeMin + RoachRenderer.hash01(i * 5 + r.id * 17) * (sub.shieldBreakShardSizeMax - sub.shieldBreakShardSizeMin);
+          const rot = RoachRenderer.hash01(i * 11 + r.id * 23) * Math.PI * 2 + p * 6 * (RoachRenderer.hash01(i * 13 + r.id * 29) - 0.5); // 初始角 + 自转
+          const sx = Math.cos(ang) * d;
+          const sy = Math.sin(ang) * d * yRatio + p * p * 20; // p² 项模拟碎片加速下落
+          ctx.save();
+          ctx.translate(sx, sy);
+          ctx.rotate(rot);
+          ctx.beginPath();
+          ctx.moveTo(0, -size * 0.6);
+          ctx.lineTo(size * 0.55, size * 0.45);
+          ctx.lineTo(-size * 0.55, size * 0.45);
+          ctx.closePath();
+          ctx.fillStyle = `rgba(${sub.shieldBreakShardFillColor}, ${fade * sub.shieldBreakShardFillAlpha})`;
+          ctx.fill();
+          ctx.strokeStyle = `rgba(${sub.shieldBreakShardEdgeColor}, ${fade * sub.shieldBreakShardEdgeAlpha})`;
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.restore();
+      }
     }
 
     // ===== HP bar + Armor bar: show for ALL roaches that have armor buff =====
-    const barW = r.isBoss ? 60 : Math.max(32, (r.size ?? 30) * 0.5);
+    const barW = r.isBoss ? 60 : Math.max(32, (r.size ?? 30) * 0.5) * perspScale;
     const barH = r.isBoss ? 8 : 5;
     // Always show HP bar for armored/shielded roaches, large/boss roaches
     const showHpBar = r.armorHp > 0 || r.isBoss || r.type === RoachType.SMALL || r.type === RoachType.LARGE || r.type === RoachType.ARMORED || r.type === RoachType.SPLITTING || r.type === RoachType.NURSE || r.type === RoachType.TIMED_SUICIDE || r.type === RoachType.TUNNEL_WORKER || r.type === RoachType.SUBWAY_ELITE || r.type === RoachType.SHIELD;
@@ -1100,14 +1445,16 @@ export class RoachRenderer {
 
     // Enrage indicator
     if (r.isEnraged) {
+      const en = BALANCE_CONFIG.render.roach.enrageIndicator; // 颜色/透明度/混合集中于 vfx-balance
       ctx.save();
-      ctx.strokeStyle = 'rgba(239, 68, 68, 0.6)';
+      ctx.globalCompositeOperation = en.blend;
+      ctx.strokeStyle = `rgba(${en.color}, ${en.ringAlpha})`;
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(r.x, r.y, size + 6, 0, Math.PI * 2);
       ctx.stroke();
       const pulse = (Math.sin(config.time * 12) + 1) * 0.5;
-      ctx.strokeStyle = `rgba(239, 68, 68, ${pulse * 0.4})`;
+      ctx.strokeStyle = `rgba(${en.color}, ${pulse * en.pulseAlphaScale})`;
       ctx.beginPath();
       ctx.arc(r.x, r.y, size + 6 + pulse * 6, 0, Math.PI * 2);
       ctx.stroke();
@@ -1116,11 +1463,13 @@ export class RoachRenderer {
 
     // Stun effect (deterministic pulse, no per-frame random flicker)
     if (r.isStunned) {
+      const st = BALANCE_CONFIG.render.roach.stunEffect; // 颜色/透明度/混合集中于 vfx-balance
       const stunPulse = (Math.sin(config.time * 8) + 1) * 0.5;
       ctx.save();
-      ctx.strokeStyle = `rgba(150, 220, 255, ${0.5 + stunPulse * 0.4})`;
+      ctx.globalCompositeOperation = st.blend;
+      ctx.strokeStyle = `rgba(${st.boltColor}, ${st.boltAlphaBase + stunPulse * st.boltAlphaPulse})`;
       ctx.lineWidth = 1.5;
-      ctx.shadowColor = 'rgba(250, 200, 50, 0.8)';
+      ctx.shadowColor = `rgba(${st.boltGlowColor}, ${st.boltGlowAlpha})`;
       ctx.shadowBlur = 6;
       // Deterministic bolt positions based on roach id and time
       const seedBase = r.id * 137.5;
@@ -1138,7 +1487,7 @@ export class RoachRenderer {
       }
       ctx.shadowBlur = 0;
       ctx.restore();
-      ctx.fillStyle = `rgba(250, 200, 50, ${0.15 + stunPulse * 0.1})`;
+      ctx.fillStyle = `rgba(${st.haloColor}, ${st.haloAlphaBase + stunPulse * st.haloAlphaPulse})`;
       ctx.beginPath();
       ctx.arc(r.x, r.y, size + 4, 0, Math.PI * 2);
       ctx.fill();
@@ -1146,19 +1495,27 @@ export class RoachRenderer {
 
     // Poison indicator
     if (r.poisonTimer > 0) {
-      ctx.fillStyle = `rgba(150, 100, 255, ${0.3 + Math.sin(config.time * 4) * 0.2})`;
+      const pi = BALANCE_CONFIG.render.roach.poisonIndicator; // 颜色/透明度/混合集中于 vfx-balance
+      ctx.save();
+      ctx.globalCompositeOperation = pi.blend;
+      ctx.fillStyle = `rgba(${pi.color}, ${pi.alphaBase + Math.sin(config.time * 4) * pi.alphaPulseAmp})`;
       ctx.beginPath();
       ctx.arc(r.x, r.y, size + 3, 0, Math.PI * 2);
       ctx.fill();
+      ctx.restore();
     }
 
     // Suicide fuse
     if (r.isFused) {
+      const fu = BALANCE_CONFIG.render.roach.suicideFuse; // 颜色/透明度/混合集中于 vfx-balance
       const fusePulse = (Math.sin(config.time * 20) + 1) * 0.5;
-      ctx.fillStyle = `rgba(255, 60, 0, ${0.5 + fusePulse * 0.5})`;
+      ctx.save();
+      ctx.globalCompositeOperation = fu.blend;
+      ctx.fillStyle = `rgba(${fu.color}, ${fu.alphaBase + fusePulse * fu.alphaPulseAmp})`;
       ctx.beginPath();
       ctx.arc(r.x, r.y - size - 5, 4 + fusePulse * 3, 0, Math.PI * 2);
       ctx.fill();
+      ctx.restore();
     }
 
     // Boss name

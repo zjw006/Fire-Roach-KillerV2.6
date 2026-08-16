@@ -93,11 +93,11 @@ export class WeatherSystem {
    */
   private updateRain(): void {
     const cfg = BALANCE_CONFIG.weather.rain;
-    const spawnChance = cfg.spawnRate * this.config.deltaTime;
+    const spawnChance = cfg.emitter.spawnRate * this.config.deltaTime;
     if (Math.random() < spawnChance) {
       const rainParticle: Particle = {
         x: Math.random() * this.config.canvasWidth,
-        y: -10,
+        y: cfg.emitter.spawnY,
         vx: cfg.vxMin + Math.random() * cfg.vxRange,
         vy: cfg.vyMin + Math.random() * cfg.vyRange,
         life: cfg.life,
@@ -116,11 +116,11 @@ export class WeatherSystem {
    */
   private updateFog(): void {
     const cfg = BALANCE_CONFIG.weather.fog;
-    const spawnChance = cfg.spawnRate * this.config.deltaTime;
+    const spawnChance = cfg.emitter.spawnRate * this.config.deltaTime;
     if (Math.random() < spawnChance) {
       const life = cfg.lifeMin + Math.random() * cfg.lifeRange;
       const fogParticle: Particle = {
-        x: Math.random() < 0.5 ? -20 : this.config.canvasWidth + 20,
+        x: Math.random() < 0.5 ? -cfg.emitter.spawnEdgeOffset : this.config.canvasWidth + cfg.emitter.spawnEdgeOffset,
         y: Math.random() * this.config.canvasHeight,
         vx: (Math.random() < 0.5 ? 1 : -1) * (cfg.vxMin + Math.random() * cfg.vxRange),
         vy: cfg.vyMin + Math.random() * cfg.vyRange,
@@ -145,8 +145,8 @@ export class WeatherSystem {
 
     if (this.lightningTimer <= 0) {
       this.lightningTimer =
-        BALANCE_CONFIG.lightning.timerMin + Math.random() * BALANCE_CONFIG.lightning.timerRandMax;
-      if (Math.random() < BALANCE_CONFIG.lightning.chance) {
+        BALANCE_CONFIG.lightning.emitter.timerMin + Math.random() * BALANCE_CONFIG.lightning.emitter.timerRandMax;
+      if (Math.random() < BALANCE_CONFIG.lightning.emitter.chance) {
         this.triggerLightning();
       }
     }
@@ -176,12 +176,12 @@ export class WeatherSystem {
   triggerLightning(duration: number = BALANCE_CONFIG.lightning.flashDuration): void {
     this.lightningFlash = duration;
     this.lightningTimer =
-      BALANCE_CONFIG.lightning.timerMin + Math.random() * BALANCE_CONFIG.lightning.timerRandMax;
+      BALANCE_CONFIG.lightning.emitter.timerMin + Math.random() * BALANCE_CONFIG.lightning.emitter.timerRandMax;
 
     if (this.config.onAddFloatingText && this.lightningTextCooldown <= 0) {
       this.config.onAddFloatingText(
         this.config.canvasWidth / 2,
-        this.config.canvasHeight / 2 - 100,
+        this.config.canvasHeight / 2 - BALANCE_CONFIG.lightning.textOffsetY,
         TEXT_CONFIG.combat.lightning.text,
         TEXT_CONFIG.combat.lightning.color
       );
@@ -226,8 +226,12 @@ export class WeatherSystem {
     lightningFlash: number
   ): void {
     if (lightningFlash > 0) {
-      ctx.fillStyle = `rgba(255, 255, 255, ${lightningFlash * 0.3})`;
+      const lCfg = BALANCE_CONFIG.lightning;
+      ctx.save();
+      ctx.globalCompositeOperation = lCfg.flashBlend; // 叠加混合集中于 vfx-balance lightning.flashBlend
+      ctx.fillStyle = `rgba(${lCfg.flashColor}, ${lightningFlash * lCfg.flashAlpha})`;
       ctx.fillRect(0, 0, w, h);
+      ctx.restore();
     }
   }
 
@@ -241,22 +245,26 @@ export class WeatherSystem {
     _w: number,
     weatherParticles: Particle[]
   ): void {
+    const rainCfg = BALANCE_CONFIG.weather.rain;
+    const fogCfg = BALANCE_CONFIG.weather.fog;
     ctx.save();
     for (const p of weatherParticles) {
       const alpha = p.life / p.maxLife;
       if (p.type === ParticleType.RAIN) {
-        ctx.globalAlpha = alpha * 0.4;
+        ctx.globalAlpha = alpha * rainCfg.renderAlpha;
+        ctx.globalCompositeOperation = rainCfg.blend; // 叠加混合集中于 vfx-balance weather.rain.blend
         ctx.strokeStyle = p.color;
-        ctx.lineWidth = 1;
+        ctx.lineWidth = rainCfg.renderLineWidth;
         ctx.beginPath();
         ctx.moveTo(p.x, p.y);
-        ctx.lineTo(p.x + p.vx * 0.02, p.y + p.vy * 0.02);
+        ctx.lineTo(p.x + p.vx * rainCfg.renderTailScale, p.y + p.vy * rainCfg.renderTailScale);
         ctx.stroke();
       } else if (p.type === ParticleType.SMOKE) {
-        ctx.globalAlpha = alpha * 0.3;
+        ctx.globalAlpha = alpha * fogCfg.renderAlpha;
+        ctx.globalCompositeOperation = fogCfg.blend; // 叠加混合集中于 vfx-balance weather.fog.blend
         const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size);
         grad.addColorStop(0, p.color);
-        grad.addColorStop(1, 'rgba(180, 180, 160, 0)');
+        grad.addColorStop(1, fogCfg.renderGradientEnd);
         ctx.fillStyle = grad;
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);

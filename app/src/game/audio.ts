@@ -250,6 +250,52 @@ export class AudioManager {
     sfx.play().catch(() => {});
   }
 
+  /** 播放护士蟑螂回血完成音效（Web Audio API 合成，温暖上扬音调） */
+  playNurseHealComplete() {
+    if (!this.audioContext || this.isMuted) return;
+    const ctx = this.audioContext;
+    const t = ctx.currentTime;
+    // 两段上扬音调（温暖治疗感）
+    const freqs = [440, 660];
+    const durs = [0.15, 0.25];
+    freqs.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, t + i * 0.1);
+      gain.gain.setValueAtTime(0.3, t + i * 0.1);
+      gain.gain.exponentialRampToValueAtTime(0.01, t + i * 0.1 + durs[i]);
+      osc.start(t + i * 0.1);
+      osc.stop(t + i * 0.1 + durs[i]);
+    });
+  }
+
+  /** 播放工程师蟑螂施法音效（Web Audio API 合成，机械感短促音） */
+  playEngineerCast() {
+    if (!this.audioContext || this.isMuted) return;
+    const ctx = this.audioContext;
+    const t = ctx.currentTime;
+    // 短促机械音（方波）
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(800, t);
+    osc.frequency.exponentialRampToValueAtTime(400, t + 0.1);
+    gain.gain.setValueAtTime(0.25, t);
+    gain.gain.exponentialRampToValueAtTime(0.01, t + 0.15);
+    osc.start(t);
+    osc.stop(t + 0.15);
+  }
+
+  /** 播放蟑螂获得护甲音效（引用加血音效 playNurseHealComplete，双音阶上扬） */
+  playArmorGain() {
+    this.playNurseHealComplete();
+  }
+
   /** 播放变异蟑螂变身音效 */
   playMutantTransform() {
     if (this.isMuted) return;
@@ -270,6 +316,50 @@ export class AudioManager {
     gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.3);
     osc.start(this.audioContext.currentTime);
     osc.stop(this.audioContext.currentTime + 0.3);
+  }
+
+  /** 播放护盾破碎音效（Web Audio API 合成，玻璃破碎感：瞬间碎裂噪声 + 高频碎片叮当散落） */
+  playShieldBreak() {
+    if (!this.audioContext || this.isMuted) return;
+    const ctx = this.audioContext;
+    const t = ctx.currentTime;
+
+    // --- 1. 瞬间碎裂噪声（白噪声 + 带通滤波聚焦玻璃频段，极短促 0.12s） ---
+    const noiseLen = Math.floor(ctx.sampleRate * 0.12);
+    const noiseBuf = ctx.createBuffer(1, noiseLen, ctx.sampleRate);
+    const data = noiseBuf.getChannelData(0);
+    for (let i = 0; i < noiseLen; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / noiseLen, 1.5); // 快速衰减
+    const noiseSrc = ctx.createBufferSource();
+    noiseSrc.buffer = noiseBuf;
+    const noiseFilter = ctx.createBiquadFilter();
+    noiseFilter.type = 'bandpass';
+    noiseFilter.frequency.setValueAtTime(3500, t);
+    noiseFilter.Q.setValueAtTime(1.2, t);
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.55, t);
+    noiseGain.gain.exponentialRampToValueAtTime(0.01, t + 0.12);
+    noiseSrc.connect(noiseFilter);
+    noiseFilter.connect(noiseGain);
+    noiseGain.connect(ctx.destination);
+    noiseSrc.start(t);
+    noiseSrc.stop(t + 0.12);
+
+    // --- 2. 碎片叮当散落（8 个高频正弦，随机音高/先后错峰/极短衰减，模拟玻璃渣四溅） ---
+    const shardFreqs = [5200, 4700, 4100, 3600, 3100, 2700, 5800, 6300];
+    shardFreqs.forEach((freq, i) => {
+      const start = t + (i * 0.018) + Math.random() * 0.02;  // 错峰起点（前 0.16s 内陆续响起）
+      const dur = 0.05 + Math.random() * 0.07;               // 单音极短
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq * (0.95 + Math.random() * 0.1), start); // ±5% 失谐更真实
+      gain.gain.setValueAtTime(0.22 - i * 0.015, start);     // 后响的碎片音量递减
+      gain.gain.exponentialRampToValueAtTime(0.01, start + dur);
+      osc.start(start);
+      osc.stop(start + dur);
+    });
   }
 
   /** 开始播放当前 BGM */
