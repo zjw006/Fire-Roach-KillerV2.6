@@ -263,6 +263,9 @@ export class SaveSystem {
     if (oldProgress.autoUseEnabled && typeof oldProgress.autoUseEnabled === 'object') {
       fresh.autoUseEnabled = oldProgress.autoUseEnabled;
     }
+    if (oldProgress.levelStars && typeof oldProgress.levelStars === 'object') {
+      fresh.levelStars = oldProgress.levelStars;
+    }
 
     // v2 → v3: 消耗品库存迁移到 GameProgress
     if (oldVersion <= 2 && this.SAVE_VERSION >= 3) {

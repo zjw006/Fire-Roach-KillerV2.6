@@ -637,6 +637,18 @@ export class AudioManager {
           easy: '/assets/bgm_hospital.mp3',
           hard: '/assets/bgm_hospital.mp3',
         };
+      case 'subway':
+        // 地铁场景使用困难难度下水道 BGM
+        return {
+          easy: '/assets/bgm_sewer_hard.mp3',
+          hard: '/assets/bgm_sewer_hard.mp3',
+        };
+      case 'supermarket':
+        // 超市场景使用困难难度地下室 BGM
+        return {
+          easy: '/assets/bgm_basement_hard.mp3',
+          hard: '/assets/bgm_basement_hard.mp3',
+        };
       default:
         return null; // 该场景无自定义 BGM
     }

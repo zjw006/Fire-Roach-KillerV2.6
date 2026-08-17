@@ -193,6 +193,8 @@ export const BALANCE_ITEMS = {
     trackRange: 400,             // 追踪范围（像素），超出此范围的水滴消失
     trackSteerFactor: 5,         // 追踪转向力度系数
     hitParticleCount: 8,         // 命中粒子数量
+    suffocationTimer: 8,         // 窒息持续时间（秒），命中后附加
+    skillBlockDuration: 5,       // 技能封锁时长（秒），护士不能加血、工程蟑螂不能修盾/喷甲
   },
 
   // ===== 瞄准系统 =====
@@ -323,7 +325,7 @@ export const BALANCE_ITEMS = {
     baseDamage: 2,               // 基础伤害
     damageMultiplier: 0.5,       // 伤害倍率
     damageRange: 280,            // 伤害范围（像素）
-    poisonTimer: 3,              // 中毒计时器（秒）
+    poisonTimer: 5,              // 中毒计时器（秒）
     poisonDamage: 1.0,           // 中毒每跳伤害
     sprayDuration: 0.15,         // 喷雾动画持续时间（秒）
     sideParticleCount: 6,        // 侧方粒子数
@@ -338,8 +340,12 @@ export const BALANCE_ITEMS = {
     centerParticleLifeMax: 0.25, // 中心粒子最大存活时间（秒）
     maxParticlesPerFrame: 24,    // 每帧最大粒子数
     hitParticleChance: 0.3,      // 命中粒子生成概率（30%）
-    suffocationTimer: 8,         // 窒息持续时间（秒），护士蟑螂特有
+    suffocationTimer: 8,         // 窒息持续时间（秒）
     suffocationDps: 1,           // 窒息每秒伤害
+    dodgeBlockDuration: 3,       // 闪避封锁时长（秒），命中后拥有闪避技能的蟑螂无法闪避
+    weakenDuration: 5,           // 虚弱减速时长（秒）
+    weakenSpeedMult: 0.5,        // 虚弱期间移动速度倍率
+    skillBlockDuration: 5,       // 技能封锁时长（秒），护士不能加血、工程蟑螂不能修盾/喷甲
     warningThreshold: 1,         // 即将结束警告阈值（秒）
   },
 
@@ -493,16 +499,16 @@ export const BALANCE_ITEMS = {
     maxTunnelerPerFormation: 2,  // 隧道工硬上限（每阵列），配置超出运行期截断
     maxShieldPerFormation: 1,    // 护盾蟑螂硬上限（每阵列），配置超出运行期截断
     spawnCapacityGuard: 36,      // 场上蟑螂 ≥ 此值时延迟阵列组/穿插生成（硬上限 40 前留余量，防静默丢弃）
-    formationWaitClear: 2,       // 阵型组出场条件：热场杂兵队列清空且场上存活 ≤ 此值（热场被基本清完，阵列才登场）
-    formationWaitTimeout: 18,    // 队列清空后阵型组最长等待（秒，防残血杂兵卡死波次兜底强制出场）
+    formationWaitClear: 4,       // 阵型组出场条件：热场杂兵队列清空且场上存活 ≤ 此值（放宽至4，阵列更早起手避免断档）
+    formationWaitTimeout: 6,     // 队列清空后阵型组最长等待（秒，缩短兜底等待，防残血杂兵造成长时间空窗）
     groupDepthGap: 90,           // 多阵型组生成：后续组出生线纵深错位（像素，更靠近玩家，避免阵面重叠）
-    groupStaggerSec: 8,          // 相邻阵型组错时生成间隔（秒，V4.0 各组错时生成；首组在热场清完后立即出场）
+    groupStaggerSec: 3.5,        // 相邻阵型组错时生成间隔（秒，缩短组间空窗；首组在热场清完后立即出场）
     trickleJitterMin: 0.7,       // 穿插投放间隔抖动下限倍率（实际间隔 = intervalSec × 抖动）
     trickleJitterMax: 1.3,       // 穿插投放间隔抖动上限倍率
-    trickleSuicideJitterMax: 2.2,// 自爆类穿插间隔抖动上限倍率（下限同 trickleJitterMin，挫开时间）
+    trickleSuicideJitterMax: 1.5,// 自爆类穿插间隔抖动上限倍率（下限同 trickleJitterMin，挫开时间；空场时改用 trickleJitterMax 快速补场）
     trickleSuicideYStep: 60,     // 自爆类穿插出生 Y 递进错位（像素，3 档循环 + 随机微抖，挫开位置）
-    trickleSuicideMinAlive: 8,   // 自爆类（普通/飞行自爆）穿插仅在场上存活蟑螂 ≥ 此值时投放（画面有一定蟑螂才生成）
-    trickleSuicideWaitTimeout: 12, // 自爆类穿插等待上限（秒，超时强制投放兜底，防胜利判定卡死）
+    trickleSuicideMinAlive: 4,   // 自爆类（普通/飞行自爆）穿插仅在场上存活蟑螂 ≥ 此值时投放（与 formationWaitClear 衔接消除门控死区；场上全灭时无视门控立即投放）
+    trickleSuicideWaitTimeout: 5, // 自爆类穿插等待上限（秒，超时强制投放兜底，防胜利判定卡死）
     // 定时炸弹防线伤害（超市专用：定时自爆为量产单位且阵型推进贴防线，尸体炸弹常在防线旁引爆，数值较医院全局下调）
     corpseBombDefenseDamage: 6,              // 尸体炸弹防线伤害（医院为引擎全局 12）
     corpseBombDefenseRadius: 45,             // 尸体炸弹防线伤害半径（< defenseHoldDist 50：阵型驻停期被击杀不掉防线血，仅贴线击杀才掉；医院为引擎全局 120）
@@ -551,5 +557,14 @@ export const BALANCE_ITEMS = {
     anchorMarkColorNurse: '#4ade80',   // 护士锚点（后排）：绿
     anchorMarkColorWorker: '#facc15',  // 隧道工锚点（中排）：黄
     anchorMarkColorDefault: '#38bdf8', // 其它锚点：蓝
+    // 阵型成员链接线（灰色虚线，渲染同阵型成员的归属关系）
+    formationLinkColor: '156, 163, 175', // 链接线 RGB（灰）
+    formationLinkAlpha: 0.45,        // 链接线透明度
+    formationLinkDash: 5,            // 虚线段长（像素）
+    formationLinkGap: 4,             // 虚线间隔（像素）
+    formationLinkWidth: 1,           // 链接线宽（像素）
+    // 阵型出生去叠（防出生即重叠/叠影）
+    spawnMinXGap: 18,                // 出生最小横向间距（像素，X 轴不叠加）
+    spawnMinYGap: 15,                // 出生最小纵向间距（像素，Y 方向 >15）
   },
 } as const;

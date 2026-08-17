@@ -126,6 +126,8 @@ export const ParticleType = {
   EXPLOSION: 'explosion',
   RAIN: 'rain',
   LIGHTNING: 'lightning',
+  DRIP: 'drip',       // 天气水滴（下水道/天台，垂直下落到地面阻挡面）
+  RIPPLE: 'ripple',   // 地面涟漪（水滴落地后扩散环，近大远小）
 } as const;
 export type ParticleType = typeof ParticleType[keyof typeof ParticleType];
 
@@ -151,6 +153,12 @@ export interface Particle {
   coreColor?: string;
   /** 变异蟑螂出生时是否带有绿色粘液特效 */
   isSlime?: boolean;
+  /** 可选：文字粒子边缘辉光颜色（如护盾修复+号），设置后 fillText 带 shadowBlur 发光 */
+  glowColor?: string;
+  /** 可选：文字粒子边缘辉光模糊半径（像素，搭配 glowColor 使用） */
+  glowBlur?: number;
+  /** 可选：DRIP 水滴落地 Y 坐标（到达后消失并生成 RIPPLE 涟漪） */
+  targetY?: number;
 }
 
 /** 火焰/毒/冰区域数据 */
@@ -372,6 +380,8 @@ export interface Roach {
   wasDodging: boolean;
   // Split child: small roach spawned from splitting roach (faster dodge)
   isSplitChild?: boolean;
+  // 狂暴状态：大蟑螂血量低于 50% 触发（获得火焰闪避属性），由 RoachAISystem 派生置位
+  berserk?: boolean;
   // Boss control states (only used for QUEEN boss)
   isBurnBack?: boolean; // 灼烧退缩中
   burnBackTimer?: number; // 灼烧退缩剩余时间
@@ -393,6 +403,12 @@ export interface Roach {
   healTargetId?: number | null;
   // Asphyxiation from insecticide spray
   asphyxiationTimer?: number;
+  // 杀虫剂：闪避封锁剩余时间（秒，>0 时无法触发火焰闪避）
+  dodgeBlockTimer?: number;
+  // 杀虫剂：虚弱减速剩余时间（秒，>0 时移动速度按 weakenSpeedMult 折减）
+  weakenTimer?: number;
+  // 杀虫剂/蟑螂贴板：技能封锁剩余时间（秒，>0 时护士不能加血、工程蟑螂不能修盾/喷甲）
+  skillBlockTimer?: number;
   // Timed suicide roach: 5-second countdown
   explodeTimer?: number;
   isCountingDown?: boolean;
@@ -473,6 +489,8 @@ export interface Roach {
   shieldFollowTargetId?: number | null;
   // Tunnel worker: 修盾浮动文字节流计时（秒）
   shieldRepairTextTimer?: number;
+  // Tunnel worker: 修盾+号粒子节流计时（秒）
+  shieldRepairPlusTimer?: number;
   // ===== SUPERMARKET FORMATION (V3.1) =====
   // 阵型实例 ID（undefined = 未编入阵型；破阵后清除且永久不再编入）
   formationId?: number;
@@ -851,6 +869,8 @@ export interface GameProgress {
   autoUseEnabled?: Record<string, boolean>;
   /** 未领取金币的成就 ID 列表（成就解锁但金币尚未在成就界面领取） */
   unclaimedRewards?: string[];
+  /** 各场景历史最高星级评价（0-3，按防线血量不含加血比例计算，过关多次取最佳） */
+  levelStars?: Record<string, number>;
 }
 
 /** 图鉴单条条目 */

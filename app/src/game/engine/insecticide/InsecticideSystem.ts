@@ -306,6 +306,13 @@ export class InsecticideSystem {
         r.poisonDamage = cfg.poisonDamage;
       }
 
+      // 附加 debuff：窒息 8 秒 + 闪避封锁 3 秒 + 虚弱减速 5 秒 + 技能封锁 5 秒
+      // （持续喷射期间每次伤害判定都会刷新，脱离喷射后开始倒计时）
+      r.asphyxiationTimer = cfg.suffocationTimer;
+      r.dodgeBlockTimer = cfg.dodgeBlockDuration;
+      r.weakenTimer = cfg.weakenDuration;
+      r.skillBlockTimer = cfg.skillBlockDuration;
+
       // 修复 P2：移除多余的三目判断（armorHp > 0 已在上面 return）
       r.damageFlash = 0.15;
 

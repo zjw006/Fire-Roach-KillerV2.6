@@ -52,6 +52,9 @@ const REPORT_PATH = fileURLToPath(new URL('./auto-report.html', import.meta.url)
 const CONFIG_TOTALS_PATH = fileURLToPath(new URL('./config-totals.json', import.meta.url)); // 每关配置总强度（供 --report 复用）
 const LEVEL_TIMEOUT = 480_000;  // 单关战斗超时 8 分钟
 const UI_TIMEOUT = 90_000;      // UI 导航超时 90 秒
+// 进入场景前在主菜单商店补足的消耗品目标库存（钱不够时"购买"按钮禁用，自动跳过不报错）
+const PRE_GAS_TARGET = 3;       // 气罐补给补足至 3 个
+const PRE_DEF_TARGET = 5;       // 防线修复补足至 5 个
 
 mkdirSync(TRACE_DIR, { recursive: true });
 
@@ -123,6 +126,26 @@ window.__driver = {
   // UI 界面处理（每拍调用一次），返回本拍动作描述或 null
   ui() {
     const e = window.__engine;
+    // 0-pre. 进入场景前购买：在主菜单打开"道具商店"，先跳过樟叔引导，再把气罐/防线修复补足到目标后关闭商店，才继续选关。
+    //        必须置于下方"商店自动关闭兜底"之前：前置购买期间商店处于打开状态，若先走兜底会被立即点"返回"关掉。
+    //        非主菜单（如胜利后"下一关"直进下一场景）时跳过，依赖持久化库存。
+    if (!this.preShopDone && this.preShopGasTarget != null) {
+      const inShop = this.hasText('气罐补给') && !this.hasText('开始战斗');
+      const atMenu = this.hasText('剧情模式') && this.hasText('道具商店');
+      if (inShop) {
+        if (this.clickText('跳过引导') || this.clickText('下一步') || this.clickText('去采购！')) return 'preshop:tutorial';
+        if (this.buyConsumableToTarget('gas_refill', '气罐补给', this.preShopGasTarget) === 'clicked') return 'preshop:gas';
+        if (this.buyConsumableToTarget('defense_repair', '防线修复', this.preShopDefTarget) === 'clicked') return 'preshop:def';
+        // 已补足（或钱不够买不动）→ 关闭商店，标记完成
+        if (this.clickText('返回')) { this.preShopDone = true; return 'preshop:done'; }
+        this.preShopDone = true; return 'preshop:done_noback';
+      } else if (atMenu) {
+        if (this.clickShop()) return 'preshop:open';
+        this.preShopDone = true; return 'preshop:open_fail'; // 打开失败也放行，防止卡死导航
+      } else {
+        return null; // 尚未到达主菜单（如标题页），继续正常导航，不置 done
+      }
+    }
     // 0. 菜单商店遮罩兜底：若商店打开（有"气罐补给"且无"开始战斗"），先跳过樟叔引导再点"返回"关闭，
     //    防止选关/导航被商店界面卡死（首次进入商店会出现引导遮罩，其文案含"气罐补给"，会干扰商店关闭判断）
     if (this.hasText('气罐补给') && !this.hasText('开始战斗')) {
@@ -140,6 +163,10 @@ window.__driver = {
     // 4. 地铁精英/斩螂教学对话（无跳过按钮，引擎暂停标记）：点击对话框推进
     if (e && e.state === 'playing' && (e.eliteTutorialPause || e.knifeTutorialPause)) {
       if (this.clickText('继续') || this.clickText('跳过') || this.clickTopOverlay()) return 'subway_tutorial:advance';
+    }
+    // 4.5. 暂停界面兜底：引擎被异常暂停（误触 Esc/暂停按钮/外部窗口交互等）时自动点"继续游戏"恢复，防止战斗卡死
+    if (e && e.state === 'paused') {
+      if (this.clickText('继续游戏')) return 'pause:resume';
     }
     // 5. 战前准备界面：按道具名逐个选中道具，选满 3 个后点"开始战斗"
     //    注意：道具按钮是切换式的；且 React 会在同一事件循环内批处理多次 setSelected，
@@ -226,6 +253,16 @@ window.__driver = {
             e.player.gas / e.player.maxGas < 0.20) {
           e.useConsumable('gas_refill');
         }
+        // 防线补血：战斗中防线血量低于 50% 时自动使用"防线修复"（需从商店购买带入；
+        // 道具本身 8s 冷却，失败会弹冷却提示，故 ~1s 节流一次避免刷屏）
+        if (e.consumableInventory && (e.consumableInventory['defense_repair'] || 0) > 0 &&
+            e.maxDefenseHp > 0 && e.defenseHp / e.maxDefenseHp < 0.5) {
+          this.defenseHealTimer = (this.defenseHealTimer || 0) + 1;
+          if (this.defenseHealTimer >= 4) {
+            this.defenseHealTimer = 0;
+            e.useConsumable('defense_repair');
+          }
+        }
       }
       return { state: st, wave: e.wave, ui: uiAction, inventory: e.inventory.length };
     }
@@ -266,11 +303,11 @@ window.__driver = {
     return this.clickText('道具商店');
   },
 
-  // 在商店中购买"气罐补给"：定位"气罐补给"所在行，点行内"购买"按钮（钱不够时按钮为"金币不足"且禁用，不会误点）
-  buyGasRefill() {
+  // 在商店中购买指定名称的消耗品一次：定位所在行，点行内"购买"按钮（钱不够时按钮为"金币不足"且禁用，不会误点）
+  buyConsumableRow(name) {
     const rows = [...document.querySelectorAll('div')].filter(el =>
       this.visible(el) &&
-      el.textContent.includes('气罐补给') &&
+      el.textContent.includes(name) &&
       el.textContent.length < 80 &&
       el.querySelector('button'));
     for (const row of rows) {
@@ -278,6 +315,32 @@ window.__driver = {
       if (btn) { btn.click(); return true; }
     }
     return false;
+  },
+
+  // 在商店中购买"气罐补给"
+  buyGasRefill() {
+    return this.buyConsumableRow('气罐补给');
+  },
+
+  // 购买"防线修复"（防线补血道具）直到库存达到 target 个；返回 done/clicked/no_button
+  buyDefenseRepairTo(target) {
+    const e = window.__engine;
+    const cur = (e && e.consumableInventory && e.consumableInventory['defense_repair']) || 0;
+    if (cur >= target) return 'done';
+    return this.buyConsumableRow('防线修复') ? 'clicked' : 'no_button';
+  },
+
+  // 查询消耗品库存数量
+  consumableCount(id) {
+    const e = window.__engine;
+    return (e && e.consumableInventory && e.consumableInventory[id]) || 0;
+  },
+
+  // 通用：购买指定消耗品直到库存达到 target 个；返回 done/clicked/no_button（钱不够按钮禁用 → no_button）
+  buyConsumableToTarget(id, name, target) {
+    const cur = this.consumableCount(id);
+    if (cur >= target) return 'done';
+    return this.buyConsumableRow(name) ? 'clicked' : 'no_button';
   },
 
   // 关闭天赋详情弹窗：点击弹窗背景层（absolute inset-0 bg-black/70，onClick 关闭）
@@ -538,15 +601,18 @@ async function main() {
   for (let i = 0; i < scenesToRun.length; i++) {
     const scene = scenesToRun[i];
     console.log(`[${i + 1}/${scenesToRun.length}] ${NAME[scene]}(${scene}) — UI 导航中...`);
-    await page.evaluate((sn, dn) => {
+    await page.evaluate((sn, dn, gasT, defT) => {
       window.__driver.targetSceneName = sn;
       window.__driver.diffName = dn;
       window.__driver.prepSelected = false; // 每关重置战前准备选择状态
       window.__driver.prepClickedList = []; // 每关重置已点击道具名
       window.__driver.talentCurrent = null; // 每关重置天赋加点状态
       window.__driver.talentFailed = {};    // 每关重置"点不动"的天赋记录
+      window.__driver.preShopDone = false;  // 每关重置前置购买状态
+      window.__driver.preShopGasTarget = gasT; // 进入场景前气罐补足目标
+      window.__driver.preShopDefTarget = defT; // 进入场景前防线修复补足目标
       window.__driver.clearTrace();
-    }, SCENE_NAME[scene], DIFF_NAME);
+    }, SCENE_NAME[scene], DIFF_NAME, PRE_GAS_TARGET, PRE_DEF_TARGET);
 
     // ── 阶段 1：UI 导航（标题页 → 剧情模式 → 简单 → 选关 → 跳过漫画/对话/引导 → 进入战斗）──
     const uiT0 = Date.now();
@@ -642,33 +708,8 @@ async function main() {
           await sleep(400);
         }
       }
-      // 3b. 打开结算界面上的"道具商店"
-      for (let k = 0; k < 20; k++) {
-        const st = await page.evaluate(() => window.__engine?.state);
-        if (st === 'menu') break;
-        if (await page.evaluate(() => window.__driver.clickShop())) break;
-        await sleep(500);
-      }
-      // 3c. 在商店内购买"气罐补给"（买一次；先跳过樟叔引导；钱不够时按钮为"金币不足"禁用，自动跳过）
-      for (let k = 0; k < 15; k++) {
-        const inShop = await page.evaluate(() => window.__driver.hasText('气罐补给'));
-        if (!inShop) {
-          if (await page.evaluate(() => window.__driver.clickShop())) { await sleep(400); continue; }
-          break;
-        }
-        const bought = await page.evaluate(() => window.__driver.buyGasRefill());
-        console.log(bought ? '  商店：已购买 气罐补给' : '  商店：气罐补给购买失败/钱不足，跳过');
-        break;
-      }
-      // 3d. 关闭商店：先跳过商店引导（其文案含"气罐补给"会干扰关闭判断），再点"返回"回到结算界面
-      for (let k = 0; k < 10; k++) {
-        const st = await page.evaluate(() => window.__engine?.state);
-        if (st === 'menu') break;
-        if (!await page.evaluate(() => window.__driver.hasText('气罐补给'))) break; // 商店已关闭
-        await page.evaluate(() => window.__driver.clickText('跳过引导'));
-        await page.evaluate(() => window.__driver.clickText('返回'));
-        await sleep(500);
-      }
+      // 3b.（已移除）战后结算商店购买：消耗品前置到"进入场景前"主菜单商店补足（见 0-pre），此处不再重复购买，
+      //     避免双重扣减 menuShopMoney；胜利后直接走"下一关"，下一场景若非主菜单则依赖持久化库存。
     }
     // 3e. 结算界面 → 点"下一关"直接进入下一场景；若无"下一关"按钮（最后一关巢穴）则返回主菜单
     if (await page.evaluate(() => window.__driver.clickText('下一关'))) {

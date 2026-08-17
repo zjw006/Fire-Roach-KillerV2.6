@@ -125,7 +125,7 @@ export const ENEMY_DEFS: Record<RoachType, {
   [RoachType.TIMED_SUICIDE]: {
     name: '定时自爆蟑螂',
     description: '到达防线前64px放置炸弹，2秒后变身大蟑螂。被杀死后尸体原地爆炸',
-    hp: 20,          // 中等血量（30→20，超市量产化后下调，靠闪避与阵型保护生存）
+    hp: 14,          // 中低血量（30→20→14，超市量产化后下调，靠闪避与阵型保护生存）
     speed: 1.4,      // 较快，需要快速接近防线
     reward: 40,      // 高奖励（医院场景精英）
     color: '#f59e0b', // 琥珀色（警告色）
@@ -321,6 +321,10 @@ export const BALANCE_ENEMIES = {
       smallSpeed: 180,          // 小蟑螂闪避速度
       suicideSpeed: 100,        // 自爆蟑螂闪避速度
       suicideDuration: 1.2,     // 自爆蟑螂闪避持续时间（秒）
+      timedSuicideSpeedMult: 1.8, // 定时自爆蟑螂闪避 X 轴速度倍率（相对自爆蟑螂，横向闪避更明显）
+      largeBerserkHpRatio: 0.5, // 大蟑螂狂暴血量阈值（低于此比例进入狂暴，获得闪避）
+      largeBerserkSpeed: 160,   // 狂暴大蟑螂闪避 X 轴速度（像素/秒，略低于小蟑螂 180——体型大）
+      largeBerserkMin: 0.5, largeBerserkMax: 0.9, // 狂暴大蟑螂闪避持续时间范围（秒）
       splitChildMin: 0.2, splitChildMax: 0.4, // 分裂子蟑螂闪避触发时间范围
       smallMin: 0.4, smallMax: 0.7,           // 小蟑螂闪避触发时间范围
     },

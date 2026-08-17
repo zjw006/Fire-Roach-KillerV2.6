@@ -217,13 +217,50 @@ export class WeatherSystem {
   // =========================================================================
 
   /**
-   * 渲染天气背景（闪电闪光覆盖层）
+   * 生成闪电链折线（主链节点数组，含分支作为独立段附加）
+   * 返回格式：[主链节点..., 分支1起点, 分支1终点, 分支2起点, 分支2终点, ...]
+   * 主链节点数 = segments + 1；分支以成对节点表示（moveTo → lineTo）
+   */
+  static buildLightningBolt(canvasWidth: number, canvasHeight: number): { x: number; y: number }[] {
+    const bc = BALANCE_CONFIG.lightning.bolt;
+    const startX = canvasWidth * (0.2 + Math.random() * 0.6);
+    const endY = canvasHeight * bc.endYRatio;
+    const jitter = canvasWidth * bc.jitterRatio;
+    const main: { x: number; y: number }[] = [{ x: startX, y: -10 }];
+    let x = startX;
+    for (let i = 1; i <= bc.segments; i++) {
+      const t = i / bc.segments;
+      const y = -10 + (endY + 10) * t;
+      // 两端收窄、中段抖动最大（闪电自然形态）
+      x += (Math.random() - 0.5) * 2 * jitter * Math.sin(t * Math.PI);
+      main.push({ x, y });
+    }
+    // 分支：从中段节点随机伸出短折线
+    const branches: { x: number; y: number }[] = [];
+    for (let i = 2; i < main.length - 2; i++) {
+      if (Math.random() >= bc.branchChance) continue;
+      const node = main[i];
+      const dir = Math.random() < 0.5 ? -1 : 1;
+      const branchLen = (endY - node.y) * bc.branchLenRatio;
+      branches.push(node);
+      branches.push({
+        x: node.x + dir * branchLen * (0.4 + Math.random() * 0.6),
+        y: node.y + branchLen * (0.6 + Math.random() * 0.4),
+      });
+    }
+    return [...main, ...branches];
+  }
+
+  /**
+   * 渲染天气背景（闪电闪光覆盖层 + 闪电链）
+   * @param bolt 闪电链节点（buildLightningBolt 生成；主链 + 成对分支节点），闪光期绘制
    */
   static renderWeatherBackground(
     ctx: CanvasRenderingContext2D,
     w: number,
     h: number,
-    lightningFlash: number
+    lightningFlash: number,
+    bolt?: { x: number; y: number }[]
   ): void {
     if (lightningFlash > 0) {
       const lCfg = BALANCE_CONFIG.lightning;
@@ -232,21 +269,67 @@ export class WeatherSystem {
       ctx.fillStyle = `rgba(${lCfg.flashColor}, ${lightningFlash * lCfg.flashAlpha})`;
       ctx.fillRect(0, 0, w, h);
       ctx.restore();
+
+      // 闪电链：主链折线 + 分支线段，透明度随闪光剩余衰减
+      if (bolt && bolt.length >= 2) {
+        const bc = lCfg.bolt;
+        const flashRatio = Math.min(1, lightningFlash / lCfg.flashDuration);
+        const mainCount = bc.segments + 1;
+        ctx.save();
+        ctx.globalCompositeOperation = bc.blend; // 叠加混合集中于 vfx-balance lightning.bolt.blend
+        ctx.lineJoin = 'round';
+        // 外层辉光（宽线 + 大模糊，先画于核心链之下）
+        ctx.strokeStyle = `rgba(${bc.glowColor}, ${bc.haloAlpha * flashRatio})`;
+        ctx.lineWidth = bc.lineWidth * bc.haloWidthMult;
+        ctx.shadowColor = `rgba(${bc.glowColor}, ${flashRatio})`;
+        ctx.shadowBlur = bc.glowBlur * bc.haloBlurMult;
+        ctx.beginPath();
+        ctx.moveTo(bolt[0].x, bolt[0].y);
+        for (let i = 1; i < Math.min(mainCount, bolt.length); i++) {
+          ctx.lineTo(bolt[i].x, bolt[i].y);
+        }
+        ctx.stroke();
+        // 核心主链
+        ctx.strokeStyle = `rgba(${bc.coreColor}, ${bc.alpha * flashRatio})`;
+        ctx.lineWidth = bc.lineWidth;
+        ctx.shadowBlur = bc.glowBlur;
+        ctx.beginPath();
+        ctx.moveTo(bolt[0].x, bolt[0].y);
+        for (let i = 1; i < Math.min(mainCount, bolt.length); i++) {
+          ctx.lineTo(bolt[i].x, bolt[i].y);
+        }
+        ctx.stroke();
+        // 分支（成对节点）
+        ctx.lineWidth = bc.branchWidth;
+        ctx.shadowBlur = bc.glowBlur * 0.5;
+        for (let i = mainCount; i + 1 < bolt.length; i += 2) {
+          ctx.beginPath();
+          ctx.moveTo(bolt[i].x, bolt[i].y);
+          ctx.lineTo(bolt[i + 1].x, bolt[i + 1].y);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
     }
   }
 
   /**
-   * 渲染天气前景（雨滴、烟雾粒子）
+   * 渲染天气前景（雨滴、烟雾粒子、水滴、地面涟漪、地下室灯光闪烁黑屏）
    * 修复 P1: 移除 renderDefenseLine 回调参数，降低耦合
    * 修复 P2: 移除无意义的 globalCompositeOperation 恢复
+   * @param flickerAlpha 地下室灯光闪烁黑屏透明度（0 = 不闪，engine 计算传入）
    */
   static renderWeatherForeground(
     ctx: CanvasRenderingContext2D,
     _w: number,
-    weatherParticles: Particle[]
+    weatherParticles: Particle[],
+    h: number = 0,
+    flickerAlpha: number = 0
   ): void {
     const rainCfg = BALANCE_CONFIG.weather.rain;
     const fogCfg = BALANCE_CONFIG.weather.fog;
+    const dripCfg = BALANCE_CONFIG.weather.drip;
+    const rippleCfg = BALANCE_CONFIG.weather.ripple;
     ctx.save();
     for (const p of weatherParticles) {
       const alpha = p.life / p.maxLife;
@@ -269,7 +352,42 @@ export class WeatherSystem {
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
         ctx.fill();
+      } else if (p.type === ParticleType.DRIP) {
+        // 下落水滴：短竖线拖尾（vfx-balance weather.drip）
+        ctx.globalAlpha = alpha * dripCfg.renderAlpha;
+        ctx.globalCompositeOperation = dripCfg.blend;
+        ctx.strokeStyle = p.color;
+        ctx.lineWidth = dripCfg.renderLineWidth;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.x + p.vx * dripCfg.renderTailScale, p.y + p.vy * dripCfg.renderTailScale);
+        ctx.stroke();
+      } else if (p.type === ParticleType.RIPPLE) {
+        // 地面涟漪：扩散椭圆双环（ease-out 扩散 + 渐隐；尺寸在生成时已乘透视缩放，近大远小）
+        const progress = 1 - p.life / p.maxLife;
+        const eased = 1 - (1 - progress) * (1 - progress);
+        const rx = p.size * (rippleCfg.startRatio + eased * rippleCfg.expand);
+        const ry = rx * rippleCfg.aspect;
+        const a = (1 - progress) * rippleCfg.alpha;
+        ctx.globalAlpha = 1;
+        ctx.globalCompositeOperation = rippleCfg.blend;
+        ctx.lineWidth = rippleCfg.lineWidth;
+        ctx.strokeStyle = `rgba(${p.color}, ${a})`;
+        ctx.beginPath();
+        ctx.ellipse(p.x, p.y, rx, ry, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.strokeStyle = `rgba(${p.color}, ${a * rippleCfg.innerRingAlphaRatio})`;
+        ctx.beginPath();
+        ctx.ellipse(p.x, p.y, rx * rippleCfg.innerRingRatio, ry * rippleCfg.innerRingRatio, 0, 0, Math.PI * 2);
+        ctx.stroke();
       }
+    }
+    // 地下室灯光闪烁：全屏黑色叠加闪屏（覆盖在所有天气粒子之上）
+    if (flickerAlpha > 0 && h > 0) {
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = `rgba(0, 0, 0, ${flickerAlpha})`;
+      ctx.fillRect(0, 0, _w, h);
     }
     ctx.globalAlpha = 1;
     ctx.restore();

@@ -261,6 +261,19 @@ export class FormationSystem {
         entries.push({ type: s.prefTypes[0], x: p.x, y: p.y });
       }
     }
+    // 出生去叠：任意两点横向间距 < spawnMinXGap 且纵向间距 ≤ spawnMinYGap 时横向推开（X 轴不叠影、Y 方向保持 >15px）
+    const c = BALANCE_CONFIG.supermarket;
+    for (let pass = 0; pass < 3; pass++) {
+      for (let i = 1; i < entries.length; i++) {
+        for (let j = 0; j < i; j++) {
+          const a = entries[i], b = entries[j];
+          if (Math.abs(a.x - b.x) < c.spawnMinXGap && Math.abs(a.y - b.y) <= c.spawnMinYGap) {
+            const dir = a.x >= b.x ? 1 : -1;
+            a.x = b.x + dir * c.spawnMinXGap;
+          }
+        }
+      }
+    }
     return entries;
   }
 

@@ -104,6 +104,7 @@ export const TEXT_CONFIG = {
 
     // 蟑螂AI - 更多
     nurseSpray: { text: '治疗喷射!', color: '#5a8a5a' },
+    nurseHeal: { text: (n: number) => `+${n}`, color: '#ef4444' }, // 治疗量浮动文字（红色）
     bigExplosion: { text: (n: number) => `大爆炸!(${n}只受波及)`, color: '#ff4400' },
     deathExplosion: { text: (n: number) => `死亡爆炸!(${n}只受波及)`, color: '#ff4400' },
     boom: { text: '轰!', color: '#8b2020' },
@@ -132,6 +133,7 @@ export const TEXT_CONFIG = {
     bombExplode: { text: (dmg: number) => `炸弹爆炸! -${dmg}`, color: '#ef4444' },
     backlash: { text: (dmg: number) => `反噬 -${dmg}`, color: '#a855f7' },
     spawnBirth: { text: (name: string) => `【诞生】${name}!`, color: '#00ff80' },
+    berserk: { text: '狂暴!', color: '#ef4444' },
 
     // 消耗品 - 更多
     baitPlaced: { text: '>>> 蟑螂诱饵已投放 <<<', color: '#fbbf24' },

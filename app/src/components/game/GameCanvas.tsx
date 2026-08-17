@@ -91,6 +91,8 @@ export const GameCanvas: React.FC = () => {
   const [showAchievements, setShowAchievements] = useState(false);
   /** 是否从结算界面打开成就（关闭时返回结算界面而非主菜单） */
   const [achievementsFromGameOver, setAchievementsFromGameOver] = useState(false);
+  /** 是否从结算界面打开天赋树（关闭时返回结算界面而非主菜单） */
+  const [talentFromGameOver, setTalentFromGameOver] = useState(false);
   const [showSceneSelect, setShowSceneSelect] = useState(false);
   const [showEncyclopedia, setShowEncyclopedia] = useState(false);
   const [talentPoints, setTalentPoints] = useState(0);
@@ -703,6 +705,7 @@ export const GameCanvas: React.FC = () => {
     }
     engineRef.current?.stop();
     setShowTalentTree(false);
+    setTalentFromGameOver(false);
     setShowAchievements(false);
     setAchievementsFromGameOver(false);
     setShowSceneSelect(false);
@@ -1231,7 +1234,7 @@ export const GameCanvas: React.FC = () => {
       {gameState === GameState.MENU && !showTitleScreen && !showMenuShop && !showTalentTree && !showAchievements && !showEncyclopedia && (
         <GameMenu
           onStart={handleStart}
-          onOpenTalentTree={() => setShowTalentTree(true)}
+          onOpenTalentTree={() => { setTalentFromGameOver(false); setShowTalentTree(true); }}
           onOpenAchievements={() => setShowAchievements(true)}
           onOpenSceneSelect={() => setShowSceneSelect(true)}
           onOpenEncyclopedia={() => setShowEncyclopedia(true)}
@@ -1252,7 +1255,12 @@ export const GameCanvas: React.FC = () => {
           onSpendTalent={handleSpendTalent}
           onClose={() => {
             setShowTalentTree(false);
-            setGameState(GameState.MENU);
+            if (talentFromGameOver) {
+              // 从结算界面进入：关闭后返回结算界面（gameState 保持 GAME_OVER/WAVE_CLEAR）
+              setTalentFromGameOver(false);
+            } else {
+              setGameState(GameState.MENU);
+            }
           }}
           audio={engineRef.current?.audio}
         />
@@ -1329,10 +1337,11 @@ export const GameCanvas: React.FC = () => {
           onQuit={handleQuit}
           talentPoints={talentPoints}
           bossDefeated={bossDefeated}
-          onOpenTalentTree={() => setShowTalentTree(true)}
+          onOpenTalentTree={() => { setTalentFromGameOver(true); setShowTalentTree(true); }}
           talentUnlocked={talentUnlocked}
           audio={engineRef.current?.audio}
           menuMoney={menuShopMoney}
+          starRating={0}
           unclaimedAchievementCount={engineRef.current?.getUnclaimedAchievementCount?.() ?? 0}
           onOpenAchievements={() => { setAchievementsFromGameOver(true); setShowAchievements(true); }}
           onOpenShop={() => setShowMenuShop(true)}
@@ -1366,7 +1375,7 @@ export const GameCanvas: React.FC = () => {
           onQuit={handleQuit}
           talentPoints={talentPoints}
           bossDefeated={false}
-          onOpenTalentTree={() => setShowTalentTree(true)}
+          onOpenTalentTree={() => { setTalentFromGameOver(true); setShowTalentTree(true); }}
           talentUnlocked={talentUnlocked}
           onNextScene={(() => {
             const idx = SCENE_UNLOCK_CHAIN.indexOf(currentScene);
@@ -1379,6 +1388,7 @@ export const GameCanvas: React.FC = () => {
           menuMoney={menuShopMoney}
           victoryGoldReward={victoryGoldReward}
           onSettleGold={handleSettleGold}
+          starRating={engineRef.current?.lastStarRating ?? 0}
           unclaimedAchievementCount={engineRef.current?.getUnclaimedAchievementCount?.() ?? 0}
           onOpenAchievements={() => { setAchievementsFromGameOver(true); setShowAchievements(true); }}
           onOpenShop={() => setShowMenuShop(true)}
@@ -1427,6 +1437,8 @@ export const GameCanvas: React.FC = () => {
           difficulty={difficulty}
           currentScene={currentScene}
           onOpenTalentTree={() => {
+            // 商店可能叠在结算界面上（结算→商店→天赋）：按当前 gameState 决定天赋关闭后返回哪里
+            setTalentFromGameOver(gameState === GameState.GAME_OVER || gameState === GameState.WAVE_CLEAR);
             setShowMenuShop(false);
             setShowTalentTree(true);
           }}

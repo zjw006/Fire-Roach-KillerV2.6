@@ -5,7 +5,7 @@
  */
 
 import React, { useRef, useLayoutEffect } from 'react';
-import { ArrowLeft, Map, Lock, Check } from 'lucide-react';
+import { ArrowLeft, Map, Lock, Check, Flame } from 'lucide-react';
 import type { GameProgress, SceneType } from '@/game/types';
 import { SCENE_CONFIGS, SCENE_ORDER } from '@/game/data';
 import type { AudioManager } from '@/game/audio';
@@ -65,6 +65,8 @@ export const SceneSelectScreen: React.FC<SceneSelectScreenProps> = ({ progress, 
             const scene = SCENE_CONFIGS[sceneType];
             const isUnlocked = scenesUnlocked.includes(sceneType);
             const isLastUnlocked = index === lastUnlockedIndex;
+            // 该关卡历史最佳星级（0-3，防线血量不含加血评级，过关多次取最多）
+            const bestStars = progress?.levelStars?.[sceneType] ?? 0;
 
             return (
               <div
@@ -120,6 +122,22 @@ export const SceneSelectScreen: React.FC<SceneSelectScreenProps> = ({ progress, 
                       </div>
                     )}
                   </div>
+                </div>
+
+                {/* 星级评价槽：默认3槽，点亮历史最佳（图标与结算界面一致） */}
+                <div className="bg-black/70 px-4 py-1.5 flex items-center justify-center gap-2">
+                  {[1, 2, 3].map((star) => (
+                    <div
+                      key={star}
+                      className={`w-6 h-6 rounded-full flex items-center justify-center ${
+                        isUnlocked && star <= bestStars
+                          ? 'bg-yellow-500 text-white shadow-md'
+                          : 'bg-stone-800/80 text-stone-600 border border-stone-700'
+                      }`}
+                    >
+                      <Flame size={11} />
+                    </div>
+                  ))}
                 </div>
 
                 {/* Scene info */}

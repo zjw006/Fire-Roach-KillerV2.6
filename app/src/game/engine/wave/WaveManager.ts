@@ -40,6 +40,8 @@ export interface WaveGameplayCallbacks {
   onClearFormations?: () => void;
   /** 超市 V4.0：生成一组阵型（出生点即阵型槽位，整组同帧生成；groupIndex 用于多组纵深错位） */
   onSpawnFormationGroup?: (group: FormationGroupConfig, groupIndex: number) => void;
+  /** 获取指定 Y 处地面透视边界 [L, R]（超市穿插/阵型在阻挡面内随机定位用） */
+  onGetGroundBoundsAtY?: (y: number) => [number, number];
 }
 
 /** 蟑螂数据访问回调 */
@@ -95,7 +97,7 @@ export class WaveManager {
   /** 超市 V4.0：已出场阵型组序号（用于出生线纵深错位） */
   private formationGroupIndex: number = 0;
   /** 超市 V4.0：穿插投放状态（阵列生成后激活，推进全程持续投放自由杂兵/自爆偷袭单位；suicideBlockTimer 累计自爆类投放等待时间） */
-  private trickleState: { cfg: TrickleConfig; active: boolean; intervalTimer: number; spawned: number; suicideSeq: number; suicideBlockTimer: number } | null = null;
+  private trickleState: { cfg: TrickleConfig; active: boolean; intervalTimer: number; spawned: number; typeCursor: number; suicideSeq: number; suicideBlockTimer: number } | null = null;
   /** 波次刚刚清除标志 */
   waveJustCleared: boolean = false;
   /** 波次清除计时器 */
@@ -281,9 +283,11 @@ export class WaveManager {
         t.active = true;
       }
       // 持续穿插：自由杂兵池保底轮换投放（场上数量达护栏值 spawnCapacityGuard 时顺延）；
-      // 自爆类（普通/飞行自爆）仅在场上存活蟑螂 ≥ trickleSuicideMinAlive 时投放（很多蟑螂时才生成），
-      // 不足则每 0.5s 重试并由 suicideBlockTimer 累计等待，超 trickleSuicideWaitTimeout 强制投放兜底防卡关；
-      // 自爆类挫开：出生 Y 按 3 档循环递进错位（更靠后出场）+ 间隔抖动放大（挫开位置与时间，避免同时出现）
+      // 自爆类（普通/飞行自爆）仅在场上存活蟑螂 ≥ trickleSuicideMinAlive 时投放（很多蟑螂时才生成）；
+      // 被门控卡住的条目顺移跳过（先投池中后续可投类型，自爆不再堵住非自爆条目）；
+      // 场上全灭（aliveCount === 0）时无视门控立即投放，消除波尾长空窗；
+      // 全池被门控时每 0.5s 重试并由 suicideBlockTimer 累计等待，超 trickleSuicideWaitTimeout 强制投放兜底防卡关；
+      // 自爆类挫开：出生 Y 按 3 档循环递进错位（更靠后出场）+ 间隔抖动放大（空场时抖动收窄快速补场）
       if (t && t.active && t.spawned < t.cfg.total) {
         t.intervalTimer -= deltaTime;
         if (t.intervalTimer <= 0) {
@@ -292,28 +296,44 @@ export class WaveManager {
           if (aliveCount >= cap.spawnCapacityGuard) {
             t.intervalTimer = 0.5;
           } else {
-            // 保底轮换：按已成功投放序号轮转类型池，池内每种类型轮流出现（不再等概率随机）
-            const type = t.cfg.types[t.spawned % t.cfg.types.length];
-            const isSuicideType = type === RoachType.SUICIDE || type === RoachType.FLYING_SUICIDE;
-            if (isSuicideType && aliveCount < cap.trickleSuicideMinAlive
-              && t.suicideBlockTimer < cap.trickleSuicideWaitTimeout) {
+            // 保底轮换：从类型游标顺移扫描，跳过被自爆门控卡住的条目，池内每种类型轮流出现
+            const len = t.cfg.types.length;
+            const fieldEmpty = aliveCount === 0;
+            const gateOpen = aliveCount >= cap.trickleSuicideMinAlive;
+            let picked = -1;
+            for (let k = 0; k < len; k++) {
+              const idx = (t.typeCursor + k) % len;
+              const cand = t.cfg.types[idx];
+              const candSuicide = cand === RoachType.SUICIDE || cand === RoachType.FLYING_SUICIDE;
+              if (!candSuicide || gateOpen || fieldEmpty) { picked = idx; break; }
+            }
+            if (picked < 0 && t.suicideBlockTimer < cap.trickleSuicideWaitTimeout) {
+              // 全池被门控且未超时：累计等待，0.5s 后重试
               t.suicideBlockTimer += 0.5;
               t.intervalTimer = 0.5;
             } else {
+              if (picked < 0) picked = t.typeCursor % len; // 超时兜底：强制投放游标处自爆条目
+              t.typeCursor = (picked + 1) % len;
               t.suicideBlockTimer = 0;
+              const type = t.cfg.types[picked];
               const jitter = cap.trickleJitterMin + Math.random() * (cap.trickleJitterMax - cap.trickleJitterMin);
+              // 空场时自爆抖动收窄（快速补场），非空场挫开时间
+              const suicideJitterMax = fieldEmpty ? cap.trickleJitterMax : cap.trickleSuicideJitterMax;
+              const suicideJitter = cap.trickleJitterMin + Math.random() * (suicideJitterMax - cap.trickleJitterMin);
               if (type === RoachType.SUICIDE || type === RoachType.TIMED_SUICIDE) {
-                const [, farLY, , farRY, , midLY, , midRY] = SCENE_GROUND_BOUNDS[this.cfg.currentScene];
-                const baseY = Math.min(farLY, farRY, midLY, midRY);
-                const band = t.suicideSeq % 3;
-                const y = baseY - 20 - band * cap.trickleSuicideYStep - Math.random() * 25;
-                const x = this.cfg.width * (0.25 + Math.random() * 0.5);
+                // 阻挡面内随机位置生成（不限于阵列上方/远端顶部；Y 取梯形上部 60%，X 取该 Y 处地面透视宽度内随机）
+                const [, farLY, , farRY, , , , , , , nearY] = SCENE_GROUND_BOUNDS[this.cfg.currentScene];
+                const topY = Math.min(farLY, farRY);
+                const y = topY + Math.random() * (nearY - topY) * 0.6;
+                const [gL, gR] = this.cb.onGetGroundBoundsAtY?.(y)
+                  ?? [this.cfg.width * 0.25, this.cfg.width * 0.75];
+                const x = gL + Math.random() * (gR - gL);
                 this.cb.onSpawnRoach(type, undefined, x, y);
                 t.suicideSeq++;
-                t.intervalTimer = t.cfg.intervalSec * (cap.trickleJitterMin + Math.random() * (cap.trickleSuicideJitterMax - cap.trickleJitterMin));
+                t.intervalTimer = t.cfg.intervalSec * suicideJitter;
               } else if (type === RoachType.FLYING_SUICIDE) {
                 this.cb.onSpawnRoach(type); // 飞行自爆走侧边出生，仅挫开时间
-                t.intervalTimer = t.cfg.intervalSec * (cap.trickleJitterMin + Math.random() * (cap.trickleSuicideJitterMax - cap.trickleJitterMin));
+                t.intervalTimer = t.cfg.intervalSec * suicideJitter;
               } else {
                 this.cb.onSpawnRoach(type);
                 t.intervalTimer = t.cfg.intervalSec * jitter;
@@ -446,7 +466,7 @@ export class WaveManager {
       this.formationWaveStarted = false;
       this.formationGroupIndex = 0;
       this.trickleState = config.trickle
-        ? { cfg: config.trickle, active: false, intervalTimer: 0, spawned: 0, suicideSeq: 0, suicideBlockTimer: 0 }
+        ? { cfg: config.trickle, active: false, intervalTimer: 0, spawned: 0, typeCursor: 0, suicideSeq: 0, suicideBlockTimer: 0 }
         : null;
     }
 
@@ -511,14 +531,17 @@ export class WaveManager {
       this.cb.onSetTimedSuicideTimer(timedSuicideCount > 0 ? 5.0 : 0);
     }
 
-    // 地铁特殊单位（护盾蟑螂最先生成，确保编队锚点先就位）
+    // 地铁特殊单位（护盾蟑螂最先生成，确保编队锚点先就位；变异蟑螂混入 phase2；定时自爆走独立定时生成）
     if (this.cfg.currentScene === SceneType.SUBWAY) {
-      const { tunnelWorkerCount = 0, eliteCount = 0, shieldCount = 0 } = config;
+      const { tunnelWorkerCount = 0, eliteCount = 0, shieldCount = 0, mutantCount = 0, timedSuicideCount = 0 } = config;
       addToQueue(phase1, RoachType.SHIELD, shieldCount); // 护盾蟑螂在 phase1 最前
       addToQueue(phase1, RoachType.TUNNEL_WORKER, tunnelWorkerCount);
       shuffle(phase1);
+      addToQueue(phase2, RoachType.MUTANT, mutantCount);
       addToQueue(phase2, RoachType.SUBWAY_ELITE, eliteCount);
       shuffle(phase2);
+      this.cb.onSetTimedSuicideRemaining(timedSuicideCount);
+      this.cb.onSetTimedSuicideTimer(timedSuicideCount > 0 ? 5.0 : 0);
     }
 
     // 超市特殊单位（V4.0：地铁精英为自由杂兵直接入队；护盾/护士/隧道工/装甲/分裂仅由阵型组生成，不入自由队列）

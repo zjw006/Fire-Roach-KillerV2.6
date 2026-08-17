@@ -421,20 +421,23 @@ export class PrefabPlayer {
         });
       }
     } else if (step.fn === 'shieldRepair') {
-      // 复刻 RoachAISystem.updateTunnelWorker 修盾火花（BALANCE_CONFIG.particle.shieldRepair 配方：
-      // 每帧 spawnChance 概率生成 1 颗，位置抖动 ±15/±10，上升 10~30px/s，0.4~0.6s 生命，3~6px 青色 SPARK）
-      const repairCfg = BALANCE_CONFIG.particle.shieldRepair;
-      if (Math.random() < repairCfg.emitter.spawnChance) {
+      // 复刻 ParticleSpawner.spawnShieldRepairWorkerParticles（BALANCE_CONFIG.particle.shieldRepair.workerParticle 配方：
+      // 每帧 count 颗，位置抖动 ±10，上升 30~50px/s，0.6~1.0s 生命，2~4px 青色 SPARK，lighter 叠加）
+      const cfg = BALANCE_CONFIG.particle.shieldRepair.workerParticle;
+      for (let i = 0; i < cfg.count; i++) {
+        const life = cfg.lifeMin + Math.random() * (cfg.lifeMax - cfg.lifeMin);
+        const alpha = cfg.alphaMin + Math.random() * (cfg.alphaMax - cfg.alphaMin);
         particles.push({
-          x: x + (Math.random() - 0.5) * 30,
+          x: x + (Math.random() - 0.5) * 20,
           y: y + (Math.random() - 0.5) * 20,
-          vx: (Math.random() - 0.5) * 20,
-          vy: -(repairCfg.speedMin + Math.random() * (repairCfg.speedMax - repairCfg.speedMin)),
-          life: repairCfg.lifeMin + Math.random() * (repairCfg.lifeMax - repairCfg.lifeMin),
-          maxLife: repairCfg.lifeMax,
-          size: repairCfg.sizeMin + Math.random() * (repairCfg.sizeMax - repairCfg.sizeMin),
-          color: repairCfg.color,
+          vx: (Math.random() - 0.5) * cfg.vxSpread * 2,
+          vy: cfg.vyMin + Math.random() * (cfg.vyMax - cfg.vyMin),
+          life,
+          maxLife: life,
+          size: cfg.sizeMin + Math.random() * (cfg.sizeMax - cfg.sizeMin),
+          color: `rgba(${cfg.color}, ${alpha})`,
           type: ParticleType.SPARK,
+          blend: cfg.blend,
         });
       }
     }
@@ -1252,8 +1255,8 @@ export class PrefabPlayer {
   }
 
   /**
-   * 护甲六边形护盾：忠实复刻 RoachRenderer.ts:806-845「ARMOR SHIELD EFFECT」
-   * （旋转六边形描边 + 径向内发光；颜色/脉冲/线宽取 BALANCE_CONFIG.render.roach.shield 普通款）。
+   * 护甲六边形护盾：忠实复刻 RoachRenderer.ts「ARMOR SHIELD EFFECT」
+   * （半透明玻璃质感：六边形渐变填充 + 清晰描边 + 顶部反光带；颜色/脉冲/线宽取 BALANCE_CONFIG.render.roach.shield 普通款）。
    */
   private renderArmorRing(ctx: CanvasRenderingContext2D, x: number, y: number, t: number): void {
     const sc = BALANCE_CONFIG.render.roach.shield;
@@ -1264,15 +1267,12 @@ export class PrefabPlayer {
     const h = size;
 
     const shieldPulse = sc.normalPulseBase + Math.sin(t * 4 + fakeId) * 0.15;
-    const shieldAlpha = shieldPulse;
-    ctx.save();
-    ctx.globalCompositeOperation = sc.normalBlend; // lighter 叠加提亮（与游戏同源）
-    ctx.translate(x, y);
-    ctx.strokeStyle = `rgba(${color}, ${shieldAlpha})`;
-    ctx.lineWidth = sc.normalLineWidth;
-    ctx.shadowColor = `rgba(${color}, ${shieldAlpha * sc.normalShadowAlphaRatio})`;
-    ctx.shadowBlur = sc.normalShadowBlur;
     const shieldR = Math.max(w, h) * sc.normalRadiusRatio;
+    const g = sc.glass;
+    ctx.save();
+    ctx.globalCompositeOperation = sc.normalBlend; // 玻璃质感 source-over（与游戏同源）
+    ctx.translate(x, y);
+    // 六边形玻璃罩路径
     ctx.beginPath();
     for (let si = 0; si < 6; si++) {
       const sAngle = (si / 6) * Math.PI * 2 + t * 0.5;
@@ -1282,12 +1282,27 @@ export class PrefabPlayer {
       else ctx.lineTo(sx, sy);
     }
     ctx.closePath();
+    // 1) 半透明玻璃填充（纵向渐变：顶部偏白反光 → 中部微染色 → 底部略深）
+    const glassGrad = ctx.createLinearGradient(0, -shieldR, 0, shieldR);
+    glassGrad.addColorStop(0, `rgba(${g.reflection.color}, ${g.topAlpha})`);
+    glassGrad.addColorStop(g.midStop, `rgba(${color}, ${g.midAlpha})`);
+    glassGrad.addColorStop(1, `rgba(${color}, ${g.bottomAlpha})`);
+    ctx.fillStyle = glassGrad;
+    ctx.fill();
+    // 2) 清晰玻璃边缘描边（轻微脉动，无辉光）
+    ctx.strokeStyle = `rgba(${color}, ${Math.min(1, shieldPulse + g.edgeAlphaBoost)})`;
+    ctx.lineWidth = sc.normalLineWidth;
     ctx.stroke();
-    // Inner glow
-    const glowGrad = ctx.createRadialGradient(0, 0, shieldR * 0.3, 0, 0, shieldR);
-    glowGrad.addColorStop(0, `rgba(${color}, ${shieldAlpha * sc.normalGlowAlphaRatio})`);
-    glowGrad.addColorStop(1, `rgba(${color}, 0)`);
-    ctx.fillStyle = glowGrad;
+    // 3) 顶部反光带（裁剪在六边形内的椭圆弧，上深下浅渐隐）
+    ctx.clip();
+    const refl = g.reflection;
+    const ry = -shieldR * refl.yRatio;
+    ctx.beginPath();
+    ctx.ellipse(0, ry, shieldR * refl.rxRatio, shieldR * refl.ryRatio, 0, 0, Math.PI * 2);
+    const reflGrad = ctx.createLinearGradient(0, ry - shieldR * refl.ryRatio, 0, ry + shieldR * refl.ryRatio);
+    reflGrad.addColorStop(0, `rgba(${refl.color}, ${refl.alpha})`);
+    reflGrad.addColorStop(1, `rgba(${refl.color}, 0)`);
+    ctx.fillStyle = reflGrad;
     ctx.fill();
     ctx.restore();
   }

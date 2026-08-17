@@ -39,9 +39,11 @@ interface GameOverScreenProps {
   onOpenShop?: () => void;
   /** 天赋系统是否已解锁（通关地下室后），用于显示常驻天赋加点入口 */
   talentUnlocked?: boolean;
+  /** 本次星级评价（0-3，按防线血量不含加血比例；失败为 0） */
+  starRating?: number;
 }
 
-export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, gameMode, isVictory, hasNextScene, nextSceneName, onRestart, onQuit, onNextScene, talentPoints, bossDefeated, onOpenTalentTree, audio, victoryGoldReward, onSettleGold, unclaimedAchievementCount, onOpenAchievements, onOpenShop, talentUnlocked}) => {
+export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, gameMode, isVictory, hasNextScene, nextSceneName, onRestart, onQuit, onNextScene, talentPoints, bossDefeated, onOpenTalentTree, audio, victoryGoldReward, onSettleGold, unclaimedAchievementCount, onOpenAchievements, onOpenShop, talentUnlocked, starRating = 0}) => {
   const isBossMode = bossDefeated;
   const isEndless = gameMode === 'endless';
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -195,13 +197,13 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, g
           )}
         </div>
 
-        {/* Ratings */}
+        {/* Ratings（按防线血量不含加血比例：100%→3星，60%~99%→2星，0%~59%→1星，失败无星级） */}
         <div className="mb-4 flex justify-center gap-2">
           {[1, 2, 3].map((star) => (
             <div
               key={star}
               className={`w-9 h-9 rounded-full flex items-center justify-center shadow-md ${
-                (isVictory && star <= 3) || (!isVictory && star <= 1)
+                star <= starRating
                   ? 'bg-yellow-500 text-white'
                   : 'bg-stone-800/80 text-stone-600 border border-stone-700'
               }`}

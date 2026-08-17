@@ -195,5 +195,6 @@ export function createDefaultProgress(): GameProgress {
     shopUpgrades: [],                                    // 无商店升级
     consumableInventory: {},                             // 空消耗品库存
     autoUseEnabled: {},                                  // 无自动使用设置
+    levelStars: {},                                      // 无场景星级评价记录
   };
 }

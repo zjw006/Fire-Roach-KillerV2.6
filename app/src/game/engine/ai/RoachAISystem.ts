@@ -205,13 +205,21 @@ export class RoachAISystem {
       // Pre-movement state updates (returns isImmobilized for bait & movement)
       const isImmobilized = this.handleRoachPreMovement(r, deltaTime, time, roaches);
 
+      // 大蟑螂狂暴：血量低于阈值时一次性进入狂暴（获得火焰闪避属性）
+      if (r.type === RoachType.LARGE && !r.berserk && r.hp > 0 &&
+          r.hp < r.maxHp * BALANCE_CONFIG.roachAI.dodge.largeBerserkHpRatio) {
+        r.berserk = true;
+        this.cfg.onAddFloatingText(r.x, r.y - 30, TEXT_CONFIG.combat.berserk.text, TEXT_CONFIG.combat.berserk.color, 1200);
+      }
+
       // Calculate movement angle
       let moveAngle = this.calculateMoveAngle(r, time, defenseLineY, canvasWidth, deltaTime);
       moveAngle = this.applyBaitPull(r, moveAngle, isImmobilized);
 
       // Apply movement (velocity, dodge, position, clamping, wing animation)
       const fanMultiplier = r.fanSlowTimer > 0 ? (1 - r.fanSlowFactor) : 1;
-      let effectiveSpeed = r.speed * fanMultiplier;
+      const weakenMult = (r.weakenTimer ?? 0) > 0 ? BALANCE_CONFIG.insecticide.weakenSpeedMult : 1;
+      let effectiveSpeed = r.speed * fanMultiplier * weakenMult;
 
       // ===== 盾墙推进编队：横向归位 + 速度钳制 + 接近防线解除 =====
       // （超市阵型实例成员跳过盾墙判定，由阵型实例接管移动修正）
@@ -549,8 +557,9 @@ export class RoachAISystem {
       r.vy = moveCfg.minDownwardSpeed;
     }
 
-    // Dodge（自爆/定时自爆/小蟑螂；定时自爆闪避数值与自爆蟑螂相同：suicideSpeed/suicideDuration）
-    if ((r.type === RoachType.SUICIDE || r.type === RoachType.TIMED_SUICIDE || r.type === RoachType.SMALL) && r.dodgeTimer > 0) {
+    // Dodge（自爆/定时自爆/小蟑螂/狂暴大蟑螂；定时自爆闪避时长与自爆相同 suicideDuration，X 轴速度按 timedSuicideSpeedMult 放大）
+    if ((r.type === RoachType.SUICIDE || r.type === RoachType.TIMED_SUICIDE || r.type === RoachType.SMALL ||
+         (r.type === RoachType.LARGE && r.berserk)) && r.dodgeTimer > 0) {
       r.dodgeTimer -= deltaTime;
       if (r.dodgeTimer <= 0) {
         r.dodgeDir = 0;
@@ -560,8 +569,12 @@ export class RoachAISystem {
           dodgeSpeed = dodgeCfg.splitChildSpeed;
         } else if (r.type === RoachType.SMALL) {
           dodgeSpeed = dodgeCfg.smallSpeed;
+        } else if (r.type === RoachType.TIMED_SUICIDE) {
+          dodgeSpeed = dodgeCfg.suicideSpeed * dodgeCfg.timedSuicideSpeedMult; // 定时自爆横向闪避更快
+        } else if (r.type === RoachType.LARGE) {
+          dodgeSpeed = dodgeCfg.largeBerserkSpeed; // 狂暴大蟑螂横向闪避
         } else {
-          dodgeSpeed = dodgeCfg.suicideSpeed; // 自爆/定时自爆共用（数值相同）
+          dodgeSpeed = dodgeCfg.suicideSpeed;
         }
         const fanMult = r.fanSlowTimer > 0 ? (1 - r.fanSlowFactor) : 1;
         dodgeSpeed *= fanMult;
@@ -695,12 +708,15 @@ export class RoachAISystem {
   // 子方法：火焰闪避触发
   // =========================================================================
 
-  /** 处理自爆/定时自爆/小蟑螂在火焰中触发闪避（定时自爆与自爆蟑螂数值相同：suicideDuration） */
+  /** 处理自爆/定时自爆/小蟑螂/狂暴大蟑螂在火焰中触发闪避（定时自爆与自爆蟑螂数值相同：suicideDuration） */
   private handleFireDodgeTriggers(r: Roach, _roaches: Roach[]): void {
     const dodgeCfg = BALANCE_CONFIG.roachAI.dodge;
 
+    // 闪避封锁期间：任何拥有闪避技能的蟑螂都不能触发闪避
+    const canDodge = (r.dodgeBlockTimer ?? 0) <= 0;
+
     // Suicide / timed-suicide roach dodge in fire（数值共用 dodgeCfg.suicideDuration）
-    if ((r.type === RoachType.SUICIDE || r.type === RoachType.TIMED_SUICIDE) && r.inFire && !this.cfg.stickySystem.isStuckByBoard(r.id)) {
+    if (canDodge && (r.type === RoachType.SUICIDE || r.type === RoachType.TIMED_SUICIDE) && r.inFire && !this.cfg.stickySystem.isStuckByBoard(r.id)) {
       if (r.dodgeDir === 0) {
         r.dodgeDir = Math.random() < 0.5 ? -1 : 1;
       }
@@ -708,7 +724,7 @@ export class RoachAISystem {
     }
 
     // Small roach dodge in fire
-    if (r.type === RoachType.SMALL && r.inFire && !this.cfg.stickySystem.isStuckByBoard(r.id)) {
+    if (canDodge && r.type === RoachType.SMALL && r.inFire && !this.cfg.stickySystem.isStuckByBoard(r.id)) {
       if (r.dodgeDir === 0) {
         r.dodgeDir = Math.random() < 0.5 ? -1 : 1;
       }
@@ -717,6 +733,14 @@ export class RoachAISystem {
       } else {
         r.dodgeTimer = dodgeCfg.smallMin + Math.random() * (dodgeCfg.smallMax - dodgeCfg.smallMin);
       }
+    }
+
+    // 狂暴大蟑螂 dodge in fire（血量低于 50% 获得闪避属性）
+    if (canDodge && r.type === RoachType.LARGE && r.berserk && r.inFire && !this.cfg.stickySystem.isStuckByBoard(r.id)) {
+      if (r.dodgeDir === 0) {
+        r.dodgeDir = Math.random() < 0.5 ? -1 : 1;
+      }
+      r.dodgeTimer = dodgeCfg.largeBerserkMin + Math.random() * (dodgeCfg.largeBerserkMax - dodgeCfg.largeBerserkMin);
     }
   }
 
@@ -760,6 +784,11 @@ export class RoachAISystem {
       }
     }
 
+    // Asphyxiation DoT（窒息持续伤害，杀虫剂/蟑螂贴板附加）
+    if ((r.asphyxiationTimer ?? 0) > 0 && !(r.type === RoachType.TIMED_SUICIDE && r.placeTimer && r.placeTimer > 0)) {
+      r.hp -= BALANCE_CONFIG.insecticide.suffocationDps * deltaTime;
+    }
+
     if (r.hp <= 0) {
       this.killRoach(r, i, roaches, particles, isHard);
     }
@@ -771,6 +800,24 @@ export class RoachAISystem {
 
   private updateStatusEffects(r: Roach): void {
     const deltaTime = this.cfg.getDeltaTime();
+    // 闪避封锁、虚弱、技能封锁计时器衰减
+    if (r.dodgeBlockTimer !== undefined && r.dodgeBlockTimer > 0) {
+      r.dodgeBlockTimer -= deltaTime;
+      if (r.dodgeBlockTimer < 0) r.dodgeBlockTimer = 0;
+    }
+    if (r.weakenTimer !== undefined && r.weakenTimer > 0) {
+      r.weakenTimer -= deltaTime;
+      if (r.weakenTimer < 0) r.weakenTimer = 0;
+    }
+    if (r.skillBlockTimer !== undefined && r.skillBlockTimer > 0) {
+      r.skillBlockTimer -= deltaTime;
+      if (r.skillBlockTimer < 0) r.skillBlockTimer = 0;
+    }
+    // 窒息计时器衰减（杀虫剂/蟑螂贴板附加）
+    if (r.asphyxiationTimer !== undefined && r.asphyxiationTimer > 0) {
+      r.asphyxiationTimer -= deltaTime;
+      if (r.asphyxiationTimer < 0) r.asphyxiationTimer = 0;
+    }
     if (r.stunTimer > 0) {
       r.stunTimer -= deltaTime;
       if (r.stunTimer <= 0) {
@@ -802,6 +849,8 @@ export class RoachAISystem {
 
   private updateNurseHeal(r: Roach, roaches: Roach[]): void {
     if (r.type !== RoachType.NURSE || r.state !== RoachState.ALIVE) return;
+    // 技能封锁期间：护士不能释放加血技能
+    if ((r.skillBlockTimer ?? 0) > 0) return;
 
     const deltaTime = this.cfg.getDeltaTime();
     const healRange = 360;
@@ -843,12 +892,13 @@ export class RoachAISystem {
           const d = Math.sqrt((other.x - r.x) ** 2 + (other.y - r.y) ** 2);
           if (d < healRange && other.hp < other.maxHp) {
             const healAmount = Math.floor(other.maxHp * 0.20);
-            const actualHeal = Math.min(healAmount, other.maxHp - other.hp);
+            // 取整缺口血量，避免浮动文字出现长串小数
+            const actualHeal = Math.min(healAmount, Math.round(other.maxHp - other.hp));
             if (actualHeal > 0) {
               other.hp += actualHeal;
               other.healBuffTimer = 2.0;
               healedCount++;
-              this.cfg.onAddFloatingText(other.x, other.y - 30, `+${actualHeal}`, TEXT_CONFIG.combat.nurseSpray.color, 1200);
+              this.cfg.onAddFloatingText(other.x, other.y - 30, TEXT_CONFIG.combat.nurseHeal.text(actualHeal), TEXT_CONFIG.combat.nurseHeal.color, 1200);
             }
           }
         }
@@ -913,6 +963,8 @@ export class RoachAISystem {
    */
   private updateTunnelWorker(r: Roach, roaches: Roach[]): void {
     if (r.type !== RoachType.TUNNEL_WORKER || r.state !== RoachState.ALIVE) return;
+    // 技能封锁期间：工程蟑螂不能释放修复护盾和增加护甲技能
+    if ((r.skillBlockTimer ?? 0) > 0) return;
 
     const deltaTime = this.cfg.getDeltaTime();
     const subCfg = BALANCE_CONFIG.subway;
@@ -926,11 +978,12 @@ export class RoachAISystem {
     r.armorSprayTimer = (r.armorSprayTimer ?? subCfg.armorSprayInterval) - deltaTime;
     if (r.armorSprayTimer <= 0) {
       r.armorSprayTimer = subCfg.armorSprayInterval;
-      // 范围内血量最高的其他蟑螂（隧道工不喷自己）
+      // 范围内血量最高的其他蟑螂（隧道工不喷自己；不可给护盾蟑螂添加护甲）
       let best: Roach | null = null;
       for (const other of roaches) {
         if (other.id === r.id) continue;
         if (other.state !== RoachState.ALIVE) continue;
+        if (other.type === RoachType.SHIELD) continue; // 护盾蟑螂自带气体护盾，免疫护甲喷涂
         const dx = other.x - r.x;
         const dy = other.y - r.y;
         if (dx * dx + dy * dy > subCfg.armorSprayRange * subCfg.armorSprayRange) continue;
@@ -1569,6 +1622,7 @@ export class RoachAISystem {
       wrappedByDropId: null, wrapTimer: 0, damageFlash: 0,
       dodgeDir: 0, dodgeTimer: 0, wasDodging: false,
       isSplitChild: true,
+      dodgeBlockTimer: 0, weakenTimer: 0, skillBlockTimer: 0,
     };
   }
 

@@ -442,10 +442,9 @@ const ARMOR_RING_SECTIONS: EffectSection[] = [
     obj: renderCfg.roach.shield,
     path: 'render.roach.shield',
     keys: [
-      'normalColor', 'normalPulseBase', 'normalLineWidth', 'normalShadowBlur',
-      'normalShadowAlphaRatio', 'normalRadiusRatio', 'normalGlowAlphaRatio',
+      'normalColor', 'normalPulseBase', 'normalLineWidth', 'normalRadiusRatio',
     ],
-    hint: '改动会同步影响装甲蟑螂的护盾外观；timedSuicide* 为定时自爆蟑螂的橙色护盾配色，此处不显示',
+    hint: '改动会同步影响装甲蟑螂的护盾外观（半透明玻璃质感；玻璃渐变/反光带参数见 vfx-balance render.roach.shield.glass）；timedSuicide* 为定时自爆蟑螂的橙色护盾配色，此处不显示',
   },
 ];
 

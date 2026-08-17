@@ -715,7 +715,13 @@ export class ParticleSystem {
             } else {
               ctx.fillStyle = p.textColor || p.color;
             }
+            // 边缘辉光（如护盾修复+号，glowColor/glowBlur 由粒子携带）
+            if (p.glowColor) {
+              ctx.shadowColor = p.glowColor;
+              ctx.shadowBlur = p.glowBlur ?? 10;
+            }
             ctx.fillText(p.text, p.x, p.y);
+            ctx.shadowBlur = 0;
           } else {
             ctx.globalAlpha = alpha;
             ctx.globalCompositeOperation = p.blend ?? pt.blend;

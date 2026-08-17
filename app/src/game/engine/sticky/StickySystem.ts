@@ -253,6 +253,11 @@ export class StickySystem {
         target.speed = 0;
         target.vx = 0;
         target.vy = 0;
+        // 蟑螂贴板附加效果：窒息持续伤害 + 护士/工程蟑螂技能封锁
+        target.asphyxiationTimer = cfg.suffocationTimer;
+        if (target.type === RoachType.NURSE || target.type === RoachType.TUNNEL_WORKER) {
+          target.skillBlockTimer = cfg.skillBlockDuration;
+        }
         this.config.onAddFloatingText?.(target.x, target.y - 20, TEXT_CONFIG.combat.stickyCapture.text(BALANCE_CONFIG.sticky.wrapTimer), TEXT_CONFIG.combat.stickyCapture.color);
 
         // 击中粒子
@@ -354,6 +359,11 @@ export class StickySystem {
         r.speed = 0;
         r.vx = 0;
         r.vy = 0;
+        // 蟑螂贴板附加效果：窒息持续伤害 + 护士/工程蟑螂技能封锁
+        r.asphyxiationTimer = BALANCE_CONFIG.sticky.suffocationTimer;
+        if (r.type === RoachType.NURSE || r.type === RoachType.TUNNEL_WORKER) {
+          r.skillBlockTimer = BALANCE_CONFIG.sticky.skillBlockDuration;
+        }
         if (board.stuckRoaches.length === 1) {
           this.config.onAddFloatingText?.(r.x, r.y - 20, TEXT_CONFIG.combat.stickyStuck.text, TEXT_CONFIG.combat.stickyStuck.color);
         }

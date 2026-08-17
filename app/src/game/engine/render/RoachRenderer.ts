@@ -34,7 +34,7 @@ export interface RoachRendererConfig {
   deltaTime: number;
   /** 防线 Y 坐标（地面蟑螂透视缩放下缘） */
   defenseLineY: number;
-  /** 画布高度（地面蟑螂透视缩放地平线 = 高度 × horizonRatio） */
+  /** 画布高度 */
   canvasHeight: number;
 
   // Boss 状态
@@ -586,16 +586,14 @@ export class RoachRenderer {
   }
 
   /**
-   * 地面蟑螂透视缩放：远小近大（防线处 maxScale → 地平线处 minScale）。
-   * BOSS 与飞行单位（飞行/飞行自爆/地铁精英）不缩放。
+   * 地面蟑螂透视缩放：远小近大（固定设计坐标基准——远端 farY(350) 处 minScale → 近端 nearY(960) 处 maxScale，
+   * 不与画布高度绑定）。BOSS 与飞行单位（飞行/飞行自爆/地铁精英）不缩放。
    */
-  private static groundPerspectiveScale(config: RoachRendererConfig, r: Roach): number {
+  private static groundPerspectiveScale(_config: RoachRendererConfig, r: Roach): number {
     if (r.isBoss) return 1;
     if (r.type === RoachType.FLYING || r.type === RoachType.FLYING_SUICIDE || r.type === RoachType.SUBWAY_ELITE) return 1;
     const pc = BALANCE_CONFIG.render.roach.perspective;
-    const bottomY = config.defenseLineY;
-    const topY = config.canvasHeight * pc.horizonRatio;
-    const t = Math.max(0, Math.min(1, (bottomY - r.y) / (bottomY - topY)));
+    const t = Math.max(0, Math.min(1, (pc.nearY - r.y) / (pc.nearY - pc.farY)));
     return pc.maxScale - t * (pc.maxScale - pc.minScale);
   }
 
@@ -709,42 +707,17 @@ export class RoachRenderer {
     }
 
     // ===== HOSPITAL EXCLUSIVE: MUTANT TRANSFORMATION VISUAL =====
-    // Purple swirling glow during the 0.5s pre-transformation pause
+    // 变身前摇仅保留倒计时数字（外部粉色旋涡特效已按需求移除）
     if (r.type === RoachType.MUTANT && r.transformTimer && r.transformTimer > 0) {
-      const mt = BALANCE_CONFIG.render.roach.mutantTransform; // 颜色/透明度/混合集中于 vfx-balance
+      const mt = BALANCE_CONFIG.render.roach.mutantTransform; // 颜色/透明度集中于 vfx-balance
       const progress = 1 - r.transformTimer / 1.0; // 0→1
-      const swirlAlpha = mt.swirlAlphaBase + progress * mt.swirlAlphaRange;
-      const swirlR = Math.max(w, h) * (0.8 + progress * 0.6);
-      // Outer purple ring
-      ctx.save();
-      ctx.globalCompositeOperation = mt.blend;
-      ctx.strokeStyle = `rgba(${mt.swirlColor}, ${swirlAlpha})`;
-      ctx.lineWidth = 3;
-      ctx.shadowColor = `rgba(${mt.swirlColor}, ${swirlAlpha * mt.shadowAlphaRatio})`;
-      ctx.shadowBlur = 15;
-      ctx.beginPath();
-      for (let si = 0; si < 8; si++) {
-        const sAngle = (si / 8) * Math.PI * 2 + config.time * 6 + progress * Math.PI;
-        const sx = Math.cos(sAngle) * swirlR;
-        const sy = Math.sin(sAngle) * swirlR * 0.7;
-        if (si === 0) ctx.moveTo(sx, sy);
-        else ctx.lineTo(sx, sy);
-      }
-      ctx.closePath();
-      ctx.stroke();
-      // Inner glow
-      const glowGrad = ctx.createRadialGradient(0, 0, swirlR * 0.2, 0, 0, swirlR);
-      glowGrad.addColorStop(0, `rgba(${mt.swirlColor}, ${swirlAlpha * mt.glowAlphaRatio})`);
-      glowGrad.addColorStop(1, `rgba(${mt.swirlColor}, 0)`);
-      ctx.fillStyle = glowGrad;
-      ctx.fill();
-      // Countdown text
       const secsLeft = Math.ceil(r.transformTimer!);
+      ctx.save();
       ctx.fillStyle = `rgba(${mt.countdownColor}, ${mt.countdownAlphaBase + progress * mt.countdownAlphaRange})`;
       ctx.font = RENDER_FONT.large;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(TEXT_CONFIG.combat.transformCountdown.text(secsLeft), 0, -swirlR - 10);
+      ctx.fillText(TEXT_CONFIG.combat.transformCountdown.text(secsLeft), 0, -Math.max(w, h) - 10);
       ctx.restore();
     }
 
@@ -901,28 +874,22 @@ export class RoachRenderer {
 
     // ===== ARMOR SHIELD EFFECT: all roaches with armor buff =====
     // Drawn INSIDE the transform block so shield follows the roach
-    // Color varies by type: orange for TIMED_SUICIDE, blue for others
+    // 半透明玻璃质感：六边形玻璃罩（渐变填充 + 清晰描边 + 顶部反光带）；颜色按类型：定时自爆橙 / 其它蓝
     if (r.armorHp > 0) {
       const sc = BALANCE_CONFIG.render.roach.shield;
       const isTimedSuicide = r.type === RoachType.TIMED_SUICIDE;
       const color = isTimedSuicide ? sc.timedSuicideColor : sc.normalColor;
       const pulseBase = isTimedSuicide ? sc.timedSuicidePulseBase : sc.normalPulseBase;
       const lw = isTimedSuicide ? sc.timedSuicideLineWidth : sc.normalLineWidth;
-      const sb = isTimedSuicide ? sc.timedSuicideShadowBlur : sc.normalShadowBlur;
-      const shadowAlphaRatio = isTimedSuicide ? sc.timedSuicideShadowAlphaRatio : sc.normalShadowAlphaRatio;
       const radiusRatio = isTimedSuicide ? sc.timedSuicideRadiusRatio : sc.normalRadiusRatio;
-      const glowAlphaRatio = isTimedSuicide ? sc.timedSuicideGlowAlphaRatio : sc.normalGlowAlphaRatio;
-      const blend = isTimedSuicide ? sc.timedSuicideBlend : sc.normalBlend; // 普通护甲环 lighter 提亮（vfx-balance render.roach.shield.*Blend）
+      const blend = isTimedSuicide ? sc.timedSuicideBlend : sc.normalBlend; // 玻璃质感 source-over（vfx-balance render.roach.shield.*Blend）
 
       const shieldPulse = pulseBase + Math.sin(config.time * 4 + r.id) * 0.15;
-      const shieldAlpha = shieldPulse;
+      const shieldR = Math.max(w, h) * radiusRatio;
+      const g = sc.glass;
       ctx.save();
       ctx.globalCompositeOperation = blend;
-      ctx.strokeStyle = `rgba(${color}, ${shieldAlpha})`;
-      ctx.lineWidth = lw;
-      ctx.shadowColor = `rgba(${color}, ${shieldAlpha * shadowAlphaRatio})`;
-      ctx.shadowBlur = sb;
-      const shieldR = Math.max(w, h) * radiusRatio;
+      // 六边形玻璃罩路径
       ctx.beginPath();
       for (let si = 0; si < 6; si++) {
         const sAngle = (si / 6) * Math.PI * 2 + config.time * 0.5;
@@ -932,12 +899,27 @@ export class RoachRenderer {
         else ctx.lineTo(sx, sy);
       }
       ctx.closePath();
+      // 1) 半透明玻璃填充（纵向渐变：顶部偏白反光 → 中部微染色 → 底部略深）
+      const glassGrad = ctx.createLinearGradient(0, -shieldR, 0, shieldR);
+      glassGrad.addColorStop(0, `rgba(${g.reflection.color}, ${g.topAlpha})`);
+      glassGrad.addColorStop(g.midStop, `rgba(${color}, ${g.midAlpha})`);
+      glassGrad.addColorStop(1, `rgba(${color}, ${g.bottomAlpha})`);
+      ctx.fillStyle = glassGrad;
+      ctx.fill();
+      // 2) 清晰玻璃边缘描边（轻微脉动，无辉光）
+      ctx.strokeStyle = `rgba(${color}, ${Math.min(1, shieldPulse + g.edgeAlphaBoost)})`;
+      ctx.lineWidth = lw;
       ctx.stroke();
-      // Inner glow
-      const glowGrad = ctx.createRadialGradient(0, 0, shieldR * 0.3, 0, 0, shieldR);
-      glowGrad.addColorStop(0, `rgba(${color}, ${shieldAlpha * glowAlphaRatio})`);
-      glowGrad.addColorStop(1, `rgba(${color}, 0)`);
-      ctx.fillStyle = glowGrad;
+      // 3) 顶部反光带（裁剪在六边形内的椭圆弧，上深下浅渐隐）
+      ctx.clip();
+      const refl = g.reflection;
+      const ry = -shieldR * refl.yRatio;
+      ctx.beginPath();
+      ctx.ellipse(0, ry, shieldR * refl.rxRatio, shieldR * refl.ryRatio, 0, 0, Math.PI * 2);
+      const reflGrad = ctx.createLinearGradient(0, ry - shieldR * refl.ryRatio, 0, ry + shieldR * refl.ryRatio);
+      reflGrad.addColorStop(0, `rgba(${refl.color}, ${refl.alpha})`);
+      reflGrad.addColorStop(1, `rgba(${refl.color}, 0)`);
+      ctx.fillStyle = reflGrad;
       ctx.fill();
       ctx.restore();
     }

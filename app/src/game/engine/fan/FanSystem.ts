@@ -17,6 +17,8 @@ export interface FanSystemConfig {
   getCanvasHeight: () => number;
   /** 获取防御线Y坐标 */
   getDefenseLineY: () => number;
+  /** 获取透视远端缩放系数（场景地面阻挡梯形远边宽/近边宽；未提供时回退 fan.perspectiveScaleMin） */
+  getPerspectiveScaleMin?: () => number;
   /** 天赋倍数 */
   talentMultipliers?: {
     fanDuration?: number;
@@ -221,6 +223,11 @@ export class FanSystem {
     const t = gameTime;
     const RANGE = dl - fanTopY;
     const SOURCE_WIDTH = W * fanCfg.sourceWidthRatio;
+    // 透视远端缩放：按场景地面阻挡梯形远/近边宽度比（各场景透视一致），回退固定配置
+    const perspMin = this.config.getPerspectiveScaleMin?.() ?? fanCfg.perspectiveScaleMin;
+    // 透视 Y 归一化基准：与角色渲染透视同规则（固定设计坐标——远端 farY(350) 处最小 → 近端 nearY(960) 处 1.0）
+    const pc = BALANCE_CONFIG.render.roach.perspective;
+    const normYAt = (y: number) => Math.max(0, Math.min(1, (pc.nearY - y) / (pc.nearY - pc.farY)));
 
     ctx.save();
     ctx.globalCompositeOperation = fanCfg.blend; // 叠加混合集中于 vfx-balance fan.blend
@@ -241,8 +248,8 @@ export class FanSystem {
 
       let firstPoint = true;
       for (let y = dl; y >= fanTopY; y -= fanCfg.waveLineYStep) {
-        const normalizedY = (dl - y) / RANGE;
-        const perspectiveScale = 1.0 - normalizedY * (1 - fanCfg.perspectiveScaleMin);
+        const normalizedY = normYAt(y);
+        const perspectiveScale = 1.0 - normalizedY * (1 - perspMin);
         const cx = W / 2 + (srcX - W / 2) * perspectiveScale;
         const amplitude = baseAmplitude * perspectiveScale;
         const x = cx + Math.sin(normalizedY * Math.PI * 6 + wavePhase) * amplitude;
@@ -262,8 +269,8 @@ export class FanSystem {
       const gustAlpha = Math.sin(gustPhase * Math.PI) * fanCfg.gustAlphaBase;
       if (gustAlpha <= 0 || gustY < fanTopY) continue;
 
-      const normalizedY = (dl - gustY) / RANGE;
-      const perspectiveScale = 1.0 - normalizedY * (1 - fanCfg.perspectiveScaleMin);
+      const normalizedY = normYAt(gustY);
+      const perspectiveScale = 1.0 - normalizedY * (1 - perspMin);
       const gustHalfWidth = (SOURCE_WIDTH / 2) * perspectiveScale;
       const gustHeight = fanCfg.gustHeightBase + g * fanCfg.gustHeightIncrement;
 
@@ -304,8 +311,8 @@ export class FanSystem {
       const riseSpeed = fanCfg.particleRiseSpeedBase + (p % 5) * fanCfg.particleRiseSpeedIncrement;
       const phase = (p * 137.5 + t * riseSpeed) % RANGE;
       const py = dl - phase;
-      const normalizedY = phase / RANGE;
-      const perspectiveScale = 1.0 - normalizedY * (1 - fanCfg.perspectiveScaleMin);
+      const normalizedY = normYAt(py);
+      const perspectiveScale = 1.0 - normalizedY * (1 - perspMin);
       const srcHalfWidth = SOURCE_WIDTH / 2;
       const baseX = (p * 97.3) % SOURCE_WIDTH - srcHalfWidth;
       const px = W / 2 + baseX * perspectiveScale + Math.sin(t * 2 + p) * 8 * perspectiveScale;

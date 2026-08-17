@@ -189,6 +189,8 @@ export class ParticleSpawner {
       textColor: cfg.color,
       textColor2: cfg.color2,
       blend: cfg.blend,
+      glowColor: cfg.glowColor, // 边缘辉光（vfx-balance particle.shieldRepair.shieldPlus.glow*）
+      glowBlur: cfg.glowBlur,
     });
   }
 

@@ -272,6 +272,10 @@ export class GameEngine {
 
   defenseHp: number = 80;
   maxDefenseHp: number = 80;
+  /** 星级评价用防线血量（只减不增：受伤同步扣减，修复加血不计入） */
+  starDefenseHp: number = 80;
+  /** 本次通关的星级评价（0-3，胜利结算时计算） */
+  lastStarRating: number = 0;
 
   difficulty: 'easy' | 'hard' = 'easy';
   gameMode: GameMode = GameMode.STORY;
@@ -380,7 +384,13 @@ export class GameEngine {
   weatherParticles: Particle[] = [];
   lightningTimer: number = 0;
   lightningFlash: number = 0;
+  /** 当前闪电链节点（闪电触发时生成，闪光结束后清空） */
+  lightningBolt: { x: number; y: number }[] = [];
   lightningTextCooldown: number = 0;
+  /** 地下室灯光闪烁：距离下次闪烁的剩余时间（秒） */
+  flickerTimer: number = 60;
+  /** 地下室灯光闪烁：当前闪屏剩余时间（秒，0=未闪烁） */
+  flickerRemaining: number = 0;
   /** 成就系统模块（委托给 AchievementSystem） */
   private achievementSystem: AchievementSystem | null = null;
   /** 粒子系统模块（委托给 ParticleSystem） */
@@ -696,6 +706,13 @@ export class GameEngine {
       getCanvasWidth: () => this.width,
       getCanvasHeight: () => this.height,
       getDefenseLineY: () => this.defenseLineY(),
+      getPerspectiveScaleMin: () => {
+        // 风扇透视远端缩放 = 场景地面阻挡梯形远边宽 / 近边宽（与各地面透视一致）
+        const b = SCENE_GROUND_BOUNDS[this.currentScene];
+        const farWidth = b[2] - b[0];
+        const nearWidth = b[9] - b[8];
+        return nearWidth > 0 ? farWidth / nearWidth : 1;
+      },
       talentMultipliers: this.talentMultipliers,
       onAddFloatingText: (x, y, text, color) => { this.addFloatingText(x, y, text, color); },
       onStartFanLoop: () => { this.audio.startFanLoop(); },
@@ -812,7 +829,11 @@ export class GameEngine {
       getPlayer: () => this.player,
       getDefenseHp: () => this.defenseHp,
       getMaxDefenseHp: () => this.maxDefenseHp,
-      setDefenseHp: (hp) => { this.defenseHp = hp; },
+      setDefenseHp: (hp) => {
+        // 星级评价血量只减不增：掉血同步扣减，修复加血不计入
+        if (hp < this.defenseHp) this.starDefenseHp = Math.max(0, this.starDefenseHp - (this.defenseHp - hp));
+        this.defenseHp = hp;
+      },
       getCanvasWidth: () => this.width,
       getCanvasHeight: () => this.height,
       getGameState: () => this.state,
@@ -906,7 +927,11 @@ export class GameEngine {
       getSceneConfig: () => this.getSceneConfig(),
       setState: (state) => { this.state = state; this.onStateChange?.(state); },
       setScreenShake: (amount) => { this.screenShake = amount; },
-      setDefenseHp: (hp) => { this.defenseHp = hp; },
+      setDefenseHp: (hp) => {
+        // 星级评价血量只减不增：掉血同步扣减，修复加血不计入
+        if (hp < this.defenseHp) this.starDefenseHp = Math.max(0, this.starDefenseHp - (this.defenseHp - hp));
+        this.defenseHp = hp;
+      },
       setEconomy: (e) => { this.economy = e; },
       setHospitalBreaches: (count) => { this.hospitalBreaches = count; },
       onAddFloatingText: (x, y, text, color, duration?) => { this.addFloatingText(x, y, text, color, duration); },
@@ -937,12 +962,15 @@ export class GameEngine {
         // 超市阵型（V4.0 多组同帧生成共存）：波开始清空残余实例；热场队列清空后整组生成（出生点即阵型槽位，多组按 groupIndex 纵深错位）
         onClearFormations: () => { this.roachAISystem.clearFormations(); },
         onSpawnFormationGroup: (group, groupIndex) => {
-          const [, farLY, , farRY, , midLY, , midRY] = SCENE_GROUND_BOUNDS[this.currentScene];
-          const spawnBaseY = Math.min(farLY, farRY, midLY, midRY)
-            + groupIndex * BALANCE_CONFIG.supermarket.groupDepthGap;
+          const [, farLY, , farRY, , , , , , , nearY] = SCENE_GROUND_BOUNDS[this.currentScene];
+          const topY = Math.min(farLY, farRY); // 阻挡面远端线 Y（梯形顶部）
+          // 阻挡面内随机出生线（不限于顶部；多组仍按 groupDepthGap 纵深错位并 clamp 在阻挡面中上部）
+          const randomBase = topY + Math.random() * (nearY - topY) * 0.5;
+          const spawnBaseY = Math.min(randomBase + groupIndex * BALANCE_CONFIG.supermarket.groupDepthGap, nearY - 60);
           const entries = this.roachAISystem.addFormationGroup(group, spawnBaseY);
           if (entries) for (const e of entries) this.spawnRoach(e.type, undefined, e.x, e.y);
         },
+        onGetGroundBoundsAtY: (y) => this.getGroundBoundsAtY(y),
         onAddFloatingText: (x, y, text, color) => { this.addFloatingText(x, y, text, color); },
         onStateChange: (state) => { this.state = state; this.onStateChange?.(state); },
         onGameVictory: () => { this.gameVictory(); },
@@ -1465,11 +1493,16 @@ export class GameEngine {
     const sceneDefMult = this.currentScene === SceneType.SUPERMARKET ? BALANCE_CONFIG.supermarket.defenseHpMult : 1;
     this.defenseHp = Math.round(BALANCE_CONFIG.defense.baseHp * defMult * sceneDefMult);
     this.maxDefenseHp = this.defenseHp;
+    this.starDefenseHp = this.defenseHp;
+    this.lastStarRating = 0;
     this.time = 0;
     this.screenShake = 0;
     this.lightningTimer = 0;
     this.lightningFlash = 0;
+    this.lightningBolt = [];
     this.lightningTextCooldown = 0;
+    this.flickerTimer = BALANCE_CONFIG.weather.flicker.interval;
+    this.flickerRemaining = 0;
     this.achievementSystem?.reset();
     this.particleSystem?.clearAll();
     this.economy.totalGamesPlayed = this.progress.totalKills + 1;
@@ -2889,6 +2922,14 @@ export class GameEngine {
       baseY = farLY + 10; // Slightly below far line to be visible
       const [gLeft, gRight] = this.getGroundBoundsAtY(baseY);
       baseX = gLeft + Math.random() * (gRight - gLeft);
+    } else if ((type === RoachType.SHIELD || type === RoachType.TUNNEL_WORKER) && this.currentScene === SceneType.SUBWAY) {
+      // ===== SUBWAY: 护盾蟑螂/隧道工限定在地面阻挡线远端与中线之间生成（盾墙/喷涂压场位置前置） =====
+      const [, farLY, , farRY, , midLY, , midRY] = SCENE_GROUND_BOUNDS[this.currentScene];
+      const farY = Math.min(farLY, farRY); // 远端线 Y（梯形顶部）
+      const midY = Math.max(midLY, midRY); // 中线 Y（梯形中部）
+      baseY = farY + Math.random() * (midY - farY);
+      const [gLeft, gRight] = this.getGroundBoundsAtY(baseY);
+      baseX = gLeft + Math.random() * (gRight - gLeft);
     } else {
       // Ground roaches: spawn within 6-point perspective ground bounds
       const [, farLY, , farRY, , midLY, , midRY, , , nearY] = SCENE_GROUND_BOUNDS[this.currentScene];
@@ -2968,6 +3009,10 @@ export class GameEngine {
       healRange: type === RoachType.NURSE ? 360 : undefined,
       // Hospital exclusive: asphyxiation from insecticide
       asphyxiationTimer: 0,
+      // Debuff timers (insecticide / sticky board)
+      dodgeBlockTimer: 0,
+      weakenTimer: 0,
+      skillBlockTimer: 0,
       // Hospital exclusive: timed suicide (now places bomb at defense line, no countdown on roach)
       explodeTimer: 0,
       isCountingDown: false,
@@ -3142,6 +3187,7 @@ export class GameEngine {
         this.addFloatingText(r.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.shieldBlock.text, TEXT_CONFIG.combat.shieldBlock.color);
       } else {
         this.defenseHp -= dmg;
+        this.starDefenseHp = Math.max(0, this.starDefenseHp - dmg);
         this.addFloatingText(r.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.suicideDamage.text(dmg), TEXT_CONFIG.combat.suicideDamage.color);
       }
       if (r.type === RoachType.FLYING_SUICIDE) {
@@ -3229,6 +3275,7 @@ export class GameEngine {
         this.addFloatingText(r.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.shieldBlock.text, TEXT_CONFIG.combat.shieldBlock.color);
       } else {
         this.defenseHp -= dmg;
+        this.starDefenseHp = Math.max(0, this.starDefenseHp - dmg);
         this.addFloatingText(r.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.suicideDamage.text(dmg), TEXT_CONFIG.combat.suicideDamage.color);
       }
       if (r.type === RoachType.FLYING_SUICIDE) {
@@ -3317,6 +3364,7 @@ export class GameEngine {
         this.addFloatingText(r.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.shieldBlock.text, TEXT_CONFIG.combat.shieldBlock.color);
       } else {
         this.defenseHp -= defDmg;
+        this.starDefenseHp = Math.max(0, this.starDefenseHp - defDmg);
         this.addFloatingText(r.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.bombExplode.text(defDmg), TEXT_CONFIG.combat.bombExplode.color);
       }
 
@@ -3657,7 +3705,10 @@ export class GameEngine {
       this.bossSystem!.bossBattle.active, // 修复 P2：onBossStop → isBossActive
     );
 
-    // 同步回引擎状态
+    // 同步回引擎状态（星级评价血量只减不增：按掉血差值同步扣减）
+    if (result.defenseHp < this.defenseHp) {
+      this.starDefenseHp = Math.max(0, this.starDefenseHp - (this.defenseHp - result.defenseHp));
+    }
     this.defenseHp = result.defenseHp;
     this.activeBosses = result.activeBosses;
 
@@ -3722,8 +3773,8 @@ export class GameEngine {
     const result = this.waveManager!.update(this.deltaTime);
     if (result.skipRest) return;
 
-    // ===== 定时自爆：交错生成（每只间隔8秒以保持节奏） =====
-    if (this.currentScene === SceneType.HOSPITAL && this.timedSuicideSpawnRemaining > 0) {
+    // ===== 定时自爆：交错生成（每只间隔8秒以保持节奏）。医院/地铁场景生效 =====
+    if ((this.currentScene === SceneType.HOSPITAL || this.currentScene === SceneType.SUBWAY) && this.timedSuicideSpawnRemaining > 0) {
       this.timedSuicideSpawnTimer -= this.deltaTime;
       if (this.timedSuicideSpawnTimer <= 0) {
         this.spawnRoach(RoachType.TIMED_SUICIDE);
@@ -3816,6 +3867,7 @@ export class GameEngine {
             this.addFloatingText(bomb.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.shieldBlock.text, TEXT_CONFIG.combat.shieldBlock.color);
           } else {
             this.defenseHp -= defenseDmg;
+            this.starDefenseHp = Math.max(0, this.starDefenseHp - defenseDmg);
             this.addFloatingText(bomb.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.corpseBombDamage.text(defenseDmg), TEXT_CONFIG.combat.corpseBombDamage.color);
           }
         }
@@ -3826,8 +3878,8 @@ export class GameEngine {
       }
     }
 
-    // ===== 医院/超市：更新已放置的定时炸弹（定时自爆蟑螂在防线放置） =====
-    if (this.currentScene === SceneType.HOSPITAL || this.currentScene === SceneType.SUPERMARKET) {
+    // ===== 医院/超市/地铁：更新已放置的定时炸弹（定时自爆蟑螂在防线放置） =====
+    if (this.currentScene === SceneType.HOSPITAL || this.currentScene === SceneType.SUPERMARKET || this.currentScene === SceneType.SUBWAY) {
       for (let bi = this.placedBombs.length - 1; bi >= 0; bi--) {
         const bomb = this.placedBombs[bi];
         bomb.timer -= this.deltaTime;
@@ -3888,6 +3940,7 @@ export class GameEngine {
             this.addFloatingText(bomb.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.shieldBlock.text, TEXT_CONFIG.combat.shieldBlock.color);
           } else {
             this.defenseHp -= defDmg;
+            this.starDefenseHp = Math.max(0, this.starDefenseHp - defDmg);
             this.addFloatingText(bomb.x, this.defenseLineY() - 20, TEXT_CONFIG.combat.bombExplode.text(defDmg), TEXT_CONFIG.combat.bombExplode.color);
           }
           this.placedBombs.splice(bi, 1);
@@ -3925,6 +3978,19 @@ export class GameEngine {
       this.progress.scenesCompleted.push(this.currentScene);
     }
     this.scenesCleared.add(this.currentScene);
+
+    // ===== 星级评价：按防线血量（不含加血）保留比例 —— 100%→3星，60%~99%→2星，0%~59%→1星 =====
+    const hpRatio = this.maxDefenseHp > 0
+      ? Math.max(0, Math.min(1, this.starDefenseHp / this.maxDefenseHp))
+      : 0;
+    const stars = hpRatio >= 1 ? 3 : hpRatio >= 0.6 ? 2 : 1;
+    this.lastStarRating = stars;
+    if (!this.progress.levelStars) this.progress.levelStars = {};
+    // 不管过关几次，只记录该关卡曾经得到的最多星级
+    if ((this.progress.levelStars[this.currentScene] ?? 0) < stars) {
+      this.progress.levelStars[this.currentScene] = stars;
+    }
+    this.saveProgress();
 
     // Unlock next scene in chain
     const currentIdx = SCENE_UNLOCK_CHAIN.indexOf(this.currentScene);
@@ -4108,23 +4174,46 @@ export class GameEngine {
         };
         this.weatherParticles.push(fogParticle);
       }
-    } else if (weather === WeatherType.NIGHT) {
-      // 闪电（带文字冷却防刷屏）
+    } else if (weather === WeatherType.NIGHT && this.currentScene === SceneType.ROOFTOP) {
+      // 闪电（带文字冷却防刷屏；触发时生成可见闪电链）。闪电特效仅天台场景——地下室/地铁的 NIGHT 天气不触发
       this.lightningTimer -= this.deltaTime;
       this.lightningTextCooldown -= this.deltaTime;
       if (this.lightningTimer <= 0) {
         this.lightningTimer = BALANCE_CONFIG.lightning.emitter.timerMin + Math.random() * BALANCE_CONFIG.lightning.emitter.timerRandMax;
         if (Math.random() < BALANCE_CONFIG.lightning.emitter.chance) {
           this.lightningFlash = BALANCE_CONFIG.lightning.flashDuration;
+          this.lightningBolt = WeatherSystem.buildLightningBolt(this.width, this.height);
           if (this.lightningTextCooldown <= 0) {
             this.addFloatingText(this.width / 2, this.height / 2 - BALANCE_CONFIG.lightning.textOffsetY, TEXT_CONFIG.combat.lightning.text, TEXT_CONFIG.combat.lightning.color);
             this.lightningTextCooldown = BALANCE_CONFIG.lightning.textCooldown;
           }
         }
       }
-      // 更新闪电闪光
+      // 更新闪电闪光（闪光结束后清空闪电链）
       if (this.lightningFlash > 0) {
         this.lightningFlash -= this.deltaTime;
+        if (this.lightningFlash <= 0) this.lightningBolt = [];
+      }
+    }
+
+    // 下水道：顶部水滴下落，落到地面阻挡面生成涟漪
+    if (this.currentScene === SceneType.SEWER) {
+      this.spawnWeatherDrip(BALANCE_CONFIG.weather.drip.emitter.sewerSpawnRate);
+    }
+    // 天台：少量雨滴下落（下落更快），落到地面阻挡面生成涟漪
+    if (this.currentScene === SceneType.ROOFTOP) {
+      this.spawnWeatherDrip(BALANCE_CONFIG.weather.drip.emitter.rooftopSpawnRate, BALANCE_CONFIG.weather.drip.emitter.rooftopSpeedMult);
+    }
+    // 地下室/医院：灯光闪烁（每 60 秒一次 0.8 秒 50% 半透黑色闪屏）
+    if (this.currentScene === SceneType.BASEMENT || this.currentScene === SceneType.HOSPITAL) {
+      const fc = BALANCE_CONFIG.weather.flicker;
+      this.flickerTimer -= this.deltaTime;
+      if (this.flickerTimer <= 0) {
+        this.flickerTimer = fc.interval;
+        this.flickerRemaining = fc.duration;
+      }
+      if (this.flickerRemaining > 0) {
+        this.flickerRemaining -= this.deltaTime;
       }
     }
 
@@ -4137,10 +4226,62 @@ export class GameEngine {
       if (p.type === ParticleType.SMOKE && weather === WeatherType.FOG) {
         p.size *= BALANCE_CONFIG.weather.fog.growthRate;
       }
+      // 水滴落地：消失并在地面阻挡面生成近大远小涟漪
+      if (p.type === ParticleType.DRIP && p.targetY !== undefined && p.y >= p.targetY) {
+        const rc = BALANCE_CONFIG.weather.ripple;
+        this.weatherParticles.push({
+          x: p.x, y: p.targetY,
+          vx: 0, vy: 0,
+          life: rc.life, maxLife: rc.life,
+          size: rc.baseSize * this.groundPerspectiveScaleAt(p.targetY),
+          color: rc.color,
+          type: ParticleType.RIPPLE,
+        });
+        this.weatherParticles.splice(i, 1);
+        continue;
+      }
       if (p.life <= 0) {
         this.weatherParticles.splice(i, 1);
       }
     }
+  }
+
+  /** 生成下落水滴（下水道/天台）：随机落点在地面阻挡面梯形内，垂直下落 */
+  private spawnWeatherDrip(spawnRate: number, speedMult: number = 1): void {
+    const cfg = BALANCE_CONFIG.weather.drip;
+    if (Math.random() >= spawnRate * this.deltaTime) return;
+    const b = SCENE_GROUND_BOUNDS[this.currentScene];
+    const topY = Math.min(b[1], b[3]); // 地面梯形远边 Y
+    const botY = b[10];                // 地面梯形近边 Y
+    const landY = topY + Math.random() * (botY - topY);
+    const [gLeft, gRight] = this.getGroundBoundsAtY(landY);
+    const x = gLeft + Math.random() * (gRight - gLeft);
+    const vy = (cfg.vyMin + Math.random() * cfg.vyRange) * speedMult;
+    const fallTime = (landY - cfg.emitter.spawnY) / vy;
+    this.weatherParticles.push({
+      x, y: cfg.emitter.spawnY,
+      vx: 0, vy,
+      life: fallTime + 0.5, maxLife: fallTime + 0.5,
+      size: cfg.sizeMin + Math.random() * cfg.sizeRange,
+      color: cfg.color,
+      type: ParticleType.DRIP,
+      targetY: landY,
+    });
+  }
+
+  /** 地面透视缩放（与 RoachRenderer.groundPerspectiveScale 同规则：固定设计坐标 farY(350) minScale → nearY(960) maxScale） */
+  private groundPerspectiveScaleAt(y: number): number {
+    const pc = BALANCE_CONFIG.render.roach.perspective;
+    const t = Math.max(0, Math.min(1, (pc.nearY - y) / (pc.nearY - pc.farY)));
+    return pc.maxScale - t * (pc.maxScale - pc.minScale);
+  }
+
+  /** 地下室灯光闪烁黑屏透明度（0 = 不闪；闪屏期间按占空比快速明暗） */
+  getFlickerOverlayAlpha(): number {
+    if (this.flickerRemaining <= 0) return 0;
+    const fc = BALANCE_CONFIG.weather.flicker;
+    const elapsed = fc.duration - this.flickerRemaining;
+    return (elapsed * fc.blinkFreq) % 1 < fc.duty ? fc.maxAlpha : 0;
   }
 
   // =============================================================================
@@ -4383,7 +4524,7 @@ export class GameEngine {
     if (this.showMovementRange) {
       this.renderMovementRange(ctx);
     }
-    WeatherSystem.renderWeatherBackground(ctx, w, h, this.lightningFlash);
+    WeatherSystem.renderWeatherBackground(ctx, w, h, this.lightningFlash, this.lightningBolt);
     BackgroundRenderer.renderFireZones(ctx, {
       player: this.player,
       tripleFlameState: this.tripleFlameSystem!.getState(),
@@ -4665,6 +4806,36 @@ export class GameEngine {
       }
     }
     ctx.restore();
+
+    // ===== 超市阵型：同阵型成员灰色虚线链接（连向阵型质心，标示归属；V4.0） =====
+    {
+      const SM = BALANCE_CONFIG.supermarket;
+      const linkGroups = new Map<number, Roach[]>();
+      for (const r of this.roaches) {
+        if (r.formationId == null || r.state !== RoachState.ALIVE) continue;
+        let arr = linkGroups.get(r.formationId);
+        if (!arr) { arr = []; linkGroups.set(r.formationId, arr); }
+        arr.push(r);
+      }
+      if (linkGroups.size > 0) {
+        ctx.save();
+        ctx.strokeStyle = `rgba(${SM.formationLinkColor}, ${SM.formationLinkAlpha})`;
+        ctx.lineWidth = SM.formationLinkWidth;
+        ctx.setLineDash([SM.formationLinkDash, SM.formationLinkGap]);
+        for (const members of linkGroups.values()) {
+          if (members.length < 2) continue;
+          const cx = members.reduce((s, m) => s + m.x, 0) / members.length;
+          const cy = members.reduce((s, m) => s + m.y, 0) / members.length;
+          for (const m of members) {
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(m.x, m.y);
+            ctx.stroke();
+          }
+        }
+        ctx.restore();
+      }
+    }
 
     // ===== 超市阵型锚点：头顶彩色菱形标识（V3.1，颜色按怪物类型区分，FormationSystem 每帧维护；护盾略大、隧道工缩小） =====
     const SM = BALANCE_CONFIG.supermarket;
@@ -4993,7 +5164,7 @@ export class GameEngine {
   }
 
   renderWeatherForeground(ctx: CanvasRenderingContext2D, w: number) {
-    WeatherSystem.renderWeatherForeground(ctx, w, this.weatherParticles);
+    WeatherSystem.renderWeatherForeground(ctx, w, this.weatherParticles, this.height, this.getFlickerOverlayAlpha());
     this.renderDefenseLine(ctx, w);
   }
 

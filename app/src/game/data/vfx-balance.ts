@@ -100,6 +100,8 @@ export const BALANCE_VFX = {
         offsetY: 45,                      // +号头顶偏移（像素）
         interval: 0.8,                    // +号生成间隔（秒，节流避免过多）
         blend: 'lighter' as GlobalCompositeOperation, // lighter叠加提亮
+        glowColor: 'rgba(254, 240, 138, 0.9)', // +号边缘辉光颜色（暖黄）
+        glowBlur: 12,                     // +号边缘辉光模糊半径（像素）
       },
     },
     // 破盾特效粒子（护盾蟑螂护盾破碎瞬间：玻璃碎屑辉光点从光带区域向外迸发，
@@ -372,7 +374,7 @@ export const BALANCE_VFX = {
       wiggleTimeScale: 30,     // 火焰摆动时间缩放
       wiggleAmplitude: 5,      // 火焰摆动幅度（像素）
       sideGunScale: 0.6,       // 侧火焰缩放
-      sideGunNozzleOffset: 50, // 侧火焰喷嘴偏移（像素）
+      sideGunNozzleOffset: 0,  // 侧火焰喷嘴偏移（像素，0 = 与主枪口 Y 轴位置一致）
       coreGlowSize: 36,        // 核心发光大小（像素）
       coreColorDefault: '160, 210, 255',   // 默认火焰核心颜色（浅蓝白）
       coreColorSticky: '250, 200, 50',     // 粘板模式核心颜色（金色）
@@ -611,30 +613,41 @@ export const BALANCE_VFX = {
       deadSizeSmall: 10,         // 小型蟑螂尸体大小（像素）
       sizeWobbleBase: 0.9,       // 大小摆动基础值
       sizeWobbleAmp: 0.1,        // 大小摆动幅度
-      // 地面蟑螂透视缩放（远小近大：防线处 maxScale → 地平线处 minScale；飞行/BOSS 不缩放）
+      // 地面蟑螂透视缩放（远小近大：固定设计坐标基准——远端 farY 处 minScale → 近端 nearY 处 maxScale；
+      // 不与画布高度绑定，各场景/设备一致；飞行/BOSS 不缩放）
       perspective: {
-        horizonRatio: 0.2,       // 地平线 Y = 画布高度 × 此值
-        minScale: 0.55,          // 地平线处最小缩放
-        maxScale: 1.3,           // 防线处最大缩放（近端放大，增强近景冲击力）
+        farY: 350,             // 远端 Y（设计坐标，缩放最小处 = minScale）
+        nearY: 960,            // 近端 Y（设计坐标，缩放最大处 = maxScale）
+        minScale: 0.55,        // 远端最小缩放
+        maxScale: 1.3,         // 近端最大缩放（近端放大，增强近景冲击力）
       },
       // 【怪物技能】护盾渲染（装甲蟑螂/定时自爆蟑螂）
       shield: {
         normalColor: '100, 200, 255',          // 普通护盾颜色（浅蓝）
         timedSuicideColor: '255, 165, 0',      // 定时自爆护盾颜色（橙色）
-        normalPulseBase: 0.3,                  // 普通护盾脉冲基础值
+        normalPulseBase: 0.3,                  // 普通护盾脉冲基础值（玻璃边缘描边脉动）
         normalLineWidth: 2,                    // 普通护盾线宽
-        normalShadowBlur: 10,                  // 普通护盾阴影模糊
-        normalShadowAlphaRatio: 0.5,           // 普通护盾阴影透明度比例
         normalRadiusRatio: 0.65,               // 普通护盾半径比例
-        normalGlowAlphaRatio: 0.1,             // 普通护盾发光透明度比例
-        normalBlend: 'lighter' as GlobalCompositeOperation,        // 普通护盾叠加混合（lighter 提亮）
-        timedSuicideBlend: 'lighter' as GlobalCompositeOperation, // 定时自爆护盾叠加混合（lighter 提亮）
+        normalBlend: 'source-over' as GlobalCompositeOperation,        // 玻璃质感：不发光叠加
+        timedSuicideBlend: 'source-over' as GlobalCompositeOperation, // 玻璃质感：不发光叠加
         timedSuicidePulseBase: 0.35,           // 定时自爆护盾脉冲基础值
         timedSuicideLineWidth: 2.5,            // 定时自爆护盾线宽
-        timedSuicideShadowBlur: 12,            // 定时自爆护盾阴影模糊
-        timedSuicideShadowAlphaRatio: 0.6,     // 定时自爆护盾阴影透明度比例
         timedSuicideRadiusRatio: 0.7,          // 定时自爆护盾半径比例
-        timedSuicideGlowAlphaRatio: 0.12,      // 定时自爆护盾发光透明度比例
+        // 半透明玻璃质感：六边形玻璃罩（顶部偏白反光 → 中部微染色 → 底部略深）+ 顶部反光带（裁剪在六边形内）
+        glass: {
+          topAlpha: 0.30,                  // 填充顶部透明度（偏白反光）
+          midStop: 0.45,                   // 渐变中段位置（0~1）
+          midAlpha: 0.10,                  // 填充中部透明度（微染色）
+          bottomAlpha: 0.20,               // 填充底部透明度（略深）
+          edgeAlphaBoost: 0.25,            // 边缘描边透明度增量（脉冲基础之上，保持玻璃边清晰）
+          reflection: {
+            yRatio: 0.45,                  // 反光带中心偏上距离（护盾半径 × 此值）
+            rxRatio: 0.60,                 // 反光带横向半径（× 护盾半径）
+            ryRatio: 0.20,                 // 反光带纵向半径（× 护盾半径）
+            alpha: 0.35,                   // 反光带最大透明度（向下渐隐至 0）
+            color: '255, 255, 255',        // 反光带颜色（白）
+          },
+        },
       },
       // 【怪物技能】隧道工施法警示光圈（armorSprayCastTimer 脉冲：RoachRenderer 绘制 / RoachAISystem 计时 / 特效编辑器复刻，三方共用）
       armorCastRing: {
@@ -677,14 +690,8 @@ export const BALANCE_VFX = {
         dashColor: '140, 255, 170',    // 旋转刻度颜色
         dashAlphaRatio: 0.6,           // 旋转刻度透明度比例
       },
-      // 【怪物技能】变异变身漩涡（医院变异蟑螂变身前摇紫色漩涡 + 倒计时数字）
+      // 【怪物技能】变异变身倒计时（医院变异蟑螂变身前摇倒计时数字；外部粉色旋涡特效已移除）
       mutantTransform: {
-        blend: 'source-over' as GlobalCompositeOperation, // 叠加混合
-        swirlColor: '217, 70, 239',    // 漩涡颜色（紫）
-        swirlAlphaBase: 0.4,           // 漩涡透明度基础值
-        swirlAlphaRange: 0.4,          // 漩涡透明度随进度增长
-        shadowAlphaRatio: 0.8,         // 发光阴影透明度比例（× swirlAlpha）
-        glowAlphaRatio: 0.15,          // 内圈辉光透明度比例（× swirlAlpha）
         countdownColor: '255, 255, 255', // 倒计时数字颜色
         countdownAlphaBase: 0.8,       // 倒计时透明度基础值
         countdownAlphaRange: 0.2,      // 倒计时透明度随进度增长
@@ -1699,6 +1706,49 @@ export const BALANCE_VFX = {
       renderGradientEnd: 'rgba(180, 180, 160, 0)', // 雾团径向渐变外缘色
       blend: 'source-over' as GlobalCompositeOperation, // 雾团叠加混合方式
     },
+    // 水滴/雨滴下落（下水道水滴、天台少量雨滴）：垂直下落，到达地面阻挡面
+    // （SCENE_GROUND_BOUNDS 梯形区域）时消失并生成 RIPPLE 涟漪
+    drip: {
+      // --- 发射器 ---
+      emitter: {
+        mode: 'chance',
+        sewerSpawnRate: 2.2,           // 下水道水滴生成速率（每秒概率，× deltaTime）
+        rooftopSpawnRate: 0.7,         // 天台雨滴生成速率（少量，每秒概率 × deltaTime）
+        rooftopSpeedMult: 1.5,         // 天台雨滴下落速度倍率（比下水道水滴更快）
+        spawnY: -10,                   // 生成 Y 位置（画布顶部上方，像素）
+      },
+      // --- 粒子 ---
+      vyMin: 340, vyRange: 160,        // 垂直下落速度范围（像素/秒）
+      sizeMin: 1.2, sizeRange: 0.8,    // 水滴大小范围（像素）
+      color: 'rgba(170, 200, 235, 0.55)', // 水滴颜色
+      // --- 渲染 ---
+      renderAlpha: 0.8,                // 渲染透明度系数（life 衰减 α × 此值）
+      renderLineWidth: 1.5,            // 水滴线段宽度（像素）
+      renderTailScale: 0.035,          // 拖尾长度系数（线段终点 = 位置 + 速度 × 此值）
+      blend: 'source-over' as GlobalCompositeOperation, // 水滴叠加混合方式
+    },
+    // 地面涟漪：水滴落地后扩散的椭圆环，尺寸 = baseSize × 地面透视缩放（近大远小）
+    ripple: {
+      life: 0.9,                       // 涟漪存活时间（秒）
+      baseSize: 14,                    // 基准扩散半径（像素，乘地面透视缩放）
+      startRatio: 0.25,                // 起始半径比例（半径 = size × (startRatio + 扩散进度 × expand)）
+      expand: 1.6,                     // 扩散倍数
+      aspect: 0.38,                    // 椭圆纵横比（ry = rx × 此值，贴合地面透视）
+      lineWidth: 1.5,                  // 涟漪线宽（像素）
+      color: '190, 215, 240',          // 涟漪颜色（RGB）
+      alpha: 0.55,                     // 涟漪基础透明度（随扩散渐隐）
+      innerRingRatio: 0.55,            // 内环半径比例
+      innerRingAlphaRatio: 0.6,        // 内环透明度比例
+      blend: 'source-over' as GlobalCompositeOperation, // 涟漪叠加混合方式
+    },
+    // 地下室灯光闪烁：每 interval 秒触发一次 duration 秒的全屏黑色闪屏
+    flicker: {
+      interval: 60,                    // 闪烁间隔（秒）
+      duration: 0.8,                   // 单次闪屏持续时长（秒）
+      blinkFreq: 4.7,                  // 闪烁频率（Hz，非整数避免机械感）
+      duty: 0.55,                      // 占空比（每个闪烁周期内黑屏所占比例）
+      maxAlpha: 0.5,                   // 黑色叠加层最大透明度（50% 半透黑色）
+    },
   },
 
   // ======================================================================
@@ -1713,12 +1763,30 @@ export const BALANCE_VFX = {
       chance: 0.3,        // 每次计时器触发时闪电出现的概率（30%）
     },
     // --- 渲染 ---
-    flashDuration: 0.3,   // 闪光持续时间（秒）
+    flashDuration: 0.4,   // 闪光持续时间（秒）
     textCooldown: 3,      // 闪电文字提示冷却时间（秒）
-    flashAlpha: 0.3,      // 全屏白闪覆盖层透明度系数（flash 剩余 × 此值）
+    flashAlpha: 0.5,      // 全屏白闪覆盖层透明度系数（flash 剩余 × 此值；轻微闪白）
     flashColor: '255, 255, 255', // 全屏闪光覆盖层颜色（RGB）
     flashBlend: 'source-over' as GlobalCompositeOperation, // 闪光覆盖层叠加混合方式
     textOffsetY: 100,     // 闪电文字提示 Y 偏移（画面中心上移，像素）
+    // --- 闪电链（可见雷电折线，闪光期间绘制，随 flash 剩余渐隐） ---
+    bolt: {
+      segments: 11,         // 主链分段数
+      jitterRatio: 0.09,    // 中段横向抖动幅度（× 画布宽）
+      endYRatio: 0.62,      // 落点 Y（× 画布高）
+      lineWidth: 3,         // 主链线宽（像素）
+      branchChance: 0.4,    // 每个中段节点生成分支的概率
+      branchLenRatio: 0.4,  // 分支长度（主链剩余高度 × 此值）
+      branchWidth: 1.5,     // 分支线宽（像素）
+      coreColor: '255, 255, 255',  // 主链核心颜色（RGB）
+      glowColor: '140, 190, 255',  // 辉光颜色（RGB）
+      glowBlur: 16,         // 辉光模糊半径（像素）
+      haloWidthMult: 3.2,   // 外层辉光线宽倍率（× 主链线宽）
+      haloBlurMult: 2.2,    // 外层辉光模糊倍率（× glowBlur）
+      haloAlpha: 0.35,      // 外层辉光透明度（× flash 剩余比例）
+      alpha: 0.95,          // 主链最大透明度（× flash 剩余比例）
+      blend: 'lighter' as GlobalCompositeOperation, // 闪电链叠加混合方式
+    },
   },
 } as const;
 

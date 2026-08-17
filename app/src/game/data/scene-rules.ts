@@ -54,7 +54,7 @@ export const SCENE_ROACH_TYPES: Record<SceneType, RoachType[]> = {
   [SceneType.ROOFTOP]: [RoachType.SMALL, RoachType.LARGE, RoachType.FLYING, RoachType.ARMORED, RoachType.SPLITTING, RoachType.SUICIDE, RoachType.FLYING_SUICIDE],
   [SceneType.STREET]: [RoachType.SMALL, RoachType.LARGE, RoachType.FLYING, RoachType.ARMORED, RoachType.SPLITTING, RoachType.SUICIDE, RoachType.FLYING_SUICIDE],
   [SceneType.HOSPITAL]: [RoachType.SMALL, RoachType.LARGE, RoachType.FLYING, RoachType.ARMORED, RoachType.SPLITTING, RoachType.SUICIDE, RoachType.FLYING_SUICIDE, RoachType.QUEEN, RoachType.NURSE, RoachType.MUTANT, RoachType.TIMED_SUICIDE],
-  [SceneType.SUBWAY]: [RoachType.SMALL, RoachType.LARGE, RoachType.FLYING, RoachType.ARMORED, RoachType.SUICIDE, RoachType.FLYING_SUICIDE, RoachType.TUNNEL_WORKER, RoachType.SUBWAY_ELITE, RoachType.SHIELD],
+  [SceneType.SUBWAY]: [RoachType.SMALL, RoachType.LARGE, RoachType.FLYING, RoachType.ARMORED, RoachType.SUICIDE, RoachType.FLYING_SUICIDE, RoachType.TIMED_SUICIDE, RoachType.SPLITTING, RoachType.MUTANT, RoachType.TUNNEL_WORKER, RoachType.SUBWAY_ELITE, RoachType.SHIELD],
   // Supermarket V3.1: 无女王；医院/地铁专属怪下放（护士、定时自爆、隧道工、地铁精英、护盾蟑螂）；分裂蟑螂仅供 E/G 阵型波次补位
   [SceneType.SUPERMARKET]: [RoachType.SMALL, RoachType.LARGE, RoachType.FLYING, RoachType.ARMORED, RoachType.SPLITTING, RoachType.SUICIDE, RoachType.FLYING_SUICIDE, RoachType.NURSE, RoachType.TIMED_SUICIDE, RoachType.TUNNEL_WORKER, RoachType.SUBWAY_ELITE, RoachType.SHIELD],
   [SceneType.SCHOOL]: [RoachType.SMALL, RoachType.LARGE, RoachType.FLYING, RoachType.ARMORED, RoachType.SPLITTING, RoachType.SUICIDE, RoachType.FLYING_SUICIDE, RoachType.QUEEN],
