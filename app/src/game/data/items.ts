@@ -1,6 +1,6 @@
 import type { ConsumableDef } from '../types';
 import { RoachType } from '../types';
-import { SHIELD_BAND_HEIGHT, SHIELD_BREAK_BLEND, SHIELD_BREAK_CRACK_ALPHA, SHIELD_BREAK_CRACK_COLOR, SHIELD_BREAK_CRACK_COUNT, SHIELD_BREAK_CRACK_LINE_WIDTH, SHIELD_BREAK_DURATION, SHIELD_BREAK_FLASH_ALPHA, SHIELD_BREAK_FLASH_COLOR, SHIELD_BREAK_SHARD_COUNT, SHIELD_BREAK_SHARD_EDGE_ALPHA, SHIELD_BREAK_SHARD_EDGE_COLOR, SHIELD_BREAK_SHARD_FILL_ALPHA, SHIELD_BREAK_SHARD_FILL_COLOR, SHIELD_BREAK_SHARD_FLY, SHIELD_BREAK_SHARD_SIZE_MAX, SHIELD_BREAK_SHARD_SIZE_MIN, SHIELD_DOME_ALLY_WIDEN, SHIELD_DOME_BREATH_AMP, SHIELD_DOME_BREATH_FREQ, SHIELD_DOME_CRACK_ALPHA, SHIELD_DOME_CRACK_COLOR, SHIELD_DOME_CRACK_COUNT, SHIELD_DOME_CRACK_LINE_WIDTH, SHIELD_DOME_DEBRIS_COLOR, SHIELD_DOME_DEBRIS_COUNT, SHIELD_DOME_DEBRIS_HP_THRESHOLD, SHIELD_DOME_DEBRIS_LIFE, SHIELD_DOME_DEBRIS_SIZE, SHIELD_DOME_EDGE_ALPHA, SHIELD_DOME_EDGE_COLOR, SHIELD_DOME_FILL_ALPHA_BOTTOM, SHIELD_DOME_FILL_ALPHA_TOP, SHIELD_DOME_FILL_COLOR, SHIELD_DOME_FLARE_EXTRA, SHIELD_DOME_GAP_ALPHA, SHIELD_DOME_GAP_COLOR, SHIELD_DOME_GAP_GLOW_BLUR, SHIELD_DOME_GAP_LINE_WIDTH, SHIELD_DOME_HEIGHT, SHIELD_DOME_RIM_ALPHA, SHIELD_DOME_RIM_COLOR, SHIELD_DOME_RIM_LINE_WIDTH, SHIELD_DOME_RING_COUNT, SHIELD_DOME_SCORCH_ALPHA, SHIELD_DOME_SCORCH_COLOR, SHIELD_DOME_SCORCH_COUNT, SHIELD_DOME_SEGMENT_COUNT, SHIELD_RECT_COLOR, SHIELD_RECT_FILL_ALPHA_MID, SHIELD_RECT_FILL_ALPHA_NEAR, SHIELD_RECT_HEIGHT, SHIELD_RECT_STROKE_ALPHA_SCALE, SHIELD_RECT_STROKE_COLOR, SHIELD_RECT_STROKE_FLASH_ALPHA } from './vfx-balance';
+import { SHIELD_BAND_HEIGHT, SHIELD_BREAK_BLEND, SHIELD_BREAK_CRACK_ALPHA, SHIELD_BREAK_CRACK_COLOR, SHIELD_BREAK_CRACK_COUNT, SHIELD_BREAK_CRACK_LINE_WIDTH, SHIELD_BREAK_DURATION, SHIELD_BREAK_FLASH_ALPHA, SHIELD_BREAK_FLASH_COLOR, SHIELD_BREAK_SHARD_COUNT, SHIELD_BREAK_SHARD_EDGE_ALPHA, SHIELD_BREAK_SHARD_EDGE_COLOR, SHIELD_BREAK_SHARD_FILL_ALPHA, SHIELD_BREAK_SHARD_FILL_COLOR, SHIELD_BREAK_SHARD_FLY, SHIELD_BREAK_SHARD_SIZE_MAX, SHIELD_BREAK_SHARD_SIZE_MIN, SHIELD_DOME_ALLY_WIDEN, SHIELD_DOME_BREATH_AMP, SHIELD_DOME_BREATH_FREQ, SHIELD_DOME_CORE_ALPHA, SHIELD_DOME_CORE_COLOR, SHIELD_DOME_CRACK_ALPHA, SHIELD_DOME_CRACK_COLOR, SHIELD_DOME_CRACK_COUNT, SHIELD_DOME_CRACK_LINE_WIDTH, SHIELD_DOME_DEBRIS_COLOR, SHIELD_DOME_DEBRIS_COUNT, SHIELD_DOME_DEBRIS_HP_THRESHOLD, SHIELD_DOME_DEBRIS_LIFE, SHIELD_DOME_DEBRIS_SIZE, SHIELD_DOME_DEEP_ALPHA, SHIELD_DOME_DEEP_COLOR, SHIELD_DOME_EDGE_ALPHA, SHIELD_DOME_EDGE_COLOR, SHIELD_DOME_FILL_ALPHA, SHIELD_DOME_FILL_COLOR, SHIELD_DOME_FLARE_EXTRA, SHIELD_DOME_GAP_ALPHA, SHIELD_DOME_GAP_COLOR, SHIELD_DOME_GAP_GLOW_BLUR, SHIELD_DOME_GAP_LINE_WIDTH, SHIELD_DOME_HEIGHT, SHIELD_DOME_RIM_ALPHA, SHIELD_DOME_RIM_COLOR, SHIELD_DOME_RIM_LINE_WIDTH, SHIELD_DOME_RING_COUNT, SHIELD_DOME_SCORCH_ALPHA, SHIELD_DOME_SCORCH_COLOR, SHIELD_DOME_SCORCH_COUNT, SHIELD_DOME_SEGMENT_COUNT, SHIELD_DOME_SPEC_ALPHA, SHIELD_DOME_SPEC_COLOR, SHIELD_DOME_WIDTH, SHIELD_RECT_COLOR, SHIELD_RECT_FILL_ALPHA_MID, SHIELD_RECT_FILL_ALPHA_NEAR, SHIELD_RECT_HEIGHT, SHIELD_RECT_STROKE_ALPHA_SCALE, SHIELD_RECT_STROKE_COLOR, SHIELD_RECT_STROKE_FLASH_ALPHA } from './vfx-balance';
 
 // ========== 消耗品定义（关卡内商店，一次性使用） ==========
 /**
@@ -318,13 +318,12 @@ export const BALANCE_ITEMS = {
   },
 
   // ===== 杀虫剂喷雾 =====
-  // 双侧毒气喷射系统参数
+  // 全屏毒气熏蒸系统参数（命中全场存活蟑螂，无射程限制）
   insecticide: {
     duration: 3,                 // 喷射持续时间（秒）
     damageInterval: 0.3,         // 伤害判定间隔（秒）
     baseDamage: 2,               // 基础伤害
     damageMultiplier: 0.5,       // 伤害倍率
-    damageRange: 280,            // 伤害范围（像素）
     poisonTimer: 5,              // 中毒计时器（秒）
     poisonDamage: 1.0,           // 中毒每跳伤害
     sprayDuration: 0.15,         // 喷雾动画持续时间（秒）
@@ -353,12 +352,18 @@ export const BALANCE_ITEMS = {
   // 金币和天赋点经济参数
   economy: {
     initialMoney: { easy: 5000, normal: 5000, hard: 100 }, // 初始金币（不同难度）
-    talentCostScaling: 1.5,      // 天赋升级费用倍率（每级 1.5x）
     hardModeRewardPenalty: 0.8,  // 困难模式奖励削减系数（80%）
-    // 天赋点奖励：每关胜利发放 = floor(coefficient × 场景倍率)，集中于此便于调整
-    // 系数=33 → 厨房33/下水道39/垃圾场49/地下室59，到地下室合计 180 点，
-    // 恰够升级"火焰强化(100)"或"射程延伸(120)"其中之一（二选一，不能都升）
-    talentPointReward: { coefficient: 33 },
+    // 天赋点奖励（v3.0 固定表）：每关胜利发放固定点数，与场景奖励倍率脱钩
+    // 普通 1-3 关=0（天赋未解锁）；4 地下室=4（解锁礼）；5-6=2；7-9=3；10-11=4
+    // 困难 6 关=[2,2,2,3,3,3]；任意关首次三星 +1（解锁前获得的存入 pendingTalentPoints）
+    talentPointReward: {
+      perScene: {
+        kitchen: 0, sewer: 0, dump: 0, basement: 4, street: 2, rooftop: 2,
+        hospital: 3, subway: 3, supermarket: 3, school: 4, nest: 4,
+      } as Record<string, number>,
+      hardMode: [2, 2, 2, 3, 3, 3] as readonly number[],
+      threeStarBonus: 1,
+    },
   },
 
   // ===== 地铁场景：列车系统（场景被动事件） =====
@@ -415,22 +420,28 @@ export const BALANCE_ITEMS = {
     shieldRectHalfWidth: 100,      // 护盾矩形保护区半宽（像素，总宽200）
     shieldRectHeight: SHIELD_RECT_HEIGHT, // 护盾矩形保护区高度（像素，从护盾蟑螂向上延伸）——数值集中于 vfx-balance.ts，此处引用保持访问路径不变
     shieldBandHeight: SHIELD_BAND_HEIGHT, // 底部光带高度（像素，破盾特效/碎裂粒子散布定位沿用）——数值集中于 vfx-balance.ts，此处引用保持访问路径不变
-    // --- 护盾半圆甲壳造型（暗红甲壳 + 分段硬甲 + 缝隙暗金微光）——数值集中于 vfx-balance.ts，此处引用保持访问路径不变 ---
-    shieldDomeHeight: SHIELD_DOME_HEIGHT,                    // 甲壳视觉高度（像素，200×100 半圆观感，与实际判定区解耦）
-    shieldDomeFillColor: SHIELD_DOME_FILL_COLOR,             // 甲壳填充 RGB（暗红）
-    shieldDomeFillAlphaBottom: SHIELD_DOME_FILL_ALPHA_BOTTOM, // 底部填充透明度
-    shieldDomeFillAlphaTop: SHIELD_DOME_FILL_ALPHA_TOP,       // 顶部填充透明度
+    // --- 护盾半球形水晶罩造型（径向渐变球体 + 罩内冰白晶面棱线 + 顶部镜面高光斑）——数值集中于 vfx-balance.ts，此处引用保持访问路径不变 ---
+    shieldDomeWidth: SHIELD_DOME_WIDTH,                      // 水晶罩视觉宽度（像素，120×60 半球形观感，与实际判定区 200 宽解耦）
+    shieldDomeHeight: SHIELD_DOME_HEIGHT,                    // 水晶罩视觉高度（像素，与实际判定区解耦）
+    shieldDomeCoreColor: SHIELD_DOME_CORE_COLOR,             // 顶部高光核 RGB（纯白，模拟光源直射点）
+    shieldDomeCoreAlpha: SHIELD_DOME_CORE_ALPHA,             // 顶部高光核透明度
+    shieldDomeFillColor: SHIELD_DOME_FILL_COLOR,             // 晶体中段 RGB（冰晶淡蓝）
+    shieldDomeFillAlpha: SHIELD_DOME_FILL_ALPHA,             // 晶体中段透明度
+    shieldDomeDeepColor: SHIELD_DOME_DEEP_COLOR,             // 底部深蓝厚度 RGB（水晶底座纵深感）
+    shieldDomeDeepAlpha: SHIELD_DOME_DEEP_ALPHA,             // 底部深蓝厚度透明度
+    shieldDomeSpecColor: SHIELD_DOME_SPEC_COLOR,             // 顶部镜面高光斑 RGB（纯白玻璃反光）
+    shieldDomeSpecAlpha: SHIELD_DOME_SPEC_ALPHA,             // 镜面高光斑峰值透明度
     shieldDomeRimColor: SHIELD_DOME_RIM_COLOR,               // 外缘描边 RGB
     shieldDomeRimAlpha: SHIELD_DOME_RIM_ALPHA,               // 外缘描边透明度
     shieldDomeRimLineWidth: SHIELD_DOME_RIM_LINE_WIDTH,      // 外缘描边线宽（像素）
     shieldDomeSegmentCount: SHIELD_DOME_SEGMENT_COUNT,       // 放射分段数
     shieldDomeRingCount: SHIELD_DOME_RING_COUNT,             // 同心环纹数
-    shieldDomeGapColor: SHIELD_DOME_GAP_COLOR,               // 缝隙暗金 RGB
-    shieldDomeGapAlpha: SHIELD_DOME_GAP_ALPHA,               // 缝隙金光基准透明度
-    shieldDomeGapLineWidth: SHIELD_DOME_GAP_LINE_WIDTH,      // 缝隙线宽（像素）
-    shieldDomeGapGlowBlur: SHIELD_DOME_GAP_GLOW_BLUR,        // 缝隙金光辉光半径（像素）
-    shieldDomeEdgeColor: SHIELD_DOME_EDGE_COLOR,             // 段缘翘起高光 RGB
-    shieldDomeEdgeAlpha: SHIELD_DOME_EDGE_ALPHA,             // 段缘高光透明度
+    shieldDomeGapColor: SHIELD_DOME_GAP_COLOR,               // 晶面棱线 RGB（冰白）
+    shieldDomeGapAlpha: SHIELD_DOME_GAP_ALPHA,               // 晶面棱线基准透明度
+    shieldDomeGapLineWidth: SHIELD_DOME_GAP_LINE_WIDTH,      // 晶面棱线宽（像素）
+    shieldDomeGapGlowBlur: SHIELD_DOME_GAP_GLOW_BLUR,        // 晶面棱线辉光半径（像素）
+    shieldDomeEdgeColor: SHIELD_DOME_EDGE_COLOR,             // 晶纹段缘高光 RGB（纯白）
+    shieldDomeEdgeAlpha: SHIELD_DOME_EDGE_ALPHA,             // 晶纹段缘高光透明度
     shieldDomeBreathAmp: SHIELD_DOME_BREATH_AMP,             // 呼吸胀缩振幅
     shieldDomeBreathFreq: SHIELD_DOME_BREATH_FREQ,           // 呼吸频率（Hz）
     shieldDomeFlareExtra: SHIELD_DOME_FLARE_EXTRA,           // 底部外张沿基础宽度（像素）

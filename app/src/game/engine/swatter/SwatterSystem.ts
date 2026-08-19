@@ -17,8 +17,8 @@ export interface SwatterSystemConfig {
   canvasWidth: number;
   /** 画布高度 */
   canvasHeight: number;
-  /** 天赋冷却缩减 */
-  talentCdReduction?: number;
+  /** 天赋加成（EconomyManager.calculateTalentMultipliers 输出） */
+  talentMultipliers?: Record<string, number>;
   /** 添加浮动文字回调 */
   onAddFloatingText?: (x: number, y: number, text: string, color: string, duration?: number) => void;
   /** 播放电蚊拍音效回调 */
@@ -71,8 +71,8 @@ export class SwatterSystem {
       if (this.swatterAnimTimer <= 0) this.swatterActive = false;
     }
     if (!this.swatterReady) {
-      const cdReduction = Math.max(0, this.config.talentCdReduction || 0);
-      this.swatterCooldown -= deltaTime * (1 + cdReduction);
+      // 电工精通：冷却减 N 秒（加算，负数表示减少，已在 useSwatter 中应用）
+      this.swatterCooldown -= deltaTime;
       if (this.swatterCooldown <= 0) {
         this.swatterReady = true;
         this.swatterCooldown = 0;
@@ -120,7 +120,7 @@ export class SwatterSystem {
       result.inventory = result.inventory.filter((_, i) => i !== swatterIdx);
     }
 
-    // 设置冷却
+    // 设置冷却（电工精通：冷却减 N 秒）
     const def = WEAPON_DROP_DEFS[SWATTER_TYPE];
     if (def && def.cooldown > 0) {
       result.itemCooldowns[SWATTER_TYPE] = def.cooldown;
@@ -128,7 +128,8 @@ export class SwatterSystem {
     result.globalConsumableCooldown = BALANCE_CONFIG.consumable.globalCooldown;
     result.success = true;
     this.swatterReady = false;
-    this.swatterCooldown = BALANCE_CONFIG.swatter.cooldownMax;
+    const cdAdd = this.config.talentMultipliers?.swatterCooldownAdd || 0;
+    this.swatterCooldown = Math.max(1, BALANCE_CONFIG.swatter.cooldownMax + cdAdd);
 
     // 动画
     this.swatterActive = true;
@@ -153,10 +154,11 @@ export class SwatterSystem {
         this.config.onAddFloatingText?.(r.x, r.y - 30, TEXT_CONFIG.combat.armorBreak.text, TEXT_CONFIG.combat.armorBreak.color);
       }
 
-      // 麻痹减速
+      // 麻痹减速（电工精通：麻痹 +N 秒）
+      const stunAdd = this.config.talentMultipliers?.swatterStunAdd || 0;
       r.speed = r.baseSpeed * BALANCE_CONFIG.swatter.stunSpeedRatio;
       r.isStunned = true;
-      r.stunTimer = BALANCE_CONFIG.swatter.stunDuration;
+      r.stunTimer = BALANCE_CONFIG.swatter.stunDuration + stunAdd;
     }
 
     this.config.onScreenShake?.(BALANCE_CONFIG.screenShake.swatter);

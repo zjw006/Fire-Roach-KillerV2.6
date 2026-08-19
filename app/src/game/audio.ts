@@ -633,9 +633,10 @@ export class AudioManager {
           hard: '/assets/bgm_street_hard.mp3',
         };
       case 'hospital':
+        // 医院场景使用困难难度厨房 BGM
         return {
-          easy: '/assets/bgm_hospital.mp3',
-          hard: '/assets/bgm_hospital.mp3',
+          easy: '/assets/bgm_kitchen_hard.mp3',
+          hard: '/assets/bgm_kitchen_hard.mp3',
         };
       case 'subway':
         // 地铁场景使用困难难度下水道 BGM

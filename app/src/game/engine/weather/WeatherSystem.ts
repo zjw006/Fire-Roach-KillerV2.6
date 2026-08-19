@@ -314,17 +314,20 @@ export class WeatherSystem {
   }
 
   /**
-   * 渲染天气前景（雨滴、烟雾粒子、水滴、地面涟漪、地下室灯光闪烁黑屏）
+   * 渲染天气前景（雨滴、烟雾粒子、水滴、地面涟漪、地下室灯光闪烁黑屏、灯位光晕）
    * 修复 P1: 移除 renderDefenseLine 回调参数，降低耦合
    * 修复 P2: 移除无意义的 globalCompositeOperation 恢复
    * @param flickerAlpha 地下室灯光闪烁黑屏透明度（0 = 不闪，engine 计算传入）
+   * @param flickerLamps 灯位光晕椭圆列表（画布逻辑坐标，engine 按背景图实际绘制区域映射传入）；
+   *                     光晕常驻 lighter 叠加；闪屏黑蒙版在灯位羽毛开孔保持灯光可见
    */
   static renderWeatherForeground(
     ctx: CanvasRenderingContext2D,
     _w: number,
     weatherParticles: Particle[],
     h: number = 0,
-    flickerAlpha: number = 0
+    flickerAlpha: number = 0,
+    flickerLamps: { cx: number; cy: number; rx: number; ry: number }[] = []
   ): void {
     const rainCfg = BALANCE_CONFIG.weather.rain;
     const fogCfg = BALANCE_CONFIG.weather.fog;
@@ -382,14 +385,98 @@ export class WeatherSystem {
         ctx.stroke();
       }
     }
-    // 地下室灯光闪烁：全屏黑色叠加闪屏（覆盖在所有天气粒子之上）
+    // 地下室/医院灯光闪烁：全屏黑色叠加闪屏（覆盖在所有天气粒子之上）；
+    // 有灯位时改用离屏蒙版（灯位羽毛开孔，灯光区域不被压暗）
+    const flickerCfg = BALANCE_CONFIG.weather.flicker;
     if (flickerAlpha > 0 && h > 0) {
       ctx.globalAlpha = 1;
       ctx.globalCompositeOperation = 'source-over';
-      ctx.fillStyle = `rgba(0, 0, 0, ${flickerAlpha})`;
-      ctx.fillRect(0, 0, _w, h);
+      if (flickerLamps.length === 0) {
+        ctx.fillStyle = `rgba(0, 0, 0, ${flickerAlpha})`;
+        ctx.fillRect(0, 0, _w, h);
+      } else {
+        const mask = WeatherSystem.getFlickerMask(_w, h, flickerLamps, flickerCfg.lampMaskHoleScale);
+        if (mask) {
+          // 蒙版烘焙为不透明黑，绘制时用 globalAlpha 控制实际黑度
+          ctx.globalAlpha = flickerAlpha;
+          ctx.drawImage(mask, 0, 0);
+          ctx.globalAlpha = 1;
+        }
+      }
+    }
+    // 灯位光晕：常驻 lighter 叠加暖光（位于黑蒙版之上，灯暗时灯光保持全亮）
+    if (flickerLamps.length > 0) {
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'lighter';
+      for (const e of flickerLamps) {
+        const r = Math.max(e.rx, e.ry);
+        if (r <= 0) continue;
+        ctx.save();
+        ctx.translate(e.cx, e.cy);
+        ctx.scale(e.rx / r, e.ry / r); // 压扁成椭圆（rx/ry 任意比例）
+        const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
+        g.addColorStop(0, `rgba(${flickerCfg.lampColor}, ${flickerCfg.lampHaloAlpha})`);
+        g.addColorStop(0.55, `rgba(${flickerCfg.lampColor}, ${flickerCfg.lampHaloAlpha * 0.45})`);
+        g.addColorStop(1, `rgba(${flickerCfg.lampColor}, 0)`); // 边缘半透渐变至全透明
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
     }
     ctx.globalAlpha = 1;
     ctx.restore();
+  }
+
+  /** 灯光闪烁黑蒙版离屏画布缓存（静态，按 画布尺寸+灯位坐标 键控复用） */
+  private static flickerMaskCanvas: HTMLCanvasElement | null = null;
+  private static flickerMaskKey: string = '';
+
+  /**
+   * 构建/复用灯位开孔的黑色蒙版（离屏画布，不透明黑 + destination-out 羽毛开孔）
+   * 仅当画布尺寸或灯位坐标变化时重建，闪烁期间逐帧复用
+   */
+  private static getFlickerMask(
+    w: number,
+    h: number,
+    lamps: { cx: number; cy: number; rx: number; ry: number }[],
+    holeScale: number
+  ): HTMLCanvasElement | null {
+    const key = `${w}x${h}|${holeScale}|${lamps.map(e => `${e.cx.toFixed(1)},${e.cy.toFixed(1)},${e.rx.toFixed(1)},${e.ry.toFixed(1)}`).join(';')}`;
+    if (WeatherSystem.flickerMaskCanvas && WeatherSystem.flickerMaskKey === key) {
+      return WeatherSystem.flickerMaskCanvas;
+    }
+    const cvs = WeatherSystem.flickerMaskCanvas ?? document.createElement('canvas');
+    cvs.width = w;
+    cvs.height = h;
+    const m = cvs.getContext('2d');
+    if (!m) return null;
+    m.clearRect(0, 0, w, h);
+    m.fillStyle = '#000';
+    m.fillRect(0, 0, w, h);
+    // 灯位羽毛开孔：中心全擦除 → 边缘渐隐（destination-out 只作用于蒙版，不影响游戏画面）
+    m.globalCompositeOperation = 'destination-out';
+    for (const e of lamps) {
+      const rx = e.rx * holeScale;
+      const ry = e.ry * holeScale;
+      const r = Math.max(rx, ry);
+      if (r <= 0) continue;
+      m.save();
+      m.translate(e.cx, e.cy);
+      m.scale(rx / r, ry / r);
+      const g = m.createRadialGradient(0, 0, 0, 0, 0, r);
+      g.addColorStop(0, 'rgba(0,0,0,1)');
+      g.addColorStop(0.6, 'rgba(0,0,0,0.9)');
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      m.fillStyle = g;
+      m.beginPath();
+      m.arc(0, 0, r, 0, Math.PI * 2);
+      m.fill();
+      m.restore();
+    }
+    WeatherSystem.flickerMaskCanvas = cvs;
+    WeatherSystem.flickerMaskKey = key;
+    return cvs;
   }
 }

@@ -29,11 +29,8 @@ export interface WeaponSystemConfig {
   unlockedWeapons: string[];
   /** 玩家选择的物品列表（从准备界面） */
   selectedItems: string[];
-  /** 玩家天赋加成 */
-  talentMultipliers?: {
-    /** 物品弹药加成 */
-    itemAmmo?: number;
-  };
+  /** 玩家天赋加成（EconomyManager.calculateTalentMultipliers 输出，含 itemAmmoFlat 等键） */
+  talentMultipliers?: Record<string, number>;
   /** 画布宽度（用于掉落位置计算） */
   canvasWidth?: number;
   /** 场景敌人修正系数（用于调整掉落间隔） */
@@ -230,15 +227,18 @@ export class WeaponSystem {
       return;
     }
 
-    // 应用资源节省天赋：拾取时额外+1弹药（确保整数）
-    const itemAmmoBonus = Math.round(this.config.talentMultipliers?.itemAmmo || 0);
-    const pickupCount = 1 + itemAmmoBonus;
+    // 应用节约大师天赋：计数型弹药 +N 份，时长型弹药 ×N%
+    const tm = this.config.talentMultipliers || {};
+    const itemAmmoBonus = Math.round(tm.itemAmmoFlat || 0);
+    const itemAmmoPct = tm.itemAmmoPct || 1;
+    const baseCount = 1 + itemAmmoBonus;
+    const pickupCount = Math.max(1, Math.round(baseCount * itemAmmoPct));
 
     // 更新玩家武器弹药
     this.updatePlayerWeaponAmmo(player, drop.type, pickupCount);
 
     // 生成拾取提示文本
-    const bonusText = itemAmmoBonus > 0 ? `(+${itemAmmoBonus}天赋)` : '';
+    const bonusText = itemAmmoBonus > 0 || itemAmmoPct > 1 ? `(+${pickupCount - 1}天赋)` : '';
 
     // 调用拾取回调（用于浮动文字、屏幕震动、物品栏管理等）
     this.config.onPickup?.(drop, pickupCount, bonusText);

@@ -974,8 +974,6 @@ export class PrefabPlayer {
       duration,
       damageInterval: 0.3,
       damageTimer: 0,
-      sprayAngle: -Math.PI / 2,
-      spraySpread: (Math.PI * 2) / 3,
       baseDamage: 2,
     };
     RenderUtils.renderInsecticideSpray(ctx, state, CANVAS_W, DEFENSE_Y, t);

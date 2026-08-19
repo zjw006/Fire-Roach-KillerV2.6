@@ -69,7 +69,12 @@ export class EconomyManager {
       
       const eff = def.effect(level);
       for (const [k, v] of Object.entries(eff)) {
-        mults[k] = (mults[k] || 1) * v;
+        // 合并规则：'Add' 后缀键加法合并（基数 0，用于 +N发/+N秒 等加值），其余乘算合并（基数 1）
+        if (k.endsWith('Add')) {
+          mults[k] = (mults[k] || 0) + v;
+        } else {
+          mults[k] = (mults[k] || 1) * v;
+        }
       }
     }
     
@@ -146,48 +151,6 @@ export class EconomyManager {
    */
   getTalentLevel(progress: GameProgress, talentId: string): number {
     return progress.talentTree.talents[talentId] || 0;
-  }
-
-  /**
-   * 升级天赋（修复 P1：支持等级递增成本；修复 P1：不直接修改参数）
-   * @param {GameProgress} progress - 游戏进度（只读，不修改）
-   * @param {string} talentId - 天赋ID
-   * @returns {{ success: boolean; newProgress?: GameProgress }} 升级结果
-   */
-  upgradeTalent(
-    progress: GameProgress,
-    talentId: string
-  ): { success: boolean; newProgress?: GameProgress } {
-    const def = TALENT_DEFS.find(t => t.id === talentId);
-    if (!def) return { success: false };
-
-    const currentLevel = progress.talentTree.talents[talentId] || 0;
-    const nextLevel = currentLevel + 1;
-
-    // 检查最大等级
-    if (nextLevel > def.maxLevel) return { success: false };
-
-    // 修复 P1：等级递增成本
-    const scaling = BALANCE_CONFIG.economy.talentCostScaling;
-    const cost = Math.floor(def.cost * Math.pow(scaling, currentLevel));
-
-    // 检查点数是否足够
-    if (progress.talentTree.points < cost) return { success: false };
-
-    // 修复 P1：返回新对象，不修改原参数
-    const newProgress: GameProgress = {
-      ...progress,
-      talentTree: {
-        ...progress.talentTree,
-        points: progress.talentTree.points - cost,
-        talents: {
-          ...progress.talentTree.talents,
-          [talentId]: nextLevel,
-        },
-      },
-    };
-
-    return { success: true, newProgress };
   }
 
   // ========== 金钱操作 ==========

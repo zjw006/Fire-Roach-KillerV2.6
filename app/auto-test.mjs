@@ -12,6 +12,8 @@
 //       → 自动跳过漫画/对话/新手引导 → 战斗中自动瞄准开火、拾取并使用掉落道具
 //       → 战后拾取奖励道具/跳过揭示 → 结算界面返回主菜单 → 选下一关循环
 //       → 11 关完成后生成研究报告并自动打开
+// 测试专用: 初始资金 50000（仅测试浏览器 profile）；进入场景前 + 结算后商店自动补足
+//       气罐/防线修复/火力全开/临时护盾/蟑螂诱饵/紧急冷却；战斗中自动使用新增消耗品
 // 产出: traces/*.json + auto-report.html + 控制台汇总
 // =============================================================================
 import puppeteer from 'puppeteer-core';
@@ -54,7 +56,22 @@ const LEVEL_TIMEOUT = 480_000;  // 单关战斗超时 8 分钟
 const UI_TIMEOUT = 90_000;      // UI 导航超时 90 秒
 // 进入场景前在主菜单商店补足的消耗品目标库存（钱不够时"购买"按钮禁用，自动跳过不报错）
 const PRE_GAS_TARGET = 3;       // 气罐补给补足至 3 个
-const PRE_DEF_TARGET = 5;       // 防线修复补足至 5 个
+const PRE_DEF_TARGET = 12;      // 防线修复补足至 12 个
+const PRE_POWER_TARGET = 3;     // 火力全开补足至 3 个
+const PRE_SHIELD_TARGET = 3;    // 临时护盾（防线护盾）补足至 3 个
+const PRE_BAIT_TARGET = 3;      // 蟑螂诱饵补足至 3 个
+const PRE_COOL_TARGET = 3;      // 紧急冷却（极速冷却）补足至 3 个
+// 商店补足清单 [消耗品id, 商店行名, 目标库存]，进入场景前购买 + 结算后重复购买共用
+const PRE_SHOP_TARGETS = [
+  ['gas_refill',     '气罐补给', PRE_GAS_TARGET],
+  ['defense_repair', '防线修复', PRE_DEF_TARGET],
+  ['power_boost',    '火力全开', PRE_POWER_TARGET],
+  ['shield',         '临时护盾', PRE_SHIELD_TARGET],
+  ['bait',           '蟑螂诱饵', PRE_BAIT_TARGET],
+  ['emergency_cool', '紧急冷却', PRE_COOL_TARGET],
+];
+// 测试专用初始资金：仅写入测试浏览器独立 profile 的 localStorage（roach_blaster_menu_money），不影响正常游戏
+const TEST_INITIAL_MONEY = 50000;
 
 mkdirSync(TRACE_DIR, { recursive: true });
 
@@ -94,6 +111,9 @@ window.__driver = {
   prepClickedList: [], // 战前准备已点击过的道具名（配合 400ms 间隔逐个选中，避免 React 批处理丢选）
   talentCurrent: null, // 天赋树中当前选中的天赋名（用于加点循环切换）
   talentFailed: {},    // 记录本关已"点不动"（点数不足/已满级）的天赋名，避免无限切换
+  preShopTargets: null, // 商店补足清单 [[id, name, target], ...]，进入场景前购买 + 结算后重复购买共用
+  setShopFails: 0,     // 结算界面连续打开商店失败次数（≥3 放弃，防卡死）
+  utilityTimer: 0,     // 战斗中新消耗品自动使用节流计数（~2s）
 
   visible(el) { return !!(el && el.offsetParent); },
 
@@ -126,16 +146,17 @@ window.__driver = {
   // UI 界面处理（每拍调用一次），返回本拍动作描述或 null
   ui() {
     const e = window.__engine;
-    // 0-pre. 进入场景前购买：在主菜单打开"道具商店"，先跳过樟叔引导，再把气罐/防线修复补足到目标后关闭商店，才继续选关。
+    // 0-pre. 进入场景前购买：在主菜单打开"道具商店"，先跳过樟叔引导，再把全部消耗品补足到目标后关闭商店，才继续选关。
     //        必须置于下方"商店自动关闭兜底"之前：前置购买期间商店处于打开状态，若先走兜底会被立即点"返回"关掉。
-    //        非主菜单（如胜利后"下一关"直进下一场景）时跳过，依赖持久化库存。
-    if (!this.preShopDone && this.preShopGasTarget != null) {
+    //        非主菜单（如胜利后"下一关"直进下一场景）时跳过，由结算后商店补足（settleShopTopUp）接力。
+    if (!this.preShopDone && this.preShopTargets) {
       const inShop = this.hasText('气罐补给') && !this.hasText('开始战斗');
       const atMenu = this.hasText('剧情模式') && this.hasText('道具商店');
       if (inShop) {
         if (this.clickText('跳过引导') || this.clickText('下一步') || this.clickText('去采购！')) return 'preshop:tutorial';
-        if (this.buyConsumableToTarget('gas_refill', '气罐补给', this.preShopGasTarget) === 'clicked') return 'preshop:gas';
-        if (this.buyConsumableToTarget('defense_repair', '防线修复', this.preShopDefTarget) === 'clicked') return 'preshop:def';
+        for (const [id, name, target] of this.preShopTargets) {
+          if (this.buyConsumableToTarget(id, name, target) === 'clicked') return 'preshop:' + id;
+        }
         // 已补足（或钱不够买不动）→ 关闭商店，标记完成
         if (this.clickText('返回')) { this.preShopDone = true; return 'preshop:done'; }
         this.preShopDone = true; return 'preshop:done_noback';
@@ -263,6 +284,24 @@ window.__driver = {
             e.useConsumable('defense_repair');
           }
         }
+        // 新增消耗品自动使用（~2s 节流；冷却中调用会失败并弹提示，节流避免刷屏）
+        if (e.consumableInventory) {
+          this.utilityTimer = (this.utilityTimer || 0) + 1;
+          if (this.utilityTimer >= 8) {
+            this.utilityTimer = 0;
+            const inv = e.consumableInventory;
+            if (e.player.isOverheated && (e.emergencyCoolInventory || 0) > 0) {
+              e.emergencyCool(); // 极速冷却（紧急冷却）：过热时立即清除
+            } else if ((inv['shield'] || 0) > 0 && e.maxDefenseHp > 0 &&
+                       e.defenseHp / e.maxDefenseHp < 0.4 && !(e.player.shieldTimer > 0)) {
+              e.useConsumable('shield'); // 防线护盾（临时护盾）：防线告急时 5 秒无敌
+            } else if ((inv['power_boost'] || 0) > 0 && count >= 4 && !(e.player.powerBoostTimer > 0)) {
+              e.useConsumable('power_boost'); // 火力全开：群怪时 8 秒双倍伤害
+            } else if ((inv['bait'] || 0) > 0 && count >= 5 && !(e.player.baitTimer > 0)) {
+              e.useConsumable('bait'); // 蟑螂诱饵：聚拢群怪配合火焰
+            }
+          }
+        }
       }
       return { state: st, wave: e.wave, ui: uiAction, inventory: e.inventory.length };
     }
@@ -333,7 +372,10 @@ window.__driver = {
   // 查询消耗品库存数量
   consumableCount(id) {
     const e = window.__engine;
-    return (e && e.consumableInventory && e.consumableInventory[id]) || 0;
+    if (!e) return 0;
+    // 紧急冷却购买后进入独立充能计数（emergencyCoolInventory），不在 consumableInventory 中
+    if (id === 'emergency_cool') return e.emergencyCoolInventory || 0;
+    return (e.consumableInventory && e.consumableInventory[id]) || 0;
   },
 
   // 通用：购买指定消耗品直到库存达到 target 个；返回 done/clicked/no_button（钱不够按钮禁用 → no_button）
@@ -341,6 +383,24 @@ window.__driver = {
     const cur = this.consumableCount(id);
     if (cur >= target) return 'done';
     return this.buyConsumableRow(name) ? 'clicked' : 'no_button';
+  },
+
+  // 结算界面 → 道具商店补足全部消耗品后返回（结算后重复购买，与进入场景前购买共用清单）
+  // 每拍处理一个动作：打开商店 → 逐个补足 → 点"返回"回结算界面；返回动作描述或终止标记
+  settleShopTopUp() {
+    const inShop = this.hasText('气罐补给') && !this.hasText('开始战斗');
+    if (!inShop) {
+      if (this.clickShop()) { this.setShopFails = 0; return 'setshop:open'; }
+      this.setShopFails = (this.setShopFails || 0) + 1;
+      if (this.setShopFails >= 3) return 'setshop:giveup'; // 无商店入口，放行后续流程
+      return null; // 等待下一拍重试
+    }
+    if (this.clickText('跳过引导') || this.clickText('下一步') || this.clickText('去采购！')) return 'setshop:tutorial';
+    for (const [id, name, target] of (this.preShopTargets || [])) {
+      if (this.buyConsumableToTarget(id, name, target) === 'clicked') return 'setshop:' + id;
+    }
+    if (this.clickText('返回')) return 'setshop:done';
+    return 'setshop:done_noback';
   },
 
   // 关闭天赋详情弹窗：点击弹窗背景层（absolute inset-0 bg-black/70，onClick 关闭）
@@ -559,7 +619,7 @@ async function main() {
     userDataDir: profileDir, // 独立且唯一的配置目录，避免与用户浏览器/上次运行冲突
     args: launchArgs,
   });
-  const page = await browser.newPage();
+  let page = await browser.newPage(); // let：渲染器崩溃恢复时可换新标签页
   page.on('pageerror', () => {}); // 忽略页面报错（音频等）
 
   // 允许浏览器下载文件，下载落地目录统一为 TRACE_DIR（下载目录）
@@ -572,8 +632,11 @@ async function main() {
   await page.goto(GAME_URL, { waitUntil: 'domcontentloaded', timeout: 30_000 });
   await page.waitForFunction('window.__engine !== undefined', { timeout: 30_000 });
 
-  // 清空存档 → 注入驱动器 → 解锁全部关卡 → 刷新（保证可从选关界面点任意关卡）
-  await page.evaluate(() => localStorage.clear());
+  // 清空存档 → 写入测试专用初始资金（仅测试浏览器 profile，不影响正常游戏）→ 注入驱动器 → 解锁全部关卡 → 刷新
+  await page.evaluate((m) => {
+    localStorage.clear();
+    localStorage.setItem('roach_blaster_menu_money', String(m)); // 菜单商店初始资金（测试专用）
+  }, TEST_INITIAL_MONEY);
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForFunction('window.__engine !== undefined', { timeout: 30_000 });
   await page.evaluate(DRIVER);
@@ -598,10 +661,12 @@ async function main() {
   const scenesToRun = onlyList ? SCENES.filter(s => onlyList.includes(s)) : SCENES;
   if (scenesToRun.length === 0) { console.error(`[auto-test] --only=${ONLY} 不在关卡列表中`); await browser.close(); process.exit(1); }
 
+  const sceneRetries = new Map(); // 每关崩溃恢复重试计数（每关最多重试 1 次）
   for (let i = 0; i < scenesToRun.length; i++) {
     const scene = scenesToRun[i];
     console.log(`[${i + 1}/${scenesToRun.length}] ${NAME[scene]}(${scene}) — UI 导航中...`);
-    await page.evaluate((sn, dn, gasT, defT) => {
+    try {
+    await page.evaluate((sn, dn, targets) => {
       window.__driver.targetSceneName = sn;
       window.__driver.diffName = dn;
       window.__driver.prepSelected = false; // 每关重置战前准备选择状态
@@ -609,10 +674,10 @@ async function main() {
       window.__driver.talentCurrent = null; // 每关重置天赋加点状态
       window.__driver.talentFailed = {};    // 每关重置"点不动"的天赋记录
       window.__driver.preShopDone = false;  // 每关重置前置购买状态
-      window.__driver.preShopGasTarget = gasT; // 进入场景前气罐补足目标
-      window.__driver.preShopDefTarget = defT; // 进入场景前防线修复补足目标
+      window.__driver.preShopTargets = targets; // 商店补足清单（进入场景前 + 结算后共用）
+      window.__driver.setShopFails = 0;     // 每关重置结算商店打开失败计数
       window.__driver.clearTrace();
-    }, SCENE_NAME[scene], DIFF_NAME, PRE_GAS_TARGET, PRE_DEF_TARGET);
+    }, SCENE_NAME[scene], DIFF_NAME, PRE_SHOP_TARGETS);
 
     // ── 阶段 1：UI 导航（标题页 → 剧情模式 → 简单 → 选关 → 跳过漫画/对话/引导 → 进入战斗）──
     const uiT0 = Date.now();
@@ -711,6 +776,22 @@ async function main() {
       // 3b.（已移除）战后结算商店购买：消耗品前置到"进入场景前"主菜单商店补足（见 0-pre），此处不再重复购买，
       //     避免双重扣减 menuShopMoney；胜利后直接走"下一关"，下一场景若非主菜单则依赖持久化库存。
     }
+    // 3c. 结算界面 → 道具商店重复购买：胜利/失败结算后均打开"道具商店"把全部消耗品补足到目标，再返回结算继续流程
+    //     （胜利后"下一关"直进下一场景不经过主菜单，此处是唯一的补给机会）
+    {
+      let lastShopLog = 0;
+      for (let k = 0; k < 150; k++) {
+        const st = await page.evaluate(() => window.__engine?.state);
+        if (st !== 'wave_clear' && st !== 'game_over') break; // 已离开结算界面
+        const action = await page.evaluate(() => window.__driver.settleShopTopUp());
+        if (action && Date.now() - lastShopLog > 300) {
+          console.log(`  商店: ${action}`);
+          lastShopLog = Date.now();
+        }
+        if (action === 'setshop:done' || action === 'setshop:done_noback' || action === 'setshop:giveup') break;
+        await sleep(400);
+      }
+    }
     // 3e. 结算界面 → 点"下一关"直接进入下一场景；若无"下一关"按钮（最后一关巢穴）则返回主菜单
     if (await page.evaluate(() => window.__driver.clickText('下一关'))) {
       console.log('  下一关：点击"下一关"进入下一场景');
@@ -730,6 +811,21 @@ async function main() {
       }
     }
     await sleep(500);
+    } catch (e) {
+      // 渲染器崩溃/页面导航导致 Frame 分离：恢复页面（必要时换新标签页 + 重新注入驱动），每关最多重试 1 次
+      const msg = String(e && e.message || e);
+      if (!/detached|Target closed|Session closed|Protocol error|crash/i.test(msg)) throw e;
+      const used = sceneRetries.get(scene) || 0;
+      console.log(`  !! 页面崩溃/Frame 分离（${msg.slice(0, 60)}），恢复页面后${used < 1 ? '重试本关' : '跳过本关'}`);
+      try {
+        try { await page.goto(GAME_URL, { waitUntil: 'domcontentloaded', timeout: 30_000 }); }
+        catch { page = await browser.newPage(); await page.goto(GAME_URL, { waitUntil: 'domcontentloaded', timeout: 30_000 }); }
+        await page.waitForFunction('window.__engine !== undefined', { timeout: 30_000 });
+        await page.evaluate(DRIVER);
+      } catch (e2) { console.log('  !! 页面恢复失败: ' + e2.message); }
+      if (used < 1) { sceneRetries.set(scene, used + 1); i--; } // 重试本关（localStorage 存档/解锁持久，无需重解锁）
+      else { results.push({ scene, result: 'error' }); }
+    }
   }
 
   await browser.close();

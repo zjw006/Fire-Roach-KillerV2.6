@@ -14,6 +14,8 @@ export interface TripleFlameSystemConfig {
   canvasWidth: number;
   /** 画布高度 */
   canvasHeight: number;
+  /** 天赋加成（EconomyManager.calculateTalentMultipliers 输出） */
+  talentMultipliers?: Record<string, number>;
   /** 添加浮动文字回调 */
   onAddFloatingText?: (x: number, y: number, text: string, color: string) => void;
   /** 播放激活音效回调 */
@@ -32,10 +34,11 @@ export class TripleFlameSystem {
   constructor(config: TripleFlameSystemConfig) {
     this.config = config;
     const tfCfg = BALANCE_CONFIG.tripleFlame;
+    const durMult = this.config.talentMultipliers?.tripleFlameDurationMult || 1;
     this.tripleFlame = {
       active: false,
       timer: 0,
-      duration: tfCfg.duration,
+      duration: tfCfg.duration * durMult,
       sideOffset: tfCfg.sideOffset,
       sideDamageMult: tfCfg.sideDamageMult,
     };
@@ -118,10 +121,11 @@ export class TripleFlameSystem {
 
   reset(): void {
     const tfCfg = BALANCE_CONFIG.tripleFlame;
+    const durMult = this.config.talentMultipliers?.tripleFlameDurationMult || 1;
     this.tripleFlame = {
       active: false,
       timer: 0,
-      duration: tfCfg.duration,
+      duration: tfCfg.duration * durMult,
       sideOffset: tfCfg.sideOffset,
       sideDamageMult: tfCfg.sideDamageMult,
     };

@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿/**
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿/**
  * @fileoverview 雷达激光系统模块
  * @description 负责管理雷达激光武器的激活、自动追踪、射击和过期清理。
  *              所有数值参数从 BALANCE_CONFIG.radarLaser 读取。
@@ -16,6 +16,8 @@ export interface RadarLaserSystemConfig {
   canvasWidth: number;
   /** 画布高度 */
   canvasHeight: number;
+  /** 天赋加成（EconomyManager.calculateTalentMultipliers 输出） */
+  talentMultipliers?: Record<string, number>;
   /** 添加浮动文字回调 */
   onAddFloatingText?: (x: number, y: number, text: string, color: string) => void;
   /** 播放雷达激活音效回调 */
@@ -52,16 +54,19 @@ export class RadarLaserSystem {
 
   private createDefaultState(): RadarLaser {
     const cfg = BALANCE_CONFIG.radarLaser;
+    const tm = this.config.talentMultipliers || {};
+    const shotsAdd = tm.radarShotsAdd || 0;
+    const intervalMult = tm.radarFireIntervalMult || 1;
     return {
       active: false,
       timer: 0,
       duration: cfg.duration,
       targetId: null,
       fireTimer: 0,
-      fireInterval: cfg.fireInterval,
+      fireInterval: cfg.fireInterval * intervalMult,
       damage: cfg.damage,
       laserAlpha: 0,
-      shotsRemaining: cfg.shotsRemaining,
+      shotsRemaining: cfg.shotsRemaining + shotsAdd,
     };
   }
 
@@ -90,7 +95,8 @@ export class RadarLaserSystem {
     this.radarLaser.timer = this.radarLaser.duration;
     this.radarLaser.fireTimer = 0;
     this.radarLaser.targetId = null;
-    this.radarLaser.shotsRemaining = cfg.shotsRemaining;
+    const tm = this.config.talentMultipliers || {};
+    this.radarLaser.shotsRemaining = cfg.shotsRemaining + (tm.radarShotsAdd || 0);
     this._countdownWarned.clear();
     this._fadeOutTimer = 0;
 

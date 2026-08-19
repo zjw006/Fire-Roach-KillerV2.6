@@ -58,8 +58,8 @@ export const TEXT_CONFIG = {
     fanStop: { text: '风扇停止', color: '#9ca3af' },
 
     // 毒气喷射
-    insecticideActivate: { text: '双侧毒气喷射!', color: '#4ade80' },
-    insecticideDesc: { text: (d: number) => `两侧横向毒雾${d}秒`, color: '#86efac' },
+    insecticideActivate: { text: '全屏毒气熏蒸!', color: '#4ade80' },
+    insecticideDesc: { text: (d: number) => `全屏毒雾弥漫${d}秒`, color: '#86efac' },
     insecticideClosing: { text: '毒气喷射即将结束!', color: '#f87171' },
     insecticideEnd: { text: '毒气喷射结束', color: '#9ca3af' },
     insecticideHit: { text: (n: number) => `毒气命中${n}只!`, color: '#4ade80' },
@@ -104,7 +104,7 @@ export const TEXT_CONFIG = {
 
     // 蟑螂AI - 更多
     nurseSpray: { text: '治疗喷射!', color: '#5a8a5a' },
-    nurseHeal: { text: (n: number) => `+${n}`, color: '#ef4444' }, // 治疗量浮动文字（红色）
+    nurseHeal: { text: (n: number) => `+${n}`, color: '#64ff96' }, // 治疗量浮动文字（绿色，与加血+号同色）
     bigExplosion: { text: (n: number) => `大爆炸!(${n}只受波及)`, color: '#ff4400' },
     deathExplosion: { text: (n: number) => `死亡爆炸!(${n}只受波及)`, color: '#ff4400' },
     boom: { text: '轰!', color: '#8b2020' },
@@ -463,6 +463,8 @@ export const TEXT_CONFIG = {
       breaches: '防线突破',
       talentUnlocked: '获得天赋点！',
       talentDesc: '通关奖励，可用于强化角色能力',
+      talentUnlockGrant: (n: number) => `天赋系统解锁！天赋点 ×${n}`,
+      talentUnlockGrantDesc: '通关地下室，改装工坊开放，待解锁天赋点已发放',
       goAddPoints: '去加点',
       nextLevel: (name: string) => `下一关：${name}`,
       playAgain: '再来一局',
@@ -479,33 +481,35 @@ export const TEXT_CONFIG = {
       confirm: '确认',
     },
 
-    // ===== 天赋树 =====
+    // ===== 天赋树（v4 改装工坊：三分支×五层+预留槽） =====
     talentTree: {
-      title: '天赋树',
+      title: '改 装 工 坊',
+      subtitle: '喷火枪双路线改装',
+      back: '返回',
       talentPoints: '天赋点',
-      skipTutorial: '跳过引导',
-      nextStep: '下一步',
-      doneTutorial: '知道了，开始加点',
-      zhangshu: '蟑叔',
-      currentLevel: '当前等级',
-      upgradeCost: '升级消耗',
-      maxed: '已满级',
-      upgrade: '升级天赋',
-      insufficient: '天赋点不足',
-      categories: {
-        combat: '战斗强化',
-        survival: '生存强化',
-        utility: '辅助强化',
-        item: '道具专精',
+      gunTip: '枪身随「猛火系」进化 · 枪管随「长枪系」进化',
+      hint: '点击发光节点直接升级 · 点灰色节点看解锁条件',
+      legend: ['🟡 可升级(点它!)', '🔒 未解锁', '★ 基石天赋', '🔀 跨系互斥'] as readonly string[],
+      branchName: { inferno: '猛火系', lance: '长枪系', support: '装备系' } as Record<string, string>,
+      branchSub: { inferno: '伤害 · 近程爆发', lance: '射程 · 远程精准', support: '生存 · 经济 · 道具专精' } as Record<string, string>,
+      tierUnlocked: (t: number) => `T${t} 已解锁`,
+      tierGate: (n: number) => `需本系 ${n} 点`,
+      gateShort: (n: number) => `需${n}点`,
+      ptsShort: '点数不足',
+      ptsInsufficient: '天赋点不足',
+      maxedSuffix: '已满级',
+      reservedTitle: '预留插槽',
+      reservedDesc: '未来武器属性升级系统接入位置',
+      exclusiveTag: (name: string) => `🔀 与「${name}」互斥`,
+      gunNames: {
+        base: 'Mk.I · 基础喷枪',
+        mk2: 'Mk.II · 改装中',
+        bluecore: 'Mk.III · 蓝焰核心',
+        steel: 'Mk.III · 寒钢枪管',
+        dual: 'Mk.IV · 双轨改装',
+        overdrive: '过载核心 · 猛火形态',
+        lance: '聚能长枪 · 狙击形态',
       },
-      tutorialSteps: [
-        '这是「火焰伤害」，提升你的火焰喷射伤害！每级+10%伤害，最多5级。对付大蟑螂特别有效！',
-        '这是「火焰范围」，增加喷射距离！每级+15%范围，最多5级。烧得更远更安全！',
-        '这是「气罐容量」，增加燃料上限！每级+20%容量，最多5级。少换气罐多烧一会儿！',
-        '这是「过热抗性」，提升过热上限！每级+15%阈值，最多5级。连续喷射不容易熄火！',
-        '这是「冷却速度」，加快散热速度！每级+20%冷却，最多5级。熄火后更快恢复开火！',
-        '这是「防线生命」，增加防线血量！每级+15%血量，最多5级。防线更坚挺，蟑螂更难突破！',
-      ],
     },
 
     // ===== 暂停菜单 =====

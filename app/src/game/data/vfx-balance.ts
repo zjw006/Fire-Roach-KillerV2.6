@@ -59,8 +59,11 @@ export const BALANCE_VFX = {
       plusLife: 1.5,                          // +号存活时间（秒，延长以增加可见时长）
       plusSize: 14,                           // +号大小（像素，加大以更明显）
       plusVy: -30,                            // +号上升速度
-      plusColor: 'rgba(203, 213, 225, 1)',    // +号颜色（浅灰白）
+      plusColor: 'rgba(96, 165, 250, 1)',     // +号颜色（蓝色 #60a5fa，与修盾+号统一蓝色系）
       plusOffsetY: 40,                        // +号头顶偏移（像素，相对目标中心上移）
+      // +号持续生成节奏（与加血+号一致：healBuff 2 秒周期 4 枚 = 每 0.5 秒 1 枚；RoachAISystem 主循环按 armorBuffTimer 驱动）
+      plusBuffDuration: 2.0,                  // 喷涂后 +号持续生成总时长（秒）
+      plusSpawnInterval: 0.5,                 // +号生成间隔（秒）
       blend: 'lighter' as GlobalCompositeOperation, // 叠加混合（喷涂流与+号粒子，lighter 提亮）
     },
     // 护盾修复连线（隧道工→护盾蟑螂，替换旧粒子特效）
@@ -95,12 +98,12 @@ export const BALANCE_VFX = {
         life: 1.2,                        // +号存活时间（秒）
         size: 18,                         // +号大小（像素，原 12 的 1.5 倍）
         vy: -35,                          // +号上升速度
-        color: 'rgba(253, 224, 71, 1)',   // +号渐变顶部颜色（黄）
-        color2: 'rgba(239, 68, 68, 1)',   // +号渐变底部颜色（红）
+        color: 'rgba(147, 197, 253, 1)',  // +号渐变顶部颜色（浅蓝 #93c5fd）
+        color2: 'rgba(59, 130, 246, 1)',  // +号渐变底部颜色（蓝 #3b82f6）
         offsetY: 45,                      // +号头顶偏移（像素）
-        interval: 0.8,                    // +号生成间隔（秒，节流避免过多）
+        interval: 0.5,                    // +号生成间隔（秒，与加血+号 2s/4枚 节奏一致）
         blend: 'lighter' as GlobalCompositeOperation, // lighter叠加提亮
-        glowColor: 'rgba(254, 240, 138, 0.9)', // +号边缘辉光颜色（暖黄）
+        glowColor: 'rgba(191, 219, 254, 0.9)', // +号边缘辉光颜色（淡蓝 #bfdbfe）
         glowBlur: 12,                     // +号边缘辉光模糊半径（像素）
       },
     },
@@ -141,6 +144,13 @@ export const BALANCE_VFX = {
       emberColor:  { r: 255, gMin: 200, gMax: 255, bMin: 50, bMax: 100, aMin: 0.5, aMax: 1.0 },
       iceColor:    { rMin: 180, rMax: 220, gMin: 220, gMax: 240, b: 255, aMin: 0.5, aMax: 1.0 }, // 冷冻模式粒子颜色
       poisonColor: { rMin: 100, rMax: 140, gMin: 220, gMax: 250, bMin: 100, bMax: 140, aMin: 0.4, aMax: 0.8 }, // 毒气模式粒子颜色
+      // 天赋外观进化色带（蓝焰核心/过载核心/聚能长枪）
+      blueFlameColor:  { r: 80, gMin: 120, gMax: 200, bMin: 220, bMax: 255, aMin: 0.7, aMax: 1.0 },   // 蓝焰核心
+      blueEmberColor:  { r: 120, gMin: 180, gMax: 220, bMin: 240, bMax: 255, aMin: 0.5, aMax: 1.0 }, // 蓝焰余烬
+      overdriveColor:  { r: 180, gMin: 20, gMax: 60, bMin: 40, bMax: 100, aMin: 0.7, aMax: 1.0 },    // 过载核心（深红紫）
+      overdriveEmberColor: { r: 220, gMin: 60, gMax: 120, bMin: 80, bMax: 160, aMin: 0.5, aMax: 1.0 }, // 过载余烬
+      lanceColor:      { r: 220, gMin: 240, gMax: 255, bMin: 240, bMax: 255, aMin: 0.8, aMax: 1.0 }, // 聚能长枪（白热）
+      lanceEmberColor: { r: 200, gMin: 220, gMax: 240, bMin: 220, bMax: 255, aMin: 0.5, aMax: 1.0 }, // 聚能余烬
     },
     // 烟雾粒子（蟑螂死亡时产生；数量由调用方传入）
     smoke: {
@@ -402,6 +412,20 @@ export const BALANCE_VFX = {
       flameSticky:  { r: 250, gBase: 200, gRange: 55,  bBase: 50, bRange: 50  },  // 粘板模式（金色）
       flamePoison:  { rBase: 150, rRange: -100, gBase: 100, gRange: 100, bBase: 200, bRange: -50 }, // 毒气模式（紫→绿）
       flameShotgun: { r: 255, gBase: 150, gRange: 105, bBase: 50, bRange: 100 },  // 散弹模式（橙）
+      // ===== 天赋外观进化（火枪束变体，仅 flamethrower 武器生效） =====
+      // 蓝焰核心（inferno T3）：低温蓝白焰
+      flameBlueFirst:  { rBase: 40,  rRange: 60,  gBase: 140, gRange: 60,  bBase: 255, bRange: 0 },
+      flameBlueSecond: { rBase: 100, rRange: 60,  gBase: 200, gRange: 40,  bBase: 255, bRange: -55 },
+      coreColorBlue: '120, 180, 255',
+      // 过载核心（inferno T5）：深红紫高温焰
+      flameOverdriveFirst:  { rBase: 120, rRange: 100, gBase: 20, gRange: 40,  bBase: 60, bRange: 60 },
+      flameOverdriveSecond: { rBase: 220, rRange: 35,  gBase: 40, gRange: -30, bBase: 80, bRange: -60 },
+      coreColorOverdrive: '255, 60, 120',
+      // 聚能长枪（lance T5）：白热细束
+      flameLanceFirst:  { rBase: 200, rRange: 55, gBase: 220, gRange: 35, bBase: 255, bRange: 0 },
+      flameLanceSecond: { rBase: 240, rRange: 15, gBase: 245, gRange: 10, bBase: 255, bRange: 0 },
+      coreColorLance: '240, 250, 255',
+      lanceWidthMult: 0.55,   // 聚能长枪：火束宽度倍率（变细）
     },
     // 【掉落道具】掉落物渲染参数
     drop: {
@@ -794,6 +818,35 @@ export const BALANCE_VFX = {
         boostGlowAlphaRatio: 0.3,             // 强化模式发光透明度比例
         boostAlphaFadeTime: 0.5,              // 强化模式透明度衰减时间
       },
+      // 【天赋外观进化】火枪枪体改造覆盖层（renderPlayer 中叠加在枪 sprite 之上）
+      // 量纲约定：所有长度值为「玩家单位」，渲染时 × s（s=4）换算为画布像素
+      gunEvolution: {
+        // 寒钢枪管（lance T3 steel）：银色加长枪管（枪 sprite 顶部约 -88s，喷嘴 -80.5s）
+        steelBarrelWidth: 3.5,         // 枪管半宽（玩家单位）
+        steelBarrelLength: 25,         // 枪管长度（玩家单位）
+        steelBarrelYOffset: 70,        // 枪管底部相对玩家锚点的上移（玩家单位）
+        steelBarrelBodyColor: 'rgba(170, 180, 195, 0.95)',  // 管体银灰
+        steelBarrelEdgeColor: 'rgba(230, 238, 248, 0.9)',   // 管身高光
+        steelBarrelRingColor: 'rgba(90, 100, 115, 0.9)',    // 散热环深色
+        steelBarrelRingCount: 3,       // 散热环数量
+        steelBarrelRingWidth: 0.5,     // 散热环线宽（玩家单位）
+        // 过载核心（inferno T5 overdrive）：枪体深红脉动辉光
+        overdriveGlowRadius: 30,       // 辉光半径（玩家单位）
+        overdriveGlowYOffset: 45,      // 辉光中心相对玩家锚点的上移（玩家单位，约枪体中心）
+        overdriveGlowColor: '255, 50, 90',     // 辉光颜色（RGB）
+        overdriveGlowAlphaBase: 0.18,  // 辉光基础透明度
+        overdriveGlowAlphaAmp: 0.12,   // 辉光脉动幅度
+        overdriveGlowFreq: 6,          // 辉光脉动频率
+        // 聚能长枪（lance T5 lance）：枪口聚能环（喷嘴约 -80.5s）
+        lanceRingRadius: 10,           // 聚能环半径（玩家单位）
+        lanceRingYOffset: 80,          // 环中心相对玩家锚点的上移（玩家单位）
+        lanceRingColor: '240, 250, 255',       // 环颜色（RGB 白热）
+        lanceRingAlphaBase: 0.6,       // 环基础透明度
+        lanceRingAlphaAmp: 0.3,        // 环脉动幅度
+        lanceRingFreq: 10,             // 环脉动频率
+        lanceRingLineWidth: 0.6,       // 环线宽（玩家单位）
+        blend: 'screen' as GlobalCompositeOperation, // 覆盖层叠加混合
+      },
       // 【掉落道具】雷达激光渲染
       radarLaser: {
         blend: 'source-over' as GlobalCompositeOperation, // 叠加混合
@@ -860,26 +913,20 @@ export const BALANCE_VFX = {
         arcFill: '200, 240, 255',         // 电弧填充颜色
         stunStar: '150, 220, 255',        // 眩晕星星颜色
       },
-      // 【掉落道具】杀虫剂喷雾渲染
+      // 【掉落道具】杀虫剂喷雾渲染（全屏毒雾熏蒸）
       insecticide: {
         blend: 'source-over' as GlobalCompositeOperation, // 叠加混合
-        sprayConeColor0: 'rgba(80, 255, 100, 0.5)',   // 喷雾锥形渐变 stop0（中心亮绿）
-        sprayConeColor1: 'rgba(60, 220, 80, 0.3)',    // 喷雾锥形渐变 stop0.4
-        sprayConeColor2: 'rgba(40, 180, 60, 0.15)',   // 喷雾锥形渐变 stop0.7
-        sprayConeColor3: 'rgba(20, 120, 40, 0)',      // 喷雾锥形渐变 stop1（边缘透明）
         nozzleGlowColor0: 'rgba(150, 255, 150, 0.8)', // 喷嘴辉光渐变 stop0
         nozzleGlowColor1: 'rgba(50, 200, 50, 0)',     // 喷嘴辉光渐变 stop1
-        range: 280,              // 喷雾范围（像素）
+        // 全屏毒雾纵向渐变（顶部稀薄 → 近防线浓郁）
+        fogTopColor: 'rgba(50, 200, 70, 0.25)',       // 雾层顶部
+        fogMidColor: 'rgba(60, 220, 80, 0.45)',       // 雾层中部
+        fogBottomColor: 'rgba(80, 255, 100, 0.65)',   // 雾层底部（近防线最浓）
+        fogBaseAlpha: 0.10,      // 雾层基础透明度（乘进度）
+        fogAlphaMult: 1.6,       // 脉冲透明度乘数
         pulseBaseAlpha: 0.12,    // 脉冲基础透明度
         pulseAmpAlpha: 0.08,     // 脉冲透明度幅度
         pulseFreq: 12,           // 脉冲频率
-        boundaryAlpha: 0.2,      // 边界透明度
-        boundaryStroke: 'rgba(100, 255, 120, 0.4)', // 边界描边
-        boundaryWidth: 2,        // 边界宽度
-        centerAlpha: 0.3,        // 中心透明度
-        centerStroke: 'rgba(150, 255, 160, 0.5)',   // 中心描边
-        centerWidth: 1.5,        // 中心宽度
-        centerDash: [5, 5] as readonly number[],     // 中心虚线样式
         nozzleGlowAlpha: 0.4,    // 喷嘴发光透明度
         nozzleRadius: 20,        // 喷嘴半径（像素）
         timerOffsetY: -40,       // 计时器 Y 偏移（像素）
@@ -961,6 +1008,16 @@ export const BALANCE_VFX = {
         shieldCoreAlphaRatio: 0.6, // 护盾核心透明度比例
         shieldColor: '6, 182, 212',    // 护盾颜色
         shieldCoreColor: '165, 243, 252', // 护盾核心颜色
+        // ===== 天赋外观进化：防线协议装甲板（wall 基石激活时沿线铺设） =====
+        armorPlateWidth: 46,          // 单板宽度（像素）
+        armorPlateHeight: 14,         // 单板高度（像素）
+        armorPlateGap: 6,             // 板间缝隙（像素）
+        armorPlateYOffset: 6,         // 板顶相对防线 Y 的下移（像素）
+        armorPlateBodyColor: 'rgba(110, 120, 135, 0.85)',  // 板体钢灰
+        armorPlateEdgeColor: 'rgba(200, 212, 228, 0.75)',  // 板缘高光
+        armorPlateRivetColor: 'rgba(55, 60, 70, 0.9)',     // 铆钉深色
+        armorPlateRivetRadius: 1.6,   // 铆钉半径（像素）
+        armorPlateEdgeLineWidth: 1.5, // 板缘线宽（像素）
       },
       // 【掉落道具】投掷物渲染（燃烧瓶尾迹）
       throwable: {
@@ -1748,6 +1805,24 @@ export const BALANCE_VFX = {
       blinkFreq: 4.7,                  // 闪烁频率（Hz，非整数避免机械感）
       duty: 0.55,                      // 占空比（每个闪烁周期内黑屏所占比例）
       maxAlpha: 0.5,                   // 黑色叠加层最大透明度（50% 半透黑色）
+      // 灯光光晕（lighter 叠加，场景背景灯位常驻暖光；灯暗闪屏时黑色蒙版在灯位羽毛开孔，灯光保持可见）
+      lampColor: '233, 218, 199',      // 灯光 RGB（暖白）
+      lampHaloAlpha: 0.55,             // 光晕中心峰值透明度（边缘半透渐变至 0）
+      lampMaskHoleScale: 2.0,          // 黑色蒙版开孔相对光晕尺寸的放大倍数（开孔边缘羽毛渐隐）
+      // 各场景灯位（背景图 540×960 像素坐标：x,y = 光晕中心；w,h = 光晕椭圆全宽/全高；
+      // 运行期按当前背景图实际绘制区域映射到画布逻辑坐标，随设备裁剪自适应）
+      lamps: {
+        // 医院：三处灯光
+        hospital: [
+          { x: 210, y: 63, w: 130, h: 12 },
+          { x: 260, y: 158, w: 16, h: 30 },
+          { x: 239, y: 237, w: 56, h: 4 },
+        ],
+        // 地下室：一处灯光
+        basement: [
+          { x: 262, y: 76, w: 33, h: 30 },
+        ],
+      } as Record<string, { x: number; y: number; w: number; h: number }[]>,
     },
   },
 
@@ -1800,58 +1875,65 @@ export const BALANCE_VFX = {
 export const SHIELD_RECT_HEIGHT = 360;
 
 // ======================================================================
-// 护盾蟑螂气体护盾——半圆甲壳造型（RoachRenderer 常驻渲染，无状态确定性）
-// 造型：半椭圆暗红发光甲壳（视觉 200×SHIELD_DOME_HEIGHT，与 ShieldSystem 实际保护区
-//   判定 200×shieldRectHeight 解耦，半圆观感）；分段硬甲 = 放射肋条 × 同心环纹，缝隙透暗金微光，
-//   段缘翘起带细高光；底部向两侧张开（外张沿超出半宽 flare），同类靠近时自动延展加宽。
-// 动态：整体缓慢呼吸胀缩，缝隙金光按环纹相位错开明暗流转；
-//   受击（shieldHitFlash）裂纹从击中点沿甲纹爬散、随后缝隙金光增强汇聚修补；
-//   受损（shieldHp 比例下降）发光变暗、甲壳出现焦黑灼痕、壳缘碎屑剥落飘散。
+// 护盾蟑螂气体护盾——半球形水晶罩造型（RoachRenderer 常驻渲染，无状态确定性）
+// 造型：半球形水晶罩（视觉 SHIELD_DOME_WIDTH×SHIELD_DOME_HEIGHT = 120×60 半圆，与 ShieldSystem 实际保护区
+//   判定 200×shieldRectHeight 解耦）；径向渐变球体（顶部高光核 → 冰蓝晶体 → 底部深蓝厚度）
+//   + 罩内冰白晶面棱线（同心环纹 × 放射棱线，裁剪在半球内）+ 顶部镜面高光斑；
+//   底部向两侧张开（外张沿超出半宽 flare），同类靠近时自动延展加宽。
+// 动态：整体缓慢呼吸胀缩，晶面光按环纹相位错开明暗流转，高光斑随呼吸脉动；
+//   受击（shieldHitFlash）裂纹从击中点沿晶纹爬散、随后晶面光增强汇聚修补；
+//   受损（shieldHp 比例下降）发光变暗、罩面出现霜白雾化斑、壳缘晶屑剥落飘散。
 //   items.ts BALANCE_ITEMS.subway.shieldDome* 引用本常量，访问路径保持不变。
 // 注：SHIELD_BAND_HEIGHT 仍保留（破盾特效定位 / ParticleSpawner 碎裂散布范围 / ShieldSystem 回调用）。
 // ======================================================================
 export const SHIELD_BAND_HEIGHT = 80;          // 底部光带高度（像素，破盾特效/粒子散布定位沿用）
 
-// --- 甲壳视觉尺寸（与实际保护区判定 200×360 解耦：宽 = 2×shieldRectHalfWidth，高 = 本值） ---
-export const SHIELD_DOME_HEIGHT = 100;                    // 甲壳视觉高度（像素，200×100 半圆观感）
+// --- 水晶罩视觉尺寸（与实际保护区判定 200×360 解耦：宽 = shieldDomeWidth，高 = 本值） ---
+export const SHIELD_DOME_WIDTH = 120;                     // 水晶罩视觉宽度（像素，120×60 半球形观感）
+export const SHIELD_DOME_HEIGHT = 60;                     // 水晶罩视觉高度（像素）
 
-// --- 甲壳主体（暗红半透明，底部实 → 顶部渐隐，source-over） ---
-export const SHIELD_DOME_FILL_COLOR = '153, 27, 27';      // 甲壳填充 RGB（#991b1b 暗红）
-export const SHIELD_DOME_FILL_ALPHA_BOTTOM = 0.34;        // 底部填充透明度（× 受损变暗系数）
-export const SHIELD_DOME_FILL_ALPHA_TOP = 0.10;           // 顶部填充透明度
-export const SHIELD_DOME_RIM_COLOR = '200, 38, 38';       // 外缘描边 RGB（#c02626 圆润亮红壳缘）
-export const SHIELD_DOME_RIM_ALPHA = 0.85;                // 外缘描边透明度
+// --- 罩体主体（半球形水晶：径向渐变 顶部高光核 → 冰蓝晶体 → 底部深蓝厚度，source-over） ---
+export const SHIELD_DOME_CORE_COLOR = '255, 255, 255';    // 顶部高光核 RGB（纯白，模拟光源直射点）
+export const SHIELD_DOME_CORE_ALPHA = 0.5;                // 高光核透明度（× 受损变暗系数）
+export const SHIELD_DOME_FILL_COLOR = '186, 230, 253';    // 晶体中段 RGB（#bae6fd 冰晶淡蓝）
+export const SHIELD_DOME_FILL_ALPHA = 0.26;               // 晶体中段透明度
+export const SHIELD_DOME_DEEP_COLOR = '37, 99, 235';      // 底部深蓝厚度 RGB（#2563eb，水晶底座纵深感）
+export const SHIELD_DOME_DEEP_ALPHA = 0.4;                // 底部深蓝透明度
+export const SHIELD_DOME_SPEC_COLOR = '255, 255, 255';    // 顶部镜面高光斑 RGB（纯白玻璃反光）
+export const SHIELD_DOME_SPEC_ALPHA = 0.55;               // 镜面高光斑峰值透明度（随呼吸脉动、受击增强）
+export const SHIELD_DOME_RIM_COLOR = '125, 211, 252';     // 外缘描边 RGB（#7dd3fc 明亮晶蓝）
+export const SHIELD_DOME_RIM_ALPHA = 0.9;                 // 外缘描边透明度
 export const SHIELD_DOME_RIM_LINE_WIDTH = 3;              // 外缘描边线宽（像素）
-// --- 分段硬甲（缝隙暗金微光，lighter 发光） ---
-export const SHIELD_DOME_SEGMENT_COUNT = 7;               // 放射分段数（肋条 = 分段边界）
+// --- 罩内晶面棱线（冰白晶纹：同心环纹 × 放射棱线，裁剪在半球内，lighter 微光流转） ---
+export const SHIELD_DOME_SEGMENT_COUNT = 7;               // 放射分段数（棱线 = 分段边界）
 export const SHIELD_DOME_RING_COUNT = 3;                  // 同心环纹数（不含外缘）
-export const SHIELD_DOME_GAP_COLOR = '217, 119, 6';       // 缝隙暗金 RGB（#d97706）
-export const SHIELD_DOME_GAP_ALPHA = 0.75;                // 缝隙金光基准透明度
-export const SHIELD_DOME_GAP_LINE_WIDTH = 2;              // 缝隙线宽（像素）
-export const SHIELD_DOME_GAP_GLOW_BLUR = 6;               // 缝隙金光辉光半径（像素）
-export const SHIELD_DOME_EDGE_COLOR = '248, 113, 113';    // 段缘翘起高光 RGB（#f87171）
-export const SHIELD_DOME_EDGE_ALPHA = 0.4;                // 段缘高光透明度
-// --- 呼吸胀缩（整体缓慢，金光随之明暗流转） ---
+export const SHIELD_DOME_GAP_COLOR = '224, 242, 254';     // 晶面棱线 RGB（#e0f2fe 冰白）
+export const SHIELD_DOME_GAP_ALPHA = 0.22;                // 晶面棱线基准透明度（低透明，隐约晶纹）
+export const SHIELD_DOME_GAP_LINE_WIDTH = 2;              // 晶面棱线宽（像素）
+export const SHIELD_DOME_GAP_GLOW_BLUR = 6;               // 晶面棱线辉光半径（像素）
+export const SHIELD_DOME_EDGE_COLOR = '255, 255, 255';    // 晶纹段缘高光 RGB（纯白）
+export const SHIELD_DOME_EDGE_ALPHA = 0.3;                // 晶纹段缘高光透明度
+// --- 呼吸胀缩（整体缓慢，晶光随之明暗流转） ---
 export const SHIELD_DOME_BREATH_AMP = 0.035;              // 呼吸振幅（±3.5%，火焰直射时增至 0.08）
 export const SHIELD_DOME_BREATH_FREQ = 0.5;               // 呼吸频率（Hz，2 秒一循环）
 // --- 底部张开 / 同类靠近加宽 ---
 export const SHIELD_DOME_FLARE_EXTRA = 26;                // 底部外张沿基础宽度（像素，超出半宽）
 export const SHIELD_DOME_ALLY_WIDEN = 34;                 // 同类靠近底部加宽步进（像素，最多 2 只计）
-// --- 受击裂纹（从击中点沿甲纹爬散，金光汇聚修补） ---
+// --- 受击裂纹（从击中点沿晶纹爬散，晶光汇聚修补） ---
 export const SHIELD_DOME_CRACK_COUNT = 5;                 // 裂纹条数
-export const SHIELD_DOME_CRACK_COLOR = '254, 243, 199';   // 裂纹 RGB（#fef3c7 亮金白）
+export const SHIELD_DOME_CRACK_COLOR = '255, 255, 255';   // 裂纹 RGB（纯白，玻璃龟裂）
 export const SHIELD_DOME_CRACK_ALPHA = 0.9;               // 裂纹峰值透明度
 export const SHIELD_DOME_CRACK_LINE_WIDTH = 1.5;          // 裂纹线宽（像素）
-// --- 受损焦黑灼痕 ---
-export const SHIELD_DOME_SCORCH_COUNT = 4;                // 灼痕斑块数
-export const SHIELD_DOME_SCORCH_COLOR = '12, 10, 9';      // 灼痕 RGB（近黑）
-export const SHIELD_DOME_SCORCH_ALPHA = 0.55;             // 灼痕峰值透明度（× 受损程度 1-hpRatio）
-// --- 受损边缘碎屑剥落 ---
-export const SHIELD_DOME_DEBRIS_COUNT = 6;                // 碎屑数量
-export const SHIELD_DOME_DEBRIS_LIFE = 1400;              // 碎屑生命周期（毫秒）
-export const SHIELD_DOME_DEBRIS_SIZE = 2.5;               // 碎屑半径（像素）
-export const SHIELD_DOME_DEBRIS_COLOR = '120, 53, 15';    // 碎屑 RGB（#78350f 焦褐）
-export const SHIELD_DOME_DEBRIS_HP_THRESHOLD = 0.7;       // 护盾 HP 低于此比例才剥落碎屑
+// --- 受损霜白雾化斑 ---
+export const SHIELD_DOME_SCORCH_COUNT = 4;                // 雾化斑块数
+export const SHIELD_DOME_SCORCH_COLOR = '224, 242, 254';  // 雾化斑 RGB（霜白，玻璃磨花）
+export const SHIELD_DOME_SCORCH_ALPHA = 0.55;             // 雾化斑峰值透明度（× 受损程度 1-hpRatio）
+// --- 受损边缘晶屑剥落 ---
+export const SHIELD_DOME_DEBRIS_COUNT = 6;                // 晶屑数量
+export const SHIELD_DOME_DEBRIS_LIFE = 1400;              // 晶屑生命周期（毫秒）
+export const SHIELD_DOME_DEBRIS_SIZE = 2.5;               // 晶屑半径（像素）
+export const SHIELD_DOME_DEBRIS_COLOR = '191, 219, 254';  // 晶屑 RGB（#bfdbfe 淡蓝玻璃渣）
+export const SHIELD_DOME_DEBRIS_HP_THRESHOLD = 0.7;       // 护盾 HP 低于此比例才剥落晶屑
 
 // ======================================================================
 // 破盾玻璃碎裂特效（护盾破碎瞬间，光带位置的无状态渲染：

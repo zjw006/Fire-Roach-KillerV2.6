@@ -6,7 +6,8 @@
 
 export { SCENE_CONFIGS } from './data/scenes';
 export { ENEMY_DEFS } from './data/enemies';
-export { TALENT_DEFS } from './data/talents';
+export { TALENT_DEFS, TALENT_TIER_GATE, branchSpentPoints, canUpgradeTalent } from './data/talents';
+export type { TalentCheck } from './data/talents';
 export { ACHIEVEMENT_DEFS, createDefaultProgress } from './data/achievements';
 export { DIALOG_CONFIGS, SUBWAY_ELITE_TUTORIAL_DIALOG, SUBWAY_KNIFE_TUTORIAL_DIALOG } from './data/dialogs';
 export {

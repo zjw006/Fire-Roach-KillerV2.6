@@ -196,6 +196,15 @@ export class RoachAISystem {
       // Spawn immunity & heal buff timers
       if (r.spawnImmuneTimer && r.spawnImmuneTimer > 0) r.spawnImmuneTimer -= deltaTime;
       if (r.healBuffTimer && r.healBuffTimer > 0) r.healBuffTimer -= deltaTime;
+      // 护甲+号 buff：喷涂后 2 秒内每 0.5 秒在目标头顶生成蓝色+号（频率/节奏与加血+号一致）
+      if (r.armorBuffTimer && r.armorBuffTimer > 0) {
+        r.armorBuffTimer -= deltaTime;
+        r.armorPlusTimer = (r.armorPlusTimer ?? 0) - deltaTime;
+        if (r.armorPlusTimer <= 0 && r.state === RoachState.ALIVE) {
+          r.armorPlusTimer = BALANCE_CONFIG.particle.armorSpray.plusSpawnInterval;
+          ParticleSpawner.spawnArmorHealPlus(this.cfg.particles, r.x, r.y);
+        }
+      }
 
       // Dead roach state
       if (r.state === RoachState.DEAD) {
@@ -445,7 +454,9 @@ export class RoachAISystem {
       const sinA = Math.sin(moveAngle);
       const cosB = Math.cos(baitAngle);
       const sinB = Math.sin(baitAngle);
-      r.speed = r.baseSpeed * BALANCE_CONFIG.roachAI.movement.baitSpeedMult;
+      // 诱饵专精：吸引速度倍率（天赋 baitSpeedMult 乘算）
+      const baitSpeedTalent = this.cfg.getTalentMultipliers().baitSpeedMult || 1;
+      r.speed = r.baseSpeed * BALANCE_CONFIG.roachAI.movement.baitSpeedMult * baitSpeedTalent;
       return Math.atan2(
         sinA * (1 - pullStrength) + sinB * pullStrength,
         cosA * (1 - pullStrength) + cosB * pullStrength
@@ -999,8 +1010,9 @@ export class RoachAISystem {
         this.cfg.audio.playArmorGain();    // 目标获得护甲音效
         // 灰色喷涂喷射流粒子（隧道工 → 目标）
         ParticleSpawner.spawnArmorSprayStream(this.cfg.particles, r.x, r.y, best.x, best.y);
-        // 目标头顶 + 号治疗粒子
-        ParticleSpawner.spawnArmorHealPlus(this.cfg.particles, best.x, best.y);
+        // 目标头顶蓝色+号：2 秒 buff 内每 0.5 秒生成 1 枚（频率/节奏与加血+号一致，由主循环统一生成）
+        best.armorBuffTimer = BALANCE_CONFIG.particle.armorSpray.plusBuffDuration;
+        best.armorPlusTimer = 0;
       }
     }
 

@@ -30,14 +30,19 @@ export interface FireZoneRenderConfig {
   player: Player;
   tripleFlameState: { active: boolean; sideOffset: number; };
   time: number;
+  /** 天赋外观进化：蓝焰核心/过载核心/聚能长枪（仅 flamethrower 武器生效） */
+  flameVariant?: 'normal' | 'blue' | 'overdrive' | 'lance';
 }
+
+/** 火焰束变体类型 */
+export type FlameVariant = 'normal' | 'blue' | 'overdrive' | 'lance';
 
 // =============================================================================
 // 火焰颜色计算（从 engine.ts 提取的纯函数）
 // =============================================================================
 
 /** 根据位置偏移和武器类型计算火焰颜色（颜色/透明度参数集中于 vfx-balance render.fireZone.flame*） */
-function getFlameColor(t: number, weapon: string = 'flamethrower'): string {
+function getFlameColor(t: number, weapon: string = 'flamethrower', variant: FlameVariant = 'normal'): string {
   const fz = BALANCE_CONFIG.render.fireZone;
   let r: number, g: number, b: number;
 
@@ -57,18 +62,23 @@ function getFlameColor(t: number, weapon: string = 'flamethrower'): string {
     g = c.gBase + t * c.gRange;
     b = c.bBase + t * c.bRange;
   } else {
+    // 天赋外观进化：变体渐变（仅 flamethrower 到达此分支）
+    let first = fz.flameDefaultFirst;
+    let second = fz.flameDefaultSecond;
+    if (variant === 'blue') { first = fz.flameBlueFirst; second = fz.flameBlueSecond; }
+    else if (variant === 'overdrive') { first = fz.flameOverdriveFirst; second = fz.flameOverdriveSecond; }
+    else if (variant === 'lance') { first = fz.flameLanceFirst; second = fz.flameLanceSecond; }
+
     if (t < 0.5) {
-      const c = fz.flameDefaultFirst;
       const s = t * 2;
-      r = c.rBase + s * c.rRange;
-      g = c.gBase + s * c.gRange;
-      b = c.bBase + s * c.bRange;
+      r = first.rBase + s * first.rRange;
+      g = first.gBase + s * first.gRange;
+      b = first.bBase + s * first.bRange;
     } else {
-      const c = fz.flameDefaultSecond;
       const s = (t - 0.5) * 2;
-      r = c.rBase + s * c.rRange;
-      g = c.gBase + s * c.gRange;
-      b = c.bBase + s * c.bRange;
+      r = second.rBase + s * second.rRange;
+      g = second.gBase + s * second.gRange;
+      b = second.bBase + s * second.bRange;
     }
   }
 
@@ -172,12 +182,15 @@ export class BackgroundRenderer {
     if (p.currentWeapon === 'molotov') return;
 
     const rcfg = BALANCE_CONFIG.render.fireZone;
+    const variant: FlameVariant = cfg.flameVariant ?? 'normal';
     const maxRange = p.fireRange * rcfg.rangeRatio;
     // 修复 P1：使用 BALANCE_CONFIG.player.nozzleOffsetY 替代硬编码 322
     const nozzleY = p.y - BALANCE_CONFIG.player.nozzleOffsetY;
     const endY = nozzleY - maxRange;
     // 天赋射程加成比例：火焰特效宽度随天赋等比放大（Y 轴长度已通过 maxRange = fireRange × rangeRatio 随天赋增长）
     const talentScale = p.fireRange / BALANCE_CONFIG.player.baseFireRange;
+    // 聚能长枪：火束变细（仅主武器 flamethrower 生效）
+    const variantWidthMult = (variant === 'lance' && p.currentWeapon === 'flamethrower') ? rcfg.lanceWidthMult : 1;
 
     const gunXs: number[] = [p.x];
     if (cfg.tripleFlameState.active) {
@@ -205,12 +218,12 @@ export class BackgroundRenderer {
         const y0 = gunNozzleY + (gunEndY - gunNozzleY) * t0;
         const y1 = gunNozzleY + (gunEndY - gunNozzleY) * t1;
 
-        const baseWidth = rcfg.baseWidth * flameScale * talentScale;
-        const w0 = baseWidth * (1 - t0 * rcfg.widthTaper) + Math.sin(t0 * Math.PI * rcfg.wiggleFreq + cfg.time * rcfg.wiggleTimeScale + gi) * rcfg.wiggleAmplitude;
-        const w1 = baseWidth * (1 - t1 * rcfg.widthTaper) + Math.sin(t1 * Math.PI * rcfg.wiggleFreq + cfg.time * rcfg.wiggleTimeScale + gi) * rcfg.wiggleAmplitude;
+        const baseWidth = rcfg.baseWidth * flameScale * talentScale * variantWidthMult;
+        const w0 = baseWidth * (1 - t0 * rcfg.widthTaper) + Math.sin(t0 * Math.PI * rcfg.wiggleFreq + cfg.time * rcfg.wiggleTimeScale + gi) * rcfg.wiggleAmplitude * variantWidthMult;
+        const w1 = baseWidth * (1 - t1 * rcfg.widthTaper) + Math.sin(t1 * Math.PI * rcfg.wiggleFreq + cfg.time * rcfg.wiggleTimeScale + gi) * rcfg.wiggleAmplitude * variantWidthMult;
 
         // 修复 P0：使用纯色填充（段间颜色差异极小，视觉效果无差别）
-        ctx.fillStyle = getFlameColor(t0, p.currentWeapon);
+        ctx.fillStyle = getFlameColor(t0, p.currentWeapon, variant);
 
         ctx.beginPath();
         ctx.moveTo(gunX - w0, y0);
@@ -225,8 +238,13 @@ export class BackgroundRenderer {
       let coreColor: string = rcfg.coreColorDefault;
       if (p.currentWeapon === 'sticky') coreColor = rcfg.coreColorSticky;
       else if (p.currentWeapon === 'poison') coreColor = rcfg.coreColorPoison;
+      else if (p.currentWeapon === 'flamethrower') {
+        if (variant === 'blue') coreColor = rcfg.coreColorBlue;
+        else if (variant === 'overdrive') coreColor = rcfg.coreColorOverdrive;
+        else if (variant === 'lance') coreColor = rcfg.coreColorLance;
+      }
 
-      const glowSize = rcfg.coreGlowSize * flameScale * talentScale;
+      const glowSize = rcfg.coreGlowSize * flameScale * talentScale * variantWidthMult;
       const coreGrad = ctx.createRadialGradient(gunX, gunNozzleY, 0, gunX, gunNozzleY, glowSize);
       coreGrad.addColorStop(0, `rgba(${coreColor}, ${rcfg.coreGradAlpha0})`);
       coreGrad.addColorStop(0.3, `rgba(${coreColor}, ${rcfg.coreGradAlpha1})`);

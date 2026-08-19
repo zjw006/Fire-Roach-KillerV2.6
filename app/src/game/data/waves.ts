@@ -131,19 +131,19 @@ export const WAVE_CONFIGS_SUPERMARKET: WaveConfig[] = [
     formationGroups: [
       { templates: ['A'], armored: 1, splitting: 2 },
     ],
-    trickle: { types: [RoachType.SUICIDE, RoachType.SMALL], total: 3, intervalSec: 6 } },
+    trickle: { types: [RoachType.SUICIDE, RoachType.SUICIDE, RoachType.SMALL], total: 4, intervalSec: 5 } },
   // 波2：热场·盾墙——三线阵列加入隧道工中排（修盾初登场）
   { wave: 2, smallCount: 12, largeCount: 3, flyingCount: 0, armoredCount: 0, splittingCount: 0, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 0.80, interval: 6, clusterChance: 0, name: '热场·盾墙',
     formationGroups: [
       { templates: ['A'], armored: 1, splitting: 2, tunnelWorker: 1 },
     ],
-    trickle: { types: [RoachType.SUICIDE, RoachType.FLYING], total: 4, intervalSec: 5 } },
+    trickle: { types: [RoachType.SUICIDE, RoachType.SUICIDE, RoachType.FLYING], total: 5, intervalSec: 4 } },
   // 波3：方阵·初鸣——飞行杂兵入场 + 装甲方阵（护士续航初登场）
   { wave: 3, smallCount: 10, largeCount: 3, flyingCount: 2, armoredCount: 0, splittingCount: 0, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 0.84, interval: 5, clusterChance: 0, name: '方阵·初鸣',
     formationGroups: [
       { templates: ['D'], armored: 2, timedSuicide: 1, nurse: 1 },
     ],
-    trickle: { types: [RoachType.SUICIDE, RoachType.FLYING], total: 4, intervalSec: 5 } },
+    trickle: { types: [RoachType.SUICIDE, RoachType.SUICIDE, RoachType.FLYING], total: 5, intervalSec: 4 } },
   // ===== 4~6波：中期压力上升（杂兵池扩充飞行 → 2组独立阵列同帧生成（纵深错位）→ 穿插地面/飞行自爆） =====
   // 波4：双阵·楔袭——三线散兵 + 楔形冲锋（定时自爆入阵，纵深错位90px）
   { wave: 4, smallCount: 10, largeCount: 4, flyingCount: 2, armoredCount: 0, splittingCount: 0, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 0.88, interval: 5, clusterChance: 0, name: '双阵·楔袭',
@@ -151,21 +151,21 @@ export const WAVE_CONFIGS_SUPERMARKET: WaveConfig[] = [
       { templates: ['A'], armored: 2, timedSuicide: 1, splitting: 1 },
       { templates: ['B'], armored: 2, timedSuicide: 1, splitting: 1 },
     ],
-    trickle: { types: [RoachType.SUICIDE, RoachType.FLYING_SUICIDE, RoachType.FLYING], total: 5, intervalSec: 5 } },
+    trickle: { types: [RoachType.SUICIDE, RoachType.SUICIDE, RoachType.FLYING_SUICIDE, RoachType.FLYING], total: 6, intervalSec: 4 } },
   // 波5：双阵·穿插——Z字穿插纵队 + 三线续航阵列（护盾+护士）
   { wave: 5, smallCount: 10, largeCount: 3, flyingCount: 2, armoredCount: 0, splittingCount: 0, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 0.90, interval: 5, clusterChance: 0, name: '双阵·穿插',
     formationGroups: [
       { templates: ['F'], armored: 2, timedSuicide: 1 },
       { templates: ['A'], armored: 1, shield: 1, splitting: 2, nurse: 1 },
     ],
-    trickle: { types: [RoachType.SUICIDE, RoachType.FLYING_SUICIDE, RoachType.FLYING], total: 5, intervalSec: 5 } },
+    trickle: { types: [RoachType.SUICIDE, RoachType.SUICIDE, RoachType.FLYING_SUICIDE, RoachType.FLYING, RoachType.FLYING], total: 7, intervalSec: 3.5 } },
   // 波6：双阵·纵队——混合纵队（护盾+分裂+双定时自爆）+ 装甲方阵（隧道工喷涂初登场）
   { wave: 6, smallCount: 10, largeCount: 5, flyingCount: 3, armoredCount: 0, splittingCount: 0, suicideCount: 0, flyingSuicideCount: 0, queenCount: 0, speed: 0.93, interval: 4, clusterChance: 0, name: '双阵·纵队',
     formationGroups: [
       { templates: ['E'], armored: 1, shield: 1, splitting: 2, timedSuicide: 2 },
       { templates: ['D'], armored: 2, tunnelWorker: 1, nurse: 1 },
     ],
-    trickle: { types: [RoachType.SUICIDE, RoachType.FLYING_SUICIDE, RoachType.FLYING], total: 5, intervalSec: 4 } },
+    trickle: { types: [RoachType.SUICIDE, RoachType.SUICIDE, RoachType.FLYING_SUICIDE, RoachType.FLYING], total: 6, intervalSec: 3 } },
   // ===== 7~9波：后期高压（自爆/精英高危杂兵先行 → 3组独立阵列同帧生成（纵深错位）→ 穿插池扩充定时自爆） =====
   // 波7：三阵·合围——楔形（双定时自爆）+ 三线续航 + Z字穿插（隧道工）
   { wave: 7, smallCount: 8, largeCount: 3, flyingCount: 0, armoredCount: 0, splittingCount: 0, suicideCount: 1, flyingSuicideCount: 0, queenCount: 0, eliteCount: 1, speed: 0.96, interval: 4, clusterChance: 0, name: '三阵·合围',
@@ -174,7 +174,7 @@ export const WAVE_CONFIGS_SUPERMARKET: WaveConfig[] = [
       { templates: ['A'], armored: 1, shield: 1, splitting: 2, nurse: 1 },
       { templates: ['F'], armored: 2, timedSuicide: 2, tunnelWorker: 1 },
     ],
-    trickle: { types: [RoachType.SUICIDE, RoachType.FLYING_SUICIDE, RoachType.TIMED_SUICIDE], total: 5, intervalSec: 5 } },
+    trickle: { types: [RoachType.SUICIDE, RoachType.SUICIDE, RoachType.FLYING_SUICIDE, RoachType.TIMED_SUICIDE], total: 7, intervalSec: 4 } },
   // 波8：三阵·环卫——同心圆护卫 + 三线定时自爆 + 混合纵队（护士×2分阵）
   { wave: 8, smallCount: 8, largeCount: 4, flyingCount: 0, armoredCount: 0, splittingCount: 0, suicideCount: 1, flyingSuicideCount: 0, queenCount: 0, eliteCount: 1, speed: 0.99, interval: 4, clusterChance: 0, name: '三阵·环卫',
     formationGroups: [
@@ -182,7 +182,7 @@ export const WAVE_CONFIGS_SUPERMARKET: WaveConfig[] = [
       { templates: ['A'], armored: 2, shield: 1, timedSuicide: 1 },
       { templates: ['E'], armored: 2, splitting: 1, tunnelWorker: 1, nurse: 1 },
     ],
-    trickle: { types: [RoachType.SUICIDE, RoachType.FLYING_SUICIDE, RoachType.TIMED_SUICIDE], total: 6, intervalSec: 4 } },
+    trickle: { types: [RoachType.SUICIDE, RoachType.SUICIDE, RoachType.FLYING_SUICIDE, RoachType.TIMED_SUICIDE, RoachType.FLYING, RoachType.FLYING], total: 8, intervalSec: 3 } },
   // 波9：三阵·双锋——双锋护卫（定时自爆+隧道工+护士全编）+ 楔形 + 装甲方阵（分裂3）
   { wave: 9, smallCount: 10, largeCount: 4, flyingCount: 0, armoredCount: 0, splittingCount: 0, suicideCount: 2, flyingSuicideCount: 0, queenCount: 0, eliteCount: 1, speed: 1.02, interval: 4, clusterChance: 0, name: '三阵·双锋',
     formationGroups: [
@@ -190,7 +190,7 @@ export const WAVE_CONFIGS_SUPERMARKET: WaveConfig[] = [
       { templates: ['B'], armored: 2, shield: 1, timedSuicide: 1 },
       { templates: ['D'], armored: 2, splitting: 3, nurse: 1 },
     ],
-    trickle: { types: [RoachType.SUICIDE, RoachType.FLYING_SUICIDE, RoachType.TIMED_SUICIDE], total: 6, intervalSec: 4 } },
+    trickle: { types: [RoachType.SUICIDE, RoachType.SUICIDE, RoachType.FLYING_SUICIDE, RoachType.TIMED_SUICIDE], total: 8, intervalSec: 3 } },
   // ===== 第10波：终局·群阵（4组独立阵列同帧生成、纵深错位，模板随机池选用；混合杂兵全程穿插） =====
   { wave: 10, smallCount: 12, largeCount: 5, flyingCount: 3, armoredCount: 0, splittingCount: 0, suicideCount: 1, flyingSuicideCount: 0, queenCount: 0, eliteCount: 1, speed: 1.05, interval: 3, clusterChance: 0, name: '终局·群阵',
     formationGroups: [
@@ -199,7 +199,7 @@ export const WAVE_CONFIGS_SUPERMARKET: WaveConfig[] = [
       { templates: ['E', 'F'], armored: 1, shield: 1, timedSuicide: 2, tunnelWorker: 2 },
       { templates: ['H', 'B'], armored: 2, shield: 1, splitting: 3, nurse: 1 },
     ],
-    trickle: { types: [RoachType.FLYING, RoachType.SUBWAY_ELITE, RoachType.FLYING_SUICIDE, RoachType.SUICIDE], total: 8, intervalSec: 3 } },
+    trickle: { types: [RoachType.FLYING, RoachType.SUICIDE, RoachType.SUBWAY_ELITE, RoachType.FLYING_SUICIDE, RoachType.SUICIDE], total: 9, intervalSec: 2.5 } },
 ];
 
 // 学校 6 波（包含女王）

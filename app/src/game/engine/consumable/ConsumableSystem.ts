@@ -52,6 +52,8 @@ export interface ConsumableSystemConfig
           ConsumableStateCallbacks,
           ConsumableUICallbacks {
   consumableDefs: ConsumableDef[];
+  /** 天赋加成（EconomyManager.calculateTalentMultipliers 输出） */
+  talentMultipliers?: Record<string, number>;
 }
 
 /**
@@ -197,14 +199,19 @@ export class ConsumableSystem {
         break;
       }
       case 'shield': {
-        player.shieldTimer = BALANCE_CONFIG.consumable.shieldDuration;
+        // 护盾专精：护盾时长 +N 秒
+        const shieldAdd = this.cfg.talentMultipliers?.shieldDurationAdd || 0;
+        const shieldDuration = BALANCE_CONFIG.consumable.shieldDuration + shieldAdd;
+        player.shieldTimer = shieldDuration;
         player.shieldActive = true;
-        this.buffFlashTimers['shield'] = BALANCE_CONFIG.consumable.shieldDuration;
-        this.cfg.onAddFloatingText(this.cfg.getCanvasWidth() / 2, this.cfg.getCanvasHeight() / 2 - BALANCE_CONFIG.consumable.floatTextOffset.shield, TEXT_CONFIG.combat.shieldActive.text(BALANCE_CONFIG.consumable.shieldDuration), TEXT_CONFIG.combat.shieldActive.color, 2000);
+        this.buffFlashTimers['shield'] = shieldDuration;
+        this.cfg.onAddFloatingText(this.cfg.getCanvasWidth() / 2, this.cfg.getCanvasHeight() / 2 - BALANCE_CONFIG.consumable.floatTextOffset.shield, TEXT_CONFIG.combat.shieldActive.text(shieldDuration), TEXT_CONFIG.combat.shieldActive.color, 2000);
         break;
       }
       case 'bait': {
-        player.baitTimer = BALANCE_CONFIG.consumable.baitDuration;
+        // 诱饵专精：聚拢时长 +N 秒
+        const baitAdd = this.cfg.talentMultipliers?.baitDurationAdd || 0;
+        player.baitTimer = BALANCE_CONFIG.consumable.baitDuration + baitAdd;
         const [targetX, targetY] = this.cfg.getGroundCenter();
         this.baitTarget = { x: targetX, y: targetY, active: true };
         // 修复 P0：添加 startX/startY 用于线性插值
@@ -567,14 +574,17 @@ export class ConsumableSystem {
 
   /**
    * 渲染诱饵地面标记（香味光环 + 玻璃碎片）
+   * @param baitDuration 有效总时长（含天赋加成，用于碎片渐隐比例；缺省回退基础时长）
    */
   static renderBaitMark(
     ctx: CanvasRenderingContext2D,
     baitTarget: { active: boolean; x: number; y: number },
     baitTimer: number,
-    time: number
+    time: number,
+    baitDuration?: number
   ): void {
     if (!baitTarget.active || baitTimer <= 0) return;
+    const duration = baitDuration ?? BALANCE_CONFIG.consumable.baitDuration;
     // 参数见 BALANCE_CONFIG.bait.mark
     const MK = BALANCE_CONFIG.bait.mark;
     ctx.save();
@@ -589,7 +599,7 @@ export class ConsumableSystem {
     ctx.beginPath();
     ctx.ellipse(x, y, MK.auraRadiusX * pulse, MK.auraRadiusY * pulse, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.globalAlpha = MK.shardAlpha * (baitTimer / BALANCE_CONFIG.consumable.baitDuration);
+    ctx.globalAlpha = MK.shardAlpha * (baitTimer / duration);
     for (let i = 0; i < MK.emitter.shardCount; i++) {
       const angle = (i / MK.emitter.shardCount) * Math.PI * 2 + time * MK.shardRotateSpeed;
       const dist = MK.shardDistBase + Math.sin(i * MK.shardDistFreq) * MK.shardDistAmp;

@@ -1107,16 +1107,18 @@ export class RoachRenderer {
       ctx.restore();
     }
 
-    // ===== 护盾蟑螂气体护盾——半圆甲壳造型（常驻特效，不受 showShieldRange 调试开关控制） =====
-    // 半椭圆暗红发光甲壳（视觉 200×shieldDomeHeight，与实际保护区判定 200×shieldRectHeight 解耦）：
-    // 分段硬甲 = 放射肋条 × 同心环纹，缝隙透暗金微光；底部向两侧张开，同类靠近时自动延展加宽。
-    // 动态（全部无状态确定性渲染）：呼吸胀缩 + 金光按环纹相位明暗流转；
-    // 受击裂纹爬散 → 金光汇聚修补；受损变暗 + 焦黑灼痕 + 壳缘碎屑剥落。
+    // ===== 护盾蟑螂气体护盾——半球形水晶罩（常驻特效，不受 showShieldRange 调试开关控制） =====
+    // 半球形水晶质感（视觉 shieldDomeWidth×shieldDomeHeight = 120×60 半圆，与实际保护区判定 200×shieldRectHeight 解耦）：
+    //   径向渐变球体（顶部高光核 → 冰蓝晶体 → 底部深蓝厚度）塑造半球体积感；
+    //   罩内冰白晶面棱线（同心环纹 × 放射棱线，裁剪在半球内）+ 顶部镜面高光斑；
+    //   底部向两侧张开，同类靠近时自动延展加宽。
+    // 动态（全部无状态确定性渲染）：呼吸胀缩 + 晶面光按环纹相位明暗流转 + 高光斑随呼吸脉动；
+    //   受击裂纹爬散 → 晶光汇聚修补；受损变暗 + 霜白雾化斑 + 壳缘晶屑剥落。
     if (r.type === RoachType.SHIELD && r.state === RoachState.ALIVE && (r.shieldHp ?? 0) > 0) {
       const sub = BALANCE_CONFIG.subway;
-      const hw = sub.shieldRectHalfWidth;   // 甲壳半宽 = 保护区半宽（视觉/判定一致 200 宽）
-      const rh = sub.shieldDomeHeight;      // 甲壳视觉高度（与判定区高度解耦，半圆观感）
-      const originY = r.y + size * 0.5; // 甲壳底边 = 本体下缘
+      const hw = sub.shieldDomeWidth / 2;   // 水晶罩半宽 = 视觉宽 120 的一半（与判定区半宽 100 解耦）
+      const rh = sub.shieldDomeHeight;      // 水晶罩视觉高度（60，与判定区高度解耦）
+      const originY = r.y + size * 0.5; // 罩底边 = 本体下缘
       const hpRatio = Math.max(0, (r.shieldHp ?? 0) / (r.maxShieldHp || 1));
       const flash = Math.min(1, (r.shieldHitFlash ?? 0) / 0.15);
       // 呼吸胀缩：整体缓慢（火焰直射命中时振幅加大）；r.id 错相避免多盾同步
@@ -1137,22 +1139,24 @@ export class RoachRenderer {
       const rx = hw * swell;
       const ry = rh * swell;
       const flare = sub.shieldDomeFlareExtra + Math.max(0, widen);
-      const repair = 1 + flash * 1.2; // 受击后缝隙金光增强 = 汇聚修补
+      const repair = 1 + flash * 1.2; // 受击后晶面光增强 = 汇聚修补
+      const domeR = Math.max(rx, ry);
 
       ctx.save();
       ctx.translate(r.x, originY);
 
-      // --- 1. 甲壳主体（暗红半透明，底部实 → 顶部渐隐，source-over） ---
-      const bodyGrad = ctx.createLinearGradient(0, 0, 0, -ry);
-      bodyGrad.addColorStop(0, `rgba(${sub.shieldDomeFillColor}, ${sub.shieldDomeFillAlphaBottom * dim})`);
-      bodyGrad.addColorStop(1, `rgba(${sub.shieldDomeFillColor}, ${sub.shieldDomeFillAlphaTop * dim})`);
+      // --- 1. 水晶主体：径向渐变（光源在顶部偏左）——高光核 → 冰蓝晶体 → 底部深蓝厚度，半球体积感 ---
+      const bodyGrad = ctx.createRadialGradient(-rx * 0.3, -ry * 0.8, domeR * 0.1, 0, -ry * 0.3, domeR * 1.25);
+      bodyGrad.addColorStop(0, `rgba(${sub.shieldDomeCoreColor}, ${sub.shieldDomeCoreAlpha * dim})`);
+      bodyGrad.addColorStop(0.45, `rgba(${sub.shieldDomeFillColor}, ${sub.shieldDomeFillAlpha * dim})`);
+      bodyGrad.addColorStop(1, `rgba(${sub.shieldDomeDeepColor}, ${sub.shieldDomeDeepAlpha * dim})`);
       ctx.fillStyle = bodyGrad;
       ctx.beginPath();
       ctx.ellipse(0, 0, rx, ry, 0, Math.PI, Math.PI * 2);
       ctx.closePath();
       ctx.fill();
 
-      // --- 2. 焦黑灼痕（受损出现，确定性散布于甲壳面，压在壳体上、金光下） ---
+      // --- 2. 霜白雾化斑（受损出现，确定性散布于罩面，压在壳体上、晶纹下） ---
       if (hpRatio < 1) {
         const scorchA = (1 - hpRatio) * sub.shieldDomeScorchAlpha;
         for (let i = 0; i < sub.shieldDomeScorchCount; i++) {
@@ -1171,33 +1175,26 @@ export class RoachRenderer {
         }
       }
 
-      // --- 3. 外缘描边 + 底部张开沿（圆润亮红壳缘；底部圆头粗线微向下弯，超出甲壳半宽 flare） ---
-      ctx.strokeStyle = `rgba(${sub.shieldDomeRimColor}, ${sub.shieldDomeRimAlpha * dim})`;
-      ctx.lineWidth = sub.shieldDomeRimLineWidth;
+      // --- 3. 罩内效果（裁剪在半球内）：冰白晶面棱线（lighter 微光流转）→ 底部深蓝厚度带 → 顶部镜面高光斑 ---
+      ctx.save();
       ctx.beginPath();
       ctx.ellipse(0, 0, rx, ry, 0, Math.PI, Math.PI * 2);
-      ctx.stroke();
-      ctx.lineCap = 'round';
-      ctx.lineWidth = sub.shieldDomeRimLineWidth + 1.5;
-      ctx.beginPath();
-      ctx.moveTo(-rx - flare, 2);
-      ctx.quadraticCurveTo(0, 8 + flare * 0.1, rx + flare, 2);
-      ctx.stroke();
-
-      // --- 4. 分段硬甲缝隙金光（lighter 发光：同心环纹相位错开明暗流转 + 放射肋条 + 段缘翘起高光） ---
+      ctx.closePath();
+      ctx.clip();
+      // 3a. 晶面棱线：同心环纹（相位错开明暗流转 + 段缘细高光）+ 放射棱线
       ctx.globalCompositeOperation = 'lighter';
       ctx.shadowColor = `rgba(${sub.shieldDomeGapColor}, ${sub.shieldDomeGapAlpha * dim})`;
       ctx.shadowBlur = sub.shieldDomeGapGlowBlur;
       for (let k = 1; k <= sub.shieldDomeRingCount; k++) {
         const s = k / (sub.shieldDomeRingCount + 1);
-        // 明暗流转：各环纹相位错开，金光沿壳面流动
+        // 明暗流转：各环纹相位错开，晶光沿罩面流动
         const flow = 0.55 + 0.45 * Math.sin(2 * Math.PI * sub.shieldDomeBreathFreq * config.time - k * 0.9 + r.id);
         ctx.strokeStyle = `rgba(${sub.shieldDomeGapColor}, ${Math.min(1, sub.shieldDomeGapAlpha * dim * flow * repair)})`;
         ctx.lineWidth = sub.shieldDomeGapLineWidth;
         ctx.beginPath();
         ctx.ellipse(0, 0, rx * s, ry * s, 0, Math.PI, Math.PI * 2);
         ctx.stroke();
-        // 段缘翘起高光：环纹内侧细亮边
+        // 段缘细高光：环纹内侧细亮边
         ctx.shadowBlur = 0;
         ctx.strokeStyle = `rgba(${sub.shieldDomeEdgeColor}, ${sub.shieldDomeEdgeAlpha * dim})`;
         ctx.lineWidth = 1;
@@ -1217,18 +1214,67 @@ export class RoachRenderer {
         ctx.stroke();
       }
       ctx.shadowBlur = 0;
+      // 3b. 底部厚度带（水晶底座纵深感：罩底内侧一道深蓝弧带，source-over）
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = `rgba(${sub.shieldDomeDeepColor}, ${Math.min(1, sub.shieldDomeDeepAlpha * 1.2 * dim)})`;
+      ctx.lineWidth = 7;
+      ctx.beginPath();
+      ctx.ellipse(0, -3.5, Math.max(4, rx - 3), Math.max(3, ry - 4), 0, Math.PI * 1.08, Math.PI * 1.92);
+      ctx.stroke();
+      // 3c. 顶部镜面高光斑（玻璃反光：压扁椭圆白斑，随呼吸脉动，火焰直射命中时增强）
+      ctx.globalCompositeOperation = 'lighter';
+      const specA = Math.min(1, sub.shieldDomeSpecAlpha * dim * (0.8 + 0.2 * breath) * (flameFlash ? 1.5 : 1));
+      const specX = -rx * 0.32;
+      const specY = -ry * 0.62;
+      const specR = domeR * 0.42;
+      const specGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, specR);
+      specGrad.addColorStop(0, `rgba(${sub.shieldDomeSpecColor}, ${specA})`);
+      specGrad.addColorStop(1, `rgba(${sub.shieldDomeSpecColor}, 0)`);
+      ctx.fillStyle = specGrad;
+      ctx.translate(specX, specY);
+      ctx.scale(1, 0.55); // 压扁成椭圆高光
+      ctx.beginPath();
+      ctx.arc(0, 0, specR, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore(); // 解除裁剪（同时撤销高光斑的 translate/scale）
 
-      // --- 5. 受击裂纹（击中点沿甲纹向四周爬散：随 flash 消退生长并渐隐；缝隙金光同步增强修补） ---
+      // --- 4. 外缘描边 + 底部张开沿（水晶边缘光：晶蓝描边 + lighter 白辉光；底部圆头粗线微向下弯，超出罩半宽 flare） ---
+      ctx.strokeStyle = `rgba(${sub.shieldDomeRimColor}, ${sub.shieldDomeRimAlpha * dim})`;
+      ctx.lineWidth = sub.shieldDomeRimLineWidth;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, rx, ry, 0, Math.PI, Math.PI * 2);
+      ctx.stroke();
+      // 外缘辉光（lighter：半球受光轮廓）
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.shadowColor = `rgba(${sub.shieldDomeRimColor}, ${sub.shieldDomeRimAlpha * dim})`;
+      ctx.shadowBlur = sub.shieldDomeGapGlowBlur;
+      ctx.strokeStyle = `rgba(${sub.shieldDomeEdgeColor}, ${sub.shieldDomeEdgeAlpha * dim})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, rx, ry, 0, Math.PI, Math.PI * 2);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      // 底部张开沿
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = `rgba(${sub.shieldDomeRimColor}, ${sub.shieldDomeRimAlpha * dim})`;
+      ctx.lineCap = 'round';
+      ctx.lineWidth = sub.shieldDomeRimLineWidth + 1.5;
+      ctx.beginPath();
+      ctx.moveTo(-rx - flare, 2);
+      ctx.quadraticCurveTo(0, 8 + flare * 0.1, rx + flare, 2);
+      ctx.stroke();
+
+      // --- 5. 受击裂纹（击中点沿晶纹向四周爬散：随 flash 消退生长并渐隐；晶面光同步增强修补） ---
       if (flash > 0) {
         const grow = 1 - flash; // 0→1：裂纹爬散进度
         ctx.strokeStyle = `rgba(${sub.shieldDomeCrackColor}, ${flash * sub.shieldDomeCrackAlpha})`;
         ctx.lineWidth = sub.shieldDomeCrackLineWidth;
-        // 击中点：确定性取甲壳中部一点（哈希自蟑螂 id，无状态不闪烁）
+        // 击中点：确定性取罩面中部一点（哈希自蟑螂 id，无状态不闪烁）
         const hTh = Math.PI + Math.PI * (0.3 + 0.4 * RoachRenderer.hash01(r.id * 3));
         const hx = rx * 0.45 * Math.cos(hTh);
         const hy = ry * 0.45 * Math.sin(hTh);
         for (let i = 0; i < sub.shieldDomeCrackCount; i++) {
-          // 主方向沿放射肋条角散开，叠加哈希抖动 → 沿甲纹锯齿爬行
+          // 主方向沿放射棱线角散开，叠加哈希抖动 → 沿晶纹锯齿爬行
           const ang = hTh + (i - (sub.shieldDomeCrackCount - 1) / 2) * 0.28;
           const maxLen = 6 + (26 + 30 * RoachRenderer.hash01(i * 7 + r.id * 13)) * grow;
           let px = hx;
@@ -1245,7 +1291,7 @@ export class RoachRenderer {
         }
       }
 
-      // --- 6. 边缘碎屑剥落（护盾 HP 低于阈值：壳缘焦褐碎屑向外下方飘散，确定性循环） ---
+      // --- 6. 边缘晶屑剥落（护盾 HP 低于阈值：壳缘淡蓝晶屑向外下方飘散，确定性循环） ---
       const dmg = 1 - hpRatio / sub.shieldDomeDebrisHpThreshold;
       if (dmg > 0) {
         ctx.globalCompositeOperation = 'source-over';

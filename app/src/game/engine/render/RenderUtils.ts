@@ -17,8 +17,6 @@ export interface InsecticideSprayState {
   duration: number;
   damageInterval: number;
   damageTimer: number;
-  sprayAngle: number;
-  spraySpread: number;
   baseDamage: number;
 }
 
@@ -39,8 +37,6 @@ export interface SwatterRenderParams {
 export class RenderUtils {
   // ===== 归一化渐变缓存 =====
 
-  /** 杀虫剂喷雾锥体渐变 */
-  private static _sprayConeGrad: CanvasGradient | null = null;
   /** 杀虫剂喷嘴辉光渐变 */
   private static _nozzleGlowGrad: CanvasGradient | null = null;
   /** Power Boost 粒子辉光渐变（按颜色索引缓存） */
@@ -67,19 +63,6 @@ export class RenderUtils {
   }
 
   // ===== 渐变获取方法 =====
-
-  private static getSprayConeGradient(ctx: CanvasRenderingContext2D): CanvasGradient {
-    if (!this._sprayConeGrad) {
-      const cfg = BALANCE_CONFIG.render.renderUtils.insecticide;
-      const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
-      grad.addColorStop(0, cfg.sprayConeColor0);
-      grad.addColorStop(0.4, cfg.sprayConeColor1);
-      grad.addColorStop(0.7, cfg.sprayConeColor2);
-      grad.addColorStop(1, cfg.sprayConeColor3);
-      this._sprayConeGrad = grad;
-    }
-    return this._sprayConeGrad;
-  }
 
   private static getNozzleGlowGradient(ctx: CanvasRenderingContext2D): CanvasGradient {
     if (!this._nozzleGlowGrad) {
@@ -192,7 +175,7 @@ export class RenderUtils {
   }
 
   /**
-   * 渲染杀虫剂喷雾
+   * 渲染杀虫剂喷雾（全屏毒雾熏蒸）
    */
   static renderInsecticideSpray(
     ctx: CanvasRenderingContext2D,
@@ -205,60 +188,34 @@ export class RenderUtils {
     const cfg = BALANCE_CONFIG.render.renderUtils.insecticide;
     const cx = canvasWidth / 2;
     const cy = defenseLineY;
-    const halfSpread = spray.spraySpread / 2;
 
     const progress = spray.timer / spray.duration;
     const pulseAlpha = cfg.pulseBaseAlpha + cfg.pulseAmpAlpha * Math.sin(time * cfg.pulseFreq) * progress;
 
     ctx.save();
     ctx.globalCompositeOperation = cfg.blend; // 叠加混合集中于 vfx-balance renderUtils.insecticide.blend
-    ctx.globalAlpha = pulseAlpha;
 
-    // 径向渐变喷雾锥体（缓存渐变）
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.scale(cfg.range, cfg.range);
-    ctx.fillStyle = RenderUtils.getSprayConeGradient(ctx);
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.arc(0, 0, 1, spray.sprayAngle - halfSpread, spray.sprayAngle + halfSpread);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
+    // 全屏毒雾层：纵向渐变（顶部稀薄 → 近防线浓郁），随喷射进度呼吸
+    ctx.globalAlpha = Math.min(1, pulseAlpha * cfg.fogAlphaMult * progress + cfg.fogBaseAlpha * progress);
+    const fog = ctx.createLinearGradient(0, 0, 0, defenseLineY);
+    fog.addColorStop(0, cfg.fogTopColor);
+    fog.addColorStop(0.55, cfg.fogMidColor);
+    fog.addColorStop(1, cfg.fogBottomColor);
+    ctx.fillStyle = fog;
+    ctx.fillRect(0, 0, canvasWidth, defenseLineY);
 
-    // 喷雾边界线
-    ctx.globalAlpha = cfg.boundaryAlpha * progress;
-    ctx.strokeStyle = cfg.boundaryStroke;
-    ctx.lineWidth = cfg.boundaryWidth;
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.lineTo(cx + Math.cos(spray.sprayAngle - halfSpread) * cfg.range, cy + Math.sin(spray.sprayAngle - halfSpread) * cfg.range);
-    ctx.moveTo(cx, cy);
-    ctx.lineTo(cx + Math.cos(spray.sprayAngle + halfSpread) * cfg.range, cy + Math.sin(spray.sprayAngle + halfSpread) * cfg.range);
-    ctx.stroke();
-
-    // 中心喷雾线（save/restore 防止 dash 泄漏）
-    ctx.save();
-    ctx.globalAlpha = cfg.centerAlpha * progress;
-    ctx.strokeStyle = cfg.centerStroke;
-    ctx.lineWidth = cfg.centerWidth;
-    ctx.setLineDash([...cfg.centerDash]);
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.lineTo(cx + Math.cos(spray.sprayAngle) * cfg.range, cy + Math.sin(spray.sprayAngle) * cfg.range);
-    ctx.stroke();
-    ctx.restore();
-
-    // 喷嘴辉光（缓存渐变）
+    // 双侧喷嘴辉光（喷源手感，缓存渐变）
     ctx.globalAlpha = cfg.nozzleGlowAlpha * progress;
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.scale(cfg.nozzleRadius, cfg.nozzleRadius);
-    ctx.fillStyle = RenderUtils.getNozzleGlowGradient(ctx);
-    ctx.beginPath();
-    ctx.arc(0, 0, 1, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
+    for (const nx of [12, canvasWidth - 12]) {
+      ctx.save();
+      ctx.translate(nx, cy / 2);
+      ctx.scale(cfg.nozzleRadius, cfg.nozzleRadius);
+      ctx.fillStyle = RenderUtils.getNozzleGlowGradient(ctx);
+      ctx.beginPath();
+      ctx.arc(0, 0, 1, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
 
     // 计时器文字
     ctx.globalAlpha = 0.7;
@@ -546,7 +503,8 @@ export class RenderUtils {
   }
 
   /**
-   * 渲染防线（虚线 + 护盾光效）
+   * 渲染防线（虚线 + 护盾光效 + 天赋装甲板）
+   * @param armorPlated 防线协议基石（wall）激活时铺设装甲板
    */
   static renderDefenseLine(
     ctx: CanvasRenderingContext2D,
@@ -554,10 +512,41 @@ export class RenderUtils {
     defenseLineY: number,
     defenseLineColor: string,
     time: number,
-    shieldTimer: number
+    shieldTimer: number,
+    armorPlated: boolean = false
   ): void {
     const cfg = BALANCE_CONFIG.render.renderUtils.defenseLine;
     const dl = defenseLineY;
+
+    // 天赋外观进化：防线协议装甲板（铺在防线下方）
+    if (armorPlated) {
+      const pw = cfg.armorPlateWidth;
+      const ph = cfg.armorPlateHeight;
+      const step = pw + cfg.armorPlateGap;
+      const plateY = dl + cfg.armorPlateYOffset;
+      ctx.save();
+      for (let px = 0; px < w; px += step) {
+        // 板体
+        ctx.fillStyle = cfg.armorPlateBodyColor;
+        ctx.fillRect(px, plateY, pw, ph);
+        // 板缘高光（上缘）
+        ctx.fillStyle = cfg.armorPlateEdgeColor;
+        ctx.fillRect(px, plateY, pw, cfg.armorPlateEdgeLineWidth);
+        // 铆钉（板体四角内缩）
+        ctx.fillStyle = cfg.armorPlateRivetColor;
+        const inset = cfg.armorPlateRivetRadius * 2;
+        const rivetY = [plateY + inset, plateY + ph - inset];
+        const rivetX = [px + inset, px + pw - inset];
+        for (const rx of rivetX) {
+          for (const ry of rivetY) {
+            ctx.beginPath();
+            ctx.arc(rx, ry, cfg.armorPlateRivetRadius, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      }
+      ctx.restore();
+    }
 
     ctx.save();
     ctx.globalCompositeOperation = cfg.blend; // 叠加混合集中于 vfx-balance renderUtils.defenseLine.blend

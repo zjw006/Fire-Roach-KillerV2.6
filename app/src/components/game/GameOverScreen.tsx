@@ -39,11 +39,13 @@ interface GameOverScreenProps {
   onOpenShop?: () => void;
   /** 天赋系统是否已解锁（通关地下室后），用于显示常驻天赋加点入口 */
   talentUnlocked?: boolean;
+  /** 天赋系统解锁时从待解锁池一次性发放的天赋点数（>0 时展示解锁礼横幅） */
+  talentUnlockGrant?: number;
   /** 本次星级评价（0-3，按防线血量不含加血比例；失败为 0） */
   starRating?: number;
 }
 
-export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, gameMode, isVictory, hasNextScene, nextSceneName, onRestart, onQuit, onNextScene, talentPoints, bossDefeated, onOpenTalentTree, audio, victoryGoldReward, onSettleGold, unclaimedAchievementCount, onOpenAchievements, onOpenShop, talentUnlocked, starRating = 0}) => {
+export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, gameMode, isVictory, hasNextScene, nextSceneName, onRestart, onQuit, onNextScene, talentPoints, bossDefeated, onOpenTalentTree, audio, victoryGoldReward, onSettleGold, unclaimedAchievementCount, onOpenAchievements, onOpenShop, talentUnlocked, talentUnlockGrant = 0, starRating = 0}) => {
   const isBossMode = bossDefeated;
   const isEndless = gameMode === 'endless';
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -212,6 +214,17 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, g
             </div>
           ))}
         </div>
+
+        {/* 天赋系统解锁礼横幅（地下室通关，待解锁池一次性发放时展示） */}
+        {isVictory && talentUnlockGrant > 0 && (
+          <div className="bg-gradient-to-r from-amber-600/70 to-yellow-500/70 border border-yellow-300/60 rounded-xl p-3 mb-4 flex items-center gap-3 animate-pulse shadow-lg shadow-yellow-500/20">
+            <Sparkles size={24} className="text-white shrink-0" />
+            <div className="flex-1">
+              <div className="text-white text-sm font-bold">{TEXT_CONFIG.ui.gameOver.talentUnlockGrant(talentUnlockGrant)}</div>
+              <div className="text-yellow-100/80 text-xs">{TEXT_CONFIG.ui.gameOver.talentUnlockGrantDesc}</div>
+            </div>
+          </div>
+        )}
 
         {/* 天赋加点入口（通关地下室解锁后常驻显示，有未用天赋点时出现） */}
         {talentUnlocked && talentPoints && talentPoints > 0 && onOpenTalentTree && (

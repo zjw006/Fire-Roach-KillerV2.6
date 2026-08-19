@@ -1389,6 +1389,7 @@ export const GameCanvas: React.FC = () => {
           victoryGoldReward={victoryGoldReward}
           onSettleGold={handleSettleGold}
           starRating={engineRef.current?.lastStarRating ?? 0}
+          talentUnlockGrant={engineRef.current?.lastTalentUnlockGrant ?? 0}
           unclaimedAchievementCount={engineRef.current?.getUnclaimedAchievementCount?.() ?? 0}
           onOpenAchievements={() => { setAchievementsFromGameOver(true); setShowAchievements(true); }}
           onOpenShop={() => setShowMenuShop(true)}

@@ -21,6 +21,8 @@ const FZ_FIRE = 'fire' as const;
  * 投掷物系统配置接口
  */
 export interface ThrowableSystemConfig {
+  /** 天赋加成（EconomyManager.calculateTalentMultipliers 输出） */
+  talentMultipliers?: Record<string, number>;
   /** 添加浮动文字回调 */
   onAddFloatingText?: (x: number, y: number, text: string, color: string) => void;
   /** 添加火焰区域回调 */
@@ -210,6 +212,10 @@ export class ThrowableSystem {
   /** 燃烧瓶落地：爆炸 + 火区域 */
   private applyMolotovLand(t: ThrowableProjectile, roaches: Roach[]): void {
     const cfg = BALANCE_CONFIG.throwable.molotov;
+    // 烈焰燃料：火墙持续/伤害 ×N
+    const tm = this.config.talentMultipliers || {};
+    const lifeMult = tm.molotovFireZoneLifeMult || 1;
+    const dpsMult = tm.molotovFireZoneDpsMult || 1;
     for (const r of roaches) {
       if (!ThrowableSystem.isRoachInRange(r, t, cfg.radius)) continue;
       if (this.checkArmorImmune(r)) continue;
@@ -221,8 +227,8 @@ export class ThrowableSystem {
     }
     this.config.onAddFireZone?.({
       x: t.x, y: t.y, radius: cfg.radius,
-      damagePerSecond: cfg.fireZoneDps,
-      life: cfg.fireZoneLife, maxLife: cfg.fireZoneLife,
+      damagePerSecond: cfg.fireZoneDps * dpsMult,
+      life: cfg.fireZoneLife * lifeMult, maxLife: cfg.fireZoneLife * lifeMult,
       type: FZ_FIRE,
     });
     this.config.onSpawnExplosionParticles?.(t.x, t.y, BALANCE_CONFIG.throwable.explosionParticleCount);

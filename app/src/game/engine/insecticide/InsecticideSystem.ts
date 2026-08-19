@@ -12,6 +12,8 @@ import { TEXT_CONFIG, BALANCE_CONFIG } from '../../data';
  * 杀虫剂系统配置接口
  */
 export interface InsecticideSystemConfig {
+  /** 天赋加成（EconomyManager.calculateTalentMultipliers 输出） */
+  talentMultipliers?: Record<string, number>;
   /** 添加浮动文字回调 */
   onAddFloatingText?: (x: number, y: number, text: string, color: string) => void;
   /** 播放音效回调 */
@@ -45,8 +47,6 @@ export class InsecticideSystem {
       duration: cfg.duration,
       damageInterval: cfg.damageInterval,
       damageTimer: 0,
-      sprayAngle: -Math.PI / 2,
-      spraySpread: (Math.PI * 2) / 3,
       baseDamage: cfg.baseDamage,
     };
   }
@@ -137,8 +137,8 @@ export class InsecticideSystem {
   // ========== 粒子生成 ==========
 
   /**
-   * 为单侧生成喷雾粒子（修复 P1：消除左右重复代码）
-   * @param side 0=左侧, 1=右侧
+   * 为半屏生成弥漫毒雾粒子（全屏熏蒸：左右半屏各一组，缓慢漂移）
+   * @param side 0=左半屏, 1=右半屏
    * @param w 画布宽度
    * @param h 画布高度
    */
@@ -149,24 +149,21 @@ export class InsecticideSystem {
     const particles: Particle[] = [];
     const cy = h / 2;
     const isLeft = side === 0;
-    const baseX = isLeft ? 10 : w - 10;
-    const dirX = isLeft ? 1 : -1;
+    const halfX = isLeft ? 0 : w / 2;
 
-    // 主喷雾粒子
+    // 主雾团粒子：全屏随机位置，缓慢漂移上升，大块低透明
     const sc = colors.spray;
     for (let i = 0; i < cfg.sideParticleCount; i++) {
-      const py = cy + (Math.random() - 0.5) * h * 0.6;
       const life = cfg.particleLifeMin + Math.random() * cfg.particleLifeMax;
-      const speed = cfg.particleSpeedMin + Math.random() * cfg.particleSpeedMax;
       const greenBase = sc.gMin + Math.random() * sc.gRange;
       const alpha = cfg.particleAlphaMin + Math.random() * cfg.particleAlphaMax;
       particles.push({
-        x: baseX + Math.random() * 30,
-        y: py,
-        vx: dirX * speed * (0.5 + Math.random() * 0.5),
-        vy: (Math.random() - 0.5) * 30,
+        x: halfX + Math.random() * (w / 2),
+        y: Math.random() * h,
+        vx: (Math.random() - 0.5) * 40,
+        vy: -10 - Math.random() * 20,
         life, maxLife: life,
-        size: 5 + Math.random() * 10,
+        size: 8 + Math.random() * 10,
         color: `rgba(${sc.rMin + Math.random() * sc.rRange}, ${greenBase}, ${sc.bMin + Math.random() * sc.bRange}, ${alpha})`,
         type: ParticleType.POISON_CLOUD,
       });
@@ -175,13 +172,11 @@ export class InsecticideSystem {
     // 细雾滴粒子
     const mc = colors.mist;
     for (let i = 0; i < cfg.centerParticleCount; i++) {
-      const px = isLeft ? 15 + Math.random() * 20 : w - 15 - Math.random() * 20;
-      const py = cy + (Math.random() - 0.5) * h * 0.5;
       const life = cfg.centerParticleLifeMin + Math.random() * cfg.centerParticleLifeMax;
       particles.push({
-        x: px, y: py,
-        vx: dirX * (80 + Math.random() * 60),
-        vy: (Math.random() - 0.5) * 40,
+        x: halfX + Math.random() * (w / 2), y: Math.random() * h,
+        vx: (Math.random() - 0.5) * 30,
+        vy: -15 - Math.random() * 25,
         life, maxLife: life,
         size: 2 + Math.random() * 4,
         color: `rgba(${mc.rMin + Math.random() * mc.rRange}, ${mc.g}, ${mc.bMin + Math.random() * mc.bRange}, ${mc.alphaMin + Math.random() * mc.alphaRange})`,
@@ -189,12 +184,13 @@ export class InsecticideSystem {
       });
     }
 
-    // 喷嘴爆发效果
+    // 喷嘴爆发效果（保留左右两侧喷源手感）
     const nc = colors.nozzle;
     const nx = isLeft ? 10 : w - 10;
+    const dirX = isLeft ? 1 : -1;
     for (let i = 0; i < 2; i++) {
       particles.push({
-        x: nx, y: cy + (Math.random() - 0.5) * 20,
+        x: nx, y: cy + (Math.random() - 0.5) * 40,
         vx: dirX * (60 + Math.random() * 40),
         vy: (Math.random() - 0.5) * 30,
         life: 0.15 + Math.random() * 0.15,
@@ -259,33 +255,16 @@ export class InsecticideSystem {
   // ========== 伤害应用 ==========
 
   /**
-   * 应用杀虫剂伤害
-   * @param w 画布宽度
-   * @param h 画布高度（修复 P1：锥形检测中心使用画布中心，与视觉效果一致）
+   * 应用杀虫剂伤害（全屏熏蒸：命中全场所有存活蟑螂）
    */
   private applyDamage(w: number, h: number, roaches: Roach[]): Particle[] {
     const cfg = BALANCE_CONFIG.insecticide;
     const particles: Particle[] = [];
-    // 修复 P1：锥形检测中心改为画布中心（h/2），与视觉喷雾效果一致
-    const cx = w / 2;
     const cy = h / 2;
-    const range = cfg.damageRange;
-    const halfSpread = this.spray.spraySpread / 2;
     let hitCount = 0;
 
     for (const r of roaches) {
       if (r.state !== RoachState.ALIVE || r.isBoss) continue;
-
-      // 锥形区域检测：距离 + 角度
-      const dx = r.x - cx;
-      const dy = r.y - cy;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist > range) continue;
-
-      const angle = Math.atan2(dy, dx);
-      let angleDiff = Math.abs(angle - this.spray.sprayAngle);
-      if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff;
-      if (angleDiff > halfSpread) continue;
 
       // 装甲完全免疫
       if (r.armorHp > 0) {
@@ -295,23 +274,29 @@ export class InsecticideSystem {
       // 跳过正在放置炸弹的定时自爆蟑螂
       if (r.type === RoachType.TIMED_SUICIDE && r.placeTimer && r.placeTimer > 0) continue;
 
-      // 修复 P2：使用命名常量代替意图不明的 baseDamage * 0.5
-      const dmg = this.spray.baseDamage * cfg.damageMultiplier;
+      // 毒剂强化：毒伤 ×N
+      const tm = this.config.talentMultipliers || {};
+      const poisonDmgMult = tm.poisonDamageMult || 1;
+      const dmg = this.spray.baseDamage * cfg.damageMultiplier * poisonDmgMult;
       r.hp -= dmg;
       hitCount++;
 
       // 修复 P1：使用配置中的中毒效果参数，只在中毒未激活时设置（避免持续重置）
       if (r.poisonTimer <= 0) {
-        r.poisonTimer = cfg.poisonTimer;
-        r.poisonDamage = cfg.poisonDamage;
+        const timerAdd = tm.poisonTimerAdd || 0;
+        r.poisonTimer = cfg.poisonTimer + timerAdd;
+        r.poisonDamage = cfg.poisonDamage * poisonDmgMult;
       }
 
       // 附加 debuff：窒息 8 秒 + 闪避封锁 3 秒 + 虚弱减速 5 秒 + 技能封锁 5 秒
       // （持续喷射期间每次伤害判定都会刷新，脱离喷射后开始倒计时）
+      // 毒剂强化：闪避/技能封锁 +N 秒
+      const skillBlockAdd = tm.poisonSkillBlockAdd || 0;
+      const dodgeBlockAdd = tm.poisonDodgeBlockAdd || 0;
       r.asphyxiationTimer = cfg.suffocationTimer;
-      r.dodgeBlockTimer = cfg.dodgeBlockDuration;
+      r.dodgeBlockTimer = cfg.dodgeBlockDuration + dodgeBlockAdd;
       r.weakenTimer = cfg.weakenDuration;
-      r.skillBlockTimer = cfg.skillBlockDuration;
+      r.skillBlockTimer = cfg.skillBlockDuration + skillBlockAdd;
 
       // 修复 P2：移除多余的三目判断（armorHp > 0 已在上面 return）
       r.damageFlash = 0.15;
@@ -351,8 +336,6 @@ export class InsecticideSystem {
       duration: cfg.duration,
       damageInterval: cfg.damageInterval,
       damageTimer: 0,
-      sprayAngle: -Math.PI / 2,
-      spraySpread: (Math.PI * 2) / 3,
       baseDamage: cfg.baseDamage,
     };
     this._warningTriggered = false;

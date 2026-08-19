@@ -145,7 +145,7 @@ export const SCENE_REWARD_ITEMS: Record<SceneType, { type: string; name: string;
     { type: 'swatter', name: '电蚊拍', icon: '/assets/drop_swatter.png', desc: '终——极——武——器！！！全屏放电，一扫而空！"噼里啪啦"一阵电闪雷鸣，满屏蟑螂瞬间灰飞烟灭，连渣都不剩！这玩意儿拿在手里，你就是雷神托尔，就是宙斯下凡，就是蟑螂们的末日审判！蟑叔我纵横除蟑界三十年，就这电蚊拍能让我激动得睡不着。用吧，少年，以雷霆击碎黑暗！！！' },
   ],
   [SceneType.BASEMENT]: [
-    { type: 'poison', name: '杀虫喷雾', icon: '/assets/drop_poison.png', desc: '新型改良版杀虫剂，双侧喷射系统加上3秒持续性中毒效果！喷一下，蟑螂们先晕，再吐，最后倒，整个过程比看电视剧还精彩。蟑叔我加了点特殊配方，这味道对人类无害但对蟑螂来说……嘿嘿，就像闻到前任的香水一样致命！' },
+    { type: 'poison', name: '杀虫喷雾', icon: '/assets/drop_poison.png', desc: '新型改良版杀虫剂，全屏毒雾熏蒸加上3秒持续性中毒效果！喷一下，蟑螂们先晕，再吐，最后倒，整个过程比看电视剧还精彩。蟑叔我加了点特殊配方，这味道对人类无害但对蟑螂来说……嘿嘿，就像闻到前任的香水一样致命！' },
   ],
   // Rooftop: no new reward (swatter moved to dump)
   [SceneType.ROOFTOP]: [],

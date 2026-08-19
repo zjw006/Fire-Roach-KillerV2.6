@@ -23,7 +23,7 @@ const ALL_ITEMS = [
   { id: 'sticky', name: '蟑螂贴板', desc: '黏住蟑螂持续灼烧', icon: Bug, category: 'control' as const },
   { id: 'fan', name: '强力风扇', desc: '减速全场蟑螂', icon: Wind, category: 'control' as const },
   { id: 'molotov', name: '燃烧瓶', desc: '制造火墙持续伤害', icon: Flame, category: 'aoe' as const },
-  { id: 'poison', name: '杀虫喷雾', desc: '双侧喷射+中毒', icon: Droplets, category: 'aoe' as const },
+  { id: 'poison', name: '杀虫喷雾', desc: '全屏毒雾+中毒', icon: Droplets, category: 'aoe' as const },
   { id: 'shotgun', name: '散弹模式', desc: '三方向扇形火焰', icon: Target, category: 'aoe' as const },
   { id: 'swatter', name: '电蚊拍', desc: '全屏秒杀', icon: Zap, category: 'burst' as const },
   { id: 'radar', name: '雷达激光', desc: '自动追踪锁定', icon: ScanLine, category: 'burst' as const },

@@ -4,7 +4,7 @@
  */
 
 import type { GameProgress } from '../../types';
-import { createDefaultProgress } from '../../data';
+import { createDefaultProgress, BALANCE_CONFIG, TALENT_DEFS } from '../../data';
 
 /**
  * 存档系统类
@@ -21,7 +21,7 @@ export class SaveSystem {
   private static readonly TUTORIAL_SHOP_KEY = 'shop_tutorial_seen';
 
   // ===== Constants =====
-  private static readonly SAVE_VERSION = 3;
+  private static readonly SAVE_VERSION = 4;
   private static readonly DEFAULT_PARTICLE_LIMIT = 300;
   /** 浏览器 localStorage 估算总容量（字节） */
   private static readonly ESTIMATED_STORAGE_TOTAL = 5 * 1024 * 1024; // 5MB
@@ -224,8 +224,9 @@ export class SaveSystem {
     const fresh = createDefaultProgress();
 
     // 安全复制已知字段（只复制通过类型检查的字段）
-    if (oldProgress.talentTree && typeof oldProgress.talentTree === 'object') {
-      fresh.talentTree = oldProgress.talentTree;
+    // 注意：talentTree 不做盲拷贝 —— v3 及以下需走 v4 天赋树重构迁移（见下方）
+    if (typeof oldProgress.pendingTalentPoints === 'number') {
+      fresh.pendingTalentPoints = oldProgress.pendingTalentPoints;
     }
     if (Array.isArray(oldProgress.achievements)) {
       fresh.achievements = oldProgress.achievements;
@@ -288,10 +289,80 @@ export class SaveSystem {
       }
     }
 
+    // v3 → v4: 天赋树重构（旧天赋等级映射 + 点数按新经济表重算）
+    if (oldVersion <= 3) {
+      this.migrateTalentTreeV4(oldProgress, fresh);
+    }
+
     // 保存迁移后的数据
     this.saveProgress(fresh);
     console.log(`[SaveSystem] Migration v${oldVersion}→v${this.SAVE_VERSION} completed`);
     return fresh;
+  }
+
+  /**
+   * v3 → v4 天赋树迁移
+   * @description 旧天赋等级映射到新三系节点（只降不升），点数按新经济表重算：
+   * 新余额 = 已通关场景固定点 + 三星奖励 − 映射节点造价（下限 0）；
+   * 天赋未解锁（地下室未通关）时三星点存入 pendingTalentPoints 待解锁池。
+   * 4 个武器解锁死天赋（freeze/poison/shotgun/molotov_weapon）全额退款（不映射），
+   * defense_hp L3 以下退款（不映射）。
+   * @param oldProgress 旧版本进度数据
+   * @param fresh 迁移目标进度对象（就地修改）
+   */
+  private static migrateTalentTreeV4(oldProgress: any, fresh: GameProgress): void {
+    const oldTalents: Record<string, number> =
+      (oldProgress.talentTree && typeof oldProgress.talentTree.talents === 'object'
+        ? oldProgress.talentTree.talents
+        : {}) || {};
+
+    // 等级映射（只降不升）：旧5级制 L1-2→L1, L3-4→L2, L5→L3；旧3级制 L1-2→L1, L3+→L2
+    const map5 = (lv: number) => (lv >= 5 ? 3 : lv >= 3 ? 2 : lv >= 1 ? 1 : 0);
+    const map3 = (lv: number) => (lv >= 3 ? 2 : lv >= 1 ? 1 : 0);
+
+    const mapped: Record<string, number> = {};
+    const set = (id: string, lv: number) => {
+      if (lv > 0) mapped[id] = Math.max(mapped[id] || 0, lv);
+    };
+
+    set('pressure', map5(oldTalents.fire_damage || 0));        // 火焰强化 → 增压阀
+    set('nozzle', map5(oldTalents.fire_range || 0));           // 射程延伸 → 扩口喷嘴
+    set('tank', map3(oldTalents.gas_capacity || 0));           // 燃气扩容 → 扩容气罐
+    set('fins', map3(oldTalents.cool_speed || 0));             // 快速冷却 → 散热鳍片
+    set('alloy', map3(oldTalents.overheat_resist || 0));       // 耐热改造 → 耐热合金
+    set('bounty', map5(oldTalents.money_boost || 0));          // 赏金猎人
+    set('saver', map3(oldTalents.resource_saver || 0));        // 节约大师
+    set('mech', map3(oldTalents.mechanical_mastery || 0));     // 机械精通
+    // 火焰亲和/爆炸专家 取最高 → 烈焰燃料
+    set('molfuel', map3(Math.max(oldTalents.fire_affinity || 0, oldTalents.explosive_expert || 0)));
+    // 防线加固 ≥L3 → 防线协议；<L3 退款（不映射）
+    if ((oldTalents.defense_hp || 0) >= 3) set('wall', 1);
+    // freeze/poison/shotgun/molotov_weapon 4 个死天赋 → 全额退款（不映射）
+
+    // ===== 点数重算：新经济表总收入 − 映射节点造价（下限 0） =====
+    const rewardCfg = BALANCE_CONFIG.economy.talentPointReward;
+    const completed: string[] = Array.isArray(oldProgress.scenesCompleted) ? oldProgress.scenesCompleted : [];
+    const stars: Record<string, number> =
+      oldProgress.levelStars && typeof oldProgress.levelStars === 'object' ? oldProgress.levelStars : {};
+
+    let income = 0;
+    for (const scene of completed) income += rewardCfg.perScene[scene] ?? 0;
+    const threeStarCount = Object.values(stars).filter(s => s === 3).length;
+    // 天赋系统已解锁（地下室已通关）：三星点直接计入收入；否则存入待解锁池
+    if (completed.includes('basement')) {
+      income += threeStarCount * rewardCfg.threeStarBonus;
+      fresh.pendingTalentPoints = 0;
+    } else {
+      fresh.pendingTalentPoints = threeStarCount * rewardCfg.threeStarBonus;
+    }
+
+    let spent = 0;
+    for (const [id, lv] of Object.entries(mapped)) {
+      const def = TALENT_DEFS.find(t => t.id === id);
+      if (def) spent += lv * def.cost;
+    }
+
+    fresh.talentTree = { points: Math.max(0, income - spent), talents: mapped };
   }
 
   /**

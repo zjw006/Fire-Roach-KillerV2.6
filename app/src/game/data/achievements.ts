@@ -196,5 +196,6 @@ export function createDefaultProgress(): GameProgress {
     consumableInventory: {},                             // 空消耗品库存
     autoUseEnabled: {},                                  // 无自动使用设置
     levelStars: {},                                      // 无场景星级评价记录
+    pendingTalentPoints: 0,                              // 无待解锁天赋点
   };
 }

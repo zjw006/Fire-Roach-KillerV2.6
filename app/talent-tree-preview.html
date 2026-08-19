@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>天赋树预览 · 改装工坊</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { height:100%; background:#0c0a09; font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; color:#e7e5e4; }
+  body { display:flex; justify-content:center; }
+
+  /* ═══ 手机框 ═══ */
+  #phone { width:min(420px,100vw); height:100dvh; display:flex; flex-direction:column; position:relative;
+           background:radial-gradient(ellipse at 50% 0%, #292018 0%, #0c0a09 70%);
+           border-left:1px solid #292524; border-right:1px solid #292524; overflow:hidden; }
+
+  /* ═══ 顶栏 ═══ */
+  #topbar { flex:0 0 auto; padding:10px 14px 8px; border-bottom:1px solid #292524; background:rgba(12,10,9,.9); z-index:5; }
+  #topbar .row { display:flex; align-items:center; justify-content:space-between; }
+  #topbar .back { color:#a8a29e; font-size:13px; }
+  #topbar .pts { color:#fbbf24; font-weight:700; font-size:14px; }
+  #topbar h1 { text-align:center; font-size:20px; font-weight:800; color:#fff; padding-top:6px; letter-spacing:2px; }
+  #topbar .sub { text-align:center; font-size:10px; color:#78716c; margin-top:2px; letter-spacing:1px; }
+
+  /* ═══ 火枪预览条 ═══ */
+  #weapon { flex:0 0 auto; display:flex; align-items:center; gap:12px; padding:8px 16px;
+            background:linear-gradient(180deg, rgba(41,32,24,.6), rgba(12,10,9,0)); border-bottom:1px solid rgba(68,64,60,.5); }
+  #gunStage { position:relative; width:96px; height:64px; flex:0 0 auto; }
+  /* 枪身（猛火系进化） */
+  #gunBody { position:absolute; left:8px; bottom:6px; width:56px; height:16px; border-radius:6px;
+             background:linear-gradient(180deg,#57534e,#292524); box-shadow:inset 0 2px 3px rgba(255,255,255,.15); transition:all .4s; }
+  /* 枪管/喷嘴（长枪系进化） */
+  .nozzle { position:absolute; bottom:10px; width:14px; height:8px; border-radius:3px; background:#78716c; transition:all .4s; }
+  .nozzle.n1 { left:58px; }
+  .nozzle.n2 { left:58px; bottom:16px; display:none; }
+  .nozzle.n3 { left:58px; bottom:4px;  display:none; }
+  /* 火焰 */
+  .flame { position:absolute; left:70px; bottom:8px; width:16px; height:26px; transform-origin:bottom center;
+           animation:flick .5s ease-in-out infinite alternate; transition:all .4s; }
+  .flame i { position:absolute; inset:0; border-radius:50% 50% 50% 50%/60% 60% 40% 40%; }
+  .flame .o { background:radial-gradient(ellipse at 50% 80%, rgba(249,115,22,.9), rgba(249,115,22,0) 70%); }
+  .flame .m { inset:15% 20%; background:radial-gradient(ellipse at 50% 80%, rgba(251,191,36,.95), rgba(251,191,36,0) 70%); }
+  .flame .c { inset:35% 35%; background:radial-gradient(ellipse at 50% 80%, #fff7ed, rgba(255,247,237,0) 75%); }
+  .flame.f2 { left:70px; bottom:14px; display:none; }
+  .flame.f3 { left:70px; bottom:2px;  display:none; }
+  @keyframes flick { from{transform:scaleY(.92) scaleX(1.05);} to{transform:scaleY(1.06) scaleX(.95);} }
+  /* ── 枪身阶段（猛火） ── */
+  #gunStage.b1 #gunBody { background:linear-gradient(180deg,#b45309,#451a03); }                 /* 铜管 */
+  #gunStage.b2 #gunBody { background:linear-gradient(180deg,#1e40af,#172554); box-shadow:0 0 8px rgba(59,130,246,.5); } /* 蓝焰 */
+  #gunStage.b2 .flame .o { background:radial-gradient(ellipse at 50% 80%, rgba(59,130,246,.9), rgba(59,130,246,0) 70%); }
+  #gunStage.b2 .flame .m { background:radial-gradient(ellipse at 50% 80%, rgba(147,197,253,.95), rgba(147,197,253,0) 70%); }
+  #gunStage.b3 .flame { height:32px; }                                                            /* 爆燃 */
+  #gunStage.b3 .swirl { display:block; }
+  .swirl { display:none; position:absolute; left:64px; bottom:4px; width:28px; height:28px; border-radius:50%;
+           border:2px dashed rgba(251,191,36,.7); animation:spin 1.2s linear infinite; }
+  @keyframes spin { to{transform:rotate(360deg);} }
+  /* ── 枪管阶段（长枪） ── */
+  #gunStage.l1 .nozzle.n1 { width:20px; background:#b45309; }                                     /* 扩口 */
+  #gunStage.l1 .flame { left:76px; }
+  #gunStage.l2 .nozzle.n1 { width:28px; background:#cbd5e1; box-shadow:0 0 4px rgba(203,213,225,.6); } /* 寒钢长管 */
+  #gunStage.l2 .flame { left:84px; }
+  #gunStage.l3 .nozzle.n1 { width:34px; background:#e2e8f0; box-shadow:0 0 8px rgba(226,232,240,.8); }
+  #gunStage.l3 .flame { left:90px; height:30px; }
+  /* ── T5 终端形态 ── */
+  #gunStage.ovr .flame { height:36px; width:20px; left:74px; }
+  #gunStage.ovr .flame .o { background:radial-gradient(ellipse at 50% 80%, rgba(190,24,24,.95), rgba(124,58,237,0) 72%); }
+  #gunStage.ovr .flame .m { background:radial-gradient(ellipse at 50% 80%, rgba(249,115,22,.95), rgba(249,115,22,0) 70%); }
+  #gunStage.ovr #gunBody { background:linear-gradient(180deg,#7f1d1d,#450a0a); box-shadow:0 0 10px rgba(239,68,68,.6); }
+  #gunStage.ovr .swirl { display:block; border-color:rgba(239,68,68,.7); }
+  #gunStage.lance .nozzle.n1 { width:40px; background:#f8fafc; box-shadow:0 0 10px #fff; }
+  #gunStage.lance .flame { left:96px; height:44px; width:10px; }
+  #gunStage.lance .flame .o { background:radial-gradient(ellipse at 50% 80%, rgba(224,242,254,.95), rgba(224,242,254,0) 70%); }
+  #gunStage.lance .flame .c { background:radial-gradient(ellipse at 50% 80%, #fff, rgba(255,255,255,0) 80%); }
+  #winfo { flex:1; min-width:0; }
+  #wname { font-size:13px; font-weight:700; color:#fdba74; }
+  #wstage { display:flex; gap:4px; margin-top:5px; }
+  #wstage b { width:18px; height:5px; border-radius:3px; background:#44403c; transition:background .3s; }
+  #wstage b.on { background:linear-gradient(90deg,#f59e0b,#f97316); }
+  #wtip { font-size:9px; color:#78716c; margin-top:4px; }
+
+  /* ═══ 天赋树区 ═══ */
+  #treeWrap { flex:1 1 auto; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:6px 10px 16px; position:relative; }
+  #tree { display:flex; gap:8px; position:relative; }
+  #pipes { position:absolute; inset:0; pointer-events:none; z-index:0; }
+  .branch { flex:1; min-width:0; position:relative; z-index:1; }
+  .bhead { text-align:center; padding:6px 2px 8px; border-radius:10px; margin-bottom:2px; background:rgba(28,25,23,.85); border:1px solid #44403c; }
+  .bhead .t { font-size:12px; font-weight:800; letter-spacing:1px; }
+  .bhead .s { font-size:8px; color:#78716c; letter-spacing:0; margin-top:1px; }
+  .bhead .ptsbar { height:4px; border-radius:2px; background:#292524; margin:5px 6px 3px; overflow:hidden; }
+  .bhead .ptsbar i { display:block; height:100%; border-radius:2px; transition:width .35s; }
+  .bhead .n { font-size:9px; color:#a8a29e; }
+  .branch.inferno .t { color:#fb923c; } .branch.inferno .ptsbar i { background:#f97316; }
+  .branch.lance   .t { color:#7dd3fc; } .branch.lance   .ptsbar i { background:#38bdf8; }
+  .branch.support .t { color:#a3e635; } .branch.support .ptsbar i { background:#84cc16; }
+
+  .tier { position:relative; min-height:118px; display:flex; flex-direction:column; align-items:center; justify-content:flex-start; padding-top:6px; }
+  .gatechip { position:absolute; top:-7px; left:50%; transform:translateX(-50%); z-index:2;
+              font-size:8px; padding:1px 6px; border-radius:8px; background:#292524; color:#a8a29e; border:1px solid #44403c; white-space:nowrap; }
+  .gatechip.open { background:#431407; color:#fdba74; border-color:#9a3412; }
+  .noderow { display:flex; gap:6px; justify-content:center; }
+  .excltag { font-size:8px; color:#fca5a5; margin-top:2px; letter-spacing:0; text-align:center; }
+
+  .node { display:flex; flex-direction:column; align-items:center; width:60px; cursor:pointer; transition:transform .12s; }
+  .node:active { transform:scale(.93); }
+  .node .circ { width:52px; height:52px; border-radius:50%; display:flex; align-items:center; justify-content:center; position:relative;
+                font-size:23px; border:3px solid #57534e; background:#1c1917; transition:all .25s; }
+  .node .nm { font-size:9px; color:#d6d3d1; margin-top:3px; text-align:center; line-height:1.15; height:21px; }
+  .node .pips { display:flex; gap:2px; margin-top:1px; height:5px; }
+  .node .pips i { width:5px; height:5px; border-radius:50%; background:#44403c; }
+  .node .pips i.on { background:#fbbf24; }
+  .node .why { font-size:8px; color:#f87171; margin-top:1px; height:9px; }
+  /* 状态 */
+  .node.avail .circ { border-color:#fbbf24; box-shadow:0 0 10px rgba(251,191,36,.45); animation:pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{box-shadow:0 0 6px rgba(251,191,36,.3);} 50%{box-shadow:0 0 14px rgba(251,191,36,.65);} }
+  .node.maxed .circ { border-color:#f59e0b; background:linear-gradient(145deg,#78350f,#451a03); }
+  .node.maxed .pips i.on { background:#fbbf24; box-shadow:0 0 4px #fbbf24; }
+  .node.locked .circ { border-style:dashed; opacity:.6; filter:grayscale(.7); }
+  .node.locked .nm { color:#78716c; }
+  .node .lockico { position:absolute; right:-3px; bottom:-3px; width:16px; height:16px; border-radius:50%; background:#292524;
+                   border:1px solid #57534e; font-size:9px; display:flex; align-items:center; justify-content:center; }
+  /* 基石 */
+  .node.keystone .circ { width:56px; height:56px; border-color:#a855f7; }
+  .node.keystone.avail .circ { border-color:#c084fc; box-shadow:0 0 12px rgba(192,132,252,.5); animation:pulse2 1.6s infinite; }
+  @keyframes pulse2 { 0%,100%{box-shadow:0 0 7px rgba(192,132,252,.3);} 50%{box-shadow:0 0 16px rgba(192,132,252,.7);} }
+  .node.keystone.maxed .circ { border-color:#c084fc; background:linear-gradient(145deg,#581c87,#3b0764); }
+  .node .kbadge { position:absolute; top:-7px; left:50%; transform:translateX(-50%); font-size:9px; color:#c084fc; line-height:1; }
+  /* 预留 */
+  .node.reserved { cursor:default; }
+  .node.reserved .circ { border-style:dashed; border-color:#44403c; background:#0c0a09; font-size:12px; color:#57534e; }
+  .node.reserved .nm { color:#57534c; }
+
+  /* 连线 */
+  #pipes path { fill:none; stroke:#44403c; stroke-width:5; stroke-linecap:round; transition:stroke .5s; }
+  #pipes path.lit  { stroke:url(#firegrad); filter:drop-shadow(0 0 4px rgba(249,115,22,.6)); }
+  #pipes path.litL { stroke:#38bdf8; filter:drop-shadow(0 0 4px rgba(56,189,248,.5)); }
+  #pipes path.litS { stroke:#84cc16; filter:drop-shadow(0 0 4px rgba(132,204,22,.5)); }
+  #pipes circle { fill:#44403c; transition:fill .5s; }
+  #pipes circle.lit { fill:#fb923c; }
+
+  /* 升级爆发粒子 */
+  .burst { position:absolute; pointer-events:none; z-index:50; }
+  .burst span { position:absolute; width:6px; height:6px; border-radius:50%; background:#fbbf24;
+                animation:bp .6s ease-out forwards; }
+  @keyframes bp { to { transform:translate(var(--dx),var(--dy)) scale(.2); opacity:0; } }
+
+  /* ═══ 底栏 ═══ */
+  #bottombar { flex:0 0 auto; padding:8px 14px calc(10px + env(safe-area-inset-bottom)); border-top:1px solid #292524;
+               background:rgba(12,10,9,.92); display:flex; align-items:center; gap:10px; z-index:5; }
+  #bottombar .pts { flex:1; font-size:13px; color:#fbbf24; font-weight:700; }
+  #bottombar .hint { flex:2; font-size:10px; color:#78716c; text-align:center; }
+  #resetBtn { font-size:11px; padding:5px 10px; border-radius:8px; border:1px solid #57534e; background:#1c1917; color:#a8a29e; }
+
+  /* Toast */
+  #toast { position:absolute; left:50%; bottom:86px; transform:translateX(-50%) translateY(8px); max-width:86%;
+           background:rgba(28,25,23,.96); border:1px solid #57534e; color:#e7e5e4; font-size:12px; line-height:1.5;
+           padding:8px 14px; border-radius:10px; opacity:0; transition:all .25s; pointer-events:none; z-index:60; text-align:center; }
+  #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  #toast .tt { color:#fdba74; font-weight:700; }
+
+  .legend { display:flex; justify-content:center; gap:10px; padding:8px 0 2px; font-size:9px; color:#78716c; }
+</style>
+</head>
+<body>
+<div id="phone">
+  <!-- 顶栏 -->
+  <div id="topbar">
+    <div class="row">
+      <span class="back">‹ 返回</span>
+      <span class="pts">⚡ <b id="ptsTop">12</b> 天赋点</span>
+    </div>
+    <h1>改 装 工 坊</h1>
+    <div class="sub">喷火枪双路线改装 · 预览 Demo</div>
+  </div>
+
+  <!-- 火枪外观预览 -->
+  <div id="weapon">
+    <div id="gunStage" class="b0 l0">
+      <div id="gunBody"></div>
+      <div class="nozzle n1"></div><div class="nozzle n2"></div><div class="nozzle n3"></div>
+      <div class="flame f1"><i class="o"></i><i class="m"></i><i class="c"></i></div>
+      <div class="flame f2"><i class="o"></i><i class="m"></i><i class="c"></i></div>
+      <div class="flame f3"><i class="o"></i><i class="m"></i><i class="c"></i></div>
+      <div class="swirl"></div>
+    </div>
+    <div id="winfo">
+      <div id="wname">Mk.I · 基础喷枪</div>
+      <div id="wstage"><b class="on"></b><b></b><b></b><b></b><b></b></div>
+      <div id="wtip">枪身随「猛火系」进化 · 枪管随「长枪系」进化</div>
+    </div>
+  </div>
+
+  <!-- 天赋树 -->
+  <div id="treeWrap">
+    <div id="tree">
+      <svg id="pipes">
+        <defs>
+          <linearGradient id="firegrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#fbbf24"/><stop offset="1" stop-color="#f97316"/>
+          </linearGradient>
+        </defs>
+      </svg>
+    </div>
+    <div class="legend">
+      <span>🟡 可升级(点它!)</span><span>🔒 未解锁</span><span>★ 基石天赋</span><span>🔀 跨系互斥</span>
+    </div>
+  </div>
+
+  <!-- 底栏 -->
+  <div id="bottombar">
+    <span class="pts">⚡ <b id="ptsBot">12</b></span>
+    <span class="hint">点击发光节点直接升级 · 点灰色节点看解锁条件</span>
+    <button id="resetBtn">重置演示</button>
+  </div>
+
+  <div id="toast"></div>
+</div>
+
+<script>
+/* ════════ 数据模型（双主路径方案） ════════ */
+const GATES = [0, 2, 5, 8, 12];           // T1~T5 所需本系累计点数
+const BRANCHES = [
+  { id:'inferno', name:'猛火系', sub:'伤害 · 近程爆发', cls:'inferno', exclTier:{5:'与「聚能长枪」互斥'}, tiers:[
+    [ {id:'pressure', n:'增压阀',   i:'🔥', max:3, d:'火焰伤害 +4%/级'} ],
+    [ {id:'hotfuel',  n:'高温燃料', i:'🧪', max:2, d:'伤害 +5%/级'},
+      {id:'alloy',    n:'耐热合金', i:'🛡️', max:2, d:'过热阈值 +10%/级'} ],
+    [ {id:'bluecore', n:'蓝焰核心', i:'🔵', max:1, cost:2, key:true, req:[['pressure',3]], d:'伤害+10%，枪身变蓝焰'} ],
+    [ {id:'burst',    n:'爆燃增压', i:'💥', max:3, d:'伤害 +4%/级'},
+      {id:'trimastery',n:'三联专精',i:'🔱', max:2, d:'散弹(三联火枪)持续 +15%/级'} ],
+    [ {id:'overdrive',n:'过载核心', i:'🌋', max:1, cost:2, key:true, excl:'gunT5', d:'终端改装：伤害+25% 过热+15%，火焰深红'} ],
+  ]},
+  { id:'lance', name:'长枪系', sub:'射程 · 远程精准', cls:'lance', exclTier:{5:'与「过载核心」互斥'}, tiers:[
+    [ {id:'nozzle',   n:'扩口喷嘴', i:'🎯', max:3, d:'射程 +6%/级'} ],
+    [ {id:'fins',     n:'散热鳍片', i:'💨', max:2, d:'冷却速度 +10%/级'},
+      {id:'tank',     n:'扩容气罐', i:'🛢️', max:2, d:'燃气上限 +8%/级'} ],
+    [ {id:'steel',    n:'寒钢枪管', i:'🔩', max:1, cost:2, key:true, req:[['nozzle',3]], d:'射程+10%，枪管变长变银'} ],
+    [ {id:'focus',    n:'风压聚焦', i:'🌪️', max:3, d:'射程 +5%/级'} ],
+    [ {id:'lance',    n:'聚能长枪', i:'⚡', max:1, cost:2, key:true, excl:'gunT5', d:'终端改装：射程+35% 伤害+20%，束变白'} ],
+  ]},
+  { id:'support', name:'装备系', sub:'生存 · 经济 · 道具专精', cls:'support', tiers:[
+    [ {id:'bounty',   n:'赏金猎人', i:'💰', max:3, d:'击杀金币 +8%/级（锚定未来樟叔发票）'} ],
+    [ {id:'saver',    n:'节约大师', i:'📦', max:2, d:'计数型弹药+1枚、时长型+12%/级'},
+      {id:'shieldm',  n:'护盾专精', i:'🛡️', max:2, d:'临时护盾无敌 +1s/级'} ],
+    [ {id:'wall',     n:'防线协议', i:'🧱', max:1, cost:2, key:true, reqAny:[['saver',2],['shieldm',2]], d:'防线HP+25%，加装甲板'},
+      {id:'mech',     n:'机械精通', i:'⚙️', max:2, d:'风扇减速+5% 持续+10%/级'} ],
+    [ {id:'molfuel',  n:'烈焰燃料', i:'🧪', max:2, d:'燃烧瓶：火墙持续+15% 伤害+15%/级'},
+      {id:'poisonup', n:'毒剂强化', i:'🧫', max:2, d:'毒气：中毒+1s 毒伤+20% 减速+6%/级'} ],
+    [ {id:'swatterm', n:'电工精通', i:'⚡', max:1, cost:2, key:true, d:'电蚊拍：冷却−15s 麻痹+2s'},
+      {id:'radarup',  n:'雷达增程', i:'📡', max:1, cost:2, key:true, d:'雷达：弹匣+6发 射速+15%'} ],
+    [ {id:'fut1',     n:'发票专精', i:'?', max:0, reserved:true, d:'预留：樟叔发票（赏金联动）'},
+      {id:'fut2',     n:'未来装备', i:'?', max:0, reserved:true, d:'预留：诱饵/斩螂/贴板专精'} ],
+  ]},
+];
+
+/* ════════ 状态 ════════ */
+const INIT = { points: 16 };
+let points, lv;   // lv: {nodeId: level}
+const NODES = {}; // id -> def + branchId + tier
+BRANCHES.forEach(b => b.tiers.forEach((row, ti) => row.forEach(n => NODES[n.id] = {...n, branch:b.id, tier:ti+1})));
+const BNAME = { inferno:'猛火', lance:'长枪', support:'后勤' };
+
+function branchPts(bid){ let s=0; for(const id in lv){ if(NODES[id].branch===bid) s += lv[id]*(NODES[id].cost||1); } return s; }
+function branchPtsMax(bid){ let s=0; BRANCHES.find(b=>b.id===bid).tiers.flat().forEach(n=>{ if(!n.reserved) s+=n.max*(n.cost||1); }); return s; }
+
+function lockReason(n){
+  const def = NODES[n.id];
+  if(def.reserved) return 'future';
+  // 互斥（跨系生效：三联喷嘴 ↔ 聚能长枪）
+  if(def.excl){ const sib = Object.keys(NODES).find(k=>NODES[k].excl===def.excl && k!==n.id); if(lv[sib]>0) return 'excl:'+NODES[sib].n; }
+  const bp = branchPts(def.branch);
+  const gate = GATES[def.tier-1];
+  if(bp < gate) return 'gate:'+gate+':'+bp;
+  if(def.req)    for(const [rid,rl] of def.req)    if((lv[rid]||0)<rl) return 'req:'+NODES[rid].n+'满级';
+  if(def.reqAny) if(!def.reqAny.some(([rid,rl])=>(lv[rid]||0)>=rl)) return 'reqAny';
+  if(lv[n.id]>=def.max) return 'max';
+  if(points < (def.cost||1)) return 'pts';
+  return null;
+}
+
+/* ════════ 渲染 ════════ */
+const treeEl = document.getElementById('tree');
+const svg    = document.getElementById('pipes');
+
+function buildDOM(){
+  treeEl.querySelectorAll('.branch').forEach(e=>e.remove());
+  BRANCHES.forEach(b=>{
+    const col = document.createElement('div');
+    col.className = 'branch '+b.cls; col.dataset.bid = b.id;
+    col.innerHTML = `<div class="bhead"><div class="t">${b.name}</div><div class="s">${b.sub}</div>
+      <div class="ptsbar"><i style="width:0%"></i></div><div class="n">0 点</div></div>`;
+    b.tiers.forEach((row,ti)=>{
+      const t = document.createElement('div'); t.className='tier';
+      if(ti>0 && ti<5){
+        const g = document.createElement('div');
+        g.className='gatechip'; g.dataset.branch=b.id; g.dataset.tier=ti+1;
+        col.appendChild(t).appendChild(g);
+      }
+      const nr = document.createElement('div'); nr.className='noderow';
+      row.forEach(n=>{
+        const nd = document.createElement('div');
+        nd.className = 'node' + (n.key?' keystone':'') + (n.reserved?' reserved':'');
+        nd.dataset.nid = n.id;
+        nd.innerHTML = `
+          <div class="circ">${n.reserved?'?':n.i}${n.key?'<span class="kbadge">★</span>':''}<span class="lockico" style="display:none">🔒</span></div>
+          <div class="nm">${n.n}</div>
+          <div class="pips">${Array.from({length:n.max},()=>'<i></i>').join('')}</div>
+          <div class="why"></div>`;
+        nd.addEventListener('click', ()=>onTap(n.id, nd));
+        nr.appendChild(nd);
+      });
+      t.appendChild(nr);
+      if(b.exclTier && b.exclTier[ti+1]){
+        const x=document.createElement('div'); x.className='excltag'; x.textContent='🔀 '+b.exclTier[ti+1]; t.appendChild(x);
+      }
+      col.appendChild(t);
+    });
+    treeEl.appendChild(col);
+  });
+}
+
+function refresh(){
+  document.getElementById('ptsTop').textContent = points;
+  document.getElementById('ptsBot').textContent = points;
+  // 分支头
+  document.querySelectorAll('.branch').forEach(col=>{
+    const bid = col.dataset.bid, bp = branchPts(bid), mx = branchPtsMax(bid);
+    col.querySelector('.ptsbar i').style.width = Math.min(100, bp/mx*100)+'%';
+    col.querySelector('.n').textContent = bp+' 点';
+  });
+  // 门槛 chip
+  document.querySelectorAll('.gatechip').forEach(g=>{
+    const bp = branchPts(g.dataset.branch), need = GATES[g.dataset.tier-1];
+    g.textContent = bp>=need ? `T${g.dataset.tier} 已解锁` : `需本系 ${need} 点`;
+    g.classList.toggle('open', bp>=need);
+  });
+  // 节点状态
+  document.querySelectorAll('.node').forEach(nd=>{
+    const id = nd.dataset.nid, def = NODES[id], l = lv[id]||0;
+    const r = lockReason({id});
+    nd.classList.toggle('locked', !!r && r!=='max' && r!=='pts');
+    nd.classList.toggle('avail', !r);
+    nd.classList.toggle('maxed', l>=def.max && def.max>0);
+    nd.querySelector('.lockico').style.display = (r && r!=='max') ? 'flex':'none';
+    nd.querySelectorAll('.pips i').forEach((p,i)=>p.classList.toggle('on', i<l));
+    const why = nd.querySelector('.why');
+    if(r==='pts') why.textContent='点数不足';
+    else if(r && r.startsWith('gate:')) why.textContent='需'+r.split(':')[1]+'点';
+    else why.textContent='';
+  });
+  drawPipes();
+  refreshWeapon();
+}
+
+/* 连线：同系相邻层中心相连，下层已解锁则"点燃" */
+function drawPipes(){
+  const wrap = document.getElementById('tree');
+  svg.querySelectorAll('path,circle').forEach(e=>e.remove());
+  const wrect = wrap.getBoundingClientRect();
+  document.querySelectorAll('.branch').forEach(col=>{
+    const bid = col.dataset.bid, bp = branchPts(bid);
+    const cls = bid==='inferno'?'lit':(bid==='lance'?'litL':'litS');
+    const tiers = [...col.querySelectorAll('.tier')];
+    for(let i=0;i<tiers.length-1;i++){
+      const c1 = rowCenter(tiers[i], wrect), c2 = rowCenter(tiers[i+1], wrect);
+      if(!c1||!c2) continue;
+      const p = document.createElementNS('http://www.w3.org/2000/svg','path');
+      p.setAttribute('d', `M ${c1.x} ${c1.y} C ${c1.x} ${(c1.y+c2.y)/2}, ${c2.x} ${(c1.y+c2.y)/2}, ${c2.x} ${c2.y}`);
+      const lit = i+1<5 && bp >= GATES[i+1];   // 通往 T(i+2) 的线
+      if(lit) p.setAttribute('class', cls);
+      svg.appendChild(p);
+      [c1,c2].forEach(c=>{
+        const dot = document.createElementNS('http://www.w3.org/2000/svg','circle');
+        dot.setAttribute('cx',c.x); dot.setAttribute('cy',c.y); dot.setAttribute('r',4);
+        if(lit) dot.setAttribute('class','lit');
+        svg.appendChild(dot);
+      });
+    }
+  });
+}
+function rowCenter(tierEl, wrect){
+  const cs = [...tierEl.querySelectorAll('.circ')];
+  if(!cs.length) return null;
+  let x=0,y=0;
+  cs.forEach(c=>{ const r=c.getBoundingClientRect(); x+=r.left+r.width/2-wrect.left; y+=r.top+r.height/2-wrect.top; });
+  return { x:x/cs.length, y:y/cs.length };
+}
+
+/* 火枪外观：枪身（猛火）× 枪管（长枪）双轨进化 */
+function refreshWeapon(){
+  const bpI = branchPts('inferno'), bpL = branchPts('lance');
+  let b = 0; if(bpI>=3) b=1; if(bpI>=6 && lv.bluecore) b=2; if(bpI>=10) b=3;
+  let l = 0; if(bpL>=3) l=1; if(bpL>=6 && lv.steel) l=2; if(bpL>=10) l=3;
+  const g = document.getElementById('gunStage');
+  g.className = 'b'+b+' l'+l + (lv.overdrive?' ovr':'') + (lv.lance?' lance':'');
+  let nm = 'Mk.I · 基础喷枪';
+  if(lv.overdrive)   nm = '过载核心 · 猛火形态';
+  else if(lv.lance)  nm = '聚能长枪 · 狙击形态';
+  else if(b>=2 && l>=2) nm = 'Mk.IV · 双轨改装';
+  else if(b>=2)     nm = 'Mk.III · 蓝焰核心';
+  else if(l>=2)     nm = 'Mk.III · 寒钢枪管';
+  else if(b===1 || l===1) nm = 'Mk.II · 改装中';
+  document.getElementById('wname').textContent = nm;
+  const total = bpI + bpL;
+  const pips = [ total>=1, total>=6, !!(lv.bluecore||lv.steel), total>=16, !!(lv.overdrive||lv.lance) ];
+  document.querySelectorAll('#wstage b').forEach((el,i)=>el.classList.toggle('on', pips[i]));
+}
+
+/* ════════ 交互 ════════ */
+let toastTimer;
+function toast(html){
+  const t = document.getElementById('toast');
+  t.innerHTML = html; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(()=>t.classList.remove('show'), 2200);
+}
+function onTap(id, el){
+  const def = NODES[id];
+  if(def.reserved){ toast('<span class="tt">预留插槽</span><br>未来武器属性升级系统接入位置'); return; }
+  const r = lockReason({id});
+  if(!r){
+    lv[id]++; points -= (def.cost||1);
+    burst(el);
+    toast(`<span class="tt">${def.i} ${def.n} Lv.${lv[id]}</span><br>${def.d}`);
+    refresh();
+  } else if(r==='max'){
+    toast(`<span class="tt">${def.i} ${def.n}</span> 已满级<br>${def.d}`);
+  } else if(r.startsWith('excl:')){
+    toast(`已选择「${r.slice(5)}」<br>枪管改装二选一 · 正式版可花 500 金币重选`);
+  } else if(r.startsWith('gate:')){
+    const [,need,bp] = r.split(':');
+    toast(`<span class="tt">🔒 ${def.n}</span><br>需要 ${BNAME[def.branch]}系累计 ${need} 点（当前 ${bp}）`);
+  } else if(r.startsWith('req:')){
+    toast(`<span class="tt">🔒 ${def.n}</span><br>需先点满「${r.slice(4)}」`);
+  } else if(r==='reqAny'){
+    toast(`<span class="tt">🔒 ${def.n}</span><br>需先点满 T2 任一节点`);
+  } else if(r==='pts'){
+    toast('天赋点不足');
+  }
+}
+function burst(el){
+  const phone = document.getElementById('phone');
+  const r = el.querySelector('.circ').getBoundingClientRect(), pr = phone.getBoundingClientRect();
+  const b = document.createElement('div'); b.className='burst';
+  b.style.left = (r.left-pr.left+r.width/2)+'px'; b.style.top = (r.top-pr.top+r.height/2)+'px';
+  for(let i=0;i<10;i++){
+    const s = document.createElement('span');
+    const a = Math.random()*Math.PI*2, d = 24+Math.random()*26;
+    s.style.setProperty('--dx', Math.cos(a)*d+'px');
+    s.style.setProperty('--dy', Math.sin(a)*d+'px');
+    if(Math.random()<.4) s.style.background='#f97316';
+    b.appendChild(s);
+  }
+  phone.appendChild(b); setTimeout(()=>b.remove(), 650);
+}
+document.getElementById('resetBtn').onclick = ()=>{ init(); toast('演示已重置 · 12 点天赋点'); };
+
+function init(){
+  points = INIT.points; lv = {};
+  for(const id in NODES) lv[id]=0;
+  refresh();
+}
+buildDOM();
+init();
+window.addEventListener('resize', drawPipes);
+document.getElementById('treeWrap').addEventListener('scroll', ()=>requestAnimationFrame(drawPipes));
+</script>
+</body>
+</html>

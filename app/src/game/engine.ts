@@ -109,7 +109,7 @@
 import { GameState, RoachType, RoachState, SceneType, WeatherType, ParticleType, FlameMode, GameMode, type Roach, type Player, type Particle, type FireZone, type FireWall, type Economy, type GameProgress, type WaveConfig, type InventoryItem, type BossBattleState } from './types';
 import * as Vibration from './vibration';
 import { AudioManager } from './audio';
-import { SCENE_CONFIGS, ENEMY_DEFS, TALENT_DEFS, WEAPON_DROP_DEFS, INVENTORY_SELL_PRICES, BOSS_CONFIG, SCENE_WAVE_CONFIGS, SCENE_UNLOCK_CHAIN, SCENE_REWARD_ITEMS, SCENE_GROUND_BOUNDS, CONSUMABLE_DEFS, BALANCE_CONFIG, TEXT_CONFIG } from './data';
+import { SCENE_CONFIGS, ENEMY_DEFS, TALENT_DEFS, canUpgradeTalent, WEAPON_DROP_DEFS, INVENTORY_SELL_PRICES, BOSS_CONFIG, SCENE_WAVE_CONFIGS, SCENE_REWARD_ITEMS, SCENE_UNLOCK_CHAIN, SCENE_GROUND_BOUNDS, CONSUMABLE_DEFS, BALANCE_CONFIG, TEXT_CONFIG } from './data';
 import { SaveSystem } from './engine/save/SaveSystem';
 import { EconomyManager } from './engine/economy/EconomyManager';
 import { AchievementSystem } from './engine/achievement/AchievementSystem';
@@ -276,6 +276,10 @@ export class GameEngine {
   starDefenseHp: number = 80;
   /** 本次通关的星级评价（0-3，胜利结算时计算） */
   lastStarRating: number = 0;
+  /** 本次通关首次三星奖励的天赋点（unlockNextScene 发放，gameVictory 汇总显示后清零） */
+  lastVictoryStarBonus: number = 0;
+  /** 天赋系统解锁时从待解锁池一次性发放的天赋点（0 = 未发生，供胜利界面弹窗展示） */
+  lastTalentUnlockGrant: number = 0;
 
   difficulty: 'easy' | 'hard' = 'easy';
   gameMode: GameMode = GameMode.STORY;
@@ -722,6 +726,7 @@ export class GameEngine {
     this.tripleFlameSystem = new TripleFlameSystem({
       canvasWidth: this.width,
       canvasHeight: this.height,
+      talentMultipliers: this.talentMultipliers,
       onAddFloatingText: (x, y, text, color) => { this.addFloatingText(x, y, text, color); },
       onPlayShotgunActivate: () => { this.audio.playShotgunActivate(); },
       onVibrateItemUse: () => { Vibration.vibrateItemUse(); },
@@ -729,6 +734,7 @@ export class GameEngine {
     this.radarLaserSystem = new RadarLaserSystem({
       canvasWidth: this.width,
       canvasHeight: this.height,
+      talentMultipliers: this.talentMultipliers,
       onAddFloatingText: (x, y, text, color) => { this.addFloatingText(x, y, text, color); },
       onPlayRadarActivate: () => { this.audio.playRadarActivate(); },
       onPlayRadarShot: () => { this.audio.playRadarShot(); },
@@ -740,7 +746,7 @@ export class GameEngine {
     this.swatterSystem = new SwatterSystem({
       canvasWidth: this.width,
       canvasHeight: this.height,
-      talentCdReduction: this.talentMultipliers.swatterCdReduction || 0,
+      talentMultipliers: this.talentMultipliers,
       onAddFloatingText: (x, y, text, color, duration?) => { this.addFloatingText(x, y, text, color, duration); },
       onPlaySwatter: () => { this.audio.playSwatter(); },
       onSpawnSparkParticles: (x, y, count) => { ParticleSpawner.spawnSparkParticles(this.particles,x, y, count); },
@@ -760,6 +766,7 @@ export class GameEngine {
       getDefenseLineY: () => this.defenseLineY(),
     });
     this.insecticideSystem = new InsecticideSystem({
+      talentMultipliers: this.talentMultipliers,
       onAddFloatingText: (x, y, text, color) => { this.addFloatingText(x, y, text, color); },
       onPlaySound: (soundName) => {
         if (soundName === 'insecticide_spray') { this.audio.playInsecticideSpray(); }
@@ -768,6 +775,7 @@ export class GameEngine {
       onScreenShake: (amount) => { this.screenShake = amount; },
     });
     this.throwableSystem = new ThrowableSystem({
+      talentMultipliers: this.talentMultipliers,
       onAddFloatingText: (x, y, text, color) => { this.addFloatingText(x, y, text, color); },
       onAddFireZone: (fireZone) => { this.fireZones.push(fireZone); },
       onSpawnSparkParticles: (x, y, count) => { ParticleSpawner.spawnSparkParticles(this.particles,x, y, count); },
@@ -810,6 +818,7 @@ export class GameEngine {
     });
     this.consumableSystem = new ConsumableSystem({
       consumableDefs: CONSUMABLE_DEFS,
+      talentMultipliers: this.talentMultipliers,
       onAddFloatingText: (x, y, text, color, duration?, fontSize?) => { this.addFloatingText(x, y, text, color, duration, fontSize); },
       onSpawnSmokeParticles: (x, y, count) => { ParticleSpawner.spawnSmokeParticles(this.particles,x, y, count); },
       onAddParticle: (p) => { this.particles.push(p); },
@@ -1273,8 +1282,15 @@ export class GameEngine {
   /** 重新计算天赋倍数（委托给 EconomyManager 模块） */
   recalcTalentMultipliers() {
     this.talentMultipliers = EconomyManager.calculateTalentMultipliers(this.progress);
-    // 同步天赋倍数到 WeaponSystem
+    // 同步天赋倍数到所有消费系统
     this.weaponSystem?.updateConfig({ talentMultipliers: this.talentMultipliers });
+    this.fanSystem?.updateConfig({ talentMultipliers: this.talentMultipliers });
+    this.tripleFlameSystem?.updateConfig({ talentMultipliers: this.talentMultipliers });
+    this.radarLaserSystem?.updateConfig({ talentMultipliers: this.talentMultipliers });
+    this.swatterSystem?.updateConfig({ talentMultipliers: this.talentMultipliers });
+    this.insecticideSystem?.updateConfig({ talentMultipliers: this.talentMultipliers });
+    this.throwableSystem?.updateConfig({ talentMultipliers: this.talentMultipliers });
+    this.consumableSystem?.updateConfig({ talentMultipliers: this.talentMultipliers });
   }
 
   /** 检查成就（委托给 AchievementSystem 模块） */
@@ -1339,6 +1355,14 @@ export class GameEngine {
       talentMultipliers: this.talentMultipliers,
       sceneEnemyModifier: this.getSceneConfig().enemyModifier || 1,
     });
+    // 同步天赋倍数到所有消费系统（start 时 talentMultipliers 已重算）
+    this.fanSystem?.updateConfig({ talentMultipliers: this.talentMultipliers });
+    this.tripleFlameSystem?.updateConfig({ talentMultipliers: this.talentMultipliers });
+    this.radarLaserSystem?.updateConfig({ talentMultipliers: this.talentMultipliers });
+    this.swatterSystem?.updateConfig({ talentMultipliers: this.talentMultipliers });
+    this.insecticideSystem?.updateConfig({ talentMultipliers: this.talentMultipliers });
+    this.throwableSystem?.updateConfig({ talentMultipliers: this.talentMultipliers });
+    this.consumableSystem?.updateConfig({ talentMultipliers: this.talentMultipliers });
     // Start the first wave (BOSS mode has its own initBossBattle logic)
     if (this.gameMode !== GameMode.BOSS) {
       this.startWave();
@@ -1495,6 +1519,8 @@ export class GameEngine {
     this.maxDefenseHp = this.defenseHp;
     this.starDefenseHp = this.defenseHp;
     this.lastStarRating = 0;
+    this.lastVictoryStarBonus = 0;
+    this.lastTalentUnlockGrant = 0;
     this.time = 0;
     this.screenShake = 0;
     this.lightningTimer = 0;
@@ -1928,13 +1954,22 @@ export class GameEngine {
       return;
     }
 
-    // Story mode: award talent points based on scene difficulty
-    const sceneConfig = SCENE_CONFIGS[this.currentScene];
-    const talentReward = Math.floor((BALANCE_CONFIG.economy.talentPointReward.coefficient) * (sceneConfig?.rewardMultiplier || 1));
-    this.addTalentPoints(talentReward);
-    this.saveProgress();
-    // 显示天赋点奖励浮动文字
-    this.addFloatingText(this.width / 2, this.height * 0.35, TEXT_CONFIG.combat.talentReward.text(talentReward), TEXT_CONFIG.combat.talentReward.color);
+    // Story mode: 按 v4 固定表发放天赋点（普通=perScene，困难=hardMode 按场景链下标 clamp）
+    const rewardCfg = BALANCE_CONFIG.economy.talentPointReward;
+    let talentReward: number;
+    if (this.difficulty === 'hard') {
+      const idx = SCENE_UNLOCK_CHAIN.indexOf(this.currentScene);
+      talentReward = rewardCfg.hardMode[Math.max(0, Math.min(idx, rewardCfg.hardMode.length - 1))] ?? 0;
+    } else {
+      talentReward = rewardCfg.perScene[this.currentScene] ?? 0;
+    }
+    if (talentReward > 0) this.addTalentPoints(talentReward);
+    // 首次三星奖励/解锁礼已在 unlockNextScene 发放到点数池，此处仅汇总显示
+    const totalTalentGain = talentReward + this.lastVictoryStarBonus + this.lastTalentUnlockGrant;
+    if (totalTalentGain > 0) {
+      this.addFloatingText(this.width / 2, this.height * 0.35, TEXT_CONFIG.combat.talentReward.text(totalTalentGain), TEXT_CONFIG.combat.talentReward.color);
+    }
+    this.lastVictoryStarBonus = 0;
 
     // ===== 医院专属：三星评级系统 =====
     if (this.currentScene === SceneType.HOSPITAL) {
@@ -2371,7 +2406,7 @@ export class GameEngine {
     const flameDps = (this.difficulty === 'hard' ? BALANCE_CONFIG.weaponDamage.flamethrower.hard : BALANCE_CONFIG.weaponDamage.flamethrower.easy);
     const baseDamage = flameDps * (1 - BALANCE_CONFIG.weaponDamage.flamethrowerBeamShare) * p.damageMultiplier * powerBoostMult;
     const range = p.fireRange * 0.5;
-    ParticleSpawner.spawnConeFire({ particles: this.particles, fireZones: this.fireZones, deltaTime: this.deltaTime, x: p.x, y: p.y, angle: -Math.PI / 2, range, baseDamage, type: 'fire' });
+    ParticleSpawner.spawnConeFire({ particles: this.particles, fireZones: this.fireZones, deltaTime: this.deltaTime, x: p.x, y: p.y, angle: -Math.PI / 2, range, baseDamage, type: 'fire', flameVariant: this.getFlameVariant() });
     // Black smoke at flame tip during power boost (use dynamic particle limit)
     if (p.powerBoostTimer > 0 && this.particles.length < this._particleLimit - 10 && Math.random() < 0.4) {
       const tipY = p.y - 322 - range;
@@ -2427,7 +2462,7 @@ export class GameEngine {
     // Wide spread shotgun blast
     for (let i = 0; i < p.shotgunPellets; i++) {
       const spreadAngle = -Math.PI / 2 + (i - p.shotgunPellets / 2) * (Math.PI / 8);
-      ParticleSpawner.spawnConeFire({ particles: this.particles, fireZones: this.fireZones, deltaTime: this.deltaTime, x: p.x, y: p.y, angle: spreadAngle, range, baseDamage: baseDamage / p.shotgunPellets, type: 'fire' });
+      ParticleSpawner.spawnConeFire({ particles: this.particles, fireZones: this.fireZones, deltaTime: this.deltaTime, x: p.x, y: p.y, angle: spreadAngle, range, baseDamage: baseDamage / p.shotgunPellets, type: 'fire', flameVariant: this.getFlameVariant() });
     }
     p.gas -= gasCost * p.gasCostMultiplier;
     if (p.gas < 0) p.gas = 0;
@@ -3987,8 +4022,30 @@ export class GameEngine {
     this.lastStarRating = stars;
     if (!this.progress.levelStars) this.progress.levelStars = {};
     // 不管过关几次，只记录该关卡曾经得到的最多星级
-    if ((this.progress.levelStars[this.currentScene] ?? 0) < stars) {
+    const prevStars = this.progress.levelStars[this.currentScene] ?? 0;
+    if (prevStars < stars) {
       this.progress.levelStars[this.currentScene] = stars;
+    }
+
+    // ===== 天赋点经济（v4）：首次三星 +threeStarBonus；待解锁池在地下室通关时一次性发放 =====
+    const rewardCfg = BALANCE_CONFIG.economy.talentPointReward;
+    this.lastVictoryStarBonus = 0;
+    if (stars === 3 && prevStars < 3) {
+      this.lastVictoryStarBonus = rewardCfg.threeStarBonus;
+      if (this.progress.scenesCompleted.includes(SceneType.BASEMENT)) {
+        this.progress.talentTree.points += rewardCfg.threeStarBonus;
+      } else {
+        // 天赋系统未解锁：三星点存入待解锁池
+        this.progress.pendingTalentPoints = (this.progress.pendingTalentPoints ?? 0) + rewardCfg.threeStarBonus;
+      }
+    }
+    // 天赋系统解锁（地下室通关）：待解锁池一次性发放，胜利界面弹窗展示
+    this.lastTalentUnlockGrant = 0;
+    if (this.currentScene === SceneType.BASEMENT && (this.progress.pendingTalentPoints ?? 0) > 0) {
+      const grant = this.progress.pendingTalentPoints ?? 0;
+      this.progress.talentTree.points += grant;
+      this.progress.pendingTalentPoints = 0;
+      this.lastTalentUnlockGrant = grant;
     }
     this.saveProgress();
 
@@ -4294,32 +4351,12 @@ export class GameEngine {
   spendTalentPoint(talentId: string): boolean {
     const def = TALENT_DEFS.find(t => t.id === talentId);
     if (!def) return false;
-    const currentLevel = this.progress.talentTree.talents[talentId] || 0;
-    if (currentLevel >= def.maxLevel) return false;
+    // 门禁校验：满级/层门槛/前置满级/互斥组/预留槽
+    if (!canUpgradeTalent(def, this.progress.talentTree.talents).ok) return false;
     if (this.progress.talentTree.points < def.cost) return false;
 
     this.progress.talentTree.points -= def.cost;
-    this.progress.talentTree.talents[talentId] = currentLevel + 1;
-
-    // Check weapon unlocks
-    if (talentId === 'sticky_weapon') {
-      if (!this.progress.weaponsUnlocked) this.progress.weaponsUnlocked = [];
-      if (!this.progress.weaponsUnlocked.includes('sticky')) this.progress.weaponsUnlocked.push('sticky');
-    }
-    if (talentId === 'poison_weapon') {
-      if (!this.progress.weaponsUnlocked) this.progress.weaponsUnlocked = [];
-      if (!this.progress.weaponsUnlocked.includes('poison')) this.progress.weaponsUnlocked.push('poison');
-    }
-    if (talentId === 'shotgun_weapon') {
-      if (!this.progress.weaponsUnlocked) this.progress.weaponsUnlocked = [];
-      if (!this.progress.weaponsUnlocked.includes('shotgun')) this.progress.weaponsUnlocked.push('shotgun');
-    }
-    if (talentId === 'molotov_weapon') {
-      if (!this.progress.weaponsUnlocked?.includes('molotov')) {
-        if (!this.progress.weaponsUnlocked) this.progress.weaponsUnlocked = [];
-        this.progress.weaponsUnlocked.push('molotov');
-      }
-    }
+    this.progress.talentTree.talents[talentId] = (this.progress.talentTree.talents[talentId] || 0) + 1;
 
     this.recalcTalentMultipliers();
     this.saveProgress();
@@ -4329,6 +4366,19 @@ export class GameEngine {
   addTalentPoints(points: number) {
     this.progress.talentTree.points += points;
     this.saveProgress();
+  }
+
+  /** 天赋是否已激活（等级 > 0） */
+  private hasTalent(id: string): boolean {
+    return (this.progress.talentTree.talents[id] || 0) > 0;
+  }
+
+  /** 天赋外观进化：火焰束变体（T5 互斥优先，其次 T3 基石） */
+  private getFlameVariant(): 'normal' | 'blue' | 'overdrive' | 'lance' {
+    if (this.hasTalent('overdrive')) return 'overdrive';
+    if (this.hasTalent('lance')) return 'lance';
+    if (this.hasTalent('bluecore')) return 'blue';
+    return 'normal';
   }
 
   // =============================================================================
@@ -4499,26 +4549,7 @@ export class GameEngine {
       imagesLoaded: this.imagesLoaded,
       bgSceneImages: this.bgSceneImages,
       lightningFlash: this.lightningFlash,
-      bgImages: {
-        kitchen_hard: this.bgKitchenHardImg!,
-        kitchen_easy: this.bgKitchenEasyImg!,
-        kitchen: this.bgImg!,
-        sewer_hard: this.bgSewerHardImg!,
-        sewer_easy: this.bgSewerEasyImg!,
-        sewer: this.bgSewerImg!,
-        dump_hard: this.bgDumpHardImg!,
-        dump_easy: this.bgDumpEasyImg!,
-        dump: this.bgDumpImg!,
-        basement_hard: this.bgBasementHardImg!,
-        basement_easy: this.bgBasementEasyImg!,
-        basement: this.bgBasementImg!,
-        rooftop_hard: this.bgRooftopHardImg!,
-        rooftop_easy: this.bgRooftopEasyImg!,
-        rooftop: this.bgRooftopImg!,
-        street_hard: this.bgStreetHardImg!,
-        street_easy: this.bgStreetEasyImg!,
-        street: this.bgStreetImg!,
-      },
+      bgImages: this.getBgImages(),
     });
     /** 显示移动范围叠加层（玩家可走区域的半透明可视化） */
     if (this.showMovementRange) {
@@ -4529,6 +4560,7 @@ export class GameEngine {
       player: this.player,
       tripleFlameState: this.tripleFlameSystem!.getState(),
       time: this.time,
+      flameVariant: this.getFlameVariant(),
     });
     ParticleSystem.renderFireWalls(ctx, this.fireWalls, this.time);
     this.renderStickyBoards();
@@ -4972,7 +5004,7 @@ export class GameEngine {
 
   renderDefenseLine(ctx: CanvasRenderingContext2D, w: number) {
     const scene = this.getSceneConfig();
-    RenderUtils.renderDefenseLine(ctx, w, this.defenseLineY(), scene.defenseLineColor, this.time, this.player.shieldTimer);
+    RenderUtils.renderDefenseLine(ctx, w, this.defenseLineY(), scene.defenseLineColor, this.time, this.player.shieldTimer, this.hasTalent('wall'));
   }
 
   renderStickyBoards() {
@@ -4997,7 +5029,9 @@ export class GameEngine {
 
   // Render bait jar shatter mark and scent aura on the ground
   renderBaitMark(ctx: CanvasRenderingContext2D) {
-    ConsumableSystem.renderBaitMark(ctx, this.consumableSystem!.baitTarget, this.player.baitTimer, this.time);
+    // 诱饵专精：渐隐按有效总时长（基础 + baitDurationAdd）计算
+    const baitDuration = BALANCE_CONFIG.consumable.baitDuration + (this.talentMultipliers?.baitDurationAdd || 0);
+    ConsumableSystem.renderBaitMark(ctx, this.consumableSystem!.baitTarget, this.player.baitTimer, this.time, baitDuration);
   }
 
   /** 渲染粒子（委托给 ParticleSystem 静态方法） */
@@ -5096,6 +5130,9 @@ export class GameEngine {
         ctx.fillRect(-5 * s, -64 * s, 10 * s, 10 * s);
       }
 
+      // ===== 天赋外观进化：枪体改造覆盖层（寒钢枪管/过载核心/聚能长枪） =====
+      this.renderGunEvolution(ctx, s);
+
       // ===== HEAT WARNING: red pulsing glow 3 seconds before overheat =====
       // DEBUG: Always show warning for testing - drawn in screen coords after gun restore
       // (will be drawn in render() instead)
@@ -5139,6 +5176,75 @@ export class GameEngine {
     }
   }
 
+  /**
+   * 天赋外观进化：枪体改造覆盖层
+   * 在 renderPlayer 的枪体坐标系内调用（原点 = 玩家锚点，长度值 × s 换算像素）
+   * - steel（寒钢枪管）：银色加长枪管 + 散热环
+   * - overdrive（过载核心）：枪体深红脉动辉光
+   * - lance（聚能长枪）：枪口白热聚能环
+   */
+  private renderGunEvolution(ctx: CanvasRenderingContext2D, s: number) {
+    const hasSteel = this.hasTalent('steel');
+    const hasOverdrive = this.hasTalent('overdrive');
+    const hasLance = this.hasTalent('lance');
+    if (!hasSteel && !hasOverdrive && !hasLance) return;
+
+    const cfg = BALANCE_CONFIG.render.renderUtils.gunEvolution;
+    ctx.save();
+    ctx.globalCompositeOperation = cfg.blend;
+
+    // 过载核心：枪体辉光（画在枪管之下，先渲染）
+    if (hasOverdrive) {
+      const alpha = cfg.overdriveGlowAlphaBase + Math.sin(this.time * cfg.overdriveGlowFreq) * cfg.overdriveGlowAlphaAmp;
+      const gr = cfg.overdriveGlowRadius * s;
+      const gy = -cfg.overdriveGlowYOffset * s;
+      const grad = ctx.createRadialGradient(0, gy, 0, 0, gy, gr);
+      grad.addColorStop(0, `rgba(${cfg.overdriveGlowColor}, ${alpha})`);
+      grad.addColorStop(1, `rgba(${cfg.overdriveGlowColor}, 0)`);
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(0, gy, gr, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 寒钢枪管：银色管体 + 高光棱线 + 散热环
+    if (hasSteel) {
+      const halfW = cfg.steelBarrelWidth * s;
+      const len = cfg.steelBarrelLength * s;
+      const bottomY = -cfg.steelBarrelYOffset * s;
+      const topY = bottomY - len;
+      ctx.fillStyle = cfg.steelBarrelBodyColor;
+      ctx.fillRect(-halfW, topY, halfW * 2, len);
+      // 高光棱线（管体右缘）
+      ctx.fillStyle = cfg.steelBarrelEdgeColor;
+      ctx.fillRect(halfW * 0.4, topY, halfW * 0.35, len);
+      // 散热环
+      ctx.strokeStyle = cfg.steelBarrelRingColor;
+      ctx.lineWidth = cfg.steelBarrelRingWidth * s;
+      for (let i = 1; i <= cfg.steelBarrelRingCount; i++) {
+        const ry = topY + (len * i) / (cfg.steelBarrelRingCount + 1);
+        ctx.beginPath();
+        ctx.moveTo(-halfW, ry);
+        ctx.lineTo(halfW, ry);
+        ctx.stroke();
+      }
+    }
+
+    // 聚能长枪：枪口白热聚能环
+    if (hasLance) {
+      const alpha = cfg.lanceRingAlphaBase + Math.sin(this.time * cfg.lanceRingFreq) * cfg.lanceRingAlphaAmp;
+      const rr = cfg.lanceRingRadius * s;
+      const ry = -cfg.lanceRingYOffset * s;
+      ctx.strokeStyle = `rgba(${cfg.lanceRingColor}, ${alpha})`;
+      ctx.lineWidth = cfg.lanceRingLineWidth * s;
+      ctx.beginPath();
+      ctx.arc(0, ry, rr, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
   // ========== THROWABLE RENDERING ==========
   renderItemPlacement(ctx: CanvasRenderingContext2D) {
     RenderUtils.renderItemPlacement(ctx, this.itemPlaceState, this.selectedItemIndex, this.inventory, this.itemPlaceCursorX, this.itemPlaceCursorY, this.itemEffectRadiusX, this.itemEffectRadiusY, this.time);
@@ -5164,8 +5270,71 @@ export class GameEngine {
   }
 
   renderWeatherForeground(ctx: CanvasRenderingContext2D, w: number) {
-    WeatherSystem.renderWeatherForeground(ctx, w, this.weatherParticles, this.height, this.getFlickerOverlayAlpha());
+    WeatherSystem.renderWeatherForeground(ctx, w, this.weatherParticles, this.height, this.getFlickerOverlayAlpha(), this.getFlickerLampEllipses());
     this.renderDefenseLine(ctx, w);
+  }
+
+  /** 旧场景系统背景图查找表（key='{scene}_{difficulty}' 或 '{scene}'，与 BackgroundRenderer 约定一致） */
+  private getBgImages(): Record<string, HTMLImageElement> {
+    return {
+      kitchen_hard: this.bgKitchenHardImg!,
+      kitchen_easy: this.bgKitchenEasyImg!,
+      kitchen: this.bgImg!,
+      sewer_hard: this.bgSewerHardImg!,
+      sewer_easy: this.bgSewerEasyImg!,
+      sewer: this.bgSewerImg!,
+      dump_hard: this.bgDumpHardImg!,
+      dump_easy: this.bgDumpEasyImg!,
+      dump: this.bgDumpImg!,
+      basement_hard: this.bgBasementHardImg!,
+      basement_easy: this.bgBasementEasyImg!,
+      basement: this.bgBasementImg!,
+      rooftop_hard: this.bgRooftopHardImg!,
+      rooftop_easy: this.bgRooftopEasyImg!,
+      rooftop: this.bgRooftopImg!,
+      street_hard: this.bgStreetHardImg!,
+      street_easy: this.bgStreetEasyImg!,
+      street: this.bgStreetImg!,
+    };
+  }
+
+  /** 当前场景背景图的实际绘制区域（与 BackgroundRenderer.renderBackground 同一套适配规则，供灯位坐标映射） */
+  private getBgDrawRect(): { dx: number; dy: number; dw: number; dh: number; imgW: number; imgH: number } | null {
+    const w = this.width;
+    const h = this.height;
+    const scene = this.getSceneConfig();
+    // 新场景系统：generic cover-fit（与 BackgroundRenderer 第一分支一致）
+    if (scene.bgImage) {
+      const img = this.bgSceneImages[this.currentScene];
+      if (!img || !img.complete || img.naturalWidth <= 0) return null;
+      const imgRatio = img.naturalWidth / img.naturalHeight;
+      if (imgRatio > w / h) {
+        return { dx: (w - h * imgRatio) / 2, dy: 0, dw: h * imgRatio, dh: h, imgW: img.naturalWidth, imgH: img.naturalHeight };
+      }
+      return { dx: 0, dy: (h - w / imgRatio) / 2, dw: w, dh: w / imgRatio, imgW: img.naturalWidth, imgH: img.naturalHeight };
+    }
+    // 旧场景系统：Fixed Height 居中（drawH = h，两侧裁剪）
+    const imgs = this.getBgImages();
+    const img = imgs[`${this.currentScene}_${this.difficulty}`] || imgs[this.currentScene];
+    if (!img || !this.imagesLoaded || img.naturalWidth <= 0) return null;
+    const imgRatio = img.naturalWidth / img.naturalHeight;
+    return { dx: (w - h * imgRatio) / 2, dy: 0, dw: h * imgRatio, dh: h, imgW: img.naturalWidth, imgH: img.naturalHeight };
+  }
+
+  /** 灯位光晕椭圆列表（画布逻辑坐标；由 vfx-balance weather.flicker.lamps 的背景图像素坐标按当前背景适配变换映射） */
+  private getFlickerLampEllipses(): { cx: number; cy: number; rx: number; ry: number }[] {
+    const lamps = BALANCE_CONFIG.weather.flicker.lamps[this.currentScene];
+    if (!lamps || lamps.length === 0) return [];
+    const rect = this.getBgDrawRect();
+    if (!rect) return [];
+    const sx = rect.dw / rect.imgW;
+    const sy = rect.dh / rect.imgH;
+    return lamps.map(l => ({
+      cx: rect.dx + l.x * sx,
+      cy: rect.dy + l.y * sy,
+      rx: (l.w / 2) * sx,
+      ry: (l.h / 2) * sy,
+    }));
   }
 
   /** 渲染浮动文字（委托给 FloatingTextSystem 模块） */

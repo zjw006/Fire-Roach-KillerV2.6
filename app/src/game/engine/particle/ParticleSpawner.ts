@@ -25,6 +25,8 @@ export interface ConeFireParams {
   baseDamage: number;
   /** 火焰类型 */
   type?: 'fire' | 'ice' | 'poison';
+  /** 天赋外观进化：蓝焰核心/过载核心/聚能长枪 */
+  flameVariant?: 'normal' | 'blue' | 'overdrive' | 'lance';
 }
 
 /** RGBA 颜色配置（用于粒子颜色生成） */
@@ -232,13 +234,23 @@ export class ParticleSpawner {
         particleType = ParticleType.POISON_CLOUD;
         size = 3 + Math.random() * 5;
       } else {
+        // 天赋外观进化：按 flameVariant 切换火焰/余烬颜色配置（normal 回退默认）
+        const variant = params.flameVariant ?? 'normal';
+        const fireCfg = variant === 'blue' ? cfg.blueFlameColor
+          : variant === 'overdrive' ? cfg.overdriveColor
+          : variant === 'lance' ? cfg.lanceColor
+          : cfg.fireColor;
+        const emberCfg = variant === 'blue' ? cfg.blueEmberColor
+          : variant === 'overdrive' ? cfg.overdriveEmberColor
+          : variant === 'lance' ? cfg.lanceEmberColor
+          : cfg.emberColor;
         const temp = Math.random();
         if (temp < 0.5) {
-          color = ParticleSpawner.randomRgba(cfg.fireColor);
+          color = ParticleSpawner.randomRgba(fireCfg);
           particleType = ParticleType.FIRE;
           size = cfg.fireSizeMin + Math.random() * cfg.fireSizeMax;
         } else {
-          color = ParticleSpawner.randomRgba(cfg.emberColor);
+          color = ParticleSpawner.randomRgba(emberCfg);
           particleType = ParticleType.EMBER;
           size = cfg.emberSizeMin + Math.random() * cfg.emberSizeMax;
         }

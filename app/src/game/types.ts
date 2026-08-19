@@ -415,6 +415,10 @@ export interface Roach {
   countdownPaused?: boolean;
   // Heal buff: shows + icon above roach when healed by nurse
   healBuffTimer?: number;
+  // Armor buff: 隧道工喷涂后持续生成蓝色+号的剩余时长（秒，RoachAISystem 主循环驱动）
+  armorBuffTimer?: number;
+  // Armor buff: 蓝色+号生成间隔计时（秒，每 0.5 秒 1 枚，与加血+号节奏一致）
+  armorPlusTimer?: number;
   // ===== NURSE HEAL PHASE STATE MACHINE =====
   // Phase: 'idle' | 'charging' | 'spraying' | 'dissipating'
   healPhase?: 'idle' | 'charging' | 'spraying' | 'dissipating';
@@ -784,8 +788,23 @@ export interface Talent {
   description: string;
   maxLevel: number;
   currentLevel: number;
+  /** 每级费用（天赋点），基石节点通常 2 */
   cost: number;
   effect: (level: number) => Record<string, number>;
+  /** 所属分支 */
+  branch: 'inferno' | 'lance' | 'support';
+  /** 层级（1-6），层门禁：T2=本系2点、T3=5点、T4=8点、T5=12点 */
+  tier: number;
+  /** 基石节点（机制质变，UI 大图标） */
+  keystone?: boolean;
+  /** 需要指定天赋全部满级 */
+  requiresTalent?: string[];
+  /** 需要指定天赋其一满级 */
+  requiresAnyTalent?: string[];
+  /** 互斥组：同组最多激活一个（如 T5 终端改装） */
+  exclusiveGroup?: string;
+  /** 预留槽：不可升级，仅占位展示 */
+  reserved?: boolean;
 }
 
 /** 成就定义 */
@@ -845,8 +864,9 @@ export interface TalentTree {
  * v1: 初始存档格式
  * v2: 新增 scenesCompleted 字段 + 持久化消耗品库存
  * v3: 消耗品库存移至 GameProgress
+ * v4: 天赋树重构（三系树状结构），旧天赋等级映射 + 点数按新经济表重算
  */
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 
 /** 游戏进度存档数据 */
 export interface GameProgress {
@@ -871,6 +891,8 @@ export interface GameProgress {
   unclaimedRewards?: string[];
   /** 各场景历史最高星级评价（0-3，按防线血量不含加血比例计算，过关多次取最佳） */
   levelStars?: Record<string, number>;
+  /** 天赋系统解锁前获得的天赋点（三星奖励），解锁时一次性发放 */
+  pendingTalentPoints?: number;
 }
 
 /** 图鉴单条条目 */
