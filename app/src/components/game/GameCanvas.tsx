@@ -458,6 +458,8 @@ export const GameCanvas: React.FC = () => {
 
   /** 开始游戏入口：按顺序检查 漫画 → 对话 → 准备界面，全部通过后调用 doStartGame */
   const handleStart = useCallback((diff: 'easy' | 'hard', mode: GameMode, scene: SceneType) => {
+    // 尽早预载场景专属资源（漫画/对话/准备阶段后台加载，进战斗时基本已就绪）
+    engineRef.current?.preloadScene(scene);
     // Check if we need to show a comic first (story mode only)
     if (mode === GameMode.STORY && !hasSeenComic(scene)) {
       const chapter = getComicChapter(scene);
@@ -789,6 +791,16 @@ export const GameCanvas: React.FC = () => {
       setProgress({ ...engine.progress });
     }
     return result;
+  }, []);
+
+  /** 重置天赋树：返还全部投入点数并刷新界面状态 */
+  const handleResetTalents = useCallback(() => {
+    const engine = engineRef.current;
+    if (!engine) return 0;
+    const refund = engine.resetTalentTree();
+    setTalentPoints(engine.progress.talentTree.points);
+    setProgress({ ...engine.progress });
+    return refund;
   }, []);
 
   // ── 全局输入事件处理（鼠标 / 触摸 / 键盘）──
@@ -1253,6 +1265,7 @@ export const GameCanvas: React.FC = () => {
           progress={progress}
           talentPoints={talentPoints}
           onSpendTalent={handleSpendTalent}
+          onResetTalents={handleResetTalents}
           onClose={() => {
             setShowTalentTree(false);
             if (talentFromGameOver) {
@@ -1387,6 +1400,7 @@ export const GameCanvas: React.FC = () => {
           audio={engineRef.current?.audio}
           menuMoney={menuShopMoney}
           victoryGoldReward={victoryGoldReward}
+          achievementGoldReward={engineRef.current?.achievementSystem?.getTotalUnclaimedRewards?.() ?? 0}
           onSettleGold={handleSettleGold}
           starRating={engineRef.current?.lastStarRating ?? 0}
           talentUnlockGrant={engineRef.current?.lastTalentUnlockGrant ?? 0}
@@ -1416,6 +1430,7 @@ export const GameCanvas: React.FC = () => {
             tunnelWorkerKills: 0,
             subwayEliteKills: 0,
             shieldKills: 0,
+            jockKills: 0,
             perfectWaves: 0,
             gasSavedBonus: 0,
             breaches: 0,

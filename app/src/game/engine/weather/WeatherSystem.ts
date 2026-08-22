@@ -289,16 +289,25 @@ export class WeatherSystem {
           ctx.lineTo(bolt[i].x, bolt[i].y);
         }
         ctx.stroke();
-        // 核心主链
-        ctx.strokeStyle = `rgba(${bc.coreColor}, ${bc.alpha * flashRatio})`;
+        // 核心主链（落地端渐隐变虚：末端 fadeSegments 段透明度线性衰减至 fadeMinAlpha）
         ctx.lineWidth = bc.lineWidth;
         ctx.shadowBlur = bc.glowBlur;
-        ctx.beginPath();
-        ctx.moveTo(bolt[0].x, bolt[0].y);
-        for (let i = 1; i < Math.min(mainCount, bolt.length); i++) {
+        const mainEnd = Math.min(mainCount, bolt.length);
+        const fadeSeg = Math.min(bc.fadeSegments, Math.max(0, mainEnd - 1));
+        const fadeStartIdx = mainEnd - 1 - fadeSeg; // 渐隐起始节点索引（此前段保持全透明）
+        for (let i = 1; i < mainEnd; i++) {
+          // 该段末端透明度：非渐隐区 = 1，渐隐区按到落点进度线性 → fadeMinAlpha
+          let segFade = 1;
+          if (i > fadeStartIdx && fadeSeg > 0) {
+            const p = (i - fadeStartIdx) / fadeSeg; // 0(渐隐起点) → 1(落点)
+            segFade = 1 - p * (1 - bc.fadeMinAlpha);
+          }
+          ctx.strokeStyle = `rgba(${bc.coreColor}, ${bc.alpha * flashRatio * segFade})`;
+          ctx.beginPath();
+          ctx.moveTo(bolt[i - 1].x, bolt[i - 1].y);
           ctx.lineTo(bolt[i].x, bolt[i].y);
+          ctx.stroke();
         }
-        ctx.stroke();
         // 分支（成对节点）
         ctx.lineWidth = bc.branchWidth;
         ctx.shadowBlur = bc.glowBlur * 0.5;
@@ -314,19 +323,19 @@ export class WeatherSystem {
   }
 
   /**
-   * 渲染天气前景（雨滴、烟雾粒子、水滴、地面涟漪、地下室灯光闪烁黑屏、灯位光晕）
+   * 渲染天气前景（雨滴、烟雾粒子、水滴、地面涟漪、地下室/医院波次灯光遮罩、灯位光晕）
    * 修复 P1: 移除 renderDefenseLine 回调参数，降低耦合
    * 修复 P2: 移除无意义的 globalCompositeOperation 恢复
-   * @param flickerAlpha 地下室灯光闪烁黑屏透明度（0 = 不闪，engine 计算传入）
+   * @param flickerState 波次灯光状态（engine 计算传入）：brightness 综合亮度（1=正常 0=全黑 >1=过冲提亮）、red 微红强度 0-1
    * @param flickerLamps 灯位光晕椭圆列表（画布逻辑坐标，engine 按背景图实际绘制区域映射传入）；
-   *                     光晕常驻 lighter 叠加；闪屏黑蒙版在灯位羽毛开孔保持灯光可见
+   *                     光晕常驻 lighter 叠加；暗化黑蒙版在灯位羽毛开孔保持灯光可见
    */
   static renderWeatherForeground(
     ctx: CanvasRenderingContext2D,
     _w: number,
     weatherParticles: Particle[],
     h: number = 0,
-    flickerAlpha: number = 0,
+    flickerState: { brightness: number; red: number } = { brightness: 1, red: 0 },
     flickerLamps: { cx: number; cy: number; rx: number; ry: number }[] = []
   ): void {
     const rainCfg = BALANCE_CONFIG.weather.rain;
@@ -385,24 +394,40 @@ export class WeatherSystem {
         ctx.stroke();
       }
     }
-    // 地下室/医院灯光闪烁：全屏黑色叠加闪屏（覆盖在所有天气粒子之上）；
+    // 地下室/医院波次灯光：暗化遮罩（亮度 <1，覆盖在所有天气粒子之上）；
     // 有灯位时改用离屏蒙版（灯位羽毛开孔，灯光区域不被压暗）
     const flickerCfg = BALANCE_CONFIG.weather.flicker;
-    if (flickerAlpha > 0 && h > 0) {
+    // 黑色叠加透明度封顶 darkMaxAlpha（0.30）：亮度压暗时黑蒙版不超过 30%，避免全黑看不清画面
+    const darkAlpha = Math.min(flickerCfg.darkMaxAlpha, Math.max(0, 1 - flickerState.brightness));
+    if (darkAlpha > 0 && h > 0) {
       ctx.globalAlpha = 1;
       ctx.globalCompositeOperation = 'source-over';
       if (flickerLamps.length === 0) {
-        ctx.fillStyle = `rgba(0, 0, 0, ${flickerAlpha})`;
+        ctx.fillStyle = `rgba(0, 0, 0, ${darkAlpha})`;
         ctx.fillRect(0, 0, _w, h);
       } else {
         const mask = WeatherSystem.getFlickerMask(_w, h, flickerLamps, flickerCfg.lampMaskHoleScale);
         if (mask) {
           // 蒙版烘焙为不透明黑，绘制时用 globalAlpha 控制实际黑度
-          ctx.globalAlpha = flickerAlpha;
+          ctx.globalAlpha = darkAlpha;
           ctx.drawImage(mask, 0, 0);
           ctx.globalAlpha = 1;
         }
       }
+    }
+    // 微红段：全屏红光叠加（电压不稳泛红，位于黑遮罩之上）
+    if (flickerState.red > 0 && h > 0) {
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = `rgba(${flickerCfg.redColor}, ${Math.min(1, flickerState.red) * flickerCfg.redMaxAlpha})`;
+      ctx.fillRect(0, 0, _w, h);
+    }
+    // 过冲提亮：亮度 >1 时全屏暖白提亮（电压过载灯管爆亮）
+    if (flickerState.brightness > 1 && h > 0) {
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = `rgba(${flickerCfg.overboostColor}, ${Math.min(1, (flickerState.brightness - 1) * flickerCfg.overboostAlphaScale)})`;
+      ctx.fillRect(0, 0, _w, h);
     }
     // 灯位光晕：常驻 lighter 叠加暖光（位于黑蒙版之上，灯暗时灯光保持全亮）
     if (flickerLamps.length > 0) {

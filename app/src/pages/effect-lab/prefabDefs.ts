@@ -727,8 +727,8 @@ export const PREFABS: EffectPrefab[] = [
     steps: [
       { kind: 'text', text: '护甲喷涂!', color: '#a8a29e', at: 0, dy: -40 },
       { kind: 'marker', shape: 'circle', r: 16, color: '#94a3b8', life: 1000, at: 0 },
-      // Canvas 直绘施法光圈：喷涂瞬间一次范围脉冲（300px 射程，0.3→1.0 扩散 + 渐隐，压扁椭圆透视）
-      { kind: 'vfx', fn: 'armorCastRing', at: 150, duration: 500 },
+      // Canvas 直绘施法光圈：喷涂瞬间一次范围脉冲（300px 射程，0.2→1.0 扩散 + 渐隐，压扁椭圆透视；时长与 armorCastRing.duration 同步）
+      { kind: 'vfx', fn: 'armorCastRing', at: 150, duration: 900 },
       { kind: 'marker', shape: 'circle', r: 16, color: '#cbd5e1', life: 1600, at: 0, dx: 200, dy: -60 },
       { kind: 'atom', atom: 'armorSpray', at: 150, duration: 700, to: { dx: 200, dy: -60 } },
       { kind: 'atom', atom: 'armorPlus', at: 900, dx: 200, dy: -60 },

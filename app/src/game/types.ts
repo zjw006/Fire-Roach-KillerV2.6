@@ -63,6 +63,8 @@ export const RoachType = {
   TUNNEL_WORKER: 'tunnel_worker',
   SUBWAY_ELITE: 'subway_elite',
   SHIELD: 'shield',
+  // 学校场景专属蟑螂
+  JOCK: 'jock',
 } as const;
 export type RoachType = typeof RoachType[keyof typeof RoachType];
 
@@ -500,6 +502,20 @@ export interface Roach {
   formationId?: number;
   // 锚点菱形标识颜色（由 FormationSystem 每帧维护，渲染层读取；非锚点为 undefined）
   anchorMarkColor?: string;
+  // ===== JOCK ROACH (体育生蟑螂) =====
+  // 跳跃状态机：'idle'(行走) | 'crouch'(蓄力) | 'air'(空中飞跃) | 'land'(落地硬直)
+  jumpPhase?: 'idle' | 'crouch' | 'air' | 'land';
+  // 当前阶段计时器（秒）
+  jumpTimer?: number;
+  // 距下一次跳跃的冷却（秒）；触发出蓄力后回满
+  jumpCooldown?: number;
+  // 空气阶段起止点（用于恒定速度沿直线飞跃）
+  jumpStartX?: number;
+  jumpStartY?: number;
+  jumpEndX?: number;
+  jumpEndY?: number;
+  // 已发射的拖尾粒子槽位数（RoachRenderer 空中拖尾节流用，进入 air 时归零）
+  trailEmitted?: number;
 }
 
 /** 列车横扫碾压状态（地铁场景专属） */
@@ -661,31 +677,41 @@ export interface ConsumableDef {
   cooldown?: number;
 }
 
-/** 超市阵型模板（V4.0：C 飞行横排已废弃——飞行单位全部改为自由杂兵，不再入阵） */
-export type FormationTemplate = 'A' | 'B' | 'D' | 'E' | 'F' | 'G' | 'H';
+/**
+ * 阵型槽位运动方式（V5.0）
+ * - none：固定槽位（跟随阵型原点推进，横向按透视宽度比例缩放）
+ * - sway：横向摇摆（按阵型原点推进距离的三角波，幅度/周期见 BALANCE_CONFIG.supermarket.sway*）
+ * - orbit：环绕（绕阵型中心旋转，转速见 BALANCE_CONFIG.supermarket.orbitRotateSpeed）
+ */
+export type FormationSlotMotion = 'none' | 'sway' | 'orbit';
 
 /**
- * 超市 V4.0：阵型组配置（特种三排结构）
- * - 前排：装甲/护盾（承伤盾墙，主锚点从前排选取）
- * - 中排：分裂/定时自爆/隧道工（功能输出，隧道工硬上限 2）
- * - 后排：护士（唯一治疗，硬上限 1）
- * 小/大/飞行/地面自爆/地铁精英一律禁入阵列（仅作自由杂兵），配置超限运行期自动截断
+ * 超市 V5.0：阵型槽位定义（直驱制，540×960 画布绝对坐标，来自 formation-waves.html 拖拽导出）
+ * 每组阵型即一份固定槽位清单，出生点即槽位，不再经过模板换算
+ */
+export interface FormationSlotDef {
+  /** 蟑螂类型（仅特种：装甲/护盾/分裂/定时自爆/隧道工/护士；自由杂兵类型禁入） */
+  type: RoachType;
+  /** 出生点 X（540 逻辑宽绝对坐标） */
+  x: number;
+  /** 出生点 Y（960 逻辑高绝对坐标） */
+  y: number;
+  /** 是否锚点（全部锚点阵亡 → 破阵） */
+  anchor?: boolean;
+  /** 运动方式（缺省 none） */
+  motion?: FormationSlotMotion;
+}
+
+/**
+ * 超市 V5.0：阵型组配置（直驱制三排结构）
+ * - 前排：装甲/护盾（承伤盾墙，主锚点 = 离阵型质心最近的前排）
+ * - 中排：分裂/定时自爆/隧道工（功能输出，隧道工为次级锚点）
+ * - 后排：护士（唯一治疗，锚点）
+ * 小/大/飞行/地面自爆/地铁精英一律禁入阵列（仅作自由杂兵）
  */
 export interface FormationGroupConfig {
-  /** 模板随机池（多选一时随机；第10波用） */
-  templates: FormationTemplate[];
-  /** 前排：装甲蟑螂数 */
-  armored?: number;
-  /** 前排：护盾蟑螂数 */
-  shield?: number;
-  /** 中排：分裂蟑螂数 */
-  splitting?: number;
-  /** 中排：定时自爆蟑螂数 */
-  timedSuicide?: number;
-  /** 中排：隧道工数（>2 运行期截断） */
-  tunnelWorker?: number;
-  /** 后排：护士数（>1 运行期截断） */
-  nurse?: number;
+  /** 槽位清单（出生点即槽位，绝对坐标） */
+  slots: FormationSlotDef[];
 }
 
 /** 超市 V4.0：阵列推进期持续穿插投放配置（自由杂兵，走原生 AI，不入阵；阵列生成后开始投放） */
@@ -723,6 +749,8 @@ export interface WaveConfig {
   eliteCount?: number;
   /** 护盾蟑螂数目（气体护盾：矩形保护身后同伴） */
   shieldCount?: number;
+  /** 学校场景专属敌人数目 */
+  jockCount?: number;
   /** 敌人生成间隔（秒） */
   spawnInterval?: number;
   /** 波次名称 */
@@ -751,6 +779,7 @@ export interface Economy {
   tunnelWorkerKills: number;
   subwayEliteKills: number;
   shieldKills: number;
+  jockKills: number;
   perfectWaves: number;
   gasSavedBonus: number;
   breaches: number;

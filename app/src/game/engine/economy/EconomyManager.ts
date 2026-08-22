@@ -317,6 +317,7 @@ export class EconomyManager {
       tunnelWorkerKills: 0,
       subwayEliteKills: 0,
       shieldKills: 0,
+      jockKills: 0,
       perfectWaves: 0,
       gasSavedBonus: 0,
       breaches: 0,

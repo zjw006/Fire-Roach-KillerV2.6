@@ -146,7 +146,7 @@ export class RoachAISystem {
   }
 
   // =========================================================================
-  // 超市阵型（V4.0 多组错时共存：WaveManager 波内调度器驱动，各组独立锚点/独立破阵）
+  // 超市阵型（V5.0 直驱制多组错时共存：WaveManager 波内调度器驱动，各组独立锚点/独立破阵）
   // =========================================================================
 
   /** 清空全部阵型实例（波次开始/重置/离开超市场景时调用） */
@@ -155,20 +155,25 @@ export class RoachAISystem {
   }
 
   /**
-   * 追加一组阵型并返回出生点表（出生点即阵型槽位，整组同帧生成，前后排由槽位 dy 体现）
-   * 模板从组的随机池中等概率选定；非超市场景返回 null
+   * 追加一组阵型并返回出生点表（出生点即阵型槽位绝对坐标，所见即所得；
+   * 组内成员由调用方按 formationMemberStaggerSec 陆续生成，位置固定）
+   * 非超市场景返回 null
    */
   addFormationGroup(
-    group: FormationGroupConfig, spawnBaseY: number,
+    group: FormationGroupConfig,
   ): { type: RoachType; x: number; y: number }[] | null {
     if (this.cfg.getCurrentScene() !== SceneType.SUPERMARKET) return null;
-    const template = group.templates[Math.floor(Math.random() * group.templates.length)];
-    return this.formationSystem.addPlan(template, group, this.cfg.getGroundBoundsAtY, spawnBaseY);
+    return this.formationSystem.addPlan(group, this.cfg.getGroundBoundsAtY);
   }
 
-  /** 模板G：核心锚点的环成员顶替承伤查询（CollisionSystem 伤害重定向用，无顶替返回 null） */
+  /** 是否存在仍在作战的阵型实例（波次串行出场门控：上一组被消灭后才出下一组） */
+  hasActiveFormations(): boolean {
+    return this.formationSystem.hasActiveInstances(this.cfg.roaches, 2);
+  }
+
+  /** orbit 阵型：核心锚点的环成员顶替承伤查询（CollisionSystem 伤害重定向用，无顶替返回 null） */
   findFormationProtector(target: Roach, roaches: Roach[]): Roach | null {
-    return this.formationSystem.findRingProtector(target, roaches);
+    return this.formationSystem.findOrbitProtector(target, roaches);
   }
 
   // =========================================================================
@@ -479,7 +484,10 @@ export class RoachAISystem {
     const dodgeCfg = BALANCE_CONFIG.roachAI.dodge;
 
     // ===== NURSE ROACH FOLLOW MOVEMENT =====
-    if (r.type === RoachType.NURSE) {
+    if (r.type === RoachType.JOCK) {
+      // ===== JOCK ROACH (体育生蟑螂) 爆发跳跃状态机 =====
+      this.updateJockJump(r, moveAngle, effectiveSpeed, deltaTime, defenseLineY);
+    } else if (r.type === RoachType.NURSE) {
       if (this.formationSystem.isAnchor(r.id)) {
         // 阵型锚点（超市方阵）：禁用自动跟随，走标准移动由编队修正驱动，固定阵型中心
         r.vx = Math.cos(moveAngle) * effectiveSpeed * 65;
@@ -564,6 +572,7 @@ export class RoachAISystem {
       && r.type !== RoachType.TUNNEL_WORKER
       && !(r.type === RoachType.SUBWAY_ELITE && r.chargeState === 'charge')
       && !(r.type === RoachType.TIMED_SUICIDE && r.placeTimer && r.placeTimer > 0)
+      && !(r.type === RoachType.JOCK && r.jumpPhase !== 'idle')
       && r.vy < moveCfg.minDownwardSpeed) {
       r.vy = moveCfg.minDownwardSpeed;
     }
@@ -627,8 +636,8 @@ export class RoachAISystem {
       r.y = defenseLineY + 50;
     }
 
-    // Fire wall blocks ground roaches（飞行类含地铁精英不被阻挡）
-    if (!this.isFlyingLikeMovement(r)) {
+    // Fire wall blocks ground roaches（飞行类含地铁精英不被阻挡；体育生空中飞跃穿越火墙不受阻挡）
+    if (!this.isFlyingLikeMovement(r) && !(r.type === RoachType.JOCK && r.jumpPhase === 'air')) {
       for (const wall of fireWalls) {
         if (r.x >= wall.x1 && r.x <= wall.x2) {
           const wallTop = wall.y - wall.height * 0.5;
@@ -661,6 +670,124 @@ export class RoachAISystem {
     if (r.animTimer > 0.12) {
       r.animTimer = 0;
       r.animFrame = (r.animFrame + 1) % 4;
+    }
+  }
+
+  // =========================================================================
+  // 子方法：体育生蟑螂（爆发跳跃）
+  // =========================================================================
+
+  /**
+   * 体育生蟑螂跳跃状态机（蓄力 crouch → 腾空 air → 落地 land → 行走 idle）。
+   * 蓄力/落地移速=0（击杀窗口），腾空时免疫火焰直射（清空 inFire/burnDamage）。
+   * 被粘液弹包裹/粘板粘住后退化普通慢速蟑螂，无法跳跃。
+   * @param r 蟑螂实例
+   * @param moveAngle 正常移动角度（仅 idle 阶段使用）
+   * @param effectiveSpeed 有效移动速度（仅 idle 阶段使用）
+   * @param deltaTime 增量时间（秒）
+   * @param defenseLineY 防线 Y 坐标
+   */
+  private updateJockJump(
+    r: Roach,
+    moveAngle: number,
+    effectiveSpeed: number,
+    deltaTime: number,
+    defenseLineY: number,
+  ): void {
+    const jc = BALANCE_CONFIG.roachAI.jock;
+    const phase = r.jumpPhase ?? 'idle';
+    const stuck = this.cfg.stickySystem.isStuckByBoard(r.id) || r.wrappedByDropId != null;
+
+    // 被粘住/包裹瞬间若正在蓄力则取消跳跃，退化为普通慢速蟑螂
+    if (stuck && phase === 'crouch') {
+      r.jumpPhase = 'idle';
+      r.jumpTimer = 0;
+      r.vx = 0; r.vy = 0;
+      return;
+    }
+
+    switch (phase) {
+      case 'air': {
+        // 腾空：恒定速度沿起→终直线飞跃
+        const airTime = jc.airTime;
+        const startX = r.jumpStartX ?? r.x;
+        const startY = r.jumpStartY ?? r.y;
+        const endX = r.jumpEndX ?? r.x;
+        const endY = r.jumpEndY ?? r.y;
+        r.vx = (endX - startX) / airTime;
+        r.vy = (endY - startY) / airTime;
+        r.jumpTimer = (r.jumpTimer ?? airTime) - deltaTime;
+        // 空中免疫火焰直射：清空束/火区累积，避免落地后残留灼伤
+        r.inFire = false;
+        r.burnDamage = 0;
+        if (r.jumpTimer <= 0) {
+          r.jumpTimer = 0;
+          // 落地钳制在防线前，不过头
+          r.y = Math.min(r.y, defenseLineY - 4);
+          r.jumpPhase = 'land';
+        }
+        break;
+      }
+      case 'crouch': {
+        // 蓄力：原地不动（最佳击杀窗口）
+        r.vx = 0; r.vy = 0;
+        r.jumpTimer = (r.jumpTimer ?? jc.crouchTime) - deltaTime;
+        if (r.jumpTimer <= 0) {
+          // 进入腾空：仅重置计时与拖尾计数（起止点已在进入蓄力时确定，供红色虚线预览）
+          r.jumpTimer = jc.airTime;
+          r.trailEmitted = 0; // 进入腾空：重置拖尾粒子计数，重新生成拖尾
+          r.jumpPhase = 'air';
+        }
+        break;
+      }
+      case 'land': {
+        // 落地硬直：无法移动（第二击杀窗口）
+        r.vx = 0; r.vy = 0;
+        r.jumpTimer = (r.jumpTimer ?? jc.landTime) - deltaTime;
+        if (r.jumpTimer <= 0) {
+          r.jumpPhase = 'idle';
+          r.jumpTimer = 0;
+        }
+        break;
+      }
+      default: { // idle 行走
+        // 被粘住/包裹：无法跳跃，普通（慢速）行走
+        if (stuck) {
+          r.jumpCooldown = jc.cooldown; // 保持冷却满，解粘后下一轮才跳
+          r.vx = Math.cos(moveAngle) * effectiveSpeed * 65;
+          r.vy = Math.sin(moveAngle) * effectiveSpeed * 65;
+          return;
+        }
+        // 冷却倒计时
+        r.jumpCooldown = (r.jumpCooldown ?? jc.cooldown) - deltaTime;
+        // 距防线较近：直接冲刺不再起跳（避免飞跃过头）
+        const roachBottom = r.y + ENEMY_DEFS[r.type].size * 0.4;
+        const distToDefense = defenseLineY - roachBottom;
+        if (r.jumpCooldown <= 0 && distToDefense > jc.jumpStopDistance) {
+          // 低血加快跳跃节奏（疯狂逃命）
+          const lowHp = r.hp < r.maxHp * jc.lowHpRatio;
+          r.jumpCooldown = lowHp ? jc.lowHpCooldown : jc.cooldown;
+          // 进入蓄力：立即确定本跳起止点（供蓄力阶段红色抛物线虚线预览真实轨迹）
+          const startX = r.x;
+          const startY = r.y;
+          const endX = Math.max(jc.minX, Math.min(jc.maxX, startX + (Math.random() * 2 - 1) * jc.jumpX));
+          // 向防线推进 jumpY，但不过防线底线
+          const proposedEndY = startY + jc.jumpY;
+          const endY = proposedEndY > defenseLineY - 8 ? defenseLineY - 8 : proposedEndY;
+          r.jumpStartX = startX;
+          r.jumpStartY = startY;
+          r.jumpEndX = endX;
+          r.jumpEndY = endY;
+          r.jumpPhase = 'crouch';
+          r.jumpTimer = jc.crouchTime;
+          r.vx = 0; r.vy = 0;
+        } else {
+          // 正常行走
+          r.vx = Math.cos(moveAngle) * effectiveSpeed * 65;
+          r.vy = Math.sin(moveAngle) * effectiveSpeed * 65;
+        }
+        break;
+      }
     }
   }
 
@@ -989,8 +1116,8 @@ export class RoachAISystem {
     r.armorSprayTimer = (r.armorSprayTimer ?? subCfg.armorSprayInterval) - deltaTime;
     if (r.armorSprayTimer <= 0) {
       r.armorSprayTimer = subCfg.armorSprayInterval;
-      // 范围内血量最高的其他蟑螂（隧道工不喷自己；不可给护盾蟑螂添加护甲）
-      let best: Roach | null = null;
+      // 范围内血量最高的若干只其他蟑螂（隧道工不喷自己；不可给护盾蟑螂添加护甲）
+      const targets: Roach[] = [];
       for (const other of roaches) {
         if (other.id === r.id) continue;
         if (other.state !== RoachState.ALIVE) continue;
@@ -998,21 +1125,27 @@ export class RoachAISystem {
         const dx = other.x - r.x;
         const dy = other.y - r.y;
         if (dx * dx + dy * dy > subCfg.armorSprayRange * subCfg.armorSprayRange) continue;
-        if (!best || other.hp > best.hp) best = other;
+        targets.push(other);
       }
-      if (best) {
-        best.armorHp += subCfg.armorSprayAmount;
-        best.maxArmorHp = Math.max(best.maxArmorHp, best.armorHp);
-        r.armorSprayCastTimer = BALANCE_CONFIG.render.roach.armorCastRing.duration; // 触发施法范围光圈脉冲（时长集中于 vfx-balance render.roach.armorCastRing）
-        this.cfg.onAddFloatingText(best.x, best.y - 40, `+${subCfg.armorSprayAmount}`, TEXT_CONFIG.combat.armorSpray.color, 1000);
+      // 按血量从高到低排序，取前 N 只（armorSprayTargets，默认 3）；无目标则本次施法空放
+      targets.sort((a, b) => b.hp - a.hp);
+      const armoredTargets = targets.slice(0, subCfg.armorSprayTargets ?? 3);
+      if (armoredTargets.length > 0) {
+        // 施法一次性触发一次公共表现（光圈/施法音效/头顶提示）
+        r.armorSprayCastTimer = BALANCE_CONFIG.render.roach.armorCastRing.duration; // 触发施法范围光圈脉冲
         this.cfg.onAddFloatingText(r.x, r.y - 50, TEXT_CONFIG.combat.armorSpray.text, TEXT_CONFIG.combat.armorSpray.color);
         this.cfg.audio.playEngineerCast(); // 工程师施法音效
-        this.cfg.audio.playArmorGain();    // 目标获得护甲音效
-        // 灰色喷涂喷射流粒子（隧道工 → 目标）
-        ParticleSpawner.spawnArmorSprayStream(this.cfg.particles, r.x, r.y, best.x, best.y);
-        // 目标头顶蓝色+号：2 秒 buff 内每 0.5 秒生成 1 枚（频率/节奏与加血+号一致，由主循环统一生成）
-        best.armorBuffTimer = BALANCE_CONFIG.particle.armorSpray.plusBuffDuration;
-        best.armorPlusTimer = 0;
+        for (const best of armoredTargets) {
+          best.armorHp += subCfg.armorSprayAmount;
+          best.maxArmorHp = Math.max(best.maxArmorHp, best.armorHp);
+          this.cfg.onAddFloatingText(best.x, best.y - 40, `+${subCfg.armorSprayAmount}`, TEXT_CONFIG.combat.armorSpray.color, 1000);
+          this.cfg.audio.playArmorGain();    // 目标获得护甲音效
+          // 灰色喷涂喷射流粒子（隧道工 → 目标）
+          ParticleSpawner.spawnArmorSprayStream(this.cfg.particles, r.x, r.y, best.x, best.y);
+          // 目标头顶蓝色+号：2 秒 buff 内每 0.5 秒生成 1 枚（由主循环统一生成）
+          best.armorBuffTimer = BALANCE_CONFIG.particle.armorSpray.plusBuffDuration;
+          best.armorPlusTimer = 0;
+        }
       }
     }
 
@@ -1537,6 +1670,7 @@ export class RoachAISystem {
       case RoachType.TUNNEL_WORKER: economy.tunnelWorkerKills++; break;
       case RoachType.SUBWAY_ELITE: economy.subwayEliteKills++; break;
       case RoachType.SHIELD: economy.shieldKills++; break;
+      case RoachType.JOCK: economy.jockKills++; break;
     }
 
     // Update encyclopedia

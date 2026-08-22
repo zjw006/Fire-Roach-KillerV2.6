@@ -56,13 +56,14 @@ export function toggleVibration(): boolean {
 
 /**
  * 核心震动函数，触发设备震动
- * @param {number | number[]} pattern - 震动时长(ms)或震动模式数组
+ * @param {number | number[]} _pattern - 震动时长(ms)或震动模式数组（当前震动已禁用）
  */
-export function vibrate(pattern: number | number[]) {
+export function vibrate(_pattern: number | number[]) {
   if (!_enabled) return;
   if (!isVibrationSupported()) return;
   try {
-    navigator.vibrate(pattern);
+    // TODO: 手机震动反馈已注释禁用（如需恢复，取消下一行注释即可）
+    // navigator.vibrate(_pattern);
   } catch {
     // 静默忽略：并非所有浏览器都支持震动
   }

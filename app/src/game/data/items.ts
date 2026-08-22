@@ -1,6 +1,5 @@
 import type { ConsumableDef } from '../types';
-import { RoachType } from '../types';
-import { SHIELD_BAND_HEIGHT, SHIELD_BREAK_BLEND, SHIELD_BREAK_CRACK_ALPHA, SHIELD_BREAK_CRACK_COLOR, SHIELD_BREAK_CRACK_COUNT, SHIELD_BREAK_CRACK_LINE_WIDTH, SHIELD_BREAK_DURATION, SHIELD_BREAK_FLASH_ALPHA, SHIELD_BREAK_FLASH_COLOR, SHIELD_BREAK_SHARD_COUNT, SHIELD_BREAK_SHARD_EDGE_ALPHA, SHIELD_BREAK_SHARD_EDGE_COLOR, SHIELD_BREAK_SHARD_FILL_ALPHA, SHIELD_BREAK_SHARD_FILL_COLOR, SHIELD_BREAK_SHARD_FLY, SHIELD_BREAK_SHARD_SIZE_MAX, SHIELD_BREAK_SHARD_SIZE_MIN, SHIELD_DOME_ALLY_WIDEN, SHIELD_DOME_BREATH_AMP, SHIELD_DOME_BREATH_FREQ, SHIELD_DOME_CORE_ALPHA, SHIELD_DOME_CORE_COLOR, SHIELD_DOME_CRACK_ALPHA, SHIELD_DOME_CRACK_COLOR, SHIELD_DOME_CRACK_COUNT, SHIELD_DOME_CRACK_LINE_WIDTH, SHIELD_DOME_DEBRIS_COLOR, SHIELD_DOME_DEBRIS_COUNT, SHIELD_DOME_DEBRIS_HP_THRESHOLD, SHIELD_DOME_DEBRIS_LIFE, SHIELD_DOME_DEBRIS_SIZE, SHIELD_DOME_DEEP_ALPHA, SHIELD_DOME_DEEP_COLOR, SHIELD_DOME_EDGE_ALPHA, SHIELD_DOME_EDGE_COLOR, SHIELD_DOME_FILL_ALPHA, SHIELD_DOME_FILL_COLOR, SHIELD_DOME_FLARE_EXTRA, SHIELD_DOME_GAP_ALPHA, SHIELD_DOME_GAP_COLOR, SHIELD_DOME_GAP_GLOW_BLUR, SHIELD_DOME_GAP_LINE_WIDTH, SHIELD_DOME_HEIGHT, SHIELD_DOME_RIM_ALPHA, SHIELD_DOME_RIM_COLOR, SHIELD_DOME_RIM_LINE_WIDTH, SHIELD_DOME_RING_COUNT, SHIELD_DOME_SCORCH_ALPHA, SHIELD_DOME_SCORCH_COLOR, SHIELD_DOME_SCORCH_COUNT, SHIELD_DOME_SEGMENT_COUNT, SHIELD_DOME_SPEC_ALPHA, SHIELD_DOME_SPEC_COLOR, SHIELD_DOME_WIDTH, SHIELD_RECT_COLOR, SHIELD_RECT_FILL_ALPHA_MID, SHIELD_RECT_FILL_ALPHA_NEAR, SHIELD_RECT_HEIGHT, SHIELD_RECT_STROKE_ALPHA_SCALE, SHIELD_RECT_STROKE_COLOR, SHIELD_RECT_STROKE_FLASH_ALPHA } from './vfx-balance';
+import { SHIELD_BAND_HEIGHT, SHIELD_BREAK_BLEND, SHIELD_BREAK_CRACK_ALPHA, SHIELD_BREAK_CRACK_COLOR, SHIELD_BREAK_CRACK_COUNT, SHIELD_BREAK_CRACK_LINE_WIDTH, SHIELD_BREAK_DURATION, SHIELD_BREAK_FLASH_ALPHA, SHIELD_BREAK_FLASH_COLOR, SHIELD_BREAK_SHARD_COUNT, SHIELD_BREAK_SHARD_EDGE_ALPHA, SHIELD_BREAK_SHARD_EDGE_COLOR, SHIELD_BREAK_SHARD_FILL_ALPHA, SHIELD_BREAK_SHARD_FILL_COLOR, SHIELD_BREAK_SHARD_FLY, SHIELD_BREAK_SHARD_SIZE_MAX, SHIELD_BREAK_SHARD_SIZE_MIN, SHIELD_DOME_ALLY_WIDEN, SHIELD_DOME_BASE_RING_ALPHA, SHIELD_DOME_BASE_RING_COLOR, SHIELD_DOME_BASE_RING_FLATTEN, SHIELD_DOME_BASE_RING_LINE_WIDTH, SHIELD_DOME_BREATH_AMP, SHIELD_DOME_BREATH_FREQ, SHIELD_DOME_DEEP_ALPHA, SHIELD_DOME_DEEP_COLOR, SHIELD_DOME_FILL_ALPHA_EDGE, SHIELD_DOME_FILL_COLOR, SHIELD_DOME_FLARE_EXTRA, SHIELD_DOME_HEIGHT, SHIELD_DOME_HIT_FLASH_ALPHA, SHIELD_DOME_RIM_ALPHA, SHIELD_DOME_RIM_COLOR, SHIELD_DOME_RIM_GLOW_ALPHA, SHIELD_DOME_RIM_GLOW_BLUR, SHIELD_DOME_RIM_GLOW_COLOR, SHIELD_DOME_RIM_LINE_WIDTH, SHIELD_DOME_SPEC_ALPHA, SHIELD_DOME_SPEC_ARC, SHIELD_DOME_SPEC_COLOR, SHIELD_DOME_SPEC_LINE_WIDTH, SHIELD_DOME_WIDTH, SHIELD_FLUFF_ALPHA_AMP, SHIELD_FLUFF_ALPHA_BASE, SHIELD_FLUFF_ALPHA_FREQ, SHIELD_FLUFF_BLEND, SHIELD_FLUFF_COLOR, SHIELD_FLUFF_COUNT, SHIELD_FLUFF_INSET, SHIELD_FLUFF_SIZE_AMP, SHIELD_FLUFF_SIZE_FREQ, SHIELD_FLUFF_SIZE_MIN, SHIELD_FLUFF_SPEED, SHIELD_FLUFF_WANDER_AMP, SHIELD_RECT_COLOR, SHIELD_RECT_FILL_ALPHA_MID, SHIELD_RECT_FILL_ALPHA_NEAR, SHIELD_RECT_HEIGHT, SHIELD_RECT_STROKE_ALPHA_SCALE, SHIELD_RECT_STROKE_COLOR, SHIELD_RECT_STROKE_FLASH_ALPHA } from './vfx-balance';
 
 // ========== 消耗品定义（关卡内商店，一次性使用） ==========
 /**
@@ -409,55 +408,56 @@ export const BALANCE_ITEMS = {
     armorSprayInterval: 10,        // 护甲喷涂间隔（秒，6→10 降低加护甲速度）
     armorSprayAmount: 200,         // 单次喷涂护甲值（提高：150→200）
     armorSprayRange: 300,          // 喷涂范围（像素，增强施法范围，原 200）
+    armorSprayTargets: 3,          // 单次施法可加护甲的目标数（提升：1→3）
     // 地铁精英
     eliteChargeDelay: 2,           // 出场后进入冲刺的延迟（秒）
     eliteChargeSpeed: 460,         // 冲刺速度（像素/秒）
     eliteChargeEdgeMargin: 30,     // 冲刺到屏幕边缘停止的余量（像素）
     // 护盾蟑螂（气体护盾）
-    shieldMaxHp: 100,              // 气体护盾容量（提高：50→100，增强护盾生存力）
+    shieldMaxHp: 350,              // 气体护盾容量（提高：50→100→150→200→350，增强护盾生存力）
     shieldRegenPerSec: 2,          // 护盾完好时自然恢复（点/秒，5→2，放缓自然回盾）
-    shieldRebuildDelay: 10,        // 护盾破碎后重新生成延迟（秒）
+    shieldRebuildDelay: 6,         // 护盾破碎后重新生成延迟（秒，10→6 加快重建）
     shieldRectHalfWidth: 100,      // 护盾矩形保护区半宽（像素，总宽200）
     shieldRectHeight: SHIELD_RECT_HEIGHT, // 护盾矩形保护区高度（像素，从护盾蟑螂向上延伸）——数值集中于 vfx-balance.ts，此处引用保持访问路径不变
     shieldBandHeight: SHIELD_BAND_HEIGHT, // 底部光带高度（像素，破盾特效/碎裂粒子散布定位沿用）——数值集中于 vfx-balance.ts，此处引用保持访问路径不变
     // --- 护盾半球形水晶罩造型（径向渐变球体 + 罩内冰白晶面棱线 + 顶部镜面高光斑）——数值集中于 vfx-balance.ts，此处引用保持访问路径不变 ---
-    shieldDomeWidth: SHIELD_DOME_WIDTH,                      // 水晶罩视觉宽度（像素，120×60 半球形观感，与实际判定区 200 宽解耦）
-    shieldDomeHeight: SHIELD_DOME_HEIGHT,                    // 水晶罩视觉高度（像素，与实际判定区解耦）
-    shieldDomeCoreColor: SHIELD_DOME_CORE_COLOR,             // 顶部高光核 RGB（纯白，模拟光源直射点）
-    shieldDomeCoreAlpha: SHIELD_DOME_CORE_ALPHA,             // 顶部高光核透明度
-    shieldDomeFillColor: SHIELD_DOME_FILL_COLOR,             // 晶体中段 RGB（冰晶淡蓝）
-    shieldDomeFillAlpha: SHIELD_DOME_FILL_ALPHA,             // 晶体中段透明度
-    shieldDomeDeepColor: SHIELD_DOME_DEEP_COLOR,             // 底部深蓝厚度 RGB（水晶底座纵深感）
-    shieldDomeDeepAlpha: SHIELD_DOME_DEEP_ALPHA,             // 底部深蓝厚度透明度
-    shieldDomeSpecColor: SHIELD_DOME_SPEC_COLOR,             // 顶部镜面高光斑 RGB（纯白玻璃反光）
-    shieldDomeSpecAlpha: SHIELD_DOME_SPEC_ALPHA,             // 镜面高光斑峰值透明度
+    shieldDomeWidth: SHIELD_DOME_WIDTH,                      // 玻璃穹顶视觉宽度（× 蟑螂渲染尺寸 size 的比例，罩住本体，与实际判定区解耦）
+    shieldDomeHeight: SHIELD_DOME_HEIGHT,                    // 玻璃穹顶视觉高度（× size 的比例，脚下贴地→头顶余量，与判定区解耦）
+    shieldDomeFillColor: SHIELD_DOME_FILL_COLOR,             // 罩体 RGB（冰晶淡蓝）
+    shieldDomeFillAlphaEdge: SHIELD_DOME_FILL_ALPHA_EDGE,    // 罩体边缘峰值透明度（中心全透，罩内蟑螂清晰可见）
+    shieldDomeDeepColor: SHIELD_DOME_DEEP_COLOR,             // 罩体近底缘 RGB
+    shieldDomeDeepAlpha: SHIELD_DOME_DEEP_ALPHA,             // 罩体近底缘透明度
     shieldDomeRimColor: SHIELD_DOME_RIM_COLOR,               // 外缘描边 RGB
     shieldDomeRimAlpha: SHIELD_DOME_RIM_ALPHA,               // 外缘描边透明度
     shieldDomeRimLineWidth: SHIELD_DOME_RIM_LINE_WIDTH,      // 外缘描边线宽（像素）
-    shieldDomeSegmentCount: SHIELD_DOME_SEGMENT_COUNT,       // 放射分段数
-    shieldDomeRingCount: SHIELD_DOME_RING_COUNT,             // 同心环纹数
-    shieldDomeGapColor: SHIELD_DOME_GAP_COLOR,               // 晶面棱线 RGB（冰白）
-    shieldDomeGapAlpha: SHIELD_DOME_GAP_ALPHA,               // 晶面棱线基准透明度
-    shieldDomeGapLineWidth: SHIELD_DOME_GAP_LINE_WIDTH,      // 晶面棱线宽（像素）
-    shieldDomeGapGlowBlur: SHIELD_DOME_GAP_GLOW_BLUR,        // 晶面棱线辉光半径（像素）
-    shieldDomeEdgeColor: SHIELD_DOME_EDGE_COLOR,             // 晶纹段缘高光 RGB（纯白）
-    shieldDomeEdgeAlpha: SHIELD_DOME_EDGE_ALPHA,             // 晶纹段缘高光透明度
+    shieldDomeRimGlowColor: SHIELD_DOME_RIM_GLOW_COLOR,      // 外缘辉光 RGB（lighter）
+    shieldDomeRimGlowAlpha: SHIELD_DOME_RIM_GLOW_ALPHA,      // 外缘辉光透明度
+    shieldDomeRimGlowBlur: SHIELD_DOME_RIM_GLOW_BLUR,        // 外缘辉光模糊半径（像素）
+    shieldDomeSpecColor: SHIELD_DOME_SPEC_COLOR,             // 顶部高光弧 RGB（纯白玻璃反光）
+    shieldDomeSpecAlpha: SHIELD_DOME_SPEC_ALPHA,             // 顶部高光弧峰值透明度
+    shieldDomeSpecArc: SHIELD_DOME_SPEC_ARC,                 // 顶部高光弧跨度（弧度）
+    shieldDomeSpecLineWidth: SHIELD_DOME_SPEC_LINE_WIDTH,    // 顶部高光弧线宽（像素）
+    shieldDomeBaseRingColor: SHIELD_DOME_BASE_RING_COLOR,    // 底部贴地亮环基座 RGB
+    shieldDomeBaseRingFlatten: SHIELD_DOME_BASE_RING_FLATTEN, // 底部贴地亮环基座 Y 压扁比
+    shieldDomeBaseRingAlpha: SHIELD_DOME_BASE_RING_ALPHA,     // 底部贴地亮环基座透明度
+    shieldDomeBaseRingLineWidth: SHIELD_DOME_BASE_RING_LINE_WIDTH, // 底部贴地亮环基座线宽（像素）
     shieldDomeBreathAmp: SHIELD_DOME_BREATH_AMP,             // 呼吸胀缩振幅
     shieldDomeBreathFreq: SHIELD_DOME_BREATH_FREQ,           // 呼吸频率（Hz）
     shieldDomeFlareExtra: SHIELD_DOME_FLARE_EXTRA,           // 底部外张沿基础宽度（像素）
     shieldDomeAllyWiden: SHIELD_DOME_ALLY_WIDEN,             // 同类靠近底部加宽步进（像素）
-    shieldDomeCrackCount: SHIELD_DOME_CRACK_COUNT,           // 受击裂纹条数
-    shieldDomeCrackColor: SHIELD_DOME_CRACK_COLOR,           // 受击裂纹 RGB
-    shieldDomeCrackAlpha: SHIELD_DOME_CRACK_ALPHA,           // 受击裂纹峰值透明度
-    shieldDomeCrackLineWidth: SHIELD_DOME_CRACK_LINE_WIDTH,  // 受击裂纹线宽（像素）
-    shieldDomeScorchCount: SHIELD_DOME_SCORCH_COUNT,         // 焦黑灼痕斑块数
-    shieldDomeScorchColor: SHIELD_DOME_SCORCH_COLOR,         // 焦黑灼痕 RGB
-    shieldDomeScorchAlpha: SHIELD_DOME_SCORCH_ALPHA,         // 焦黑灼痕峰值透明度
-    shieldDomeDebrisCount: SHIELD_DOME_DEBRIS_COUNT,         // 边缘碎屑数量
-    shieldDomeDebrisLife: SHIELD_DOME_DEBRIS_LIFE,           // 碎屑生命周期（毫秒）
-    shieldDomeDebrisSize: SHIELD_DOME_DEBRIS_SIZE,           // 碎屑半径（像素）
-    shieldDomeDebrisColor: SHIELD_DOME_DEBRIS_COLOR,         // 碎屑 RGB
-    shieldDomeDebrisHpThreshold: SHIELD_DOME_DEBRIS_HP_THRESHOLD, // 碎屑剥落 HP 阈值
+    shieldDomeHitFlashAlpha: SHIELD_DOME_HIT_FLASH_ALPHA,    // 受击泛白闪光峰值透明度
+    shieldFluffCount: SHIELD_FLUFF_COUNT,                    // 罩面游走絮状物数量——数值集中于 vfx-balance.ts，此处引用保持访问路径不变
+    shieldFluffSpeed: SHIELD_FLUFF_SPEED,                    // 罩面游走角速度（弧度/秒）——数值集中于 vfx-balance.ts
+    shieldFluffWanderAmp: SHIELD_FLUFF_WANDER_AMP,           // 往返摆动幅度（π 比例）——数值集中于 vfx-balance.ts
+    shieldFluffInset: SHIELD_FLUFF_INSET,                    // 贴罩面内缩系数（<1 不越出罩体）——数值集中于 vfx-balance.ts
+    shieldFluffSizeMin: SHIELD_FLUFF_SIZE_MIN,               // 絮状物最小半径（像素）——数值集中于 vfx-balance.ts
+    shieldFluffSizeAmp: SHIELD_FLUFF_SIZE_AMP,               // 大小脉动振幅（像素）——数值集中于 vfx-balance.ts
+    shieldFluffSizeFreq: SHIELD_FLUFF_SIZE_FREQ,             // 大小脉动频率（Hz）——数值集中于 vfx-balance.ts
+    shieldFluffAlphaBase: SHIELD_FLUFF_ALPHA_BASE,           // 基础透明度——数值集中于 vfx-balance.ts
+    shieldFluffAlphaAmp: SHIELD_FLUFF_ALPHA_AMP,             // 透明度脉动振幅——数值集中于 vfx-balance.ts
+    shieldFluffAlphaFreq: SHIELD_FLUFF_ALPHA_FREQ,           // 透明度脉动频率（Hz）——数值集中于 vfx-balance.ts
+    shieldFluffColor: SHIELD_FLUFF_COLOR,                    // 絮状物颜色 RGB 通道——数值集中于 vfx-balance.ts
+    shieldFluffBlend: SHIELD_FLUFF_BLEND,                    // 絮状物叠加混合（lighter）——数值集中于 vfx-balance.ts
     shieldBreakDuration: SHIELD_BREAK_DURATION,              // 破盾玻璃碎裂持续时间（秒）——数值集中于 vfx-balance.ts，此处引用保持访问路径不变
     shieldBreakFlashColor: SHIELD_BREAK_FLASH_COLOR,         // 破盾瞬间闪光 RGB 通道（纯白）——数值集中于 vfx-balance.ts，此处引用保持访问路径不变
     shieldBreakFlashAlpha: SHIELD_BREAK_FLASH_ALPHA,         // 破盾瞬间闪光峰值透明度——数值集中于 vfx-balance.ts，此处引用保持访问路径不变
@@ -481,6 +481,7 @@ export const BALANCE_ITEMS = {
     shieldRectStrokeAlphaScale: SHIELD_RECT_STROKE_ALPHA_SCALE, // 线框透明度放大系数——数值集中于 vfx-balance.ts
     shieldRectStrokeFlashAlpha: SHIELD_RECT_STROKE_FLASH_ALPHA, // 线框受击闪白附加透明度——数值集中于 vfx-balance.ts
     shieldFireZoneErosionMult: 2,  // 火墙对护盾的侵蚀倍率
+    shieldSnapshotErosionMult: 0.5, // 快照侵蚀系数（受保护队友 hp 下降 → 护盾按此比例扣减，1=等额）
     shieldRepairPerSec: 10,        // 隧道工修理护盾速度（点/秒，25→10，削弱持续回盾）
     shieldRepairRange: 220,        // 隧道工修理射程（像素，增强施法范围，原 150）
     workerFollowStopDist: 100,     // 隧道工跟随护盾蟑螂的停留距离（像素）
@@ -494,7 +495,7 @@ export const BALANCE_ITEMS = {
     knifeKillDelay: 0.18,          // 到达目标后击杀延迟（秒）
   },
 
-  // ===== 超市场景：阵型系统（V4.0 特种三排阵列：A三线/B楔形/D方阵/E纵队/F穿插/G同心圆/H双锋） =====
+  // ===== 超市场景：阵型系统（V5.0 直驱制：槽位清单直读，锚点/运动标记驱动，无模板） =====
   supermarket: {
     // 通用
     formationBlend: 0.7,         // 移动混合权重：70% 跟随阵型槽位 + 30% 向防线推进
@@ -502,18 +503,12 @@ export const BALANCE_ITEMS = {
     gatherTolerance: 36,         // 集结完成判定：已就位成员距槽位平均距离（像素）
     gatherTimeout: 12,           // 集结超时（秒，超时强制进入推进，防止刷怪过慢卡集结）
     defenseHoldDist: 50,         // 阵型原点推进到距防线此距离处停住（像素）
-    // 阵列三排成员表（V4.0 硬约束：小/大/飞行/地面自爆/精英一律禁入，仅作自由杂兵）
-    rowFrontTypes: [RoachType.ARMORED, RoachType.SHIELD],                          // 前排：承伤盾墙，主锚点来源
-    rowMidTypes: [RoachType.SPLITTING, RoachType.TIMED_SUICIDE, RoachType.TUNNEL_WORKER], // 中排：功能输出
-    rowBackTypes: [RoachType.NURSE],                                               // 后排：唯一治疗
-    maxNursePerFormation: 1,     // 护士硬上限（每阵列），配置超出运行期截断
-    maxTunnelerPerFormation: 2,  // 隧道工硬上限（每阵列），配置超出运行期截断
-    maxShieldPerFormation: 1,    // 护盾蟑螂硬上限（每阵列），配置超出运行期截断
+    // 阵列成员硬约束（数据层保证）：仅装甲/护盾/分裂/定时自爆/隧道工/护士入阵；小/大/飞行/地面自爆/精英一律仅作自由杂兵
     spawnCapacityGuard: 36,      // 场上蟑螂 ≥ 此值时延迟阵列组/穿插生成（硬上限 40 前留余量，防静默丢弃）
     formationWaitClear: 4,       // 阵型组出场条件：热场杂兵队列清空且场上存活 ≤ 此值（放宽至4，阵列更早起手避免断档）
     formationWaitTimeout: 6,     // 队列清空后阵型组最长等待（秒，缩短兜底等待，防残血杂兵造成长时间空窗）
-    groupDepthGap: 90,           // 多阵型组生成：后续组出生线纵深错位（像素，更靠近玩家，避免阵面重叠）
-    groupStaggerSec: 3.5,        // 相邻阵型组错时生成间隔（秒，缩短组间空窗；首组在热场清完后立即出场）
+    groupStaggerSec: 3.5,        // 上一组阵型被消灭后、下一组出场的缓冲间隔（秒；首组在热场清完后立即出场）
+    formationMemberStaggerSec: 0.4, // 阵型组内成员陆续生成间隔（秒；出生位置固定为槽位坐标，仅时间错开）
     trickleJitterMin: 0.7,       // 穿插投放间隔抖动下限倍率（实际间隔 = intervalSec × 抖动）
     trickleJitterMax: 1.3,       // 穿插投放间隔抖动上限倍率
     trickleSuicideJitterMax: 1.5,// 自爆类穿插间隔抖动上限倍率（下限同 trickleJitterMin，挫开时间；空场时改用 trickleJitterMax 快速补场）
@@ -526,38 +521,14 @@ export const BALANCE_ITEMS = {
     placedBombDefenseDamage: { easy: 4, hard: 10 }, // 放置炸弹防线伤害（医院为引擎全局 easy 8 / hard 20）
     suicideExplodeDefenseDamage: { easy: 3, hard: 8 }, // 自爆爆炸防线伤害（超市穿插自爆为量产消耗品；其它场景为引擎全局 easy 5 / hard 15）
     defenseHpMult: 1.75,         // 超市防线总池倍率（阵型+穿插全程持续施压、波次间无修复，80 → 140）
-    // 模板A：三线散兵线
-    laneWidthRatio: 0.9,         // 单路宽度占该路可用地面宽度比例
-    laneDepth: 60,               // 单路纵深（像素，前排+depth/2，中后排-depth/2；前中排 Y 间距 60 ≥ 30 下限）
-    // 模板D：装甲方阵
-    phalanxWidthRatio: 0.5,      // 方阵宽度占地面可用宽度比例
-    phalanxDepth: 60,            // 方阵纵深（像素，前排+depth/2，后排锚点-depth/2）
-    // 模板B：楔形冲锋阵（尖端装甲单锚点承伤，两翼前排护盾；中排分裂/定时自爆，右翼Z字）
-    wedgeWidthRatio: 0.7,        // 楔形宽度占地面可用宽度比例
-    wedgeDepth: 50,              // 楔形纵深（像素，尖端在前+depth/2，翼尾靠后-depth/2）
-    // 模板E：混合纵队阵（双独立纵队：前排装甲/护盾锚点→中排功能层，单列独立破阵）
-    columnWidthRatio: 0.7,       // 双列总宽占地面可用宽度比例
-    columnDepth: 60,             // 单列纵深（像素，前后排层叠）
-    columnLayerYGap: 30,         // 同列相邻层 Y 间距（像素，≥ 30 下限，保证纵队纵深不重叠）
-    columnOriginXRatio: 0.24,    // 双列中心间距占地面宽度比例（远端紧贴、近端随透视拉开）
-    // 模板F：Z字穿插纵队（A列直线前排 + B列Z字定时自爆主力）
-    zigzagWidthRatio: 0.6,       // 双列总宽占地面可用宽度比例
-    zigzagDepth: 50,             // 纵队纵深（像素，单列前后端 Y 间距 ≥ 30 下限）
-    zigzagAmp: 30,               // Z字摆动幅度（像素，B列槽位横向叠加）
-    zigzagPeriod: 80,            // Z字摆动周期（按阵型原点推进距离，像素）
-    // 模板G：同心圆护卫阵（外环装甲/护盾+内环中排旋转保护圆心护士，全锚点击杀才破阵）
-    ringWidthRatio: 0.5,         // 外环直径占地面可用宽度比例
-    ringInnerRatio: 0.45,        // 内环半径占外环半径比例
-    ringDepthSquash: 0.55,       // 环形纵向压缩比（透视椭圆，sin 分量乘此系数）
-    ringRotateSpeed: 0.26,       // 环形旋转速度（弧度/秒，≈15°/s）
-    // 模板H：双锋护卫阵（双装甲/护盾走廊 + 中军隧道工/护士双锚点，双锚全灭才破阵）
-    corridorWidthRatio: 0.8,     // 双走廊总宽占地面可用宽度比例
-    corridorDepth: 80,           // 走廊纵深（像素）
-    corridorXRatio: 0.32,        // 走廊中心横向偏移比例（±，远端紧贴、近端大幅展开）
-    // 破阵判定（三重条件，触发即永久散乱）
-    breakOutRatio: 0.3,          // 30% 成员横向脱离阵型半宽 → 破阵
-    // 破阵判定②：按模板存活比例阈值（A 50%、D 70%、B 40%、E/F 50%；G/H 无此档——仅全锚灭+脱离判定）
-    breakAliveRatio: { A: 0.5, D: 0.7, B: 0.4, E: 0.5, F: 0.5 },
+    // 槽位运动（sway 横向摇摆 / orbit 环绕，由阵型组槽位的 motion 标记驱动）
+    swayAmp: 30,                 // sway 横向摇摆幅度（像素，按阵型原点推进距离三角波叠加）
+    swayPeriod: 80,              // sway 摇摆周期（按阵型原点推进距离，像素）
+    orbitRotateSpeed: 0.26,      // orbit 环绕转速（弧度/秒，≈15°/s）
+    // 破阵判定（双规则，触发即永久散乱：① 锚点全灭 ② 推进期脱离）
+    breakOutRatio: 0.3,          // 推进期超过此比例成员横向脱离阵型半宽 → 破阵
+    // 成员单独脱离（不触发整组破阵）：定时自爆/分裂蟑螂逼近防线即脱离阵列，按原生 AI 自行冲锋
+    breakNearDefenseDist: 250,   // 定时自爆/分裂蟑螂距防线 < 此值（像素）时脱离阵列
     // 锚点菱形标识（颜色按怪物类型区分）
     anchorMarkSize: 9,           // 菱形对角线半长（像素）
     anchorMarkSizeShield: 12,    // 护盾蟑螂菱形对角线半长（像素，略大于普通锚点——护盾是阵型防护核心）

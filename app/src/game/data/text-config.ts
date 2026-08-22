@@ -464,13 +464,17 @@ export const TEXT_CONFIG = {
       talentUnlocked: '获得天赋点！',
       talentDesc: '通关奖励，可用于强化角色能力',
       talentUnlockGrant: (n: number) => `天赋系统解锁！天赋点 ×${n}`,
-      talentUnlockGrantDesc: '通关地下室，改装工坊开放，待解锁天赋点已发放',
+      talentUnlockGrantDesc: '通关地下室，天赋工坊开放，待解锁天赋点已发放',
       goAddPoints: '去加点',
       nextLevel: (name: string) => `下一关：${name}`,
       playAgain: '再来一局',
       backToMenu: '返回主菜单',
       storyMode: '剧情模式',
       endlessMode: '无尽模式',
+      // 结算金币动画：来源金币标签（动画中递减显示）
+      levelReward: '关卡奖励',
+      achievementReward: '成就奖励',
+      clickToSkip: '点击屏幕跳过',
     },
 
     // 通用 - 共用按钮文字
@@ -481,17 +485,18 @@ export const TEXT_CONFIG = {
       confirm: '确认',
     },
 
-    // ===== 天赋树（v4 改装工坊：三分支×五层+预留槽） =====
+    // ===== 天赋树（v4 天赋工坊：三分支×五层+预留槽） =====
     talentTree: {
-      title: '改 装 工 坊',
-      subtitle: '喷火枪双路线改装',
+      title: '天 赋 工 坊',
       back: '返回',
       talentPoints: '天赋点',
-      gunTip: '枪身随「猛火系」进化 · 枪管随「长枪系」进化',
       hint: '点击发光节点直接升级 · 点灰色节点看解锁条件',
       legend: ['🟡 可升级(点它!)', '🔒 未解锁', '★ 基石天赋', '🔀 跨系互斥'] as readonly string[],
       branchName: { inferno: '猛火系', lance: '长枪系', support: '装备系' } as Record<string, string>,
       branchSub: { inferno: '伤害 · 近程爆发', lance: '射程 · 远程精准', support: '生存 · 经济 · 道具专精' } as Record<string, string>,
+      reset: '重置天赋',
+      resetConfirm: '确认重置？返还全部点数',
+      resetDone: (n: number) => `天赋已重置，返还 ${n} 点`,
       tierUnlocked: (t: number) => `T${t} 已解锁`,
       tierGate: (n: number) => `需本系 ${n} 点`,
       gateShort: (n: number) => `需${n}点`,
@@ -501,15 +506,6 @@ export const TEXT_CONFIG = {
       reservedTitle: '预留插槽',
       reservedDesc: '未来武器属性升级系统接入位置',
       exclusiveTag: (name: string) => `🔀 与「${name}」互斥`,
-      gunNames: {
-        base: 'Mk.I · 基础喷枪',
-        mk2: 'Mk.II · 改装中',
-        bluecore: 'Mk.III · 蓝焰核心',
-        steel: 'Mk.III · 寒钢枪管',
-        dual: 'Mk.IV · 双轨改装',
-        overdrive: '过载核心 · 猛火形态',
-        lance: '聚能长枪 · 狙击形态',
-      },
     },
 
     // ===== 暂停菜单 =====

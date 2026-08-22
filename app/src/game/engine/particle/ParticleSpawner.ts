@@ -27,6 +27,10 @@ export interface ConeFireParams {
   type?: 'fire' | 'ice' | 'poison';
   /** 天赋外观进化：蓝焰核心/过载核心/聚能长枪 */
   flameVariant?: 'normal' | 'blue' | 'overdrive' | 'lance';
+  /** 天赋渐进强化：伤害强度（伤害乘算-1，0 为无加成）；仅缩放粒子尺寸/余烬比，不增数量 */
+  intensity?: number;
+  /** 天赋渐进强化：射程聚焦（射程乘算-1，0 为无加成）；收敛张角、提升流速 */
+  focus?: number;
 }
 
 /** RGBA 颜色配置（用于粒子颜色生成） */
@@ -214,13 +218,21 @@ export class ParticleSpawner {
     const isPoison = type === 'poison';
 
     const count = Math.floor(cfg.emitter.countMin + Math.random() * cfg.emitter.countMax);
+    // 天赋渐进强化系数（仅火焰主武器传入；性能约束：不增粒子数，只调尺寸/形态/流速）
+    const boost = cfg.talentBoost;
+    const intensity = Math.max(0, params.intensity ?? 0);
+    const focus = Math.max(0, params.focus ?? 0);
+    const sizeMult = 1 + intensity * boost.sizePerIntensity;            // 伤害强度 → 粒子更大
+    const emberRatio = 0.5 + intensity * boost.emberRatioPerIntensity;  // 伤害强度 → 余烬更饱满
+    const spreadMult = Math.max(0.5, 1 + focus * boost.spreadPerFocus); // 射程聚焦 → 张角收敛（保底 50%）
+    const flowMult = 1 + focus * boost.flowPerFocus;                    // 射程聚焦 → 流速更快
     for (let i = 0; i < count; i++) {
       const rDist = Math.random() * range;
-      const rAngle = angle + (Math.random() - 0.5) * cfg.emitter.angleSpread;
+      const rAngle = angle + (Math.random() - 0.5) * cfg.emitter.angleSpread * spreadMult;
       const px = x + Math.cos(rAngle) * rDist;
       const py = y + Math.sin(rAngle) * rDist;
       const life = cfg.lifeMin + Math.random() * cfg.lifeMax;
-      const flowSpeed = cfg.flowSpeedMin + Math.random() * cfg.flowSpeedMax;
+      const flowSpeed = (cfg.flowSpeedMin + Math.random() * cfg.flowSpeedMax) * flowMult;
       let color: string;
       let particleType: ParticleType;
       let size: number;
@@ -245,14 +257,14 @@ export class ParticleSpawner {
           : variant === 'lance' ? cfg.lanceEmberColor
           : cfg.emberColor;
         const temp = Math.random();
-        if (temp < 0.5) {
+        if (temp < 1 - emberRatio) {
           color = ParticleSpawner.randomRgba(fireCfg);
           particleType = ParticleType.FIRE;
-          size = cfg.fireSizeMin + Math.random() * cfg.fireSizeMax;
+          size = (cfg.fireSizeMin + Math.random() * cfg.fireSizeMax) * sizeMult;
         } else {
           color = ParticleSpawner.randomRgba(emberCfg);
           particleType = ParticleType.EMBER;
-          size = cfg.emberSizeMin + Math.random() * cfg.emberSizeMax;
+          size = (cfg.emberSizeMin + Math.random() * cfg.emberSizeMax) * sizeMult;
         }
       }
 

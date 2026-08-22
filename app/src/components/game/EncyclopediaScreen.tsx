@@ -35,6 +35,7 @@ const ROACH_ICONS: Record<RoachType, React.ReactNode> = {
   [RoachType.TUNNEL_WORKER]: <Bug size={20} />,
   [RoachType.SUBWAY_ELITE]: <Wind size={20} />,
   [RoachType.SHIELD]: <Shield size={20} />,
+  [RoachType.JOCK]: <Bug size={22} />,
 };
 
 /** 蟑螂类型对应的渐变色（用于图标背景） */
@@ -53,6 +54,7 @@ const ROACH_COLORS: Record<RoachType, string> = {
   [RoachType.TUNNEL_WORKER]: 'from-lime-700 to-lime-600',
   [RoachType.SUBWAY_ELITE]: 'from-sky-700 to-sky-600',
   [RoachType.SHIELD]: 'from-cyan-700 to-cyan-600',
+  [RoachType.JOCK]: 'from-lime-700 to-lime-600',
 };
 
 /** 蟑螂类型对应的卡片背景色 */
@@ -71,6 +73,7 @@ const ROACH_BG_COLORS: Record<RoachType, string> = {
   [RoachType.TUNNEL_WORKER]: 'bg-lime-950/40 border-lime-800/40',
   [RoachType.SUBWAY_ELITE]: 'bg-sky-950/40 border-sky-800/40',
   [RoachType.SHIELD]: 'bg-cyan-950/40 border-cyan-800/40',
+  [RoachType.JOCK]: 'bg-lime-950/40 border-lime-800/40',
 };
 
 /** 蟑螂类型对应的文字颜色 */
@@ -89,6 +92,7 @@ const ROACH_TEXT_COLORS: Record<RoachType, string> = {
   [RoachType.TUNNEL_WORKER]: 'text-lime-400',
   [RoachType.SUBWAY_ELITE]: 'text-sky-400',
   [RoachType.SHIELD]: 'text-cyan-400',
+  [RoachType.JOCK]: 'text-lime-400',
 };
 
 /** 蟑螂类型对应的发光阴影颜色 */
@@ -107,6 +111,7 @@ const ROACH_GLOW_COLORS: Record<RoachType, string> = {
   [RoachType.TUNNEL_WORKER]: 'shadow-lime-900/30',
   [RoachType.SUBWAY_ELITE]: 'shadow-sky-900/30',
   [RoachType.SHIELD]: 'shadow-cyan-900/30',
+  [RoachType.JOCK]: 'shadow-lime-900/30',
 };
 
 /** 根据速度值返回星级（1-5） */

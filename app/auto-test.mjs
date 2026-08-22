@@ -52,7 +52,7 @@ const NAME = { kitchen: '厨房', sewer: '下水道', dump: '垃圾场', basemen
 const TRACE_DIR = 'D:/CocosGreater/Fire Roach KillerV2.6/app/traces'; // trace JSON 写入目录（D 盘），报告生成时也从这里读取
 const REPORT_PATH = fileURLToPath(new URL('./auto-report.html', import.meta.url));
 const CONFIG_TOTALS_PATH = fileURLToPath(new URL('./config-totals.json', import.meta.url)); // 每关配置总强度（供 --report 复用）
-const LEVEL_TIMEOUT = 480_000;  // 单关战斗超时 8 分钟
+const LEVEL_TIMEOUT = 900_000;  // 单关战斗超时 15 分钟（超市阵型串行出场后 10 波全程 ~11 分钟，留足余量）
 const UI_TIMEOUT = 90_000;      // UI 导航超时 90 秒
 // 进入场景前在主菜单商店补足的消耗品目标库存（钱不够时"购买"按钮禁用，自动跳过不报错）
 const PRE_GAS_TARGET = 3;       // 气罐补给补足至 3 个
@@ -196,7 +196,7 @@ window.__driver = {
     if (this.hasText('开始战斗')) {
       if (!this.prepSelected) {
         if (!this.prepClickedList) this.prepClickedList = [];
-        const ITEM_NAMES = ['蟑螂贴板', '强力风扇', '燃烧瓶', '杀虫喷雾', '散弹模式', '电蚊拍', '雷达激光', '斩螂·110'];
+        const ITEM_NAMES = ['蟑螂贴板', '强力风扇', '燃烧瓶', '杀虫剂', '散弹模式', '电蚊拍', '雷达激光', '斩螂·110'];
         let clickedOne = false;
         for (const n of ITEM_NAMES) {
           if (this.prepClickedList.includes(n)) continue; // 已点过的道具不再重复点，避免切换取消选中

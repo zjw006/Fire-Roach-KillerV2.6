@@ -25,6 +25,10 @@ export interface RoachRendererConfig {
   roachSubwayEliteImg: HTMLImageElement | null;
   /** 地铁场景：护盾蟑螂贴图（roach_shield01.png） */
   roachShieldImg: HTMLImageElement | null;
+  /** 废弃学校场景：体育生蟑螂贴图（roach_jock.png；null 时回退程序化绘制） */
+  roachJockImg?: HTMLImageElement | null;
+  /** 中毒 DEBUFF 图标贴图（debuff_poison.png，紫色像素骷髅；null 时回退程序化绘制） */
+  debuffPoisonImg?: HTMLImageElement | null;
   nurseCastFrames: (HTMLImageElement | null)[];
   mutantTransformFrames: (HTMLImageElement | null)[];
   imagesLoaded: boolean;
@@ -260,6 +264,9 @@ export class RoachRenderer {
       } else if (r.type === RoachType.SHIELD && config.roachShieldImg) {
         // 护盾蟑螂使用贴图 roach_shield01.png
         ctx.drawImage(config.roachShieldImg, -w / 2, -h / 2, w, h);
+      } else if (r.type === RoachType.JOCK) {
+        // 体育生蟑螂：贴图绘制（roach_jock.png）+ 蓄力/腾空变换 + 三段特效
+        RoachRenderer.renderJockBody(config, ctx, r, w, h);
       } else if (r.type === RoachType.QUEEN && config.roachQueenImg) {
         RoachRenderer.renderBossBody(config, ctx, r, w, h, size);
       } else {
@@ -270,6 +277,233 @@ export class RoachRenderer {
       ctx.beginPath();
       ctx.ellipse(0, 0, w / 2, h / 2, 0, 0, Math.PI * 2);
       ctx.fill();
+    }
+  }
+
+  /** 体育生蟑螂：贴图绘制（roach_jock.png）+ 蓄力/腾空变换 + 三段特效；贴图缺失时回退程序化绘制 */
+  private static renderJockBody(
+    config: RoachRendererConfig,
+    ctx: CanvasRenderingContext2D,
+    r: Roach,
+    w: number,
+    h: number
+  ): void {
+    const phase = r.jumpPhase ?? 'idle';
+    const crouch = phase === 'crouch' || phase === 'land';
+    const air = phase === 'air';
+    // 深蹲时整体纵向压扁；腾空时按抛物线弧线抬升（峰值 = 体高 × jumpHeight），产生明显跳跃高度感
+    const squashY = crouch ? 0.72 : (air ? 0.98 : 1);
+    let liftY = 0;
+    if (air) {
+      const jc = BALANCE_CONFIG.roachAI.jock;
+      const p = 1 - (r.jumpTimer ?? jc.airTime) / jc.airTime; // 0(起跳)→1(落地)
+      liftY = -h * jc.jumpHeight * 4 * p * (1 - p); // 抛物线：最高点在腾空中部
+    }
+
+    ctx.save();
+    ctx.translate(0, liftY);
+    ctx.scale(1, squashY);
+
+    if (config.roachJockImg) {
+      // 贴图绘制（保持蓄力压扁 / 腾空抛物线抬升）
+      ctx.drawImage(config.roachJockImg, -w / 2, -h / 2, w, h);
+    } else {
+      // 回退：程序化绘制（草绿 + 粗壮后腿）
+      const bw = w * 0.56;
+      const bh = h * 0.4;
+      ctx.fillStyle = '#3c7632';
+      const legW = w * 0.16;
+      const legH = (crouch ? h * 0.32 : h * 0.26);
+      const hindLowerY = crouch ? bh * 0.42 : bh * 0.16;
+      const legTilt = crouch ? 0.55 : 0.35;
+      ctx.beginPath();
+      ctx.ellipse(-bw * 0.46, hindLowerY, legW, legH, -legTilt, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(bw * 0.46, hindLowerY, legW, legH, legTilt, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#4a8a3a';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, bw, bh, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(46, 102, 40, 0.55)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, bw * 0.7, bh * 0.72, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.ellipse(0, 0, bw * 0.42, bh * 0.45, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = '#3f7a31';
+      ctx.beginPath();
+      ctx.arc(-bw * 0.74, -bh * 0.12, w * 0.16, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#2f5c24';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(-bw * 0.86, -bh * 0.25);
+      ctx.quadraticCurveTo(-w * 0.56, -bh * 0.95, -w * 0.42, -bh * 1.12);
+      ctx.moveTo(-bw * 0.7, -bh * 0.24);
+      ctx.quadraticCurveTo(-w * 0.34, -bh * 0.9, -w * 0.18, -bh * 1.1);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // 三段跳跃特效（蓄力气浪 / 跳跃拖尾 / 落地尘环）
+    RoachRenderer.renderJockVFX(config, ctx, r, h);
+  }
+
+  /** 体育生蟑螂跳跃三段特效：蓄力气浪收缩环、跳跃拖尾粒子流、落地冲击尘环（参数集中于 vfx-balance render.roach.jock） */
+  private static renderJockVFX(
+    config: RoachRendererConfig,
+    ctx: CanvasRenderingContext2D,
+    r: Roach,
+    h: number
+  ): void {
+    if (r.state !== RoachState.ALIVE) return;
+    const phase = r.jumpPhase ?? 'idle';
+    if (phase === 'idle') return;
+    const jc = BALANCE_CONFIG.roachAI.jock;
+    const jv = BALANCE_CONFIG.render.roach.jock; // 颜色/透明度/混合集中于 vfx-balance
+    const footY = h * 0.1;
+
+    ctx.save();
+    ctx.globalCompositeOperation = jv.blend;
+
+    // —— 蓄力（crouch）：脚下气浪收缩环 + 外升尘点（提示最佳击杀窗口） ——
+    if (phase === 'crouch') {
+      const c = jv.crouch;
+      const progress = Math.max(0, Math.min(1, 1 - (r.jumpTimer ?? jc.crouchTime) / jc.crouchTime)); // 0→1
+      const radius = c.ringBaseR * (1 - progress * 0.6); // 收缩
+      const alpha = c.ringAlphaBase * (0.4 + progress * 0.6); // 增强
+      const grad = ctx.createRadialGradient(0, footY, radius * 0.4, 0, footY, radius);
+      grad.addColorStop(0, `rgba(${jv.colorInner}, ${alpha * c.fillAlphaRatio * 2})`);
+      grad.addColorStop(0.7, `rgba(${jv.colorMid}, ${alpha * c.fillAlphaRatio})`);
+      grad.addColorStop(1, `rgba(${jv.colorEdge}, 0)`);
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.ellipse(0, footY, radius, radius * c.ringFlatten, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = `rgba(${jv.colorMid}, ${alpha})`;
+      ctx.lineWidth = c.lineWidth;
+      ctx.beginPath();
+      ctx.ellipse(0, footY, radius, radius * c.ringFlatten, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      // 外升尘点（确定性分布，随进度上扬）
+      for (let i = 0; i < c.sparkCount; i++) {
+        const a = (i / c.sparkCount) * Math.PI * 2 + progress * 2;
+        const sx = Math.cos(a) * radius * 1.1;
+        const sy = footY + Math.sin(a) * radius * c.ringFlatten - progress * 8;
+        ctx.fillStyle = `rgba(${jv.colorInner}, ${alpha * 0.7})`;
+        ctx.beginPath();
+        ctx.arc(sx, sy, 1.8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // 蓄力阶段：红色抛物线虚线，提示跳跃落点（local 坐标：起跳点即当前蟑螂位置 (0,0)）
+      // 本方法在 translate(r.x, r.y) 的局部坐标系内执行，故用相对起跳点的位移 dx/dy 采样，避免世界坐标二次平移导致轨迹错位/方向反
+      if (r.jumpStartX != null && r.jumpEndX != null && r.jumpStartY != null && r.jumpEndY != null) {
+        ctx.save();
+        // 红色虚线用普通叠加（不走 lighter），保证线条清晰可读
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.setLineDash([c.arcDashPattern[0], c.arcDashPattern[1]]);
+        ctx.strokeStyle = `rgba(${c.arcDashColor}, ${c.arcDashAlpha})`;
+        ctx.lineWidth = c.arcDashLineWidth;
+        const dx = r.jumpEndX - r.jumpStartX; // 横向位移（±jumpX）
+        const dy = r.jumpEndY - r.jumpStartY; // 纵向位移（朝防线，Y 增大）
+        ctx.beginPath();
+        for (let i = 0; i <= c.arcDashSeg; i++) {
+          const p = i / c.arcDashSeg;
+          const px = dx * p;
+          const py = dy * p - h * jc.jumpHeight * 4 * p * (1 - p); // 向上为负（canvas Y 向下）
+          if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+        // 落点红色虚线圆圈：标注跳跃终点（椭圆压扁贴合地面透视，圈住落点）
+        ctx.setLineDash([c.arcDashPattern[0], c.arcDashPattern[1]]);
+        ctx.strokeStyle = `rgba(${c.arcDashColor}, ${c.arcDashAlpha})`;
+        ctx.lineWidth = c.arcDashLineWidth;
+        ctx.beginPath();
+        ctx.ellipse(dx, dy, c.landCircleR, c.landCircleR * c.landCircleFlatten, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
+    }
+
+    // —— 落地（land）：冲击尘环扩散 + 外散尘点（标识硬直反打窗口） ——
+    if (phase === 'land') {
+      const l = jv.land;
+      const progress = Math.max(0, Math.min(1, 1 - (r.jumpTimer ?? jc.landTime) / jc.landTime)); // 0→1
+      const radius = l.ringStartR + (l.ringEndR - l.ringStartR) * progress; // 扩散
+      // 前半段保持满亮，后半段再渐隐（避免 additive 亮色被亮背景吞掉、前 0.3s 一闪而过看不到）
+      const fade = progress < 0.4 ? 1 : 1 - (progress - 0.4) / 0.6;
+      const alpha = l.ringAlphaBase * fade;
+      // 落地环用普通叠加（非 lighter additive），保证在亮背景上清晰可读
+      ctx.globalCompositeOperation = 'source-over';
+      const grad = ctx.createRadialGradient(0, footY, radius * 0.5, 0, footY, radius);
+      grad.addColorStop(0, `rgba(${jv.colorInner}, ${alpha * l.fillAlphaRatio * 2})`);
+      grad.addColorStop(0.8, `rgba(${jv.colorMid}, ${alpha * l.fillAlphaRatio})`);
+      grad.addColorStop(1, `rgba(${jv.colorEdge}, 0)`);
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.ellipse(0, footY, radius, radius * l.ringFlatten, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // 外圈深色描边提升对比，再用亮绿主环压线，亮底上也能看清
+      ctx.strokeStyle = `rgba(${jv.colorEdge}, ${alpha})`;
+      ctx.lineWidth = l.lineWidth + 1.5;
+      ctx.beginPath();
+      ctx.ellipse(0, footY, radius, radius * l.ringFlatten, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = `rgba(${jv.colorInner}, ${alpha})`;
+      ctx.lineWidth = l.lineWidth;
+      ctx.beginPath();
+      ctx.ellipse(0, footY, radius, radius * l.ringFlatten, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      // 外散尘点（确定性分布，随进度外散）
+      for (let i = 0; i < l.dustCount; i++) {
+        const a = (i / l.dustCount) * Math.PI * 2;
+        const dx = Math.cos(a) * radius * 1.05;
+        const dy = footY + Math.sin(a) * radius * l.ringFlatten;
+        ctx.fillStyle = `rgba(${jv.colorEdge}, ${alpha * 0.9})`;
+        ctx.beginPath();
+        ctx.arc(dx, dy, 2.4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // 还原为整体叠加模式，供后续阶段使用
+      ctx.globalCompositeOperation = jv.blend;
+    }
+    ctx.restore();
+
+    // —— 跳跃拖尾（air）：身后速度粒子流（世界坐标生成，紧跟蟑螂模型尾部） ——
+    if (phase === 'air') {
+      const t = jv.trail;
+      const airElapsed = jc.airTime - (r.jumpTimer ?? jc.airTime); // 已腾空时长
+      const slots = Math.floor(airElapsed / t.spawnInterval);
+      const emitted = r.trailEmitted ?? 0;
+      if (slots > emitted) {
+        r.trailEmitted = slots;
+        for (let i = emitted; i < slots; i++) {
+          // 紧跟模型：用 follow 系数从尾部（而非 0.6·life 远后）采样，拖尾贴近本体
+          const backX = r.x - (r.vx ?? 0) * t.particleLife * t.follow;
+          const backY = r.y - (r.vy ?? 0) * t.particleLife * t.follow;
+          // 拖尾贴合腾空抛物线弧线：向后采样的时刻位处更高的弧高点，据此上移
+          const backP = (airElapsed - t.particleLife * t.follow) / jc.airTime; // 后采样时刻进度
+          const arcLift = h * jc.jumpHeight * 4 * backP * (1 - backP);
+          config.onAddParticle({
+            x: backX + (Math.random() - 0.5) * 6,
+            y: backY + (Math.random() - 0.5) * 6 - arcLift,
+            vx: -(r.vx ?? 0) * 0.2 + (Math.random() - 0.5) * t.speedJitter,
+            vy: -(r.vy ?? 0) * 0.2 + (Math.random() - 0.5) * t.speedJitter,
+            life: t.particleLife,
+            maxLife: t.particleLife,
+            size: t.particleSize,
+            color: `rgba(${jv.colorMid}, ${t.alphaBase})`,
+            type: ParticleType.SPARK,
+            blend: jv.blend,
+          });
+        }
+      }
     }
   }
 
@@ -660,7 +894,7 @@ export class RoachRenderer {
     // Rotation: downward (vy>0) = 0°, upward (vy<=0) = 180°
     // Skip for BOSS — handled separately below with proper rotation
     // Nurse roach: never flip vertically (no reversal when hit by flame)
-    if (r.vy <= 0 && !r.isBoss && r.type !== RoachType.NURSE && r.type !== RoachType.TUNNEL_WORKER && r.type !== RoachType.SUBWAY_ELITE) ctx.scale(1, -1);
+    if (r.vy <= 0 && !r.isBoss && r.type !== RoachType.NURSE && r.type !== RoachType.TUNNEL_WORKER && r.type !== RoachType.SUBWAY_ELITE && r.type !== RoachType.JOCK) ctx.scale(1, -1);
 
     // ===== BODY RENDERING =====
     RoachRenderer.renderRoachBody(config, ctx, r, def, w, h, size);
@@ -1107,30 +1341,28 @@ export class RoachRenderer {
       ctx.restore();
     }
 
-    // ===== 护盾蟑螂气体护盾——半球形水晶罩（常驻特效，不受 showShieldRange 调试开关控制） =====
-    // 半球形水晶质感（视觉 shieldDomeWidth×shieldDomeHeight = 120×60 半圆，与实际保护区判定 200×shieldRectHeight 解耦）：
-    //   径向渐变球体（顶部高光核 → 冰蓝晶体 → 底部深蓝厚度）塑造半球体积感；
-    //   罩内冰白晶面棱线（同心环纹 × 放射棱线，裁剪在半球内）+ 顶部镜面高光斑；
-    //   底部向两侧张开，同类靠近时自动延展加宽。
-    // 动态（全部无状态确定性渲染）：呼吸胀缩 + 晶面光按环纹相位明暗流转 + 高光斑随呼吸脉动；
-    //   受击裂纹爬散 → 晶光汇聚修补；受损变暗 + 霜白雾化斑 + 壳缘晶屑剥落。
+    // ===== 护盾蟑螂气体护盾——极简玻璃穹顶（常驻特效，不受 showShieldRange 调试开关控制） =====
+    // 参考图：高度透明半球，罩内蟑螂完全清晰可见。仅保留 4 个玻璃特征层，无环纹/放射棱线/晶屑/雾化斑：
+    //   ① 罩体径向渐变（中心全透 → 边缘微蓝）② 外缘亮描边 + lighter 辉光 ③ 顶部镜面高光弧 ④ 底部贴地亮环基座。
+    // 动态（无状态确定性）：呼吸胀缩 + 高光弧明暗脉动；受击（shieldHitFlash）罩面泛白闪光；
+    //   受损（shieldHp 下降）整体透明度按比例变暗。视觉尺寸 = size × 配置比例，随透视缩放自适应。
     if (r.type === RoachType.SHIELD && r.state === RoachState.ALIVE && (r.shieldHp ?? 0) > 0) {
       const sub = BALANCE_CONFIG.subway;
-      const hw = sub.shieldDomeWidth / 2;   // 水晶罩半宽 = 视觉宽 120 的一半（与判定区半宽 100 解耦）
-      const rh = sub.shieldDomeHeight;      // 水晶罩视觉高度（60，与判定区高度解耦）
-      const originY = r.y + size * 0.5; // 罩底边 = 本体下缘
+      const hw = size * sub.shieldDomeWidth / 2;   // 穹顶半宽
+      const rh = size * sub.shieldDomeHeight;      // 穹顶高度（脚下贴地 → 头顶余量）
+      const originY = r.y - 5;            // 罩底边 = 本体下缘
       const hpRatio = Math.max(0, (r.shieldHp ?? 0) / (r.maxShieldHp || 1));
-      const flash = Math.min(1, (r.shieldHitFlash ?? 0) / 0.15);
-      // 呼吸胀缩：整体缓慢（火焰直射命中时振幅加大）；r.id 错相避免多盾同步
+      const flash = Math.min(1, (r.shieldHitFlash ?? 0) / 0.15); // 受击闪光剩余（0→1）
+      // 呼吸胀缩（火焰直射命中时振幅加大）；r.id 错相避免多盾同步
       const breath = Math.sin(2 * Math.PI * sub.shieldDomeBreathFreq * config.time + r.id);
       const flameFlash = (r.shieldFlameHitFlash ?? 0) > 0;
-      const swell = 1 + (flameFlash ? 0.08 : sub.shieldDomeBreathAmp) * breath;
-      const dim = 0.35 + 0.65 * hpRatio; // 受损发光变暗
-      // 同类靠近 → 底部向两侧延展加宽（刚好罩住身后同类）：取后方保护区内同类最大横向偏离
+      const swell = 1 + (flameFlash ? 0.07 : sub.shieldDomeBreathAmp) * breath;
+      const dim = 0.4 + 0.6 * hpRatio; // 受损整体变暗
+      // 同类靠近 → 底部向两侧延展加宽（刚好罩住身后同类）
       let widen = 0;
       for (const o of roaches) {
         if (o.id === r.id || o.state !== RoachState.ALIVE) continue;
-        const dy = r.y - o.y; // 同类在后方（上方）
+        const dy = r.y - o.y;
         if (dy < -10 || dy > rh) continue;
         const dx = Math.abs(o.x - r.x);
         if (dx > hw + sub.shieldDomeAllyWiden * 2) continue;
@@ -1139,181 +1371,96 @@ export class RoachRenderer {
       const rx = hw * swell;
       const ry = rh * swell;
       const flare = sub.shieldDomeFlareExtra + Math.max(0, widen);
-      const repair = 1 + flash * 1.2; // 受击后晶面光增强 = 汇聚修补
-      const domeR = Math.max(rx, ry);
 
       ctx.save();
       ctx.translate(r.x, originY);
 
-      // --- 1. 水晶主体：径向渐变（光源在顶部偏左）——高光核 → 冰蓝晶体 → 底部深蓝厚度，半球体积感 ---
-      const bodyGrad = ctx.createRadialGradient(-rx * 0.3, -ry * 0.8, domeR * 0.1, 0, -ry * 0.3, domeR * 1.25);
-      bodyGrad.addColorStop(0, `rgba(${sub.shieldDomeCoreColor}, ${sub.shieldDomeCoreAlpha * dim})`);
-      bodyGrad.addColorStop(0.45, `rgba(${sub.shieldDomeFillColor}, ${sub.shieldDomeFillAlpha * dim})`);
-      bodyGrad.addColorStop(1, `rgba(${sub.shieldDomeDeepColor}, ${sub.shieldDomeDeepAlpha * dim})`);
+      // --- ① 罩体填充：径向渐变（中心全透明 → 边缘微蓝），罩内蟑螂完全清晰可见 ---
+      // 近底缘再加一圈轻微加厚的渐变（玻璃体积感，透明度极低不遮挡）
+      const bodyGrad = ctx.createRadialGradient(0, -ry * 0.4, 0, 0, -ry * 0.4, Math.max(rx, ry) * 1.05);
+      bodyGrad.addColorStop(0, `rgba(${sub.shieldDomeFillColor}, 0)`);                       // 中心全透
+      bodyGrad.addColorStop(0.62, `rgba(${sub.shieldDomeFillColor}, ${sub.shieldDomeFillAlphaEdge * 0.4 * dim})`);
+      bodyGrad.addColorStop(0.88, `rgba(${sub.shieldDomeDeepColor}, ${sub.shieldDomeDeepAlpha * dim})`);
+      bodyGrad.addColorStop(1, `rgba(${sub.shieldDomeFillColor}, ${sub.shieldDomeFillAlphaEdge * dim})`);
       ctx.fillStyle = bodyGrad;
       ctx.beginPath();
       ctx.ellipse(0, 0, rx, ry, 0, Math.PI, Math.PI * 2);
       ctx.closePath();
       ctx.fill();
 
-      // --- 2. 霜白雾化斑（受损出现，确定性散布于罩面，压在壳体上、晶纹下） ---
-      if (hpRatio < 1) {
-        const scorchA = (1 - hpRatio) * sub.shieldDomeScorchAlpha;
-        for (let i = 0; i < sub.shieldDomeScorchCount; i++) {
-          const th = Math.PI + Math.PI * (0.18 + 0.64 * RoachRenderer.hash01(i * 31 + r.id * 7));
-          const rr = 0.25 + 0.55 * RoachRenderer.hash01(i * 13 + r.id * 17);
-          const bx = rx * rr * Math.cos(th);
-          const by = ry * rr * Math.sin(th);
-          const br = 14 + 16 * RoachRenderer.hash01(i * 5 + r.id * 11);
-          const sg = ctx.createRadialGradient(bx, by, 0, bx, by, br);
-          sg.addColorStop(0, `rgba(${sub.shieldDomeScorchColor}, ${scorchA})`);
-          sg.addColorStop(1, `rgba(${sub.shieldDomeScorchColor}, 0)`);
-          ctx.fillStyle = sg;
-          ctx.beginPath();
-          ctx.arc(bx, by, br, 0, Math.PI * 2);
-          ctx.fill();
-        }
+      // 受击泛白闪光（罩面整体提亮后快速消退）
+      if (flash > 0) {
+        ctx.fillStyle = `rgba(${sub.shieldDomeSpecColor}, ${flash * sub.shieldDomeHitFlashAlpha * dim})`;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, rx, ry, 0, Math.PI, Math.PI * 2);
+        ctx.closePath();
+        ctx.fill();
       }
 
-      // --- 3. 罩内效果（裁剪在半球内）：冰白晶面棱线（lighter 微光流转）→ 底部深蓝厚度带 → 顶部镜面高光斑 ---
-      ctx.save();
-      ctx.beginPath();
-      ctx.ellipse(0, 0, rx, ry, 0, Math.PI, Math.PI * 2);
-      ctx.closePath();
-      ctx.clip();
-      // 3a. 晶面棱线：同心环纹（相位错开明暗流转 + 段缘细高光）+ 放射棱线
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.shadowColor = `rgba(${sub.shieldDomeGapColor}, ${sub.shieldDomeGapAlpha * dim})`;
-      ctx.shadowBlur = sub.shieldDomeGapGlowBlur;
-      for (let k = 1; k <= sub.shieldDomeRingCount; k++) {
-        const s = k / (sub.shieldDomeRingCount + 1);
-        // 明暗流转：各环纹相位错开，晶光沿罩面流动
-        const flow = 0.55 + 0.45 * Math.sin(2 * Math.PI * sub.shieldDomeBreathFreq * config.time - k * 0.9 + r.id);
-        ctx.strokeStyle = `rgba(${sub.shieldDomeGapColor}, ${Math.min(1, sub.shieldDomeGapAlpha * dim * flow * repair)})`;
-        ctx.lineWidth = sub.shieldDomeGapLineWidth;
-        ctx.beginPath();
-        ctx.ellipse(0, 0, rx * s, ry * s, 0, Math.PI, Math.PI * 2);
-        ctx.stroke();
-        // 段缘细高光：环纹内侧细亮边
-        ctx.shadowBlur = 0;
-        ctx.strokeStyle = `rgba(${sub.shieldDomeEdgeColor}, ${sub.shieldDomeEdgeAlpha * dim})`;
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.ellipse(0, 0, rx * s, ry * s - 2.5, 0, Math.PI, Math.PI * 2);
-        ctx.stroke();
-        ctx.shadowBlur = sub.shieldDomeGapGlowBlur;
-      }
-      const ribFlow = 0.6 + 0.4 * breath;
-      ctx.strokeStyle = `rgba(${sub.shieldDomeGapColor}, ${Math.min(1, sub.shieldDomeGapAlpha * dim * ribFlow * repair)})`;
-      ctx.lineWidth = sub.shieldDomeGapLineWidth;
-      for (let i = 1; i < sub.shieldDomeSegmentCount; i++) {
-        const th = Math.PI + (Math.PI * i) / sub.shieldDomeSegmentCount;
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.lineTo(rx * Math.cos(th), ry * Math.sin(th));
-        ctx.stroke();
-      }
-      ctx.shadowBlur = 0;
-      // 3b. 底部厚度带（水晶底座纵深感：罩底内侧一道深蓝弧带，source-over）
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.strokeStyle = `rgba(${sub.shieldDomeDeepColor}, ${Math.min(1, sub.shieldDomeDeepAlpha * 1.2 * dim)})`;
-      ctx.lineWidth = 7;
-      ctx.beginPath();
-      ctx.ellipse(0, -3.5, Math.max(4, rx - 3), Math.max(3, ry - 4), 0, Math.PI * 1.08, Math.PI * 1.92);
-      ctx.stroke();
-      // 3c. 顶部镜面高光斑（玻璃反光：压扁椭圆白斑，随呼吸脉动，火焰直射命中时增强）
-      ctx.globalCompositeOperation = 'lighter';
-      const specA = Math.min(1, sub.shieldDomeSpecAlpha * dim * (0.8 + 0.2 * breath) * (flameFlash ? 1.5 : 1));
-      const specX = -rx * 0.32;
-      const specY = -ry * 0.62;
-      const specR = domeR * 0.42;
-      const specGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, specR);
-      specGrad.addColorStop(0, `rgba(${sub.shieldDomeSpecColor}, ${specA})`);
-      specGrad.addColorStop(1, `rgba(${sub.shieldDomeSpecColor}, 0)`);
-      ctx.fillStyle = specGrad;
-      ctx.translate(specX, specY);
-      ctx.scale(1, 0.55); // 压扁成椭圆高光
-      ctx.beginPath();
-      ctx.arc(0, 0, specR, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore(); // 解除裁剪（同时撤销高光斑的 translate/scale）
-
-      // --- 4. 外缘描边 + 底部张开沿（水晶边缘光：晶蓝描边 + lighter 白辉光；底部圆头粗线微向下弯，超出罩半宽 flare） ---
+      // --- ② 外缘描边（玻璃穹顶核心特征：边缘亮）+ lighter 辉光 ---
       ctx.strokeStyle = `rgba(${sub.shieldDomeRimColor}, ${sub.shieldDomeRimAlpha * dim})`;
       ctx.lineWidth = sub.shieldDomeRimLineWidth;
       ctx.beginPath();
       ctx.ellipse(0, 0, rx, ry, 0, Math.PI, Math.PI * 2);
       ctx.stroke();
-      // 外缘辉光（lighter：半球受光轮廓）
+      // 外缘辉光（lighter：受光轮廓泛光）
       ctx.globalCompositeOperation = 'lighter';
-      ctx.shadowColor = `rgba(${sub.shieldDomeRimColor}, ${sub.shieldDomeRimAlpha * dim})`;
-      ctx.shadowBlur = sub.shieldDomeGapGlowBlur;
-      ctx.strokeStyle = `rgba(${sub.shieldDomeEdgeColor}, ${sub.shieldDomeEdgeAlpha * dim})`;
-      ctx.lineWidth = 1;
+      ctx.shadowColor = `rgba(${sub.shieldDomeRimGlowColor}, ${sub.shieldDomeRimGlowAlpha * dim})`;
+      ctx.shadowBlur = sub.shieldDomeRimGlowBlur;
+      ctx.strokeStyle = `rgba(${sub.shieldDomeRimGlowColor}, ${sub.shieldDomeRimGlowAlpha * dim})`;
+      ctx.lineWidth = 1.2;
       ctx.beginPath();
       ctx.ellipse(0, 0, rx, ry, 0, Math.PI, Math.PI * 2);
       ctx.stroke();
       ctx.shadowBlur = 0;
-      // 底部张开沿
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.strokeStyle = `rgba(${sub.shieldDomeRimColor}, ${sub.shieldDomeRimAlpha * dim})`;
+
+      // --- ③ 顶部镜面高光弧（玻璃反光：左上方一道压扁亮弧，随呼吸明暗脉动，受击增强） ---
+      const specA = Math.min(1, sub.shieldDomeSpecAlpha * dim * (0.75 + 0.25 * breath) * (flameFlash ? 1.4 : 1));
+      ctx.strokeStyle = `rgba(${sub.shieldDomeSpecColor}, ${specA})`;
+      ctx.lineWidth = sub.shieldDomeSpecLineWidth;
       ctx.lineCap = 'round';
-      ctx.lineWidth = sub.shieldDomeRimLineWidth + 1.5;
+      ctx.shadowColor = `rgba(${sub.shieldDomeSpecColor}, ${specA})`;
+      ctx.shadowBlur = 8;
+      // 高光弧：沿穹顶左上部一小段（向罩内微缩，落在罩面内侧）
+      const arcCx = -rx * 0.28;  // 弧心偏左
+      const arcCy = -ry * 0.42;  // 弧心偏上
+      const arcRx = rx * 0.52;   // 弧半径（随罩缩放）
+      const arcRy = ry * 0.5;
+      const arcStart = Math.PI * 1.15;
+      const arcEnd = arcStart + sub.shieldDomeSpecArc;
       ctx.beginPath();
-      ctx.moveTo(-rx - flare, 2);
-      ctx.quadraticCurveTo(0, 8 + flare * 0.1, rx + flare, 2);
+      ctx.ellipse(arcCx, arcCy, arcRx, arcRy, 0, arcStart, arcEnd);
       ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.lineCap = 'butt';
 
-      // --- 5. 受击裂纹（击中点沿晶纹向四周爬散：随 flash 消退生长并渐隐；晶面光同步增强修补） ---
-      if (flash > 0) {
-        const grow = 1 - flash; // 0→1：裂纹爬散进度
-        ctx.strokeStyle = `rgba(${sub.shieldDomeCrackColor}, ${flash * sub.shieldDomeCrackAlpha})`;
-        ctx.lineWidth = sub.shieldDomeCrackLineWidth;
-        // 击中点：确定性取罩面中部一点（哈希自蟑螂 id，无状态不闪烁）
-        const hTh = Math.PI + Math.PI * (0.3 + 0.4 * RoachRenderer.hash01(r.id * 3));
-        const hx = rx * 0.45 * Math.cos(hTh);
-        const hy = ry * 0.45 * Math.sin(hTh);
-        for (let i = 0; i < sub.shieldDomeCrackCount; i++) {
-          // 主方向沿放射棱线角散开，叠加哈希抖动 → 沿晶纹锯齿爬行
-          const ang = hTh + (i - (sub.shieldDomeCrackCount - 1) / 2) * 0.28;
-          const maxLen = 6 + (26 + 30 * RoachRenderer.hash01(i * 7 + r.id * 13)) * grow;
-          let px = hx;
-          let py = hy;
-          ctx.beginPath();
-          ctx.moveTo(px, py);
-          for (let seg = 1; seg <= 3; seg++) {
-            const jag = (RoachRenderer.hash01(i * 31 + seg * 17 + r.id * 5) - 0.5) * 0.5;
-            px += Math.cos(ang + jag) * (maxLen / 3);
-            py += Math.sin(ang + jag) * (maxLen / 3);
-            ctx.lineTo(px, py);
-          }
-          ctx.stroke();
-        }
+      // --- ④ 底部贴地亮环基座（玻璃落地光圈：压扁椭圆贴地，同类加宽同步外延，lighter 发光） ---
+      ctx.strokeStyle = `rgba(${sub.shieldDomeBaseRingColor}, ${sub.shieldDomeBaseRingAlpha * dim})`;
+      ctx.lineWidth = sub.shieldDomeBaseRingLineWidth;
+      ctx.shadowColor = `rgba(${sub.shieldDomeBaseRingColor}, ${sub.shieldDomeBaseRingAlpha * dim})`;
+      ctx.shadowBlur = sub.shieldDomeRimGlowBlur;
+      ctx.beginPath();
+      ctx.ellipse(0, 2, rx + flare * 0.5, (rx + flare * 0.5) * sub.shieldDomeBaseRingFlatten, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // --- ⑤ 罩体表面游走絮状物（雾团贴附穹顶弧面缓慢往返漂移，约束在罩体内，lighter 叠加） ---
+      // 轨迹：沿半椭圆罩面轮廓（t ∈ [0,π]，顶点在上、底边在下）以基准位置 ± 摆动幅度往返游走；
+      //   位置 = 穹顶 rx/ry × 内缩系数（<1），保证絮状物始终不脱离罩体范围；
+      //   大小/透明度各自脉动，r.id 错相，全部确定性（无随机，seek/逐帧一致）
+      ctx.globalCompositeOperation = sub.shieldFluffBlend;
+      for (let i = 0; i < sub.shieldFluffCount; i++) {
+        const base = (i + 1) / (sub.shieldFluffCount + 1); // 基准位置：均匀分散在罩面弧线上
+        const t = Math.PI * (base + sub.shieldFluffWanderAmp * Math.sin(config.time * sub.shieldFluffSpeed + i * 2.1 + r.id * 0.7)); // 围绕基准小幅往返
+        const fx = Math.cos(t) * rx * sub.shieldFluffInset;
+        const fy = -Math.sin(t) * ry * sub.shieldFluffInset;
+        const fs = sub.shieldFluffSizeMin + sub.shieldFluffSizeAmp * Math.sin(config.time * sub.shieldFluffSizeFreq + i * 2.7); // 大小脉动
+        const fa = Math.max(0, sub.shieldFluffAlphaBase + sub.shieldFluffAlphaAmp * Math.sin(config.time * sub.shieldFluffAlphaFreq + i * 1.9)); // 透明度脉动
+        ctx.fillStyle = `rgba(${sub.shieldFluffColor}, ${fa * dim})`;
+        ctx.beginPath();
+        ctx.arc(fx, fy, Math.max(1, fs), 0, Math.PI * 2);
+        ctx.fill();
       }
-
-      // --- 6. 边缘晶屑剥落（护盾 HP 低于阈值：壳缘淡蓝晶屑向外下方飘散，确定性循环） ---
-      const dmg = 1 - hpRatio / sub.shieldDomeDebrisHpThreshold;
-      if (dmg > 0) {
-        ctx.globalCompositeOperation = 'source-over';
-        for (let i = 0; i < sub.shieldDomeDebrisCount; i++) {
-          const life = sub.shieldDomeDebrisLife;
-          const t = config.time * 1000 + (i / sub.shieldDomeDebrisCount) * life;
-          const slot = Math.floor(t / life);       // 生命槽位（本轮种子）
-          const p = (t - slot * life) / life;      // 槽内进度 0→1
-          const th = Math.PI + Math.PI * RoachRenderer.hash01(slot * 31 + i * 7 + r.id * 13);
-          const sx = rx * Math.cos(th) + Math.cos(th) * 34 * p; // 壳缘起点向外漂移
-          const sy = ry * Math.sin(th) + p * p * 46;            // p² 加速下落
-          const rot = RoachRenderer.hash01(i * 11 + slot * 3) * Math.PI + p * 5;
-          const ds = sub.shieldDomeDebrisSize * (1 - 0.4 * p);
-          ctx.save();
-          ctx.translate(sx, sy);
-          ctx.rotate(rot);
-          ctx.fillStyle = `rgba(${sub.shieldDomeDebrisColor}, ${(1 - p) * Math.min(1, dmg) * 0.9})`;
-          ctx.fillRect(-ds / 2, -ds / 2, ds, ds * 0.7);
-          ctx.restore();
-        }
-      }
-
       ctx.globalCompositeOperation = 'source-over';
       ctx.restore();
     }
@@ -1521,15 +1668,73 @@ export class RoachRenderer {
       ctx.fill();
     }
 
-    // Poison indicator
+    // Poison DEBUFF 图标（紫色骷髅贴头顶，呼吸闪烁脉动，poisonTimer 驱动；无外框）
     if (r.poisonTimer > 0) {
-      const pi = BALANCE_CONFIG.render.roach.poisonIndicator; // 颜色/透明度/混合集中于 vfx-balance
+      const pi = BALANCE_CONFIG.render.roach.poisonIndicator;
+      const iconSize = Math.max(9, size * 0.32) * perspScale; // 图标半径（随透视缩放）
+      const pulse = Math.sin(config.time * pi.pulseFreq);
+      const scalePulse = pi.scaleBase + pulse * pi.scalePulseAmp;
+      const alphaPulse = pi.alphaBase + pulse * pi.alphaPulseAmp;
+      const iconR = iconSize * scalePulse;
+
+      // 图标位置：贴近怪体头顶（正上方，血条上方少许）
+      const iconX = r.x + size * pi.offsetXRatio * perspScale;
+      const iconY = r.y - size - pi.offsetUp * perspScale;
+
       ctx.save();
       ctx.globalCompositeOperation = pi.blend;
-      ctx.fillStyle = `rgba(${pi.color}, ${pi.alphaBase + Math.sin(config.time * 4) * pi.alphaPulseAmp})`;
-      ctx.beginPath();
-      ctx.arc(r.x, r.y, size + 3, 0, Math.PI * 2);
-      ctx.fill();
+
+      const debuffImg = config.debuffPoisonImg;
+      if (debuffImg && debuffImg.complete && debuffImg.naturalWidth > 0) {
+        // 贴图渲染（debuff_poison.png 紫色像素骷髅，带呼吸闪烁）
+        // 关闭图像平滑保持像素风锐利（小尺寸缩放不模糊）
+        ctx.globalAlpha = alphaPulse;
+        ctx.imageSmoothingEnabled = false;
+        const drawSize = iconR * 2; // 直径
+        ctx.drawImage(debuffImg, iconX - iconR, iconY - iconR, drawSize, drawSize);
+        ctx.imageSmoothingEnabled = true;
+      } else {
+        // 回退：程序化绘制骷髅（贴图未加载时兜底）
+        // 淡紫圆底（增强可读性，无描边）
+        ctx.globalAlpha = alphaPulse * pi.bgAlpha;
+        ctx.fillStyle = `rgb(${pi.bgColor})`;
+        ctx.beginPath();
+        ctx.arc(iconX, iconY, iconR, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 骷髅剪影（紫色）
+        ctx.globalAlpha = alphaPulse * pi.skullAlpha;
+        ctx.fillStyle = `rgb(${pi.skullColor})`;
+
+        // 眼窝（两个圆）
+        const eyeR = iconR * pi.eyeRatio;
+        const eyeOffX = iconR * pi.eyeOffsetX;
+        const eyeOffY = iconR * pi.eyeOffsetY;
+        ctx.beginPath();
+        ctx.arc(iconX - eyeOffX, iconY - eyeOffY, eyeR, 0, Math.PI * 2);
+        ctx.arc(iconX + eyeOffX, iconY - eyeOffY, eyeR, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 鼻洞（小圆）
+        const noseR = iconR * pi.noseRatio;
+        const noseOffY = iconR * pi.noseOffsetY;
+        ctx.beginPath();
+        ctx.arc(iconX, iconY + noseOffY, noseR, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 下颌齿线（矩形阵列模拟骷髅牙齿）
+        const jawW = iconR * pi.jawRatio * 2;
+        const jawH = iconR * 0.35;
+        const jawY = iconY + iconR * pi.jawOffsetY;
+        const toothCount = pi.jawToothCount;
+        const toothW = jawW / toothCount * 0.6;
+        const toothGap = jawW / toothCount * 0.4;
+        for (let i = 0; i < toothCount; i++) {
+          const tx = iconX - jawW / 2 + i * (toothW + toothGap) + toothGap / 2;
+          ctx.fillRect(tx, jawY, toothW, jawH);
+        }
+      }
+
       ctx.restore();
     }
 

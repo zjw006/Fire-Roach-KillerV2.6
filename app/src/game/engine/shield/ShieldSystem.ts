@@ -102,9 +102,9 @@ export class ShieldSystem {
       else this.blockTextCooldowns.set(id, next);
     }
 
-    // ===== 3. 快照对比：受保护蟑螂承伤等量侵蚀护盾 =====
+    // ===== 3. 快照对比：受保护蟑螂承伤按比例侵蚀护盾（系数 shieldSnapshotErosionMult） =====
     // 任何伤害路径（爆炸/激光/毒/火墙/喷雾/电蚊拍…）最终都体现为 hp 下降，
-    // 统一在此捕获并侵蚀护盾，无需改动各伤害系统
+    // 统一在此捕获并按系数侵蚀护盾，无需改动各伤害系统
     const seenIds = new Set<number>();
     for (const r of roaches) {
       if (r.state !== RoachState.ALIVE) continue;
@@ -115,7 +115,7 @@ export class ShieldSystem {
       if (prevHp !== undefined) {
         const hpLoss = prevHp - r.hp;
         if (hpLoss > 0) {
-          this.damageShield(shield, hpLoss, false);
+          this.damageShield(shield, hpLoss * BALANCE_CONFIG.subway.shieldSnapshotErosionMult, false);
         }
       }
       this.prevHpSnapshot.set(r.id, r.hp);

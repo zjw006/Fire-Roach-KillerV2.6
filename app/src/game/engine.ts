@@ -107,9 +107,10 @@
  */
 
 import { GameState, RoachType, RoachState, SceneType, WeatherType, ParticleType, FlameMode, GameMode, type Roach, type Player, type Particle, type FireZone, type FireWall, type Economy, type GameProgress, type WaveConfig, type InventoryItem, type BossBattleState } from './types';
+import { AssetLoader, type AssetEntry } from './assets/AssetLoader';
 import * as Vibration from './vibration';
 import { AudioManager } from './audio';
-import { SCENE_CONFIGS, ENEMY_DEFS, TALENT_DEFS, canUpgradeTalent, WEAPON_DROP_DEFS, INVENTORY_SELL_PRICES, BOSS_CONFIG, SCENE_WAVE_CONFIGS, SCENE_REWARD_ITEMS, SCENE_UNLOCK_CHAIN, SCENE_GROUND_BOUNDS, CONSUMABLE_DEFS, BALANCE_CONFIG, TEXT_CONFIG } from './data';
+import { SCENE_CONFIGS, ENEMY_DEFS, TALENT_DEFS, canUpgradeTalent, branchSpentPoints, WEAPON_DROP_DEFS, INVENTORY_SELL_PRICES, BOSS_CONFIG, SCENE_WAVE_CONFIGS, SCENE_REWARD_ITEMS, SCENE_UNLOCK_CHAIN, SCENE_GROUND_BOUNDS, CONSUMABLE_DEFS, BALANCE_CONFIG, TEXT_CONFIG } from './data';
 import { SaveSystem } from './engine/save/SaveSystem';
 import { EconomyManager } from './engine/economy/EconomyManager';
 import { AchievementSystem } from './engine/achievement/AchievementSystem';
@@ -294,6 +295,9 @@ export class GameEngine {
   lastTime: number = 0;
 
   gunImg: HTMLImageElement | null = null;
+  /** 天赋外观进化：中/高级改装枪身贴图（占位为 gun.png 复制件，美术替换后生效） */
+  gunMk1Img: HTMLImageElement | null = null;
+  gunMk2Img: HTMLImageElement | null = null;
   roachImg: HTMLImageElement | null = null;
   roachSuicideImg: HTMLImageElement | null = null;
   roachFlyingImg: HTMLImageElement | null = null;
@@ -313,6 +317,10 @@ export class GameEngine {
   roachTunnelWorkerImg: HTMLImageElement | null = null;
   roachSubwayEliteImg: HTMLImageElement | null = null;
   roachShieldImg: HTMLImageElement | null = null;
+  /** 废弃学校专属：体育生蟑螂贴图（roach_jock.png） */
+  roachJockImg: HTMLImageElement | null = null;
+  /** 中毒 DEBUFF 图标贴图（debuff_poison.png，紫色像素骷髅） */
+  debuffPoisonImg: HTMLImageElement | null = null;
   roachAISystem!: RoachAISystem;
   /** Boss 图片资源（阶段变体预留给未来使用） */
   /** Boss 动画系统（帧数据由引擎管理，与 bossSystem 共享） */
@@ -346,6 +354,8 @@ export class GameEngine {
   /** 简单模式标志（难度为 'easy' 时为 true） */
   isEasyMode: boolean = false;
   imagesLoaded: boolean = false;
+  /** 统一资源预加载器（图片清单化 + 场景懒加载） */
+  assetLoader: AssetLoader = new AssetLoader();
 
   /** 调试：是否显示护盾蟑螂的护盾范围框 */
   showShieldRange: boolean = false;
@@ -391,10 +401,20 @@ export class GameEngine {
   /** 当前闪电链节点（闪电触发时生成，闪光结束后清空） */
   lightningBolt: { x: number; y: number }[] = [];
   lightningTextCooldown: number = 0;
-  /** 地下室灯光闪烁：距离下次闪烁的剩余时间（秒） */
-  flickerTimer: number = 60;
-  /** 地下室灯光闪烁：当前闪屏剩余时间（秒，0=未闪烁） */
-  flickerRemaining: number = 0;
+  /** 地下室/医院波次灯光：当前波次配置索引（-1 = 未触发） */
+  flickerWaveIndex: number = -1;
+  /** 地下室/医院波次灯光：当前段落索引与段内已进行时间（秒） */
+  flickerSegIndex: number = 0;
+  flickerSegElapsed: number = 0;
+  /** 地下室/医院波次灯光：段首亮度/红光（渐变起点） */
+  flickerFromBrightness: number = 1;
+  flickerFromRed: number = 0;
+  /** 地下室/医院波次灯光：当前综合亮度（1=正常 0=全黑 >1=过冲）与微红强度 0-1 */
+  flickerBrightness: number = 1;
+  flickerRed: number = 0;
+  /** 地下室/医院波次灯光：序列播放中 / 序列结束后的持续微抖（波6） */
+  flickerSeqActive: boolean = false;
+  flickerJitter: boolean = false;
   /** 成就系统模块（委托给 AchievementSystem） */
   private achievementSystem: AchievementSystem | null = null;
   /** 粒子系统模块（委托给 ParticleSystem） */
@@ -425,6 +445,8 @@ export class GameEngine {
   private bossSystem: BossBattleSystem | null = null;
   /** 波次系统模块（委托给 WaveManager） */
   private waveManager: WaveManager | null = null;
+  /** 超市阵型组内成员陆续生成队列（位置固定为槽位坐标，仅时间按 formationMemberStaggerSec 错开） */
+  private formationSpawnQueue: { type: RoachType; x: number; y: number; delay: number }[] = [];
   /** 地铁场景：列车系统模块（委托给 TrainSystem，自动定时驶过） */
   // private trainSystem: TrainSystem | null = null;
   /** 地铁场景：护盾蟑螂气体护盾系统模块（护盾生命周期 + 矩形区域判定） */
@@ -594,6 +616,8 @@ export class GameEngine {
       damageCallbacks: {
         // 火焰区域伤害：走护甲吸收 + 气体护盾拦截 + 平衡采样（与束伤害口径一致）
         onFireZoneDamage: (roach, damage) => {
+          // 体育生空中飞跃免疫火焰直射（火区与火墙均不生效，落地才灼烧）
+          if (roach.type === RoachType.JOCK && roach.jumpPhase === 'air') return;
           const protector = ShieldSystem.findProtectingShield(this.roaches, roach);
           if (protector) {
             this.shieldSystem?.damageShield(protector, damage, false);
@@ -603,6 +627,7 @@ export class GameEngine {
           this.traceFlameDmg += damage;
         },
         onFireWallDamage: (roach, damage) => {
+          if (roach.type === RoachType.JOCK && roach.jumpPhase === 'air') return;
           this.applyDamageToRoach(roach, damage);
         },
       },
@@ -968,17 +993,16 @@ export class GameEngine {
       },
       {
         onSpawnRoach: (type, clusterId, x, y) => { this.spawnRoach(type, clusterId, x, y); },
-        // 超市阵型（V4.0 多组同帧生成共存）：波开始清空残余实例；热场队列清空后整组生成（出生点即阵型槽位，多组按 groupIndex 纵深错位）
-        onClearFormations: () => { this.roachAISystem.clearFormations(); },
-        onSpawnFormationGroup: (group, groupIndex) => {
-          const [, farLY, , farRY, , , , , , , nearY] = SCENE_GROUND_BOUNDS[this.currentScene];
-          const topY = Math.min(farLY, farRY); // 阻挡面远端线 Y（梯形顶部）
-          // 阻挡面内随机出生线（不限于顶部；多组仍按 groupDepthGap 纵深错位并 clamp 在阻挡面中上部）
-          const randomBase = topY + Math.random() * (nearY - topY) * 0.5;
-          const spawnBaseY = Math.min(randomBase + groupIndex * BALANCE_CONFIG.supermarket.groupDepthGap, nearY - 60);
-          const entries = this.roachAISystem.addFormationGroup(group, spawnBaseY);
-          if (entries) for (const e of entries) this.spawnRoach(e.type, undefined, e.x, e.y);
+        // 超市阵型（V5.0 直驱制串行出场）：波开始清空残余实例；热场队列清空后首组出场，
+        // 上一组被消灭后才出下一组；组内成员按 formationMemberStaggerSec 陆续生成（位置固定）
+        onClearFormations: () => { this.roachAISystem.clearFormations(); this.formationSpawnQueue = []; },
+        onSpawnFormationGroup: (group) => {
+          const entries = this.roachAISystem.addFormationGroup(group);
+          if (!entries) return;
+          const step = BALANCE_CONFIG.supermarket.formationMemberStaggerSec;
+          entries.forEach((e, i) => this.formationSpawnQueue.push({ type: e.type, x: e.x, y: e.y, delay: i * step }));
         },
+        hasActiveFormations: () => this.roachAISystem.hasActiveFormations(),
         onGetGroundBoundsAtY: (y) => this.getGroundBoundsAtY(y),
         onAddFloatingText: (x, y, text, color) => { this.addFloatingText(x, y, text, color); },
         onStateChange: (state) => { this.state = state; this.onStateChange?.(state); },
@@ -989,7 +1013,7 @@ export class GameEngine {
         onTutorialPauseChange: (paused) => { this.onTutorialPauseChange?.(paused); },
         onEliteTutorialPauseChange: (paused) => { this.onEliteTutorialPauseChange?.(paused); },
         onKnifeTutorialPauseChange: (paused) => { this.onKnifeTutorialPauseChange?.(paused); },
-        onWaveStart: () => { /* this.trainSystem?.onWaveStart(wave); */ },
+        onWaveStart: (wave) => { this.startWaveFlicker(wave); /* this.trainSystem?.onWaveStart(wave); */ },
         onWaveCleared: () => { /* this.trainSystem?.onWaveCleared(); */ },
         onKillRoach: (roach, idx) => { this.killRoach(roach, idx); },
         onGetRoaches: () => this.roaches,
@@ -1046,99 +1070,65 @@ export class GameEngine {
 
   // ===== 生命周期方法：加载、存档、创建 =====
 
-  /** 异步加载所有游戏图片资源 */
+  /** 异步加载所有游戏图片资源（清单化 + 场景懒加载） */
   loadImages() {
-    const loadPromises: Promise<void>[] = [];
-    const load = (src: string, setter: (img: HTMLImageElement) => void) => {
-      const promise = new Promise<void>((resolve) => {
-        const img = new Image();
-        img.onload = () => { setter(img); resolve(); };
-        img.onerror = () => {
-          console.warn(`[Engine] Failed to load image: ${src}`);
-          resolve(); // 修复 P1：加载失败不阻塞，继续加载其他资源
-        };
-        img.src = src;
-      });
-      loadPromises.push(promise);
-    };
-    load('/assets/gun.png', (img) => this.gunImg = img);
-    load('/assets/roach.png', (img) => this.roachImg = img);
-    load('/assets/bg_kitchen_easy.jpg', (img) => this.bgImg = img);
-    load('/assets/roach_suicide.png', (img) => this.roachSuicideImg = img);
-    load('/assets/roach_timed_suicide.png', (img) => this.roachTimedSuicideImg = img);
-    load('/assets/roach_flying.png', (img) => this.roachFlyingImg = img);
-    load('/assets/roach_flying_suicide.png', (img) => this.roachFlyingSuicideImg = img);
-    load('/assets/roach_armored.png', (img) => this.roachArmoredImg = img);
-    load('/assets/roach_splitting.png', (img) => this.roachSplittingImg = img);
-    load('/assets/roach_queen.png', (img) => this.roachQueenImg = img);
-    // Hospital exclusive roach images
-    load('/assets/roach_nurse.png', (img) => this.roachNurseImg = img);
-    // 加载 10 帧护士施法动画
+    const entries: AssetEntry[] = [];
+    // global 资源（首屏 critical，scenes 缺省）
+    const img = (key: string, url: string, apply: (i: HTMLImageElement) => void) =>
+      entries.push({ key, url, apply });
+
+    img('gunImg', '/assets/gun.png', (i) => this.gunImg = i);
+    // 天赋改装枪身贴图（加载失败回退默认枪贴图，见 renderPlayer）
+    img('gunMk1Img', '/assets/gun_mk1.png', (i) => this.gunMk1Img = i);
+    img('gunMk2Img', '/assets/gun_mk2.png', (i) => this.gunMk2Img = i);
+    img('roachImg', '/assets/roach.png', (i) => this.roachImg = i);
+    img('bgImg', '/assets/bg_kitchen_easy.jpg', (i) => this.bgImg = i);
+    img('roachSuicideImg', '/assets/roach_suicide.png', (i) => this.roachSuicideImg = i);
+    img('roachTimedSuicideImg', '/assets/roach_timed_suicide.png', (i) => this.roachTimedSuicideImg = i);
+    img('roachFlyingImg', '/assets/roach_flying.png', (i) => this.roachFlyingImg = i);
+    img('roachFlyingSuicideImg', '/assets/roach_flying_suicide.png', (i) => this.roachFlyingSuicideImg = i);
+    img('roachArmoredImg', '/assets/roach_armored.png', (i) => this.roachArmoredImg = i);
+    img('roachSplittingImg', '/assets/roach_splitting.png', (i) => this.roachSplittingImg = i);
+    img('roachQueenImg', '/assets/roach_queen.png', (i) => this.roachQueenImg = i);
+    img('roachNurseImg', '/assets/roach_nurse.png', (i) => this.roachNurseImg = i);
+    img('roachMutantImg', '/assets/roach_mutant.png', (i) => this.roachMutantImg = i);
+    img('roachTunnelWorkerImg', '/assets/roach_tunnel_worker.png', (i) => this.roachTunnelWorkerImg = i);
+    img('roachSubwayEliteImg', '/assets/roach_subway_elite.png', (i) => this.roachSubwayEliteImg = i);
+    img('roachShieldImg', '/assets/roach_shield01.png', (i) => this.roachShieldImg = i);
+    img('roachJockImg', '/assets/roach_jock.png', (i) => this.roachJockImg = i);
+    img('debuffPoisonImg', '/assets/UI/debuff_poison.png', (i) => this.debuffPoisonImg = i);
+    img('bombImg', '/assets/bomb.png', (i) => this.bombImg = i);
+
+    // 护士施法动画 10 帧
     for (let i = 1; i <= 10; i++) {
       const frameIdx = i - 1;
-      load(`/assets/nurse_cast_${i.toString().padStart(2, '0')}.png`, (img) => this.nurseCastFrames[frameIdx] = img);
+      img(`nurseCast_${frameIdx}`, `/assets/nurse_cast_${i.toString().padStart(2, '0')}.png`, (im) => this.nurseCastFrames[frameIdx] = im);
     }
-    load('/assets/roach_mutant.png', (img) => this.roachMutantImg = img);
-    // 地铁场景：隧道工贴图
-    load('/assets/roach_tunnel_worker.png', (img) => this.roachTunnelWorkerImg = img);
-    // 地铁精英独立贴图
-    load('/assets/roach_subway_elite.png', (img) => this.roachSubwayEliteImg = img);
-    // 护盾蟑螂贴图
-    load('/assets/roach_shield01.png', (img) => this.roachShieldImg = img);
-    // 加载 7 帧变形序列
+    // 变异变形序列 7 帧
     for (let i = 1; i <= 7; i++) {
       const frameIdx = i - 1;
-      load(`/assets/mutant_0${i}.png`, (img) => this.mutantTransformFrames[frameIdx] = img);
+      img(`mutantTransform_${frameIdx}`, `/assets/mutant_0${i}.png`, (im) => this.mutantTransformFrames[frameIdx] = im);
     }
-    load('/assets/bomb.png', (img) => this.bombImg = img);
-    // Boss animation frames - only load frames that exist on disk
-    // Missing actions automatically fallback to 'idle' frames
-    const actionsWithFrames: Record<string, number> = {
-      idle: 7,   // 7 frames available
-      hover: 3,  // 3 frames available
-      // 所有其他动作回退到 idle 帧
-    };
+
+    // Boss 动画帧（仅加载磁盘上存在的帧，缺失动作回退 idle）
+    const actionsWithFrames: Record<string, number> = { idle: 7, hover: 3 };
     for (const [action, frameCount] of Object.entries(actionsWithFrames)) {
       this.bossAnimFrames.set(action, []);
       for (let i = 1; i <= frameCount; i++) {
         const idx = i;
-        load(`/boss/${action}/${action}_0${i}.png`, (img) => {
+        img(`boss_${action}_${idx}`, `/boss/${action}/${action}_0${i}.png`, (im) => {
           const frames = this.bossAnimFrames.get(action);
-          if (frames) frames[idx - 1] = img;
+          if (frames) frames[idx - 1] = im;
         });
       }
     }
-    // 为缺失的动作设置空数组（渲染器将回退到 idle）
+    // 为缺失动作设置空数组（渲染器回退 idle）
     const fallbackActions = ['walk','charge','summon','defend','hit','hurt','die','roar','mock','transform'];
     for (const action of fallbackActions) {
-      this.bossAnimFrames.set(action, []); // empty - renderer will fallback to idle
+      this.bossAnimFrames.set(action, []);
     }
-    load('/assets/bg_kitchen_hard.jpg?v=3', (img) => this.bgKitchenHardImg = img);
-    load('/assets/bg_kitchen_easy.jpg?v=5', (img) => this.bgKitchenEasyImg = img);
-    load('/assets/sewer_bg_easy.jpg', (img) => this.bgSewerImg = img);
-    load('/assets/sewer_bg_easy.jpg?v=3', (img) => this.bgSewerEasyImg = img);
-    load('/assets/sewer_bg_hard.png?v=5', (img) => this.bgSewerHardImg = img);
-    load('/assets/bg_dump_easy.jpg', (img) => this.bgDumpImg = img);
-    load('/assets/bg_dump_easy.jpg?v=4', (img) => this.bgDumpEasyImg = img);
-    load('/assets/bg_dump_hard.jpg?v=5', (img) => this.bgDumpHardImg = img);
-    load('/assets/bg_basement_easy.jpg', (img) => this.bgBasementImg = img);
-    load('/assets/bg_basement_easy.jpg?v=3', (img) => this.bgBasementEasyImg = img);
-    load('/assets/bg_basement_hard.jpg?v=5', (img) => this.bgBasementHardImg = img);
-    load('/assets/bg_rooftop_easy.jpg', (img) => this.bgRooftopImg = img);
-    load('/assets/bg_rooftop_easy.jpg?v=4', (img) => this.bgRooftopEasyImg = img);
-    load('/assets/bg_rooftop_hard.jpg?v=5', (img) => this.bgRooftopHardImg = img);
-    load('/assets/bg_street_easy.jpg', (img) => this.bgStreetImg = img);
-    load('/assets/bg_street_easy.jpg?v=6', (img) => this.bgStreetEasyImg = img);
-    load('/assets/bg_street_hard.jpg?v=6', (img) => this.bgStreetHardImg = img);
-    // 加载场景背景图片（从 SCENE_CONFIGS 中配置的新场景）
-    for (const [sceneType, config] of Object.entries(SCENE_CONFIGS)) {
-      if (config.bgImage) {
-        const img = new Image();
-        img.src = config.bgImage;
-        this.bgSceneImages[sceneType] = img;
-      }
-    }
-    // 掉落道具图片预加载（用于 renderWeaponDrops 和 renderItemDropOnField）
+
+    // 掉落道具图片（renderWeaponDrops / renderItemDropOnField）
     this._dropImages = {};
     const dropImgDefs: [string, string][] = [
       ['/assets/drop_sticky.png', 'sticky'],
@@ -1151,22 +1141,54 @@ export class GameEngine {
       ['/assets/drop_knife.png', 'knife'],
     ];
     for (const [src, type] of dropImgDefs) {
-      load(src, (img) => { if (this._dropImages) this._dropImages[type] = img; });
+      img(`drop_${type}`, src, (im) => { if (this._dropImages) this._dropImages[type] = im; });
     }
 
-    // 地铁列车序列帧预加载（train_01.png ~ train_08.png，索引 0~7 对应帧序号）
+    // ===== scene 懒加载资源（体积大，进入对应场景前预载） =====
+    // 旧场景背景大图（easy/hard），按场景归属
+    entries.push({ key: 'bgKitchenHardImg', url: '/assets/bg_kitchen_hard.jpg?v=3', scenes: [SceneType.KITCHEN], apply: (i) => this.bgKitchenHardImg = i });
+    entries.push({ key: 'bgKitchenEasyImg', url: '/assets/bg_kitchen_easy.jpg?v=5', scenes: [SceneType.KITCHEN], apply: (i) => this.bgKitchenEasyImg = i });
+    entries.push({ key: 'bgSewerImg', url: '/assets/sewer_bg_easy.jpg', scenes: [SceneType.SEWER], apply: (i) => this.bgSewerImg = i });
+    entries.push({ key: 'bgSewerEasyImg', url: '/assets/sewer_bg_easy.jpg?v=3', scenes: [SceneType.SEWER], apply: (i) => this.bgSewerEasyImg = i });
+    entries.push({ key: 'bgSewerHardImg', url: '/assets/sewer_bg_hard.png?v=5', scenes: [SceneType.SEWER], apply: (i) => this.bgSewerHardImg = i });
+    entries.push({ key: 'bgDumpImg', url: '/assets/bg_dump_easy.jpg', scenes: [SceneType.DUMP], apply: (i) => this.bgDumpImg = i });
+    entries.push({ key: 'bgDumpEasyImg', url: '/assets/bg_dump_easy.jpg?v=4', scenes: [SceneType.DUMP], apply: (i) => this.bgDumpEasyImg = i });
+    entries.push({ key: 'bgDumpHardImg', url: '/assets/bg_dump_hard.jpg?v=5', scenes: [SceneType.DUMP], apply: (i) => this.bgDumpHardImg = i });
+    entries.push({ key: 'bgBasementImg', url: '/assets/bg_basement_easy.jpg', scenes: [SceneType.BASEMENT], apply: (i) => this.bgBasementImg = i });
+    entries.push({ key: 'bgBasementEasyImg', url: '/assets/bg_basement_easy.jpg?v=3', scenes: [SceneType.BASEMENT], apply: (i) => this.bgBasementEasyImg = i });
+    entries.push({ key: 'bgBasementHardImg', url: '/assets/bg_basement_hard.jpg?v=5', scenes: [SceneType.BASEMENT], apply: (i) => this.bgBasementHardImg = i });
+    entries.push({ key: 'bgRooftopImg', url: '/assets/bg_rooftop_easy.jpg', scenes: [SceneType.ROOFTOP], apply: (i) => this.bgRooftopImg = i });
+    entries.push({ key: 'bgRooftopEasyImg', url: '/assets/bg_rooftop_easy.jpg?v=4', scenes: [SceneType.ROOFTOP], apply: (i) => this.bgRooftopEasyImg = i });
+    entries.push({ key: 'bgRooftopHardImg', url: '/assets/bg_rooftop_hard.jpg?v=5', scenes: [SceneType.ROOFTOP], apply: (i) => this.bgRooftopHardImg = i });
+    entries.push({ key: 'bgStreetImg', url: '/assets/bg_street_easy.jpg', scenes: [SceneType.STREET], apply: (i) => this.bgStreetImg = i });
+    entries.push({ key: 'bgStreetEasyImg', url: '/assets/bg_street_easy.jpg?v=6', scenes: [SceneType.STREET], apply: (i) => this.bgStreetEasyImg = i });
+    entries.push({ key: 'bgStreetHardImg', url: '/assets/bg_street_hard.jpg?v=6', scenes: [SceneType.STREET], apply: (i) => this.bgStreetHardImg = i });
+
+    // 新场景背景图（SCENE_CONFIGS.bgImage，hospital/subway/supermarket/school/nest）
+    for (const [sceneType, config] of Object.entries(SCENE_CONFIGS)) {
+      if (config.bgImage) {
+        const sc = sceneType as SceneType;
+        entries.push({ key: `bgScene_${sceneType}`, url: config.bgImage, scenes: [sc], apply: (i) => this.bgSceneImages[sceneType] = i });
+      }
+    }
+
+    // 地铁列车序列帧（train_01.png ~ train_08.png，仅地铁场景）
     this._trainFrames = new Array(BALANCE_CONFIG.train.trainFrameCount).fill(null);
     for (let fi = 0; fi < BALANCE_CONFIG.train.trainFrameCount; fi++) {
       const frameNum = String(fi + 1).padStart(2, '0');
-      load(`/assets/train_${frameNum}.png`, (img) => { this._trainFrames[fi] = img; });
+      entries.push({ key: `trainFrame_${fi}`, url: `/assets/train_${frameNum}.png`, scenes: [SceneType.SUBWAY], apply: (i) => this._trainFrames[fi] = i });
     }
 
-    // 修复 P1：使用 Promise.all 等待所有图片实际加载完成后再设置标志
-    Promise.all(loadPromises).then(() => {
+    // 注册清单；先加载 global（首屏关键资源），完成后置 imagesLoaded
+    this.assetLoader.register(entries);
+    this.assetLoader.loadGlobal().then(() => {
       this.imagesLoaded = true;
-    }).catch(() => {
-      this.imagesLoaded = true; // 即使部分失败也允许渲染
     });
+  }
+
+  /** 懒加载指定场景的专属资源（后台预加载，幂等，供切场景时调用） */
+  preloadScene(scene: SceneType): void {
+    this.assetLoader.loadScene(scene).catch(() => { /* 失败不阻塞，渲染侧走回退 */ });
   }
 
   /** 玩家基准 X 坐标（屏幕中央） */
@@ -1326,6 +1348,8 @@ export class GameEngine {
   start(mode?: GameMode, scene?: SceneType, keepShopUpgrades = false, selectedItems?: string[], initialMoney?: number) {
     if (mode !== undefined) this.gameMode = mode;
     if (scene !== undefined) this.currentScene = scene;
+    // 切入场景即触发专属资源后台预加载（幂等，进战斗时基本已就绪）
+    this.preloadScene(this.currentScene);
     this.isEasyMode = this.difficulty === 'easy';
     this.useKitchenHardBg = (this.currentScene === SceneType.KITCHEN && this.difficulty === 'hard');
     // ===== CRITICAL: Reset boss battle state for ALL modes =====
@@ -1468,6 +1492,7 @@ export class GameEngine {
     this.traceSpawnHp = 0;
     this.consumableSystem?.reset();
     this.roachAISystem?.reset();
+    this.formationSpawnQueue = []; // 清空阵型陆续生成队列，防重开时旧波残队生成进新局
     // Sync new array references after resetGame() creates new arrays
     this.roachAISystem?.updateConfig({
       roaches: this.roaches,
@@ -1527,8 +1552,16 @@ export class GameEngine {
     this.lightningFlash = 0;
     this.lightningBolt = [];
     this.lightningTextCooldown = 0;
-    this.flickerTimer = BALANCE_CONFIG.weather.flicker.interval;
-    this.flickerRemaining = 0;
+    // 波次灯光序列状态复位（亮度回正常，等待下一波 doWaveSpawn 触发）
+    this.flickerWaveIndex = -1;
+    this.flickerSegIndex = 0;
+    this.flickerSegElapsed = 0;
+    this.flickerFromBrightness = 1;
+    this.flickerFromRed = 0;
+    this.flickerBrightness = 1;
+    this.flickerRed = 0;
+    this.flickerSeqActive = false;
+    this.flickerJitter = false;
     this.achievementSystem?.reset();
     this.particleSystem?.clearAll();
     this.economy.totalGamesPlayed = this.progress.totalKills + 1;
@@ -2153,6 +2186,15 @@ export class GameEngine {
     this.updateArmorShieldCache();
     this.updatePlayer();
     this.roachAISystem!.update();
+    // 超市阵型组内成员陆续生成（位置固定为槽位坐标，仅时间错开；教学暂停期间随主逻辑一并冻结）
+    if (this.formationSpawnQueue.length > 0) {
+      for (const q of this.formationSpawnQueue) q.delay -= this.deltaTime;
+      const ready = this.formationSpawnQueue.filter(q => q.delay <= 0);
+      if (ready.length > 0) {
+        this.formationSpawnQueue = this.formationSpawnQueue.filter(q => q.delay > 0);
+        for (const q of ready) this.spawnRoach(q.type, undefined, q.x, q.y);
+      }
+    }
     this.updateTrace();
     this.consumableSystem!.update(this.deltaTime);
     this.consumableSystem!.checkAutoUseConsumables();
@@ -2406,7 +2448,8 @@ export class GameEngine {
     const flameDps = (this.difficulty === 'hard' ? BALANCE_CONFIG.weaponDamage.flamethrower.hard : BALANCE_CONFIG.weaponDamage.flamethrower.easy);
     const baseDamage = flameDps * (1 - BALANCE_CONFIG.weaponDamage.flamethrowerBeamShare) * p.damageMultiplier * powerBoostMult;
     const range = p.fireRange * 0.5;
-    ParticleSpawner.spawnConeFire({ particles: this.particles, fireZones: this.fireZones, deltaTime: this.deltaTime, x: p.x, y: p.y, angle: -Math.PI / 2, range, baseDamage, type: 'fire', flameVariant: this.getFlameVariant() });
+    const boost = this.getFlameBoost(); // 天赋渐进强化：伤害强度/射程聚焦
+    ParticleSpawner.spawnConeFire({ particles: this.particles, fireZones: this.fireZones, deltaTime: this.deltaTime, x: p.x, y: p.y, angle: -Math.PI / 2, range, baseDamage, type: 'fire', flameVariant: this.getFlameVariant(), intensity: boost.intensity, focus: boost.focus });
     // Black smoke at flame tip during power boost (use dynamic particle limit)
     if (p.powerBoostTimer > 0 && this.particles.length < this._particleLimit - 10 && Math.random() < 0.4) {
       const tipY = p.y - 322 - range;
@@ -3097,18 +3140,13 @@ export class GameEngine {
       r.hasPlacedBomb = false;
       r.placeTimer = 0; // Initialize placement timer
     }
-    // Subway exclusive: elite roach armor (fixed 20, flying-tank elite)
-    if (type === RoachType.SUBWAY_ELITE) {
-      r.armorHp = 10;
-      r.maxArmorHp = 10;
-    }
     // Subway exclusive: tunnel worker init (armor spray cooldown + shield follow state)
     if (type === RoachType.TUNNEL_WORKER) {
       r.armorSprayTimer = BALANCE_CONFIG.subway.armorSprayInterval;
       r.shieldFollowTargetId = null;
       r.shieldRepairTextTimer = 0;
     }
-    // Subway exclusive: elite init (rail charge state)
+    // Subway exclusive: elite roach init (rail charge state)；护甲已移除（v2.6 起改为纯血量，见 enemies.ts hp 45）
     if (type === RoachType.SUBWAY_ELITE) {
       r.chargeState = 'idle';
       r.chargeDelayTimer = BALANCE_CONFIG.subway.eliteChargeDelay;
@@ -3123,6 +3161,16 @@ export class GameEngine {
       r.shieldHitFlash = 0;
       r.shieldFlameHitFlash = 0;
       r.shieldFollowTargetId = null;
+    }
+    // School exclusive: jock roach init（爆发跳跃状态机初始状态）
+    if (type === RoachType.JOCK) {
+      r.jumpPhase = 'idle';
+      r.jumpTimer = 0;
+      r.jumpCooldown = BALANCE_CONFIG.roachAI.jock.cooldown;
+      r.jumpStartX = 0;
+      r.jumpStartY = 0;
+      r.jumpEndX = 0;
+      r.jumpEndY = 0;
     }
     // 采样：血量流入（含护甲）
     this.traceSpawnHp += Math.max(0, r.hp) + Math.max(0, r.armorHp || 0);
@@ -4142,10 +4190,11 @@ export class GameEngine {
           r.burnDamage = wall.damagePerSecond * fireDmgMult2;
           r.inFire = true;
           // 气体护盾：火墙对受保护目标承伤时，额外加倍侵蚀护盾
-          // （快照机制已等量侵蚀 1x，此处补足至 shieldFireZoneErosionMult 倍）
+          // （快照机制已按 shieldSnapshotErosionMult 侵蚀，此处补足至 shieldFireZoneErosionMult 倍）
           const wallProtector = ShieldSystem.findProtectingShield(this.roaches, r);
           if (wallProtector) {
-            this.shieldSystem?.damageShield(wallProtector, dmg * (BALANCE_CONFIG.subway.shieldFireZoneErosionMult - 1), false);
+            const sub = BALANCE_CONFIG.subway;
+            this.shieldSystem?.damageShield(wallProtector, dmg * (sub.shieldFireZoneErosionMult - sub.shieldSnapshotErosionMult), false);
           }
         }
       }
@@ -4261,17 +4310,9 @@ export class GameEngine {
     if (this.currentScene === SceneType.ROOFTOP) {
       this.spawnWeatherDrip(BALANCE_CONFIG.weather.drip.emitter.rooftopSpawnRate, BALANCE_CONFIG.weather.drip.emitter.rooftopSpeedMult);
     }
-    // 地下室/医院：灯光闪烁（每 60 秒一次 0.8 秒 50% 半透黑色闪屏）
+    // 地下室/医院：波次灯光序列推进（doWaveSpawn 触发 startWaveFlicker 后逐段播放）
     if (this.currentScene === SceneType.BASEMENT || this.currentScene === SceneType.HOSPITAL) {
-      const fc = BALANCE_CONFIG.weather.flicker;
-      this.flickerTimer -= this.deltaTime;
-      if (this.flickerTimer <= 0) {
-        this.flickerTimer = fc.interval;
-        this.flickerRemaining = fc.duration;
-      }
-      if (this.flickerRemaining > 0) {
-        this.flickerRemaining -= this.deltaTime;
-      }
+      this.updateWaveFlicker();
     }
 
     // 更新天气粒子
@@ -4333,12 +4374,69 @@ export class GameEngine {
     return pc.maxScale - t * (pc.maxScale - pc.minScale);
   }
 
-  /** 地下室灯光闪烁黑屏透明度（0 = 不闪；闪屏期间按占空比快速明暗） */
-  getFlickerOverlayAlpha(): number {
-    if (this.flickerRemaining <= 0) return 0;
+  /**
+   * 波次灯光序列触发（地下室/医院，每波 doWaveSpawn 时调用）
+   * 从当前亮度/红光状态接续进入新序列；波次超出配置表时取最后一项（波6 氛围延续）
+   */
+  startWaveFlicker(wave: number): void {
+    if (this.currentScene !== SceneType.BASEMENT && this.currentScene !== SceneType.HOSPITAL) return;
+    const cfgs = BALANCE_CONFIG.weather.flicker.waveLighting;
+    if (cfgs.length === 0) return;
+    this.flickerWaveIndex = Math.min(Math.max(0, wave - 1), cfgs.length - 1);
+    this.flickerSegIndex = 0;
+    this.flickerSegElapsed = 0;
+    this.flickerFromBrightness = this.flickerBrightness;
+    this.flickerFromRed = this.flickerRed;
+    this.flickerSeqActive = true;
+    this.flickerJitter = false;
+  }
+
+  /** 波次灯光序列逐段推进（每帧调用；snap 段首骤变，其余段线性渐变，结束后稳定到战斗亮度/持续微抖） */
+  private updateWaveFlicker(): void {
     const fc = BALANCE_CONFIG.weather.flicker;
-    const elapsed = fc.duration - this.flickerRemaining;
-    return (elapsed * fc.blinkFreq) % 1 < fc.duty ? fc.maxAlpha : 0;
+    if (this.flickerSeqActive && this.flickerWaveIndex >= 0) {
+      const waveCfg = fc.waveLighting[this.flickerWaveIndex];
+      const seg = waveCfg.seq[this.flickerSegIndex];
+      if (!seg) { this.flickerSeqActive = false; return; }
+      this.flickerSegElapsed += this.deltaTime;
+      const t = seg.d > 0 ? Math.min(1, this.flickerSegElapsed / seg.d) : 1;
+      const targetRed = seg.red ?? 0;
+      if (seg.snap) {
+        this.flickerBrightness = seg.b;
+        this.flickerRed = targetRed;
+      } else {
+        this.flickerBrightness = this.flickerFromBrightness + (seg.b - this.flickerFromBrightness) * t;
+        this.flickerRed = this.flickerFromRed + (targetRed - this.flickerFromRed) * t;
+      }
+      if (t >= 1) {
+        this.flickerSegIndex++;
+        this.flickerSegElapsed = 0;
+        this.flickerFromBrightness = seg.b;
+        this.flickerFromRed = targetRed;
+        if (this.flickerSegIndex >= waveCfg.seq.length) {
+          // 序列结束：稳定到战斗基准亮度，按配置进入持续微抖
+          this.flickerSeqActive = false;
+          this.flickerJitter = waveCfg.jitter ?? false;
+          this.flickerBrightness = waveCfg.combat;
+          this.flickerRed = 0;
+        }
+      }
+    } else if (this.flickerJitter && this.flickerWaveIndex >= 0) {
+      // 持续微抖（电压不稳长尾）：双频 sin 确定性合成，围绕战斗亮度小幅波动
+      const j = fc.jitter;
+      const combat = fc.waveLighting[this.flickerWaveIndex].combat;
+      this.flickerBrightness = combat
+        + Math.sin(this.time * j.freq) * j.amp * 0.6
+        + Math.sin(this.time * j.freq * 2.7 + 1.3) * j.amp * 0.4;
+    }
+  }
+
+  /**
+   * 地下室/医院灯光状态（渲染层驱动）
+   * brightness：综合亮度（1=正常，0=全黑，>1=过冲提亮）；red：微红强度 0-1
+   */
+  getFlickerState(): { brightness: number; red: number } {
+    return { brightness: this.flickerBrightness, red: this.flickerRed };
   }
 
   // =============================================================================
@@ -4363,6 +4461,20 @@ export class GameEngine {
     return true;
   }
 
+  /** 重置天赋树：清空全部天赋等级，按 等级×费用 返还全部投入点数 */
+  resetTalentTree(): number {
+    const tree = this.progress.talentTree;
+    let refund = 0;
+    for (const def of TALENT_DEFS) {
+      refund += (tree.talents[def.id] || 0) * def.cost;
+    }
+    tree.talents = {};
+    tree.points += refund;
+    this.recalcTalentMultipliers();
+    this.saveProgress();
+    return refund;
+  }
+
   addTalentPoints(points: number) {
     this.progress.talentTree.points += points;
     this.saveProgress();
@@ -4379,6 +4491,30 @@ export class GameEngine {
     if (this.hasTalent('lance')) return 'lance';
     if (this.hasTalent('bluecore')) return 'blue';
     return 'normal';
+  }
+
+  /**
+   * 天赋渐进强化：伤害强度（伤害乘算-1）与射程聚焦（射程乘算-1）
+   * 驱动火焰量变视觉（粒子尺寸/余烬比/张角/流速/火束宽度），幅度克制避免遮挡蟑螂
+   */
+  private getFlameBoost(): { intensity: number; focus: number } {
+    return {
+      intensity: Math.max(0, (this.talentMultipliers.damageMultiplier || 1) - 1),
+      focus: Math.max(0, (this.talentMultipliers.fireRangeMultiplier || 1) - 1),
+    };
+  }
+
+  /**
+   * 天赋外观进化：枪身贴图分级
+   * 0 = 默认；1 = 猛火+长枪系合计投入 ≥8 点；2 = 激活任一 T5 终端基石或合计 ≥14 点
+   * 贴图缺失时回退默认（gun_mk1/gun_mk2 当前为 gun.png 占位复制件，待美术替换）
+   */
+  private getGunTier(): 0 | 1 | 2 {
+    const talents = this.progress.talentTree.talents;
+    const gunSpent = branchSpentPoints(talents, 'inferno') + branchSpentPoints(talents, 'lance');
+    if (this.hasTalent('overdrive') || this.hasTalent('lance') || gunSpent >= 14) return 2;
+    if (gunSpent >= 8) return 1;
+    return 0;
   }
 
   // =============================================================================
@@ -4561,6 +4697,7 @@ export class GameEngine {
       tripleFlameState: this.tripleFlameSystem!.getState(),
       time: this.time,
       flameVariant: this.getFlameVariant(),
+      damageIntensity: this.getFlameBoost().intensity,
     });
     ParticleSystem.renderFireWalls(ctx, this.fireWalls, this.time);
     this.renderStickyBoards();
@@ -5065,6 +5202,8 @@ export class GameEngine {
       roachTunnelWorkerImg: this.roachTunnelWorkerImg,
       roachSubwayEliteImg: this.roachSubwayEliteImg,
       roachShieldImg: this.roachShieldImg,
+      roachJockImg: this.roachJockImg,
+      debuffPoisonImg: this.debuffPoisonImg,
       nurseCastFrames: this.nurseCastFrames, mutantTransformFrames: this.mutantTransformFrames,
       imagesLoaded: this.imagesLoaded, time: this.time, deltaTime: this.deltaTime,
       defenseLineY: this.defenseLineY(), canvasHeight: this.height,
@@ -5120,7 +5259,12 @@ export class GameEngine {
           ctx.filter = 'hue-rotate(270deg)';
         }
 
-        ctx.drawImage(this.gunImg, -gw / 2, -gh / 2, gw, gh);
+        // 天赋外观进化：按改装等级切换枪身贴图（mk1/mk2 缺失时回退默认）
+        const gunTier = this.getGunTier();
+        const gunImg = (gunTier === 2 && this.gunMk2Img) ? this.gunMk2Img
+          : (gunTier === 1 && this.gunMk1Img) ? this.gunMk1Img
+          : this.gunImg;
+        ctx.drawImage(gunImg, -gw / 2, -gh / 2, gw, gh);
         ctx.filter = 'none';
         ctx.restore();
       } else {
@@ -5182,12 +5326,18 @@ export class GameEngine {
    * - steel（寒钢枪管）：银色加长枪管 + 散热环
    * - overdrive（过载核心）：枪体深红脉动辉光
    * - lance（聚能长枪）：枪口白热聚能环
+   * - alloy（耐热合金）：枪管散热格栅横线（1级2条→2级3条）
+   * - fins（散热鳍片）：枪身两侧三角鳍片（1级2片→2级4片）
+   * - tank（扩容气罐）：枪身下气罐加高（+15%/级，半透明不遮原贴图）
    */
   private renderGunEvolution(ctx: CanvasRenderingContext2D, s: number) {
     const hasSteel = this.hasTalent('steel');
     const hasOverdrive = this.hasTalent('overdrive');
     const hasLance = this.hasTalent('lance');
-    if (!hasSteel && !hasOverdrive && !hasLance) return;
+    const alloyLv = this.progress.talentTree.talents['alloy'] || 0;
+    const finsLv = this.progress.talentTree.talents['fins'] || 0;
+    const tankLv = this.progress.talentTree.talents['tank'] || 0;
+    if (!hasSteel && !hasOverdrive && !hasLance && alloyLv === 0 && finsLv === 0 && tankLv === 0) return;
 
     const cfg = BALANCE_CONFIG.render.renderUtils.gunEvolution;
     ctx.save();
@@ -5242,6 +5392,53 @@ export class GameEngine {
       ctx.stroke();
     }
 
+    // 耐热合金：枪管散热格栅横线（1级2条→2级3条）
+    if (alloyLv > 0) {
+      const lineCount = alloyLv + 1;
+      const halfW = cfg.alloyGrillWidth * s;
+      const baseY = -cfg.alloyGrillYOffset * s;
+      ctx.strokeStyle = cfg.alloyGrillColor;
+      ctx.lineWidth = cfg.alloyGrillLineWidth * s;
+      for (let i = 0; i < lineCount; i++) {
+        const gy = baseY - i * cfg.alloyGrillSpacing * s;
+        ctx.beginPath();
+        ctx.moveTo(-halfW, gy);
+        ctx.lineTo(halfW, gy);
+        ctx.stroke();
+      }
+    }
+
+    // 散热鳍片：枪身两侧三角鳍片（1级2片→2级4片，左右对称）
+    if (finsLv > 0) {
+      const pairCount = finsLv === 1 ? 1 : 2; // 每侧片数对数：1级1对→2级2对（共2/4片）
+      const fw = cfg.finWidth * s;
+      const fh = cfg.finHeight * s;
+      const baseY = -cfg.finYOffset * s;
+      ctx.fillStyle = cfg.finColor;
+      for (let i = 0; i < pairCount; i++) {
+        const fy = baseY - i * cfg.finSpacing * s;
+        for (const dir of [-1, 1]) {
+          ctx.beginPath();
+          ctx.moveTo(dir * 6 * s, fy);               // 贴枪身侧边
+          ctx.lineTo(dir * (6 * s + fw), fy - fh / 2); // 外尖端
+          ctx.lineTo(dir * 6 * s, fy - fh);          // 贴枪身侧边上沿
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
+    }
+
+    // 扩容气罐：枪身下气罐加高（半透明铜色，不遮原贴图）
+    if (tankLv > 0) {
+      const halfW = cfg.tankCanWidth * s;
+      const ch = cfg.tankCanBaseHeight * (1 + cfg.tankCanGrowPerLevel * tankLv) * s;
+      const bottomY = cfg.tankCanYOffset * s;
+      ctx.fillStyle = cfg.tankCanColor;
+      ctx.fillRect(-halfW, bottomY - ch, halfW * 2, ch);
+      ctx.fillStyle = cfg.tankCanEdgeColor;
+      ctx.fillRect(halfW * 0.3, bottomY - ch, halfW * 0.3, ch); // 右侧高光棱线
+    }
+
     ctx.restore();
   }
 
@@ -5270,7 +5467,7 @@ export class GameEngine {
   }
 
   renderWeatherForeground(ctx: CanvasRenderingContext2D, w: number) {
-    WeatherSystem.renderWeatherForeground(ctx, w, this.weatherParticles, this.height, this.getFlickerOverlayAlpha(), this.getFlickerLampEllipses());
+    WeatherSystem.renderWeatherForeground(ctx, w, this.weatherParticles, this.height, this.getFlickerState(), this.getFlickerLampEllipses());
     this.renderDefenseLine(ctx, w);
   }
 

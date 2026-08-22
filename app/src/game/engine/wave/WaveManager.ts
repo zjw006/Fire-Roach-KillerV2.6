@@ -38,8 +38,10 @@ export interface WaveGameplayCallbacks {
   onWaveCleared?: () => void;
   /** 超市 V4.0：波次开始时清空残余阵型实例（多组错时共存，各组独立锚点/独立破阵） */
   onClearFormations?: () => void;
-  /** 超市 V4.0：生成一组阵型（出生点即阵型槽位，整组同帧生成；groupIndex 用于多组纵深错位） */
-  onSpawnFormationGroup?: (group: FormationGroupConfig, groupIndex: number) => void;
+  /** 超市 V5.0：生成一组阵型（出生点即槽位绝对坐标经上移变换；组内成员由引擎按 formationMemberStaggerSec 陆续生成） */
+  onSpawnFormationGroup?: (group: FormationGroupConfig) => void;
+  /** 超市 V5.0：是否存在仍在作战的阵型实例（串行出场门控：上一组被消灭后才出下一组） */
+  hasActiveFormations?: () => boolean;
   /** 获取指定 Y 处地面透视边界 [L, R]（超市穿插/阵型在阻挡面内随机定位用） */
   onGetGroundBoundsAtY?: (y: number) => [number, number];
 }
@@ -86,16 +88,14 @@ export class WaveManager {
   spawnQueue: { type: RoachType; clusterId?: number; x?: number; y?: number }[] = [];
   /** 生成计时器 */
   spawnTimer: number = 0;
-  /** 超市 V4.0：待生成阵型组（热场杂兵队列清空且场上基本清完时首组出场，后续组按 groupStaggerSec 错时生成；容量不足顺延重试） */
+  /** 超市 V5.0：待生成阵型组（热场杂兵队列清空且场上基本清完时首组出场，后续组串行出场：上一组被消灭后才出下一组；容量不足顺延重试） */
   private pendingFormations: FormationGroupConfig[] = [];
   /** 超市 V4.0：热场队列清空后的等待计时（配合 formationWaitClear/formationWaitTimeout 判定阵型组出场） */
   private formationIdleTimer: number = 0;
-  /** 超市 V4.0：相邻阵型组错时生成间隔计时（秒） */
+  /** 超市 V5.0：上一组阵型被消灭后、下一组出场的缓冲计时（秒） */
   private formationGroupTimer: number = 0;
-  /** 超市 V4.0：本波首组阵型是否已出场 */
+  /** 超市 V5.0：本波首组阵型是否已出场 */
   private formationWaveStarted: boolean = false;
-  /** 超市 V4.0：已出场阵型组序号（用于出生线纵深错位） */
-  private formationGroupIndex: number = 0;
   /** 超市 V4.0：穿插投放状态（阵列生成后激活，推进全程持续投放自由杂兵/自爆偷袭单位；suicideBlockTimer 累计自爆类投放等待时间） */
   private trickleState: { cfg: TrickleConfig; active: boolean; intervalTimer: number; spawned: number; typeCursor: number; suicideSeq: number; suicideBlockTimer: number } | null = null;
   /** 波次刚刚清除标志 */
@@ -147,7 +147,6 @@ export class WaveManager {
     this.formationIdleTimer = 0;
     this.formationGroupTimer = 0;
     this.formationWaveStarted = false;
-    this.formationGroupIndex = 0;
     this.trickleState = null;
   }
 
@@ -246,10 +245,11 @@ export class WaveManager {
       if (this.spawnQueue.length === 0) this.waveSpawning = false;
     }
 
-    // ===== 超市 V4.0 波内调度：杂兵热场 → 阵型组整组生成 → 推进全程持续穿插（教学暂停期间冻结计时） =====
+    // ===== 超市 V5.0 波内调度：杂兵热场 → 阵型组串行出场 → 推进全程持续穿插（教学暂停期间冻结计时） =====
     if (!this.tutorialPauseSpawn && !this.eliteTutorialPause && !this.knifeTutorialPause) {
-      // 阵型组：热场杂兵队列清空且场上基本清完（存活 ≤ formationWaitClear）时首组出场，后续组按 groupStaggerSec
-      // 错时生成（V4.0：各组错时、独立锚点、独立破阵判定；出生点即槽位，多组按 groupIndex 纵深错位）；
+      // 阵型组：热场杂兵队列清空且场上基本清完（存活 ≤ formationWaitClear）时首组出场；
+      // 后续组串行出场——上一组阵型被消灭（破阵解散或团灭至残兵）后才出下一组，
+      // 避免多阵列叠血过厚（V5.0：各组独立锚点、独立破阵判定；穿插杂兵不受门控照常持续生成）；
       // 队列清空后等待超时强制出场兜底；接近硬上限 40 则顺延下帧重试，防静默丢弃
       if (this.pendingFormations.length > 0) {
         const cap = BALANCE_CONFIG.supermarket;
@@ -259,16 +259,14 @@ export class WaveManager {
           const alive = this.cb.onGetRoaches().length;
           const firstGroupDue = !this.formationWaveStarted
             && (alive <= cap.formationWaitClear || this.formationIdleTimer >= cap.formationWaitTimeout);
-          const nextGroupDue = this.formationWaveStarted && this.formationGroupTimer <= 0;
+          const formationActive = this.cb.hasActiveFormations?.() ?? false;
+          const nextGroupDue = this.formationWaveStarted && this.formationGroupTimer <= 0 && !formationActive;
           if (firstGroupDue || nextGroupDue) {
             const g = this.pendingFormations[0];
-            const groupSize = (g.armored ?? 0) + (g.shield ?? 0) + (g.splitting ?? 0) + (g.timedSuicide ?? 0)
-              + Math.min(g.tunnelWorker ?? 0, cap.maxTunnelerPerFormation)
-              + Math.min(g.nurse ?? 0, cap.maxNursePerFormation);
+            const groupSize = g.slots.length;
             if (alive + groupSize <= 40) {
-              this.cb.onSpawnFormationGroup?.(g, this.formationGroupIndex);
+              this.cb.onSpawnFormationGroup?.(g);
               this.pendingFormations.shift();
-              this.formationGroupIndex++;
               this.formationWaveStarted = true;
               this.formationGroupTimer = cap.groupStaggerSec;
             }
@@ -464,7 +462,6 @@ export class WaveManager {
       this.formationIdleTimer = 0;
       this.formationGroupTimer = 0;
       this.formationWaveStarted = false;
-      this.formationGroupIndex = 0;
       this.trickleState = config.trickle
         ? { cfg: config.trickle, active: false, intervalTimer: 0, spawned: 0, typeCursor: 0, suicideSeq: 0, suicideBlockTimer: 0 }
         : null;
@@ -548,6 +545,13 @@ export class WaveManager {
     if (this.cfg.currentScene === SceneType.SUPERMARKET) {
       const { eliteCount = 0 } = config;
       addToQueue(phase2, RoachType.SUBWAY_ELITE, eliteCount);
+      shuffle(phase2);
+    }
+
+    // 学校特殊单位（体育生蟑螂为自由杂兵，混入 phase2 中段）
+    if (this.cfg.currentScene === SceneType.SCHOOL) {
+      const { jockCount = 0 } = config;
+      addToQueue(phase2, RoachType.JOCK, jockCount);
       shuffle(phase2);
     }
 

@@ -1307,7 +1307,7 @@ export class PrefabPlayer {
 
   /**
    * 隧道工施法警示光圈：忠实复刻 RoachRenderer.ts:673-695 armorSprayCastTimer 脉冲。
-   * 喷涂瞬间一次范围光圈：半径 30%→100% 射程扩散、渐隐（0.5s 进程），
+   * 喷涂瞬间一次范围光圈：半径 20%→100% 射程扩散、渐隐（0.9s 进程），
    * 地面透视压扁椭圆（径向渐变填充 + 内圈描边），参数实时读取 BALANCE_CONFIG.subway.armorSprayRange。
    */
   private renderArmorCastRing(ctx: CanvasRenderingContext2D, x: number, y: number, localMs: number): void {

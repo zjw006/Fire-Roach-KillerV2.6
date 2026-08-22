@@ -29,6 +29,8 @@ interface GameOverScreenProps {
   menuMoney?: number; // Cross-level total money (menuShopMoney)
   /** 关卡内获得的金币奖励（用于胜利结算动画） */
   victoryGoldReward?: number;
+  /** 未领取的成就金币总额（用于结算动画来源递减） */
+  achievementGoldReward?: number;
   /** 结算动画完成后回调（发放金币到经济系统） */
   onSettleGold?: () => void;
   /** 未领取金币的成就数量 */
@@ -45,42 +47,59 @@ interface GameOverScreenProps {
   starRating?: number;
 }
 
-export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, gameMode, isVictory, hasNextScene, nextSceneName, onRestart, onQuit, onNextScene, talentPoints, bossDefeated, onOpenTalentTree, audio, victoryGoldReward, onSettleGold, unclaimedAchievementCount, onOpenAchievements, onOpenShop, talentUnlocked, talentUnlockGrant = 0, starRating = 0}) => {
+export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, gameMode, isVictory, hasNextScene, nextSceneName, onRestart, onQuit, onNextScene, talentPoints, bossDefeated, onOpenTalentTree, audio, victoryGoldReward, achievementGoldReward = 0, onSettleGold, unclaimedAchievementCount, onOpenAchievements, onOpenShop, talentUnlocked, talentUnlockGrant = 0, starRating = 0}) => {
   const isBossMode = bossDefeated;
   const isEndless = gameMode === 'endless';
   const videoRef = useRef<HTMLVideoElement>(null);
 
   /** 金币动画状态 */
-  const hasReward = (victoryGoldReward ?? 0) > 0;
+  const levelReward = victoryGoldReward ?? 0;
+  const achieveReward = achievementGoldReward ?? 0;
+  const totalReward = levelReward + achieveReward;
+  const hasReward = totalReward > 0;
   const baseGold = economy.money;
-  const finalGold = baseGold + (victoryGoldReward ?? 0);
+  const finalGold = baseGold + totalReward;
   const [displayGold, setDisplayGold] = useState(hasReward ? baseGold : finalGold);
+  const [displayLevelReward, setDisplayLevelReward] = useState(levelReward);
+  const [displayAchieveReward, setDisplayAchieveReward] = useState(achieveReward);
   const [animationDone, setAnimationDone] = useState(!hasReward);
+
+  // 点击屏幕强制结束动画
+  const skipAnimation = () => {
+    if (animationDone) return;
+    setDisplayGold(finalGold);
+    setDisplayLevelReward(0);
+    setDisplayAchieveReward(0);
+    setAnimationDone(true);
+    onSettleGold?.();
+  };
 
   useEffect(() => {
     if (!hasReward) {
-      // No reward to animate, settle immediately
       onSettleGold?.();
       return;
     }
 
-    const reward = victoryGoldReward ?? 0;
     // 动态时长：基础 1000ms + 每金币 3ms，最低 800ms，最高 5000ms
-    const duration = Math.max(800, Math.min(1000 + reward * 3, 5000));
-    const tickInterval = 50; // 固定 50ms 间隔，音效以固定节奏播放
+    const duration = Math.max(800, Math.min(1000 + totalReward * 3, 5000));
+    const tickInterval = 50;
     const steps = Math.round(duration / tickInterval);
-    const stepAmount = reward / steps;
     let currentStep = 0;
 
     const timer = setInterval(() => {
       currentStep++;
-      const newGold = Math.min(baseGold + Math.round(stepAmount * currentStep), finalGold);
+      const progress = currentStep / steps;
+      const newGold = Math.min(baseGold + Math.round(totalReward * progress), finalGold);
       setDisplayGold(newGold);
+      setDisplayLevelReward(Math.round(levelReward * (1 - progress)));
+      setDisplayAchieveReward(Math.round(achieveReward * (1 - progress)));
       audio?.playCoinTick();
 
       if (currentStep >= steps) {
         clearInterval(timer);
         setDisplayGold(finalGold);
+        setDisplayLevelReward(0);
+        setDisplayAchieveReward(0);
         setAnimationDone(true);
         onSettleGold?.();
       }
@@ -92,7 +111,11 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, g
   const modeName = isBossMode ? TEXT_CONFIG.ui.gameOver.bossModeName : isEndless ? TEXT_CONFIG.ui.gameOver.endlessMode : gameMode === 'daily' ? TEXT_CONFIG.ui.gameOver.dailyModeName : TEXT_CONFIG.ui.gameOver.storyMode;
 
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center overflow-hidden">
+    <div
+      className="absolute inset-0 flex flex-col items-center justify-center overflow-hidden"
+      onClick={skipAnimation}
+      style={{ cursor: animationDone ? 'default' : 'pointer' }}
+    >
       {/* Video background - full screen loop */}
       <video
         ref={videoRef}
@@ -158,11 +181,29 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, g
             <div className="text-center">
               <div className="text-stone-400 text-[10px]">{TEXT_CONFIG.ui.gameOver.finalMoney}</div>
               <div className={`text-lg font-bold text-amber-400 ${hasReward && !animationDone ? 'animate-pulse' : ''}`}>
-                ¥{animationDone ? economy.money : displayGold}
-                {hasReward && !animationDone && (
-                  <span className="text-xs text-green-400 ml-0.5">+{victoryGoldReward}</span>
-                )}
+                ¥{animationDone ? economy.money + totalReward : displayGold}
               </div>
+              {/* 来源金币递减动画 */}
+              {hasReward && !animationDone && (
+                <div className="mt-1 space-y-0.5">
+                  {levelReward > 0 && (
+                    <div className="flex items-center justify-center gap-1">
+                      <span className="text-[9px] text-stone-500">{TEXT_CONFIG.ui.gameOver.levelReward}</span>
+                      <span className="text-[10px] font-bold text-green-400">+{displayLevelReward}</span>
+                    </div>
+                  )}
+                  {achieveReward > 0 && (
+                    <div className="flex items-center justify-center gap-1">
+                      <span className="text-[9px] text-stone-500">{TEXT_CONFIG.ui.gameOver.achievementReward}</span>
+                      <span className="text-[10px] font-bold text-yellow-400">+{displayAchieveReward}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* 点击跳过提示 */}
+              {hasReward && !animationDone && (
+                <div className="text-[9px] text-stone-600 mt-1 animate-pulse">{TEXT_CONFIG.ui.gameOver.clickToSkip}</div>
+              )}
             </div>
             <div className="text-center">
               <div className="text-stone-400 text-[10px]">{TEXT_CONFIG.ui.gameOver.breaches}</div>

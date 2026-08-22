@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>超市阵列编辑器 V5.0 · 1~10 波（540×960 所见即所得）</title>
+<style>
+  body{background:#f5efe4;font-family:"Microsoft YaHei",sans-serif;margin:0;padding:24px;color:#4a4036}
+  h1{font-size:20px;text-align:center;margin:0 0 4px}
+  .note{text-align:center;color:#8a7d6b;font-size:12px;margin-bottom:14px;line-height:1.8}
+  .legend{background:#fdfaf3;border:1px solid #ddd0b8;border-radius:10px;padding:10px 16px;margin:0 auto 12px;width:fit-content;font-size:12px;line-height:1.9}
+  .legend span{display:inline-flex;align-items:center;margin:0 12px 0 0;white-space:nowrap}
+  .dot{width:13px;height:13px;border-radius:50%;display:inline-block;margin-right:5px;border:1px solid rgba(0,0,0,.25)}
+  #toolbar{background:#fdfaf3;border:1px solid #ddd0b8;border-radius:10px;padding:10px 16px;margin:0 auto 16px;width:fit-content;font-size:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center}
+  #toolbar button{padding:4px 12px;border:1px solid #c9b896;background:#f0e6cf;border-radius:6px;cursor:pointer;font-size:12px}
+  #toolbar button.armed{background:#e8c87a;border-color:#b8933f;font-weight:bold}
+  #toolbar .sep{width:1px;height:18px;background:#ddd0b8;margin:0 4px}
+  .wave{margin:22px auto 0;max-width:1160px}
+  .wave>h2{font-size:16px;margin:0 0 2px;color:#6b4f2e}
+  .wave>.wsub{font-size:12px;color:#9a8c76;margin-bottom:8px}
+  .groups{display:flex;flex-wrap:wrap;gap:14px}
+  .card{background:#fdfaf3;border:1px solid #ddd0b8;border-radius:10px;padding:8px 10px;box-shadow:0 2px 6px rgba(120,100,70,.12)}
+  .card h3{font-size:13px;margin:2px 0 1px}
+  .card .gsub{font-size:11px;color:#9a8c76;margin-bottom:4px;line-height:1.6}
+  svg{display:block}
+  svg circle.mem{cursor:grab}
+  svg circle.mem.drag{cursor:grabbing;stroke:#e8c87a;stroke-width:2.5}
+  svg circle.mem.sel{stroke:#38bdf8;stroke-width:3}
+  svg.adding{cursor:crosshair}
+  #outPanel{position:fixed;right:14px;bottom:14px;width:360px;background:#fdfaf3;border:1px solid #ddd0b8;border-radius:10px;padding:10px 12px;box-shadow:0 4px 14px rgba(80,60,30,.25);z-index:99;font-size:12px}
+  #outPanel textarea{width:100%;height:190px;font-size:10px;font-family:Consolas,monospace;background:#f8f3e6;border:1px solid #ddd0b8;border-radius:6px;margin:6px 0;box-sizing:border-box}
+  #outPanel .btns{display:flex;gap:8px}
+  #outPanel button{flex:1;padding:4px 0;border:1px solid #c9b896;background:#f0e6cf;border-radius:6px;cursor:pointer;font-size:12px}
+  #warn{font-size:11px;color:#b0483a;line-height:1.6;max-height:70px;overflow:auto}
+  #outPanel .tip{font-size:10px;color:#9a8c76;margin-top:6px;line-height:1.5}
+  #selBar{position:fixed;left:14px;bottom:14px;background:#fdfaf3;border:1px solid #ddd0b8;border-radius:10px;padding:8px 12px;box-shadow:0 4px 14px rgba(80,60,30,.25);z-index:99;font-size:12px;display:none;align-items:center;gap:8px}
+  #selBar b{color:#6b4f2e}
+  #selBar button{padding:4px 12px;border:1px solid #c9b896;background:#f0e6cf;border-radius:6px;cursor:pointer;font-size:12px}
+  #selBar button.on{background:#e8c87a;border-color:#b8933f;font-weight:bold}
+  #selBar button.danger{background:#f0d0c8;border-color:#c0584a;color:#8a2f22}
+</style>
+</head>
+<body>
+<h1>超市阵列编辑器 V5.0 · 1~10 波（540×960 战斗画布 · 所见即所得）</h1>
+<div class="note">圆圈位置 = 真实出生坐标（运行时零变换）｜◆ = 锚点｜~ = sway 摇摆｜◎ = orbit 环绕｜半透明灰影 = 同波其它组（串行出场：上一组被消灭才出下一组）<br>
+梯形地面 = 超市真实透视边界（远 221/345@353，中 130/456-416/414，近 59/480@810）｜防线 y=830｜组内成员间隔 0.4s 陆续入场，位置固定</div>
+<div class="legend" id="legend"></div>
+<div id="toolbar">
+  <b>添加蟑螂：</b><span id="typeBtns"></span><span class="sep"></span>
+  <span style="color:#9a8c76">点类型按钮后，点击目标画布放置（Esc 取消）｜选中圆圈：<kbd>Del</kbd> 删除 <kbd>A</kbd> 锚点 <kbd>M</kbd> 运动方式</span>
+</div>
+<div id="root"></div>
+<div id="selBar">
+  <b id="selInfo"></b>
+  <button id="btnAnchor">锚点</button>
+  <button id="btnMotion">运动：固定</button>
+  <button id="btnDel" class="danger">删除（Del）</button>
+</div>
+<div id="outPanel">
+ <b>导出（waves.ts formationGroups 全量）</b>
+ <div id="warn"></div>
+ <textarea id="out" readonly></textarea>
+ <div class="btns"><button id="btnCopy">复制全部</button><button id="btnReset">恢复内置数据</button></div>
+ <div class="tip">所有修改自动保存在浏览器本地。调整完后把文本发给我，我写入 waves.ts。</div>
+</div>
+<script>
+'use strict';
+// ===== 超市场景真实地面边界（scene-rules.ts SCENE_GROUND_BOUNDS[SUPERMARKET]） =====
+const B=[221,353, 345,353, 130,456, 416,414, 59,480,810];
+const[farL,farLY,farR,farRY,midL,midLY,midR,midRY,nearL,nearR,nearY]=B;
+function gb(y){const cy=Math.min(nearY,Math.max(Math.min(farLY,farRY),y));let l,r;
+ if(cy>=midLY){const t=(cy-midLY)/(nearY-midLY);l=midL+(nearL-midL)*t;}else{const t=(cy-farLY)/(midLY-farLY);l=farL+(midL-farL)*t;}
+ if(cy>=midRY){const t=(cy-midRY)/(nearY-midRY);r=midR+(nearR-midR)*t;}else{const t=(cy-farRY)/(midRY-farRY);r=farR+(midR-farR)*t;}
+ return[l,r];}
+const FAR_TOP=Math.min(farLY,farRY),DEF_Y=960-130;
+// ===== 阵型成员类型（硬约束：仅这 6 种可入阵） =====
+const TYPE={ARMORED:{name:'装甲',color:'#5a5a5a',size:76},SHIELD:{name:'护盾',color:'#67e8f9',size:123},
+ SPLITTING:{name:'分裂',color:'#6a4a6a',size:42},TIMED_SUICIDE:{name:'定时自爆',color:'#f59e0b',size:60},
+ TUNNEL_WORKER:{name:'隧道工',color:'#78716c',size:118},NURSE:{name:'护士',color:'#4ade80',size:109}};
+const ALLOWED=['ARMORED','SHIELD','SPLITTING','TIMED_SUICIDE','TUNNEL_WORKER','NURSE'];
+const ANCHOR_COLOR={ARMORED:'#fb923c',SHIELD:'#22d3ee',NURSE:'#4ade80',TUNNEL_WORKER:'#facc15',SPLITTING:'#c084fc',TIMED_SUICIDE:'#fbbf24'};
+const MOTIONS=['none','sway','orbit'];
+const RAD=t=>TYPE[t].size/2;
+
+/* ---- 内置数据（waves.ts WAVE_CONFIGS_SUPERMARKET 1:1 转录，坐标已固化出生上移） ---- */
+const DEFAULT_WAVES=[
+ {w:1,name:'热场·首阵',free:'小15 大8 飞5 装甲2 分裂2（自由）',trickle:'小/飞行/小/飞自爆 ×4 @2s',groups:[
+  {slots:[{t:'SPLITTING',x:231,y:363},{t:'SPLITTING',x:319,y:363},{t:'SPLITTING',x:274,y:363},{t:'SHIELD',x:276,y:389,a:1}]}]},
+ {w:2,name:'热场·盾墙',free:'小15 大8 飞8 装甲2（自由）',trickle:'小/飞行/大/飞自爆/飞行 ×5 @2s',groups:[
+  {slots:[{t:'SPLITTING',x:276,y:363},{t:'SHIELD',x:275,y:399,a:1},{t:'SPLITTING',x:323,y:364},{t:'SPLITTING',x:221,y:363}]}]},
+ {w:3,name:'方阵·初鸣',free:'小18 大10 飞5',trickle:'小/飞行/大/飞自爆/小 ×5 @2s',groups:[
+  {slots:[{t:'TIMED_SUICIDE',x:269,y:359},{t:'NURSE',x:234,y:388,a:1},{t:'SHIELD',x:301,y:428,a:1},{t:'SPLITTING',x:321,y:363}]}]},
+ {w:4,name:'双阵·楔袭',free:'小10 大4 飞8',trickle:'小/飞行/大/飞自爆/小/飞行 ×6 @2s',groups:[
+  {slots:[{t:'SPLITTING',x:235,y:363},{t:'TIMED_SUICIDE',x:289,y:363},{t:'SHIELD',x:267,y:430,a:1},{t:'NURSE',x:221,y:390,m:'sway'}]},
+  {slots:[{t:'SPLITTING',x:298,y:363},{t:'SHIELD',x:270,y:411,a:1},{t:'TUNNEL_WORKER',x:236,y:363},{t:'SPLITTING',x:203,y:383}]}]},
+ {w:5,name:'双阵·穿插',free:'小10 大3 飞2',trickle:'小/飞行/大/飞自爆/小/飞行/大 ×7 @2s',groups:[
+  {slots:[{t:'SHIELD',x:243,y:419,a:1},{t:'TUNNEL_WORKER',x:314,y:379},{t:'SPLITTING',x:220,y:371},{t:'SPLITTING',x:190,y:398}]},
+  {slots:[{t:'SHIELD',x:314,y:409},{t:'SPLITTING',x:268,y:363},{t:'SPLITTING',x:223,y:363},{t:'NURSE',x:249,y:369,a:1}]}]},
+ {w:6,name:'双阵·纵队',free:'小10 大5 飞3',trickle:'小/飞行/大/飞自爆/小/飞行 ×6 @1.5s',groups:[
+  {slots:[{t:'ARMORED',x:215,y:393,a:1},{t:'SHIELD',x:305,y:405},{t:'SPLITTING',x:255,y:362},{t:'SPLITTING',x:281,y:377},{t:'TIMED_SUICIDE',x:254,y:363},{t:'TIMED_SUICIDE',x:318,y:359}]},
+  {slots:[{t:'TUNNEL_WORKER',x:277,y:371,a:1},{t:'NURSE',x:261,y:365,a:1},{t:'SHIELD',x:308,y:405},{t:'TIMED_SUICIDE',x:327,y:369},{t:'SPLITTING',x:227,y:373},{t:'SPLITTING',x:261,y:369},{t:'SPLITTING',x:292,y:363}]}]},
+ {w:7,name:'三阵·合围',free:'小8 大3 自爆1 精英1',trickle:'小/飞行/大/飞自爆/小/飞行/大 ×7 @1.5s',groups:[
+  {slots:[{t:'SHIELD',x:256,y:415,a:1},{t:'TIMED_SUICIDE',x:212,y:359},{t:'TIMED_SUICIDE',x:276,y:359,m:'sway'},{t:'TUNNEL_WORKER',x:318,y:364}]},
+  {slots:[{t:'SHIELD',x:251,y:438,a:1},{t:'SPLITTING',x:236,y:362},{t:'SPLITTING',x:287,y:359},{t:'NURSE',x:298,y:398,a:1}]},
+  {slots:[{t:'TIMED_SUICIDE',x:305,y:359,m:'sway'},{t:'TIMED_SUICIDE',x:238,y:361,m:'sway'},{t:'TUNNEL_WORKER',x:238,y:381,a:1,m:'sway'},{t:'SHIELD',x:279,y:421,a:1,m:'sway'}]}]},
+ {w:8,name:'三阵·环卫',free:'小8 大4 自爆1 精英1',trickle:'小/飞行/大/飞自爆/小/飞行/大/飞自爆 ×8 @1s',groups:[
+  {slots:[{t:'SHIELD',x:269,y:406},{t:'SPLITTING',x:310,y:363,m:'orbit'},{t:'SPLITTING',x:222,y:359,m:'orbit'},{t:'NURSE',x:268,y:366,a:1}]},
+  {slots:[{t:'SHIELD',x:278,y:407,a:1},{t:'TIMED_SUICIDE',x:279,y:372},{t:'SPLITTING',x:227,y:382},{t:'SPLITTING',x:327,y:374},{t:'SPLITTING',x:251,y:388},{t:'TUNNEL_WORKER',x:322,y:367}]},
+  {slots:[{t:'SPLITTING',x:230,y:377},{t:'TUNNEL_WORKER',x:299,y:408,a:1},{t:'NURSE',x:245,y:446,a:1}]}]},
+ {w:9,name:'三阵·双锋',free:'小10 大4 自爆2 精英1',trickle:'小/飞行/大/飞自爆/小/飞行/大/飞行 ×8 @1.5s',groups:[
+  {slots:[{t:'SHIELD',x:268,y:413,a:1},{t:'TIMED_SUICIDE',x:226,y:361},{t:'TIMED_SUICIDE',x:307,y:359},{t:'TUNNEL_WORKER',x:320,y:373,a:1},{t:'NURSE',x:222,y:373,a:1}]},
+  {slots:[{t:'TIMED_SUICIDE',x:253,y:363},{t:'TIMED_SUICIDE',x:310,y:363},{t:'TUNNEL_WORKER',x:291,y:393,a:1}]},
+  {slots:[{t:'SPLITTING',x:231,y:378},{t:'SPLITTING',x:271,y:359},{t:'SPLITTING',x:318,y:374},{t:'NURSE',x:275,y:409,a:1},{t:'TIMED_SUICIDE',x:299,y:363},{t:'SHIELD',x:240,y:449,m:'sway'}]}]},
+ {w:10,name:'终局·群阵',free:'小12 大5 飞3 自爆1 精英1',trickle:'小/飞行/大/飞自爆/小/飞行/大/飞行/飞自爆 ×9 @1.5s',groups:[
+  {slots:[{t:'SHIELD',x:271,y:413,a:1,m:'sway'},{t:'TIMED_SUICIDE',x:268,y:359},{t:'TUNNEL_WORKER',x:334,y:365}]},
+  {slots:[{t:'SPLITTING',x:223,y:394},{t:'SPLITTING',x:341,y:412},{t:'NURSE',x:272,y:359,a:1},{t:'TIMED_SUICIDE',x:345,y:363},{t:'TUNNEL_WORKER',x:206,y:397}]},
+  {slots:[{t:'SHIELD',x:254,y:436,a:1,m:'sway'},{t:'TIMED_SUICIDE',x:240,y:359},{t:'TIMED_SUICIDE',x:191,y:402},{t:'TUNNEL_WORKER',x:309,y:394,a:1}]},
+  {slots:[{t:'SPLITTING',x:204,y:390},{t:'SPLITTING',x:358,y:370},{t:'SPLITTING',x:325,y:410},{t:'NURSE',x:275,y:359,a:1},{t:'TUNNEL_WORKER',x:246,y:388}]}]},
+];
+
+/* ---- 状态（localStorage 持久化，带数据版本：内置坐标更新后自动作废旧缓存） ---- */
+const LS='fwV5data',LSVER='fwV5ver',DATA_VER=5;
+let WAVES;
+const stale=localStorage.getItem(LSVER)!==String(DATA_VER);
+try{WAVES=(!stale&&JSON.parse(localStorage.getItem(LS)))||structuredClone(DEFAULT_WAVES);}catch(_){WAVES=structuredClone(DEFAULT_WAVES);}
+let sel=null;      // {wv,gi,slot} 选中圆圈
+let armType=null;  // 添加模式类型
+function save(){localStorage.setItem(LS,JSON.stringify(WAVES));localStorage.setItem(LSVER,String(DATA_VER));refreshOut();}
+
+/* ---- 导出 & 校验 ---- */
+function exportText(){
+ const lines=['// ===== 超市 formationGroups 全量（V5.0 直驱制，坐标=真实出生点） ====='];
+ for(const wv of WAVES){
+  lines.push(`// 第 ${wv.w} 波 · ${wv.name}`);
+  lines.push('formationGroups: [');
+  for(const g of wv.groups){
+   lines.push('  { slots: [');
+   for(const s of g.slots){
+    let line=`    { type: RoachType.${s.t}, x: ${Math.round(s.x)}, y: ${Math.round(s.y)}`;
+    if(s.a)line+=', anchor: true';
+    if(s.m&&s.m!=='none')line+=`, motion: '${s.m}'`;
+    lines.push(line+' },');}
+   lines.push('  ] },');}
+  lines.push('],');}
+ return lines.join('\n');}
+function validate(){
+ const msgs=[];
+ for(const wv of WAVES)wv.groups.forEach((g,i)=>{
+  const tag=`第${wv.w}波组${i+1}`;
+  if(g.slots.length===0)msgs.push(`${tag}：空组`);
+  if(g.slots.length>0&&!g.slots.some(s=>s.a))msgs.push(`${tag}：无锚点（破阵判定①永不触发，建议至少 1 个）`);
+  const nu=g.slots.filter(s=>s.t==='NURSE').length;if(nu>1)msgs.push(`${tag}：护士 ${nu} 只（硬约束最多 1）`);
+  const tw=g.slots.filter(s=>s.t==='TUNNEL_WORKER').length;if(tw>2)msgs.push(`${tag}：隧道工 ${tw} 只（硬约束最多 2）`);
+  for(const s of g.slots)if(!ALLOWED.includes(s.t))msgs.push(`${tag}：${s.t} 禁止入阵`);});
+ return msgs;}
+function refreshOut(){document.getElementById('out').value=exportText();
+ const w=validate();document.getElementById('warn').innerHTML=w.length?w.map(x=>'⚠ '+x).join('<br>'):'<span style="color:#7a9a6d">✓ 校验通过</span>';}
+document.getElementById('btnCopy').onclick=()=>navigator.clipboard.writeText(document.getElementById('out').value);
+document.getElementById('btnReset').onclick=()=>{if(confirm('放弃全部修改，恢复内置数据？')){localStorage.removeItem(LS);WAVES=structuredClone(DEFAULT_WAVES);sel=null;renderAll();refreshOut();}};
+
+/* ---- 添加模式工具栏 ---- */
+const tb=document.getElementById('typeBtns');
+for(const k of ALLOWED){const b=document.createElement('button');b.textContent=TYPE[k].name;
+ b.style.borderBottom=`3px solid ${TYPE[k].color}`;
+ b.onclick=()=>{armType=armType===k?null:k;syncArm();};b.dataset.k=k;tb.appendChild(b);}
+function syncArm(){tb.querySelectorAll('button').forEach(b=>b.classList.toggle('armed',b.dataset.k===armType));
+ document.querySelectorAll('svg').forEach(s=>s.classList.toggle('adding',!!armType));}
+/* ---- 选中操作（键盘 & 操作条共用） ---- */
+const MOTION_NAME={none:'固定',sway:'摇摆 ~',orbit:'环绕 ◎'};
+function opDel(){if(!sel)return;const g=WAVES.find(w=>w.w===sel.wv).groups[sel.gi];
+ g.slots.splice(g.slots.indexOf(sel.slot),1);sel=null;save();renderAll();}
+function opAnchor(){if(!sel)return;const s=sel.slot;s.a=s.a?0:1;save();renderAll();}
+function opMotion(){if(!sel)return;const s=sel.slot;const i=MOTIONS.indexOf(s.m||'none');
+ s.m=MOTIONS[(i+1)%3];if(s.m==='none')delete s.m;save();renderAll();}
+function syncSelBar(){const bar=document.getElementById('selBar');
+ if(!sel){bar.style.display='none';return;}
+ const s=sel.slot,T=TYPE[s.t];
+ bar.style.display='flex';
+ document.getElementById('selInfo').textContent=`第${sel.wv}波·组${sel.gi+1}·${T.name} (${Math.round(s.x)}, ${Math.round(s.y)})`;
+ document.getElementById('btnAnchor').classList.toggle('on',!!s.a);
+ document.getElementById('btnMotion').textContent='运动：'+MOTION_NAME[s.m||'none'];}
+document.getElementById('btnAnchor').onclick=opAnchor;
+document.getElementById('btnMotion').onclick=opMotion;
+document.getElementById('btnDel').onclick=opDel;
+document.addEventListener('keydown',ev=>{
+ if(ev.target.tagName==='TEXTAREA'||ev.target.tagName==='INPUT')return;
+ if(ev.key==='Escape'){armType=null;syncArm();return;}
+ if(!sel)return;
+ if(ev.key==='Delete'||ev.key==='Backspace')opDel();
+ else if(ev.key==='a'||ev.key==='A')opAnchor();
+ else if(ev.key==='m'||ev.key==='M')opMotion();});
+
+/* ---- 渲染 ---- */
+const NS='http://www.w3.org/2000/svg';
+function cfgText(g){const c={};for(const s of g.slots)c[s.t]=(c[s.t]||0)+1;
+ return ALLOWED.filter(k=>c[k]).map(k=>TYPE[k].name+c[k]).join(' ')||'（空组）';}
+
+function renderGroup(wv,gi){
+ const g=wv.groups[gi];
+ const svg=document.createElementNS(NS,'svg');svg.setAttribute('viewBox','0 0 540 960');svg.setAttribute('width',266);
+ if(armType)svg.classList.add('adding');
+ const el=(n,at,p)=>{const e=document.createElementNS(NS,n);for(const k in at)e.setAttribute(k,at[k]);(p||svg).appendChild(e);return e;};
+ // 背景 & 梯形地面（透视）
+ el('rect',{x:0,y:0,width:540,height:960,fill:'#33291f'});
+ el('path',{d:`M${farL} ${farLY} L${farR} ${farRY} L${midR} ${midRY} L${nearR} ${nearY} L${nearL} ${nearY} L${midL} ${midLY} Z`,
+  fill:'#4a3f30',stroke:'#6b5b45','stroke-width':1.5});
+ el('line',{x1:midL,y1:midLY,x2:midR,y2:midRY,stroke:'#5a4d3b','stroke-width':1,'stroke-dasharray':'4 4'});
+ el('line',{x1:farL,y1:farLY,x2:farR,y2:farRY,stroke:'#5a4d3b','stroke-width':1,'stroke-dasharray':'4 4'});
+ el('line',{x1:0,y1:DEF_Y,x2:540,y2:DEF_Y,stroke:'#c0584a','stroke-width':2,'stroke-dasharray':'8 5'});
+ el('text',{x:8,y:DEF_Y-6,'font-size':12,fill:'#d98773'}).textContent='防线 y=830';
+ // 幽灵同波其它组
+ wv.groups.forEach((g2,j)=>{if(j===gi)return;for(const s of g2.slots)
+  el('circle',{cx:s.x,cy:s.y,r:RAD(s.t),fill:'#9a9186',opacity:.22,stroke:'#c9c2b6','stroke-width':.8,'stroke-opacity':.35});});
+ // 链接虚线（按 y 排序脊柱链）
+ const chain=g.slots.slice().sort((a,b)=>a.y-b.y);
+ for(let i=1;i<chain.length;i++)el('line',{x1:chain[i-1].x,y1:chain[i-1].y,x2:chain[i].x,y2:chain[i].y,
+  stroke:'rgba(200,205,215,.55)','stroke-width':1.2,'stroke-dasharray':'5 4'});
+ // 成员（可拖拽/选中）
+ const refs=new Map();
+ for(const s of g.slots){const T=TYPE[s.t],r=RAD(s.t);
+  const c=el('circle',{cx:s.x,cy:s.y,r,fill:T.color,stroke:'rgba(0,0,0,.4)','stroke-width':1.2,'class':'mem'});
+  if(sel&&sel.slot===s)c.classList.add('sel');
+  const t=el('text',{x:s.x,y:s.y+r+13,'text-anchor':'middle','font-size':12,fill:'#f0e8d8','pointer-events':'none'});
+  t.textContent=T.name+(s.m==='sway'?' ~':s.m==='orbit'?' ◎':'');
+  let d=null,dm=0;
+  if(s.a){const ac=ANCHOR_COLOR[s.t]||'#38bdf8';dm=s.t==='SHIELD'?12:s.t==='TUNNEL_WORKER'?6:9;const cy2=s.y-30;
+   d=el('path',{d:`M${s.x} ${cy2-dm} L${s.x+dm} ${cy2} L${s.x} ${cy2+dm} L${s.x-dm} ${cy2} Z`,fill:ac,stroke:'rgba(0,0,0,.35)','stroke-width':.8,'pointer-events':'none'});}
+  refs.set(s,{c,t,d,dm});}
+ // 拖拽 / 点选
+ const toLocal=ev=>new DOMPoint(ev.clientX,ev.clientY).matrixTransform(svg.getScreenCTM().inverse());
+ const refreshSlot=s=>{const R=refs.get(s),r=RAD(s.t);
+  R.c.setAttribute('cx',s.x);R.c.setAttribute('cy',s.y);
+  R.t.setAttribute('x',s.x);R.t.setAttribute('y',s.y+r+13);
+  if(R.d){const dm=R.dm,cy2=s.y-30;R.d.setAttribute('d',`M${s.x} ${cy2-dm} L${s.x+dm} ${cy2} L${s.x} ${cy2+dm} L${s.x-dm} ${cy2} Z`);}};
+ let drag=null;
+ for(const s of g.slots){const R=refs.get(s),c=R.c;
+  c.addEventListener('pointerdown',ev=>{if(armType)return;ev.preventDefault();ev.stopPropagation();
+   try{c.setPointerCapture(ev.pointerId);}catch(_){}drag={s,moved:false};c.classList.add('drag');});
+  c.addEventListener('pointermove',ev=>{if(!drag||drag.s!==s)return;drag.moved=true;
+   const p=toLocal(ev),r=RAD(s.t);
+   const ny=Math.min(DEF_Y-10,Math.max(FAR_TOP+10,p.y));
+   const[gl,gr]=gb(ny);
+   s.x=Math.round(Math.min(gr-r*.4,Math.max(gl+r*.4,p.x)));s.y=Math.round(ny);
+   refreshSlot(s);});
+  c.addEventListener('pointerup',()=>{c.classList.remove('drag');
+   if(drag&&drag.s===s){if(drag.moved)save();else{sel={wv:wv.w,gi,slot:s};renderAll();}}
+   drag=null;});}
+ // 添加模式：点画布空白放置
+ svg.addEventListener('pointerdown',ev=>{if(!armType)return;
+  const p=toLocal(ev),r=RAD(armType);
+  const ny=Math.min(DEF_Y-10,Math.max(FAR_TOP+10,p.y));
+  const[gl,gr]=gb(ny);
+  const x=Math.round(Math.min(gr-r*.4,Math.max(gl+r*.4,p.x))),y=Math.round(ny);
+  const ns={t:armType,x,y};
+  g.slots.push(ns);sel={wv:wv.w,gi,slot:ns};save();renderAll();});
+ return svg;}
+
+function renderAll(){
+ const root=document.getElementById('root');root.innerHTML='';
+ for(const wv of WAVES){
+  const sec=document.createElement('div');sec.className='wave';
+  sec.innerHTML=`<h2>第 ${wv.w} 波 · ${wv.name}（${wv.groups.length} 组阵列 · 串行出场）</h2>
+   <div class="wsub">自由杂兵：${wv.free}｜穿插：${wv.trickle}</div>`;
+  const grid=document.createElement('div');grid.className='groups';
+  wv.groups.forEach((g,gi)=>{
+   const card=document.createElement('div');card.className='card';
+   card.innerHTML=`<h3>组 ${gi+1}（${g.slots.length} 只）</h3><div class="gsub">${cfgText(g)}</div>`;
+   card.appendChild(renderGroup(wv,gi));grid.appendChild(card);});
+  sec.appendChild(grid);root.appendChild(sec);}syncSelBar();}
+
+// 图例
+document.getElementById('legend').innerHTML='<b>图例：</b>'+ALLOWED.map(k=>{const T=TYPE[k];
+ return`<span><i class="dot" style="background:${T.color}"></i>${T.name}（size ${T.size}）</span>`;}).join('')
+ +'<span style="color:#8a7d6b">◆ 锚点（橙=装甲 青=护盾 绿=护士 黄=隧道工 紫=分裂 金=定时自爆）｜~ sway｜◎ orbit</span>';
+
+renderAll();refreshOut();
+</script>
+</body>
+</html>

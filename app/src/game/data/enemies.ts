@@ -109,7 +109,7 @@ export const ENEMY_DEFS: Record<RoachType, {
     speed: 0.8,      // 中等速度
     reward: 28,      // 高奖励（优先击杀目标）
     color: '#4ade80', // 医疗绿色
-    size: 78,        // 1.5x from 52
+    size: 109,       // 1.4x from 78（增大约 40%，凸显辅助单位）
     special: ['heal_ally', 'insecticide_vulnerable', 'red_shield'], // 治疗 / 杀虫剂敏感 / 护盾
   },
   [RoachType.MUTANT]: {
@@ -137,16 +137,16 @@ export const ENEMY_DEFS: Record<RoachType, {
     name: '隧道工蟑螂',
     description: '背着工具箱的蟑螂，定期为周围血量最高的蟑螂添加护甲',
     hp: 18,          // 中低血量（提高：13→30 后回调至 18，避免过肉）
-    speed: 0.6,      // 缓慢
+    speed: 0.5,      // 缓慢
     reward: 30,      // 高奖励（优先击杀目标）
     color: '#78716c', // 暗灰色（工具箱金属感）
-    size: 84,        // 增大体型（原 60）
+    size: 78,        // 原 118 的 2/3（缩小体型，降低压迫感）
     special: ['armor_spray'], // 护甲喷涂
   },
   [RoachType.SUBWAY_ELITE]: {
     name: '地铁蟑螂精英',
     description: '从空中掠过，速度极快，不受地面阻挡影响',
-    hp: 27,          // 较高血量（精英单位，平衡下调：80→27，地铁总血量~1800）
+    hp: 45,          // 较高血量（精英单位；v2.6 移除 10 点护甲并补血：27→45）
     speed: 2.4,      // 与飞行蟑螂一致，速度极快
     reward: 4,       // 与飞行蟑螂一致
     color: '#4a5a6a', // 灰蓝色（与飞行蟑螂一致）
@@ -156,12 +156,22 @@ export const ENEMY_DEFS: Record<RoachType, {
   [RoachType.SHIELD]: {
     name: '护盾蟑螂',
     description: '释放气体护盾保护身后同伴，矩形范围内的蟑螂免疫火焰直射',
-    hp: 20,          // 高血量（阵型锚点，平衡下调：100→60→20，地铁总血量~1800）
+    hp: 50,          // 高血量（阵型锚点，平衡下调：100→60→20，地铁总血量~1800）
     speed: 0.5,      // 极慢（阵型锚点）
     reward: 35,      // 高奖励（优先击杀目标）
     color: '#67e8f9', // 淡青色（气体护盾视觉基调）
-    size: 88,        // 大体型（阵型核心，略大于隧道工）
+    size: 123,       // 1.4x from 88（大体型，阵型核心锚点，略大于隧道工）
     special: ['gas_shield'], // 气体护盾（矩形保护身后同伴）
+  },
+  [RoachType.JOCK]: {
+    name: '体育生蟑螂',
+    description: '后腿异常粗壮的蟑螂，每2.5秒蓄力起跳向前飞跃70px并左右横跳，空中无敌；落地硬直0.3秒是最好的反打窗口',
+    hp: 6,           // 低血量，靠跳跃位移干扰玩家瞄准
+    speed: 0.32,     // 移速大幅降低：让"跳跃推进"占主导、行走极少（跳跃占比远多于行走）
+    reward: 12,      // 中档奖励
+    color: '#4a8a3a', // 草绿色（体育生）
+    size: 46,        // 体型增大（38 → 46）
+    special: ['burst_leap'], // 爆发跳跃（蓄力-腾空-落地三段）
   },
 };
 
@@ -234,6 +244,7 @@ export const BALANCE_ENEMIES = {
       tunnelWorker: { easy: 5, hard: 15 },
       subwayElite: { easy: 3, hard: 8 },
       shield: { easy: 6, hard: 18 }, // 护盾蟑螂突破伤害（阵型核心，略高）
+      jock: { easy: 8, hard: 18 }, // 体育生蟑螂突破伤害（跳跃推进效率高，中档偏高）
     },
   },
 
@@ -398,6 +409,22 @@ export const BALANCE_ENEMIES = {
       corpseBombTimer: 3.0,    // 尸体炸弹计时器（秒）
       residueTimer: 2.0,       // 残留计时器（秒）
       deathTimer: 1.0,         // 死亡计时器（秒）
+    },
+
+    // ===== 体育生蟑螂（爆发跳跃） =====
+    jock: {
+      crouchTime: 0.7,         // 蓄力时长（秒，原地不动，最佳击杀窗口；加长以增强蓄力仪式感）
+      airTime: 0.5,            // 空中飞跃时长（秒，免疫火焰直射）
+      landTime: 0.45,          // 落地硬直（秒，第二击杀窗口；加长保证落地尘环特效可见）
+      cooldown: 1.3,           // 满血跳跃冷却（秒；回调自 0.9，控制推进压迫感，仍保持"多数时间在跳跃"的观感）
+      lowHpCooldown: 0.9,      // 低血（<50%）跳跃冷却（秒，疯狂逃命；回调自 0.6）
+      lowHpRatio: 0.5,         // 低血阈值比例
+      jumpY: 90,               // 每次跳跃向防线推进的 Y 距离（像素；回调自 120，避免连续跳跃直接压线）
+      jumpX: 130,              // 左右横跳幅度（像素，±jumpX；再加大横向位移，落点更难预判）
+      jumpHeight: 4,         // 腾空抛物线高度（= 体高 × 此值，空中最高点；视觉腾空高度）
+      minX: 50,                // X 钳制左边界
+      maxX: 490,               // X 钳制右边界
+      jumpStopDistance: 70,    // 距防线小于该距离时不跳（直接冲刺），避免飞跃过头
     },
   },
 } as const;

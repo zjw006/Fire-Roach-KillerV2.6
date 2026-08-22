@@ -32,6 +32,8 @@ export interface FireZoneRenderConfig {
   time: number;
   /** 天赋外观进化：蓝焰核心/过载核心/聚能长枪（仅 flamethrower 武器生效） */
   flameVariant?: 'normal' | 'blue' | 'overdrive' | 'lance';
+  /** 天赋渐进强化：伤害强度（伤害乘算-1）；火束宽度微量加粗（克制幅度，不遮蟑螂） */
+  damageIntensity?: number;
 }
 
 /** 火焰束变体类型 */
@@ -191,6 +193,8 @@ export class BackgroundRenderer {
     const talentScale = p.fireRange / BALANCE_CONFIG.player.baseFireRange;
     // 聚能长枪：火束变细（仅主武器 flamethrower 生效）
     const variantWidthMult = (variant === 'lance' && p.currentWeapon === 'flamethrower') ? rcfg.lanceWidthMult : 1;
+    // 天赋渐进强化：伤害强度 → 火束微量加粗（克制系数 0.15，满配 dmg≈1.53 → 宽度 +8%，不遮蟑螂）
+    const intensityWidthMult = 1 + Math.max(0, cfg.damageIntensity ?? 0) * 0.15;
 
     const gunXs: number[] = [p.x];
     if (cfg.tripleFlameState.active) {
@@ -218,7 +222,7 @@ export class BackgroundRenderer {
         const y0 = gunNozzleY + (gunEndY - gunNozzleY) * t0;
         const y1 = gunNozzleY + (gunEndY - gunNozzleY) * t1;
 
-        const baseWidth = rcfg.baseWidth * flameScale * talentScale * variantWidthMult;
+        const baseWidth = rcfg.baseWidth * flameScale * talentScale * variantWidthMult * intensityWidthMult;
         const w0 = baseWidth * (1 - t0 * rcfg.widthTaper) + Math.sin(t0 * Math.PI * rcfg.wiggleFreq + cfg.time * rcfg.wiggleTimeScale + gi) * rcfg.wiggleAmplitude * variantWidthMult;
         const w1 = baseWidth * (1 - t1 * rcfg.widthTaper) + Math.sin(t1 * Math.PI * rcfg.wiggleFreq + cfg.time * rcfg.wiggleTimeScale + gi) * rcfg.wiggleAmplitude * variantWidthMult;
 

@@ -141,6 +141,8 @@ export class CollisionSystem {
       if (r.state !== RoachState.ALIVE) continue;
       if (r.isBoss) continue;
       if (r.type === RoachType.TIMED_SUICIDE && r.placeTimer && r.placeTimer > 0) continue;
+      // 体育生空中飞跃免疫火焰直射（束伤害不生效，火区/火墙由引擎 fire 回调另行拦截）
+      if (r.type === RoachType.JOCK && r.jumpPhase === 'air') continue;
 
       for (const gun of guns) {
         if (r.type === RoachType.FLYING || r.type === RoachType.FLYING_SUICIDE) {
@@ -282,6 +284,7 @@ export class CollisionSystem {
       case RoachType.TUNNEL_WORKER: return isHard ? dbd.tunnelWorker.hard : dbd.tunnelWorker.easy;
       case RoachType.SUBWAY_ELITE: return isHard ? dbd.subwayElite.hard : dbd.subwayElite.easy;
       case RoachType.SHIELD: return isHard ? dbd.shield.hard : dbd.shield.easy;
+      case RoachType.JOCK: return isHard ? dbd.jock.hard : dbd.jock.easy;
       default: return 0;
     }
   }

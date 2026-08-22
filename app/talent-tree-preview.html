@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>天赋树预览 · 改装工坊</title>
+<title>天赋树预览 · 改装工坊（页签版）</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html,body { height:100%; background:#0c0a09; font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; color:#e7e5e4; }
@@ -26,42 +26,32 @@
   #weapon { flex:0 0 auto; display:flex; align-items:center; gap:12px; padding:8px 16px;
             background:linear-gradient(180deg, rgba(41,32,24,.6), rgba(12,10,9,0)); border-bottom:1px solid rgba(68,64,60,.5); }
   #gunStage { position:relative; width:96px; height:64px; flex:0 0 auto; }
-  /* 枪身（猛火系进化） */
   #gunBody { position:absolute; left:8px; bottom:6px; width:56px; height:16px; border-radius:6px;
              background:linear-gradient(180deg,#57534e,#292524); box-shadow:inset 0 2px 3px rgba(255,255,255,.15); transition:all .4s; }
-  /* 枪管/喷嘴（长枪系进化） */
   .nozzle { position:absolute; bottom:10px; width:14px; height:8px; border-radius:3px; background:#78716c; transition:all .4s; }
   .nozzle.n1 { left:58px; }
-  .nozzle.n2 { left:58px; bottom:16px; display:none; }
-  .nozzle.n3 { left:58px; bottom:4px;  display:none; }
-  /* 火焰 */
   .flame { position:absolute; left:70px; bottom:8px; width:16px; height:26px; transform-origin:bottom center;
            animation:flick .5s ease-in-out infinite alternate; transition:all .4s; }
   .flame i { position:absolute; inset:0; border-radius:50% 50% 50% 50%/60% 60% 40% 40%; }
   .flame .o { background:radial-gradient(ellipse at 50% 80%, rgba(249,115,22,.9), rgba(249,115,22,0) 70%); }
   .flame .m { inset:15% 20%; background:radial-gradient(ellipse at 50% 80%, rgba(251,191,36,.95), rgba(251,191,36,0) 70%); }
   .flame .c { inset:35% 35%; background:radial-gradient(ellipse at 50% 80%, #fff7ed, rgba(255,247,237,0) 75%); }
-  .flame.f2 { left:70px; bottom:14px; display:none; }
-  .flame.f3 { left:70px; bottom:2px;  display:none; }
   @keyframes flick { from{transform:scaleY(.92) scaleX(1.05);} to{transform:scaleY(1.06) scaleX(.95);} }
-  /* ── 枪身阶段（猛火） ── */
-  #gunStage.b1 #gunBody { background:linear-gradient(180deg,#b45309,#451a03); }                 /* 铜管 */
-  #gunStage.b2 #gunBody { background:linear-gradient(180deg,#1e40af,#172554); box-shadow:0 0 8px rgba(59,130,246,.5); } /* 蓝焰 */
+  #gunStage.b1 #gunBody { background:linear-gradient(180deg,#b45309,#451a03); }
+  #gunStage.b2 #gunBody { background:linear-gradient(180deg,#1e40af,#172554); box-shadow:0 0 8px rgba(59,130,246,.5); }
   #gunStage.b2 .flame .o { background:radial-gradient(ellipse at 50% 80%, rgba(59,130,246,.9), rgba(59,130,246,0) 70%); }
   #gunStage.b2 .flame .m { background:radial-gradient(ellipse at 50% 80%, rgba(147,197,253,.95), rgba(147,197,253,0) 70%); }
-  #gunStage.b3 .flame { height:32px; }                                                            /* 爆燃 */
+  #gunStage.b3 .flame { height:32px; }
   #gunStage.b3 .swirl { display:block; }
   .swirl { display:none; position:absolute; left:64px; bottom:4px; width:28px; height:28px; border-radius:50%;
            border:2px dashed rgba(251,191,36,.7); animation:spin 1.2s linear infinite; }
   @keyframes spin { to{transform:rotate(360deg);} }
-  /* ── 枪管阶段（长枪） ── */
-  #gunStage.l1 .nozzle.n1 { width:20px; background:#b45309; }                                     /* 扩口 */
+  #gunStage.l1 .nozzle.n1 { width:20px; background:#b45309; }
   #gunStage.l1 .flame { left:76px; }
-  #gunStage.l2 .nozzle.n1 { width:28px; background:#cbd5e1; box-shadow:0 0 4px rgba(203,213,225,.6); } /* 寒钢长管 */
+  #gunStage.l2 .nozzle.n1 { width:28px; background:#cbd5e1; box-shadow:0 0 4px rgba(203,213,225,.6); }
   #gunStage.l2 .flame { left:84px; }
   #gunStage.l3 .nozzle.n1 { width:34px; background:#e2e8f0; box-shadow:0 0 8px rgba(226,232,240,.8); }
   #gunStage.l3 .flame { left:90px; height:30px; }
-  /* ── T5 终端形态 ── */
   #gunStage.ovr .flame { height:36px; width:20px; left:74px; }
   #gunStage.ovr .flame .o { background:radial-gradient(ellipse at 50% 80%, rgba(190,24,24,.95), rgba(124,58,237,0) 72%); }
   #gunStage.ovr .flame .m { background:radial-gradient(ellipse at 50% 80%, rgba(249,115,22,.95), rgba(249,115,22,0) 70%); }
@@ -78,56 +68,90 @@
   #wstage b.on { background:linear-gradient(90deg,#f59e0b,#f97316); }
   #wtip { font-size:9px; color:#78716c; margin-top:4px; }
 
-  /* ═══ 天赋树区 ═══ */
-  #treeWrap { flex:1 1 auto; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:6px 10px 16px; position:relative; }
-  #tree { display:flex; gap:8px; position:relative; }
+  /* ═══ 页签栏 ═══ */
+  #tabbar { flex:0 0 auto; display:flex; border-bottom:1px solid #292524; background:rgba(12,10,9,.8); z-index:5; }
+  .tab { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+         padding:10px 4px 8px; position:relative; cursor:pointer; transition:all .2s; border:none; background:transparent; }
+  .tab .tname { font-size:13px; font-weight:700; letter-spacing:1px; color:#78716c; transition:color .2s; }
+  .tab .tpts { font-size:9px; color:#57534e; margin-top:2px; transition:color .2s; }
+  .tab .tind { position:absolute; bottom:0; left:20%; right:20%; height:2.5px; border-radius:2px;
+               background:transparent; transition:all .25s; }
+  .tab.active .tname { color:#e7e5e4; }
+  .tab.active .tpts { color:#a8a29e; }
+  .tab.inferno.active .tind { background:#f97316; box-shadow:0 0 6px rgba(249,115,22,.5); }
+  .tab.lance.active .tind { background:#38bdf8; box-shadow:0 0 6px rgba(56,189,248,.5); }
+  .tab.support.active .tind { background:#84cc16; box-shadow:0 0 6px rgba(132,204,22,.5); }
+  .tab.inferno.active .tname { color:#fb923c; }
+  .tab.lance.active .tname { color:#7dd3fc; }
+  .tab.support.active .tname { color:#a3e635; }
+
+  /* ═══ 天赋树区（单分支全宽） ═══ */
+  #treeWrap { flex:1 1 auto; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:12px 16px 24px; position:relative; }
+  #tree { position:relative; display:flex; flex-direction:column; align-items:center; }
   #pipes { position:absolute; inset:0; pointer-events:none; z-index:0; }
-  .branch { flex:1; min-width:0; position:relative; z-index:1; }
-  .bhead { text-align:center; padding:6px 2px 8px; border-radius:10px; margin-bottom:2px; background:rgba(28,25,23,.85); border:1px solid #44403c; }
-  .bhead .t { font-size:12px; font-weight:800; letter-spacing:1px; }
-  .bhead .s { font-size:8px; color:#78716c; letter-spacing:0; margin-top:1px; }
-  .bhead .ptsbar { height:4px; border-radius:2px; background:#292524; margin:5px 6px 3px; overflow:hidden; }
-  .bhead .ptsbar i { display:block; height:100%; border-radius:2px; transition:width .35s; }
-  .bhead .n { font-size:9px; color:#a8a29e; }
-  .branch.inferno .t { color:#fb923c; } .branch.inferno .ptsbar i { background:#f97316; }
-  .branch.lance   .t { color:#7dd3fc; } .branch.lance   .ptsbar i { background:#38bdf8; }
-  .branch.support .t { color:#a3e635; } .branch.support .ptsbar i { background:#84cc16; }
 
-  .tier { position:relative; min-height:118px; display:flex; flex-direction:column; align-items:center; justify-content:flex-start; padding-top:6px; }
-  .gatechip { position:absolute; top:-7px; left:50%; transform:translateX(-50%); z-index:2;
-              font-size:8px; padding:1px 6px; border-radius:8px; background:#292524; color:#a8a29e; border:1px solid #44403c; white-space:nowrap; }
+  /* 分支头（大号） */
+  .branch-single { width:100%; max-width:360px; position:relative; z-index:1; }
+  .bhead-single { text-align:center; padding:10px 6px 12px; border-radius:14px; margin-bottom:4px;
+                  background:rgba(28,25,23,.85); border:1px solid #44403c; }
+  .bhead-single .t { font-size:16px; font-weight:800; letter-spacing:2px; }
+  .bhead-single .s { font-size:10px; color:#78716c; margin-top:2px; }
+  .bhead-single .ptsbar { height:5px; border-radius:3px; background:#292524; margin:8px 10px 4px; overflow:hidden; }
+  .bhead-single .ptsbar i { display:block; height:100%; border-radius:3px; transition:width .35s; }
+  .bhead-single .n { font-size:10px; color:#a8a29e; margin-top:2px; }
+  .branch-single.inferno .t { color:#fb923c; } .branch-single.inferno .ptsbar i { background:#f97316; }
+  .branch-single.lance .t { color:#7dd3fc; }   .branch-single.lance .ptsbar i { background:#38bdf8; }
+  .branch-single.support .t { color:#a3e635; } .branch-single.support .ptsbar i { background:#84cc16; }
+
+  /* 层 + 门禁 */
+  .tier-single { position:relative; min-height:130px; display:flex; flex-direction:column; align-items:center;
+                 justify-content:flex-start; padding-top:8px; }
+  .gatechip { position:absolute; top:-8px; left:50%; transform:translateX(-50%); z-index:2;
+              font-size:9px; padding:2px 8px; border-radius:10px; background:#292524; color:#a8a29e;
+              border:1px solid #44403c; white-space:nowrap; }
   .gatechip.open { background:#431407; color:#fdba74; border-color:#9a3412; }
-  .noderow { display:flex; gap:6px; justify-content:center; }
-  .excltag { font-size:8px; color:#fca5a5; margin-top:2px; letter-spacing:0; text-align:center; }
+  .noderow-single { display:flex; gap:14px; justify-content:center; flex-wrap:wrap; }
+  .excltag-single { font-size:9px; color:#fca5a5; margin-top:3px; text-align:center; }
 
-  .node { display:flex; flex-direction:column; align-items:center; width:60px; cursor:pointer; transition:transform .12s; }
-  .node:active { transform:scale(.93); }
-  .node .circ { width:52px; height:52px; border-radius:50%; display:flex; align-items:center; justify-content:center; position:relative;
-                font-size:23px; border:3px solid #57534e; background:#1c1917; transition:all .25s; }
-  .node .nm { font-size:9px; color:#d6d3d1; margin-top:3px; text-align:center; line-height:1.15; height:21px; }
-  .node .pips { display:flex; gap:2px; margin-top:1px; height:5px; }
-  .node .pips i { width:5px; height:5px; border-radius:50%; background:#44403c; }
-  .node .pips i.on { background:#fbbf24; }
-  .node .why { font-size:8px; color:#f87171; margin-top:1px; height:9px; }
-  /* 状态 */
-  .node.avail .circ { border-color:#fbbf24; box-shadow:0 0 10px rgba(251,191,36,.45); animation:pulse 1.6s ease-in-out infinite; }
-  @keyframes pulse { 0%,100%{box-shadow:0 0 6px rgba(251,191,36,.3);} 50%{box-shadow:0 0 14px rgba(251,191,36,.65);} }
-  .node.maxed .circ { border-color:#f59e0b; background:linear-gradient(145deg,#78350f,#451a03); }
-  .node.maxed .pips i.on { background:#fbbf24; box-shadow:0 0 4px #fbbf24; }
-  .node.locked .circ { border-style:dashed; opacity:.6; filter:grayscale(.7); }
-  .node.locked .nm { color:#78716c; }
-  .node .lockico { position:absolute; right:-3px; bottom:-3px; width:16px; height:16px; border-radius:50%; background:#292524;
-                   border:1px solid #57534e; font-size:9px; display:flex; align-items:center; justify-content:center; }
+  /* 节点（单分支 · 加大） */
+  .node-single { display:flex; flex-direction:column; align-items:center; width:84px; cursor:pointer; transition:transform .12s; }
+  .node-single:active { transform:scale(.93); }
+  .node-single .circ { width:64px; height:64px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+                position:relative; font-size:28px; border:3px solid #57534e; background:#1c1917; transition:all .25s; }
+  .node-single .nm { font-size:11px; color:#d6d3d1; margin-top:4px; text-align:center; line-height:1.2; height:26px; }
+  .node-single .pips { display:flex; gap:3px; margin-top:2px; height:6px; }
+  .node-single .pips i { width:6px; height:6px; border-radius:50%; background:#44403c; }
+  .node-single .pips i.on { background:#fbbf24; }
+  .node-single .why { font-size:9px; color:#f87171; margin-top:2px; height:10px; }
+  .node-single.avail .circ { border-color:#fbbf24; box-shadow:0 0 12px rgba(251,191,36,.5); animation:pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{box-shadow:0 0 7px rgba(251,191,36,.3);} 50%{box-shadow:0 0 16px rgba(251,191,36,.7);} }
+  .node-single.maxed .circ { border-color:#f59e0b; background:linear-gradient(145deg,#78350f,#451a03); }
+  .node-single.maxed .pips i.on { background:#fbbf24; box-shadow:0 0 5px #fbbf24; }
+  .node-single.locked .circ { border-style:dashed; opacity:.6; filter:grayscale(.7); }
+  .node-single.locked .nm { color:#78716c; }
+  .node-single .lockico { position:absolute; right:-4px; bottom:-4px; width:18px; height:18px; border-radius:50%; background:#292524;
+                   border:1px solid #57534e; font-size:10px; display:flex; align-items:center; justify-content:center; }
   /* 基石 */
-  .node.keystone .circ { width:56px; height:56px; border-color:#a855f7; }
-  .node.keystone.avail .circ { border-color:#c084fc; box-shadow:0 0 12px rgba(192,132,252,.5); animation:pulse2 1.6s infinite; }
-  @keyframes pulse2 { 0%,100%{box-shadow:0 0 7px rgba(192,132,252,.3);} 50%{box-shadow:0 0 16px rgba(192,132,252,.7);} }
-  .node.keystone.maxed .circ { border-color:#c084fc; background:linear-gradient(145deg,#581c87,#3b0764); }
-  .node .kbadge { position:absolute; top:-7px; left:50%; transform:translateX(-50%); font-size:9px; color:#c084fc; line-height:1; }
+  .node-single.keystone .circ { width:68px; height:68px; border-color:#a855f7; }
+  .node-single.keystone.avail .circ { border-color:#c084fc; box-shadow:0 0 14px rgba(192,132,252,.55); animation:pulse2 1.6s infinite; }
+  @keyframes pulse2 { 0%,100%{box-shadow:0 0 8px rgba(192,132,252,.3);} 50%{box-shadow:0 0 18px rgba(192,132,252,.75);} }
+  .node-single.keystone.maxed .circ { border-color:#c084fc; background:linear-gradient(145deg,#581c87,#3b0764); }
+  .node-single .kbadge { position:absolute; top:-8px; left:50%; transform:translateX(-50%); font-size:10px; color:#c084fc; line-height:1; }
   /* 预留 */
-  .node.reserved { cursor:default; }
-  .node.reserved .circ { border-style:dashed; border-color:#44403c; background:#0c0a09; font-size:12px; color:#57534e; }
-  .node.reserved .nm { color:#57534c; }
+  .node-single.reserved { cursor:default; }
+  .node-single.reserved .circ { border-style:dashed; border-color:#44403c; background:#0c0a09; font-size:14px; color:#57534e; }
+  .node-single.reserved .nm { color:#57534c; }
+
+  /* 已激活效果摘要 */
+  .summary { margin-top:10px; padding:10px 12px; border-radius:12px; width:100%; max-width:360px;
+             background:rgba(28,25,23,.6); border:1px solid rgba(68,64,60,.4); }
+  .sum-title { font-size:11px; font-weight:700; color:#d6d3d1; letter-spacing:1px; margin-bottom:6px; }
+  .sum-list { display:flex; flex-direction:column; gap:4px; }
+  .sum-item { display:flex; align-items:baseline; gap:6px; font-size:10px; line-height:1.4; }
+  .sum-ico { font-size:12px; flex-shrink:0; }
+  .sum-name { color:#d6d3d1; font-weight:600; white-space:nowrap; }
+  .sum-lv { color:#fbbf24; font-weight:700; font-size:9px; white-space:nowrap; }
+  .sum-desc { color:#78716c; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
   /* 连线 */
   #pipes path { fill:none; stroke:#44403c; stroke-width:5; stroke-linecap:round; transition:stroke .5s; }
@@ -157,7 +181,7 @@
   #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
   #toast .tt { color:#fdba74; font-weight:700; }
 
-  .legend { display:flex; justify-content:center; gap:10px; padding:8px 0 2px; font-size:9px; color:#78716c; }
+  .legend { display:flex; justify-content:center; gap:12px; padding:16px 0 4px; font-size:10px; color:#78716c; }
 </style>
 </head>
 <body>
@@ -176,10 +200,8 @@
   <div id="weapon">
     <div id="gunStage" class="b0 l0">
       <div id="gunBody"></div>
-      <div class="nozzle n1"></div><div class="nozzle n2"></div><div class="nozzle n3"></div>
+      <div class="nozzle n1"></div>
       <div class="flame f1"><i class="o"></i><i class="m"></i><i class="c"></i></div>
-      <div class="flame f2"><i class="o"></i><i class="m"></i><i class="c"></i></div>
-      <div class="flame f3"><i class="o"></i><i class="m"></i><i class="c"></i></div>
       <div class="swirl"></div>
     </div>
     <div id="winfo">
@@ -189,7 +211,20 @@
     </div>
   </div>
 
-  <!-- 天赋树 -->
+  <!-- 页签栏 -->
+  <div id="tabbar">
+    <button class="tab inferno active" data-bid="inferno">
+      <span class="tname">猛火系</span><span class="tpts">0 点</span><span class="tind"></span>
+    </button>
+    <button class="tab lance" data-bid="lance">
+      <span class="tname">长枪系</span><span class="tpts">0 点</span><span class="tind"></span>
+    </button>
+    <button class="tab support" data-bid="support">
+      <span class="tname">装备系</span><span class="tpts">0 点</span><span class="tind"></span>
+    </button>
+  </div>
+
+  <!-- 天赋树（单分支） -->
   <div id="treeWrap">
     <div id="tree">
       <svg id="pipes">
@@ -199,6 +234,10 @@
           </linearGradient>
         </defs>
       </svg>
+      <!-- 分支内容由 JS 动态渲染 -->
+      <div id="branchContainer"></div>
+      <!-- 已激活效果摘要 -->
+      <div id="summaryBox"></div>
     </div>
     <div class="legend">
       <span>🟡 可升级(点它!)</span><span>🔒 未解锁</span><span>★ 基石天赋</span><span>🔀 跨系互斥</span>
@@ -216,8 +255,8 @@
 </div>
 
 <script>
-/* ════════ 数据模型（双主路径方案） ════════ */
-const GATES = [0, 2, 5, 8, 12];           // T1~T5 所需本系累计点数
+/* ════════ 数据模型 ════════ */
+const GATES = [0, 2, 5, 8, 12];
 const BRANCHES = [
   { id:'inferno', name:'猛火系', sub:'伤害 · 近程爆发', cls:'inferno', exclTier:{5:'与「聚能长枪」互斥'}, tiers:[
     [ {id:'pressure', n:'增压阀',   i:'🔥', max:3, d:'火焰伤害 +4%/级'} ],
@@ -243,18 +282,19 @@ const BRANCHES = [
     [ {id:'wall',     n:'防线协议', i:'🧱', max:1, cost:2, key:true, reqAny:[['saver',2],['shieldm',2]], d:'防线HP+25%，加装甲板'},
       {id:'mech',     n:'机械精通', i:'⚙️', max:2, d:'风扇减速+5% 持续+10%/级'} ],
     [ {id:'molfuel',  n:'烈焰燃料', i:'🧪', max:2, d:'燃烧瓶：火墙持续+15% 伤害+15%/级'},
-      {id:'poisonup', n:'毒剂强化', i:'🧫', max:2, d:'毒气：中毒+1s 毒伤+20% 减速+6%/级'} ],
+      {id:'poisonup', n:'毒剂强化', i:'🧫', max:2, d:'毒气：中毒+1s 毒伤+20% 减速+6%/级'},
+      {id:'baitm',    n:'诱饵专精', i:'🪤', max:2, d:'诱饵：聚拢+1s 吸引速度+15%/级'} ],
     [ {id:'swatterm', n:'电工精通', i:'⚡', max:1, cost:2, key:true, d:'电蚊拍：冷却−15s 麻痹+2s'},
       {id:'radarup',  n:'雷达增程', i:'📡', max:1, cost:2, key:true, d:'雷达：弹匣+6发 射速+15%'} ],
     [ {id:'fut1',     n:'发票专精', i:'?', max:0, reserved:true, d:'预留：樟叔发票（赏金联动）'},
-      {id:'fut2',     n:'未来装备', i:'?', max:0, reserved:true, d:'预留：诱饵/斩螂/贴板专精'} ],
+      {id:'fut2',     n:'未来装备', i:'?', max:0, reserved:true, d:'预留：斩螂/贴板专精'} ],
   ]},
 ];
 
 /* ════════ 状态 ════════ */
 const INIT = { points: 16 };
-let points, lv;   // lv: {nodeId: level}
-const NODES = {}; // id -> def + branchId + tier
+let points, lv, activeTab = 'inferno';
+const NODES = {};
 BRANCHES.forEach(b => b.tiers.forEach((row, ti) => row.forEach(n => NODES[n.id] = {...n, branch:b.id, tier:ti+1})));
 const BNAME = { inferno:'猛火', lance:'长枪', support:'后勤' };
 
@@ -264,7 +304,6 @@ function branchPtsMax(bid){ let s=0; BRANCHES.find(b=>b.id===bid).tiers.flat().f
 function lockReason(n){
   const def = NODES[n.id];
   if(def.reserved) return 'future';
-  // 互斥（跨系生效：三联喷嘴 ↔ 聚能长枪）
   if(def.excl){ const sib = Object.keys(NODES).find(k=>NODES[k].excl===def.excl && k!==n.id); if(lv[sib]>0) return 'excl:'+NODES[sib].n; }
   const bp = branchPts(def.branch);
   const gate = GATES[def.tier-1];
@@ -279,53 +318,62 @@ function lockReason(n){
 /* ════════ 渲染 ════════ */
 const treeEl = document.getElementById('tree');
 const svg    = document.getElementById('pipes');
+const branchContainer = document.getElementById('branchContainer');
+const summaryBox = document.getElementById('summaryBox');
 
-function buildDOM(){
-  treeEl.querySelectorAll('.branch').forEach(e=>e.remove());
-  BRANCHES.forEach(b=>{
-    const col = document.createElement('div');
-    col.className = 'branch '+b.cls; col.dataset.bid = b.id;
-    col.innerHTML = `<div class="bhead"><div class="t">${b.name}</div><div class="s">${b.sub}</div>
-      <div class="ptsbar"><i style="width:0%"></i></div><div class="n">0 点</div></div>`;
-    b.tiers.forEach((row,ti)=>{
-      const t = document.createElement('div'); t.className='tier';
-      if(ti>0 && ti<5){
-        const g = document.createElement('div');
-        g.className='gatechip'; g.dataset.branch=b.id; g.dataset.tier=ti+1;
-        col.appendChild(t).appendChild(g);
-      }
-      const nr = document.createElement('div'); nr.className='noderow';
-      row.forEach(n=>{
-        const nd = document.createElement('div');
-        nd.className = 'node' + (n.key?' keystone':'') + (n.reserved?' reserved':'');
-        nd.dataset.nid = n.id;
-        nd.innerHTML = `
-          <div class="circ">${n.reserved?'?':n.i}${n.key?'<span class="kbadge">★</span>':''}<span class="lockico" style="display:none">🔒</span></div>
-          <div class="nm">${n.n}</div>
-          <div class="pips">${Array.from({length:n.max},()=>'<i></i>').join('')}</div>
-          <div class="why"></div>`;
-        nd.addEventListener('click', ()=>onTap(n.id, nd));
-        nr.appendChild(nd);
-      });
-      t.appendChild(nr);
-      if(b.exclTier && b.exclTier[ti+1]){
-        const x=document.createElement('div'); x.className='excltag'; x.textContent='🔀 '+b.exclTier[ti+1]; t.appendChild(x);
-      }
-      col.appendChild(t);
+function buildBranch(){
+  const b = BRANCHES.find(x=>x.id===activeTab);
+  branchContainer.innerHTML = '';
+  const col = document.createElement('div');
+  col.className = 'branch-single ' + b.cls;
+  col.dataset.bid = b.id;
+  col.innerHTML = `<div class="bhead-single"><div class="t">${b.name}</div><div class="s">${b.sub}</div>
+    <div class="ptsbar"><i style="width:0%"></i></div><div class="n">0 / 0 点</div></div>`;
+  b.tiers.forEach((row,ti)=>{
+    const t = document.createElement('div'); t.className='tier-single';
+    if(ti>0 && ti<5){
+      const g = document.createElement('div');
+      g.className='gatechip'; g.dataset.branch=b.id; g.dataset.tier=ti+1;
+      t.appendChild(g);
+    }
+    const nr = document.createElement('div'); nr.className='noderow-single';
+    row.forEach(n=>{
+      const nd = document.createElement('div');
+      nd.className = 'node-single' + (n.key?' keystone':'') + (n.reserved?' reserved':'');
+      nd.dataset.nid = n.id;
+      nd.innerHTML = `
+        <div class="circ">${n.reserved?'?':n.i}${n.key?'<span class="kbadge">★</span>':''}<span class="lockico" style="display:none">🔒</span></div>
+        <div class="nm">${n.n}</div>
+        <div class="pips">${Array.from({length:n.max},()=>'<i></i>').join('')}</div>
+        <div class="why"></div>`;
+      nd.addEventListener('click', ()=>onTap(n.id, nd));
+      nr.appendChild(nd);
     });
-    treeEl.appendChild(col);
+    t.appendChild(nr);
+    if(b.exclTier && b.exclTier[ti+1]){
+      const x=document.createElement('div'); x.className='excltag-single'; x.textContent='🔀 '+b.exclTier[ti+1]; t.appendChild(x);
+    }
+    col.appendChild(t);
   });
+  branchContainer.appendChild(col);
 }
 
 function refresh(){
   document.getElementById('ptsTop').textContent = points;
   document.getElementById('ptsBot').textContent = points;
+  // 页签点数
+  document.querySelectorAll('.tab').forEach(tab=>{
+    const bid = tab.dataset.bid;
+    tab.querySelector('.tpts').textContent = branchPts(bid)+' 点';
+    tab.classList.toggle('active', bid===activeTab);
+  });
   // 分支头
-  document.querySelectorAll('.branch').forEach(col=>{
+  const col = branchContainer.querySelector('.branch-single');
+  if(col){
     const bid = col.dataset.bid, bp = branchPts(bid), mx = branchPtsMax(bid);
     col.querySelector('.ptsbar i').style.width = Math.min(100, bp/mx*100)+'%';
-    col.querySelector('.n').textContent = bp+' 点';
-  });
+    col.querySelector('.n').textContent = bp+' / '+mx+' 点';
+  }
   // 门槛 chip
   document.querySelectorAll('.gatechip').forEach(g=>{
     const bp = branchPts(g.dataset.branch), need = GATES[g.dataset.tier-1];
@@ -333,7 +381,7 @@ function refresh(){
     g.classList.toggle('open', bp>=need);
   });
   // 节点状态
-  document.querySelectorAll('.node').forEach(nd=>{
+  document.querySelectorAll('.node-single').forEach(nd=>{
     const id = nd.dataset.nid, def = NODES[id], l = lv[id]||0;
     const r = lockReason({id});
     nd.classList.toggle('locked', !!r && r!=='max' && r!=='pts');
@@ -348,33 +396,47 @@ function refresh(){
   });
   drawPipes();
   refreshWeapon();
+  refreshSummary();
 }
 
-/* 连线：同系相邻层中心相连，下层已解锁则"点燃" */
-function drawPipes(){
-  const wrap = document.getElementById('tree');
-  svg.querySelectorAll('path,circle').forEach(e=>e.remove());
-  const wrect = wrap.getBoundingClientRect();
-  document.querySelectorAll('.branch').forEach(col=>{
-    const bid = col.dataset.bid, bp = branchPts(bid);
-    const cls = bid==='inferno'?'lit':(bid==='lance'?'litL':'litS');
-    const tiers = [...col.querySelectorAll('.tier')];
-    for(let i=0;i<tiers.length-1;i++){
-      const c1 = rowCenter(tiers[i], wrect), c2 = rowCenter(tiers[i+1], wrect);
-      if(!c1||!c2) continue;
-      const p = document.createElementNS('http://www.w3.org/2000/svg','path');
-      p.setAttribute('d', `M ${c1.x} ${c1.y} C ${c1.x} ${(c1.y+c2.y)/2}, ${c2.x} ${(c1.y+c2.y)/2}, ${c2.x} ${c2.y}`);
-      const lit = i+1<5 && bp >= GATES[i+1];   // 通往 T(i+2) 的线
-      if(lit) p.setAttribute('class', cls);
-      svg.appendChild(p);
-      [c1,c2].forEach(c=>{
-        const dot = document.createElementNS('http://www.w3.org/2000/svg','circle');
-        dot.setAttribute('cx',c.x); dot.setAttribute('cy',c.y); dot.setAttribute('r',4);
-        if(lit) dot.setAttribute('class','lit');
-        svg.appendChild(dot);
-      });
-    }
+function refreshSummary(){
+  const b = BRANCHES.find(x=>x.id===activeTab);
+  const defs = b.tiers.flat().filter(n=>!n.reserved);
+  const active = defs.filter(n=>(lv[n.id]||0)>0);
+  if(active.length===0){ summaryBox.innerHTML=''; return; }
+  let html = '<div class="summary"><div class="sum-title">✦ 已激活效果</div><div class="sum-list">';
+  active.forEach(d=>{
+    html += `<div class="sum-item"><span class="sum-ico">${d.i}</span><span class="sum-name">${d.n}</span><span class="sum-lv">Lv.${lv[d.id]}</span><span class="sum-desc">${d.d}</span></div>`;
   });
+  html += '</div></div>';
+  summaryBox.innerHTML = html;
+}
+
+/* 连线 */
+function drawPipes(){
+  svg.querySelectorAll('path,circle').forEach(e=>e.remove());
+  const wrap = treeEl;
+  const wrect = wrap.getBoundingClientRect();
+  const col = branchContainer.querySelector('.branch-single');
+  if(!col) return;
+  const bid = col.dataset.bid, bp = branchPts(bid);
+  const cls = bid==='inferno'?'lit':(bid==='lance'?'litL':'litS');
+  const tiers = [...col.querySelectorAll('.tier-single')];
+  for(let i=0;i<tiers.length-1;i++){
+    const c1 = rowCenter(tiers[i], wrect), c2 = rowCenter(tiers[i+1], wrect);
+    if(!c1||!c2) continue;
+    const p = document.createElementNS('http://www.w3.org/2000/svg','path');
+    p.setAttribute('d', `M ${c1.x} ${c1.y} C ${c1.x} ${(c1.y+c2.y)/2}, ${c2.x} ${(c1.y+c2.y)/2}, ${c2.x} ${c2.y}`);
+    const lit = i+1<5 && bp >= GATES[i+1];
+    if(lit) p.setAttribute('class', cls);
+    svg.appendChild(p);
+    [c1,c2].forEach(c=>{
+      const dot = document.createElementNS('http://www.w3.org/2000/svg','circle');
+      dot.setAttribute('cx',c.x); dot.setAttribute('cy',c.y); dot.setAttribute('r',5);
+      if(lit) dot.setAttribute('class','lit');
+      svg.appendChild(dot);
+    });
+  }
 }
 function rowCenter(tierEl, wrect){
   const cs = [...tierEl.querySelectorAll('.circ')];
@@ -384,7 +446,7 @@ function rowCenter(tierEl, wrect){
   return { x:x/cs.length, y:y/cs.length };
 }
 
-/* 火枪外观：枪身（猛火）× 枪管（长枪）双轨进化 */
+/* 火枪外观 */
 function refreshWeapon(){
   const bpI = branchPts('inferno'), bpL = branchPts('lance');
   let b = 0; if(bpI>=3) b=1; if(bpI>=6 && lv.bluecore) b=2; if(bpI>=10) b=3;
@@ -450,14 +512,25 @@ function burst(el){
   }
   phone.appendChild(b); setTimeout(()=>b.remove(), 650);
 }
-document.getElementById('resetBtn').onclick = ()=>{ init(); toast('演示已重置 · 12 点天赋点'); };
+
+/* 页签切换 */
+document.querySelectorAll('.tab').forEach(tab=>{
+  tab.addEventListener('click', ()=>{
+    if(tab.dataset.bid === activeTab) return;
+    activeTab = tab.dataset.bid;
+    buildBranch();
+    refresh();
+  });
+});
+
+document.getElementById('resetBtn').onclick = ()=>{ init(); toast('演示已重置 · 16 点天赋点'); };
 
 function init(){
   points = INIT.points; lv = {};
   for(const id in NODES) lv[id]=0;
+  buildBranch();
   refresh();
 }
-buildDOM();
 init();
 window.addEventListener('resize', drawPipes);
 document.getElementById('treeWrap').addEventListener('scroll', ()=>requestAnimationFrame(drawPipes));
