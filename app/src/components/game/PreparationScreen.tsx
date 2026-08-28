@@ -5,7 +5,7 @@
  */
 
 import React, { useState } from 'react';
-import { Check, ArrowRight, Bug, Wind, Flame, Droplets, Target, Zap, ScanLine, Sword } from 'lucide-react';
+import { Check, ArrowRight, Bug, Wind, Flame, Droplets, Target, Zap, ScanLine, Sword, Receipt, Radio } from 'lucide-react';
 import type { AudioManager } from '@/game/audio';
 import { TEXT_CONFIG } from '@/game/data';
 
@@ -28,6 +28,8 @@ const ALL_ITEMS = [
   { id: 'swatter', name: '电蚊拍', desc: '全屏秒杀', icon: Zap, category: 'burst' as const },
   { id: 'radar', name: '雷达激光', desc: '自动追踪锁定', icon: ScanLine, category: 'burst' as const },
   { id: 'knife', name: '斩螂·110', desc: '自动跃向最高威胁目标', icon: Sword, category: 'burst' as const },
+  { id: 'invoice', name: '蟑叔发票', desc: '30秒内金币收益+50%', icon: Receipt, category: 'aoe' as const },
+  { id: 'jammer', name: '须须干扰器', desc: '5秒全场混乱+技能失效', icon: Radio, category: 'control' as const },
 ];
 
 const CATEGORY_LABELS: Record<string, string> = {

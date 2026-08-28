@@ -1,4 +1,5 @@
 import { SceneType, RoachType } from '../types';
+import { SCENE_CONFIGS } from './scenes';
 
 /**
  * @fileoverview 场景规则配置
@@ -29,16 +30,16 @@ export const SCENE_ITEM_UNLOCKS: Record<SceneType, string[]> = {
   [SceneType.ROOFTOP]: ['sticky', 'poison', 'fan', 'molotov', 'swatter'],
   // Street: all items including swatter
   [SceneType.STREET]: ['sticky', 'poison', 'fan', 'molotov', 'shotgun', 'radar', 'swatter'],
-  // Hospital: all items + hospital exclusive roaches
-  [SceneType.HOSPITAL]: ['sticky', 'poison', 'fan', 'molotov', 'shotgun', 'radar', 'swatter', 'nurse', 'mutant', 'timed_suicide'],
-  // Subway: all items + knife (hospital reward, usable here)
+  // Hospital: all items + knife（天台通关奖励斩螂·110，医院可用）+ hospital exclusive roaches + invoice（医院通关奖励）
+  [SceneType.HOSPITAL]: ['sticky', 'poison', 'fan', 'molotov', 'shotgun', 'radar', 'swatter', 'knife', 'nurse', 'mutant', 'timed_suicide', 'invoice'],
+  // Subway: all items + knife
   [SceneType.SUBWAY]: ['sticky', 'poison', 'fan', 'molotov', 'shotgun', 'radar', 'swatter', 'knife'],
-  // Supermarket: all items + knife
-  [SceneType.SUPERMARKET]: ['sticky', 'poison', 'fan', 'molotov', 'shotgun', 'radar', 'swatter', 'knife'],
-  // School: all items + knife
-  [SceneType.SCHOOL]: ['sticky', 'poison', 'fan', 'molotov', 'shotgun', 'radar', 'swatter', 'knife'],
-  // Nest: all items + knife (final challenge)
-  [SceneType.NEST]: ['sticky', 'poison', 'fan', 'molotov', 'shotgun', 'radar', 'swatter', 'knife'],
+  // Supermarket: all items + knife + jammer（地铁通关奖励须须干扰器，后续场景可用）
+  [SceneType.SUPERMARKET]: ['sticky', 'poison', 'fan', 'molotov', 'shotgun', 'radar', 'swatter', 'knife', 'jammer'],
+  // School: all items + knife + jammer
+  [SceneType.SCHOOL]: ['sticky', 'poison', 'fan', 'molotov', 'shotgun', 'radar', 'swatter', 'knife', 'jammer'],
+  // Nest: all items + knife + jammer (final challenge)
+  [SceneType.NEST]: ['sticky', 'poison', 'fan', 'molotov', 'shotgun', 'radar', 'swatter', 'knife', 'jammer'],
 };
 
 /**
@@ -79,6 +80,55 @@ export const SCENE_UNLOCK_CHAIN: SceneType[] = [
   SceneType.SCHOOL,
   SceneType.NEST,
 ];
+
+// ===== 剧情关卡列表（v2.6：难度选择已移除，巢穴后追加 6 个困难关）=====
+// 简单模式保留原 11 个关卡（厨房→巢穴）；巢穴之后追加 6 个困难关，
+// 复用后 6 个场景（天台/医院/地铁/超市/学校/巢穴），仅将难度切换为 hard。
+// 困难关为独立关卡实体（独立解锁/星级/成就），存档键为 `${scene}__hard`。
+export interface StoryLevel {
+  /** 场景类型（困难关复用原场景，不新增 SceneType） */
+  scene: SceneType;
+  /** 关卡难度 */
+  difficulty: 'easy' | 'hard';
+  /** 关卡 ID（存档键）：easy 场景 = scene 名，hard 关 = `${scene}__hard` */
+  id: string;
+  /** 显示名称 */
+  name: string;
+}
+
+/** 剧情模式完整关卡序列（11 简单 + 6 困难 = 17 关） */
+export const STORY_LEVELS: StoryLevel[] = [
+  ...SCENE_ORDER.map(scene => ({
+    scene,
+    difficulty: 'easy' as const,
+    id: scene,
+    name: SCENE_CONFIGS[scene].name,
+  })),
+  // 巢穴之后追加 6 个困难关（依次复用后 6 个场景）
+  ...[
+    SceneType.ROOFTOP,
+    SceneType.HOSPITAL,
+    SceneType.SUBWAY,
+    SceneType.SUPERMARKET,
+    SceneType.SCHOOL,
+    SceneType.NEST,
+  ].map(scene => ({
+    scene,
+    difficulty: 'hard' as const,
+    id: `${scene}__hard`,
+    name: `${SCENE_CONFIGS[scene].name}·困难`,
+  })),
+];
+
+/** 根据场景与难度生成关卡 ID（存档键） */
+export function getLevelId(scene: SceneType, difficulty: 'easy' | 'hard'): string {
+  return difficulty === 'hard' ? `${scene}__hard` : scene;
+}
+
+/** 根据关卡 ID 获取其在剧情关卡序列中的下标（不存在返回 -1） */
+export function getStoryLevelIndex(levelId: string): number {
+  return STORY_LEVELS.findIndex(l => l.id === levelId);
+}
 
 // ===== 地面边界：地面蟑螂的 6 点透视可行走区域 =====
 // Each scene's ground boundary is defined by 6 points (3 per side),
@@ -147,18 +197,22 @@ export const SCENE_REWARD_ITEMS: Record<SceneType, { type: string; name: string;
   [SceneType.BASEMENT]: [
     { type: 'poison', name: '杀虫喷雾', icon: '/assets/drop_poison.png', desc: '新型改良版杀虫剂，全屏毒雾熏蒸加上3秒持续性中毒效果！喷一下，蟑螂们先晕，再吐，最后倒，整个过程比看电视剧还精彩。蟑叔我加了点特殊配方，这味道对人类无害但对蟑螂来说……嘿嘿，就像闻到前任的香水一样致命！' },
   ],
-  // Rooftop: no new reward (swatter moved to dump)
-  [SceneType.ROOFTOP]: [],
+  // Rooftop reward: 斩螂·110（三连弹近战秒杀武器，医院场景可用）
+  [SceneType.ROOFTOP]: [
+    { type: 'knife', name: '斩螂·110', icon: '/assets/drop_knife.png', desc: '年轻人，新装备——【斩螂·110】！重二两，锋110点！自动跃向场上威胁最高的目标，一击必杀后反弹寻找下一个猎物，连护甲都拦不住！为什么叫110？因为遇到它，蟑螂打110都来不及！' },
+  ],
   [SceneType.STREET]: [
     { type: 'shotgun', name: '散弹模式', icon: '/assets/drop_shotgun.png', desc: '三！管！齐！发！这已经不是喷火枪了，这是喷火机关枪！扇面扫射，覆盖面大到连飞过的小鸟都得绕道走。一只蟑螂？三发全中。一群蟑螂？三发全中。满屏蟑螂？还是三发全中！唯一的缺点嘛……气罐消耗快得跟我的头发一样。多囤气罐，听蟑叔的准没错！' },
     { type: 'radar', name: '雷达激光', icon: '/assets/drop_radar.png', desc: '来来来，见识一下什么叫"科技改变灭蟑"！这玩意儿自带追踪雷达，哪只蟑螂离得最近，激光"咻"的一下就锁过去了！biu~biu~biu~跟打靶似的，指哪打哪，百发百中！在这条赛博街道上，雷达激光就是你的终极利器！蟑叔我当年要是早点发明这个，也不至于被蟑螂追了三条街……' },
   ],
-  // Hospital reward: 斩螂·110（近战秒杀武器，地铁场景可用）
+  // Hospital reward: 蟑叔发票（30秒金币收益+50%）
   [SceneType.HOSPITAL]: [
-    { type: 'knife', name: '斩螂·110', icon: '/assets/drop_knife.png', desc: '年轻人，新装备——【斩螂·110】！重二两，锋110点！自动跃向场上威胁最高的目标，一击必杀，连护甲都拦不住！为什么叫110？因为遇到它，蟑螂打110都来不及！' },
+    { type: 'invoice', name: '蟑叔发票', icon: '/assets/drop__invoice.png', desc: '蟑叔我开业三十年的第一张正规发票！拿着它，30秒内打蟑螂赚的金币多50%！别问为什么发票能加收益——这叫合理避税，懂不懂！' },
   ],
-  // Subway: 暂无通关奖励
-  [SceneType.SUBWAY]: [],
+  // Subway reward: 须须干扰器（10秒全场混乱+技能失效，后续场景可用）
+  [SceneType.SUBWAY]: [
+    { type: 'jammer', name: '须须干扰器', icon: '/assets/drop_Jammer.png', desc: '地铁站台拆下来的信号干扰器，蟑叔我加了点"料"！一按开关，10秒内全场蟑螂的须须全部失灵——方向感全无，到处乱窜！护士加不了血，隧道工修不了盾，那些会闪避的滑头也全都变呆头鹅！趁现在，烧！！' },
+  ],
   // Supermarket reward: shelf domino
   [SceneType.SUPERMARKET]: [
     { type: 'molotov', name: '货架燃烧弹', icon: '/assets/drop_molotov.png', desc: '超市货架倒塌+燃烧瓶=完美火海！推倒一整排货架，火焰沿着货架蔓延，整个超市变成烤箱！蟑螂们连逃跑的路线都被堵死了。蟑叔温馨提示：使用后请记得买保险……' },

@@ -30,14 +30,14 @@ export interface FireZoneRenderConfig {
   player: Player;
   tripleFlameState: { active: boolean; sideOffset: number; };
   time: number;
-  /** 天赋外观进化：蓝焰核心/过载核心/聚能长枪（仅 flamethrower 武器生效） */
-  flameVariant?: 'normal' | 'blue' | 'overdrive' | 'lance';
+  /** 天赋外观进化：蓝焰核心/过载核心（仅 flamethrower 武器生效；聚能长枪不再改变火焰主体） */
+  flameVariant?: 'normal' | 'blue' | 'overdrive';
   /** 天赋渐进强化：伤害强度（伤害乘算-1）；火束宽度微量加粗（克制幅度，不遮蟑螂） */
   damageIntensity?: number;
 }
 
 /** 火焰束变体类型 */
-export type FlameVariant = 'normal' | 'blue' | 'overdrive' | 'lance';
+export type FlameVariant = 'normal' | 'blue' | 'overdrive';
 
 // =============================================================================
 // 火焰颜色计算（从 engine.ts 提取的纯函数）
@@ -69,7 +69,6 @@ function getFlameColor(t: number, weapon: string = 'flamethrower', variant: Flam
     let second = fz.flameDefaultSecond;
     if (variant === 'blue') { first = fz.flameBlueFirst; second = fz.flameBlueSecond; }
     else if (variant === 'overdrive') { first = fz.flameOverdriveFirst; second = fz.flameOverdriveSecond; }
-    else if (variant === 'lance') { first = fz.flameLanceFirst; second = fz.flameLanceSecond; }
 
     if (t < 0.5) {
       const s = t * 2;
@@ -84,7 +83,11 @@ function getFlameColor(t: number, weapon: string = 'flamethrower', variant: Flam
     }
   }
 
-  const a = fz.flameAlphaBase * (1 - t) * (1 - t);
+  // 根部渐隐：前 flameRootFade 段用 smoothstep 从 0 升到 1，让火焰根部变虚
+  const rootFade = fz.flameRootFade;
+  const ramp = rootFade > 0 ? Math.min(1, t / rootFade) : 1;
+  const rootAlpha = ramp * ramp * (3 - 2 * ramp);
+  const a = fz.flameAlphaBase * (1 - t) * (1 - t) * rootAlpha;
   return `rgba(${r}, ${g}, ${b}, ${a})`;
 }
 
@@ -185,14 +188,15 @@ export class BackgroundRenderer {
 
     const rcfg = BALANCE_CONFIG.render.fireZone;
     const variant: FlameVariant = cfg.flameVariant ?? 'normal';
-    const maxRange = p.fireRange * rcfg.rangeRatio;
+    // 火焰视觉长度与扩口喷嘴/风压聚焦的射程加成解耦（它们只加伤害射程，不拉长火焰）
+    const visualRange = p.flameVisualRange ?? p.fireRange;
+    const maxRange = visualRange * rcfg.rangeRatio * rcfg.flameLengthY;
     // 修复 P1：使用 BALANCE_CONFIG.player.nozzleOffsetY 替代硬编码 322
-    const nozzleY = p.y - BALANCE_CONFIG.player.nozzleOffsetY;
+    // flameVisualYOffset：基础火焰特效整体 Y 下移（像素）
+    const nozzleY = p.y - BALANCE_CONFIG.player.nozzleOffsetY + rcfg.flameVisualYOffset;
     const endY = nozzleY - maxRange;
-    // 天赋射程加成比例：火焰特效宽度随天赋等比放大（Y 轴长度已通过 maxRange = fireRange × rangeRatio 随天赋增长）
-    const talentScale = p.fireRange / BALANCE_CONFIG.player.baseFireRange;
-    // 聚能长枪：火束变细（仅主武器 flamethrower 生效）
-    const variantWidthMult = (variant === 'lance' && p.currentWeapon === 'flamethrower') ? rcfg.lanceWidthMult : 1;
+    // 天赋射程加成比例：火焰特效宽度随天赋等比放大（Y 轴长度已通过 maxRange = 视觉射程 × rangeRatio 随天赋增长）
+    const talentScale = visualRange / BALANCE_CONFIG.player.baseFireRange;
     // 天赋渐进强化：伤害强度 → 火束微量加粗（克制系数 0.15，满配 dmg≈1.53 → 宽度 +8%，不遮蟑螂）
     const intensityWidthMult = 1 + Math.max(0, cfg.damageIntensity ?? 0) * 0.15;
 
@@ -214,6 +218,11 @@ export class BackgroundRenderer {
       const gunNozzleY = nozzleY + nozzleYOffset;
       const gunEndY = endY + nozzleYOffset;
 
+      // 火力全开：火焰摆动频率加大
+      const boostWiggle = p.powerBoostTimer > 0 ? rcfg.boostWiggleFreqMult : 1;
+      const wiggleFreq = rcfg.wiggleFreq * boostWiggle;
+      const wiggleTime = rcfg.wiggleTimeScale * boostWiggle;
+
       // 修复 P0：段数从50降至20，使用纯色填充替代每段创建渐变
       const segments = rcfg.segments;
       for (let i = 0; i < segments; i++) {
@@ -222,9 +231,9 @@ export class BackgroundRenderer {
         const y0 = gunNozzleY + (gunEndY - gunNozzleY) * t0;
         const y1 = gunNozzleY + (gunEndY - gunNozzleY) * t1;
 
-        const baseWidth = rcfg.baseWidth * flameScale * talentScale * variantWidthMult * intensityWidthMult;
-        const w0 = baseWidth * (1 - t0 * rcfg.widthTaper) + Math.sin(t0 * Math.PI * rcfg.wiggleFreq + cfg.time * rcfg.wiggleTimeScale + gi) * rcfg.wiggleAmplitude * variantWidthMult;
-        const w1 = baseWidth * (1 - t1 * rcfg.widthTaper) + Math.sin(t1 * Math.PI * rcfg.wiggleFreq + cfg.time * rcfg.wiggleTimeScale + gi) * rcfg.wiggleAmplitude * variantWidthMult;
+        const baseWidth = rcfg.baseWidth * flameScale * talentScale * intensityWidthMult;
+        const w0 = baseWidth * (1 - t0 * rcfg.widthTaper) + Math.sin(t0 * Math.PI * wiggleFreq + cfg.time * wiggleTime + gi) * rcfg.wiggleAmplitude;
+        const w1 = baseWidth * (1 - t1 * rcfg.widthTaper) + Math.sin(t1 * Math.PI * wiggleFreq + cfg.time * wiggleTime + gi) * rcfg.wiggleAmplitude;
 
         // 修复 P0：使用纯色填充（段间颜色差异极小，视觉效果无差别）
         ctx.fillStyle = getFlameColor(t0, p.currentWeapon, variant);
@@ -245,10 +254,9 @@ export class BackgroundRenderer {
       else if (p.currentWeapon === 'flamethrower') {
         if (variant === 'blue') coreColor = rcfg.coreColorBlue;
         else if (variant === 'overdrive') coreColor = rcfg.coreColorOverdrive;
-        else if (variant === 'lance') coreColor = rcfg.coreColorLance;
       }
 
-      const glowSize = rcfg.coreGlowSize * flameScale * talentScale * variantWidthMult;
+      const glowSize = rcfg.coreGlowSize * flameScale * talentScale;
       const coreGrad = ctx.createRadialGradient(gunX, gunNozzleY, 0, gunX, gunNozzleY, glowSize);
       coreGrad.addColorStop(0, `rgba(${coreColor}, ${rcfg.coreGradAlpha0})`);
       coreGrad.addColorStop(0.3, `rgba(${coreColor}, ${rcfg.coreGradAlpha1})`);
@@ -258,21 +266,6 @@ export class BackgroundRenderer {
       ctx.beginPath();
       ctx.arc(gunX, gunNozzleY, glowSize, 0, Math.PI * 2);
       ctx.fill();
-
-      // Power Boost: air disturbance ripples
-      if (p.powerBoostTimer > 0) {
-        const boostAlpha = Math.min(1, p.powerBoostTimer / rcfg.boostAlphaFade) * rcfg.boostAlphaMax;
-        for (let ri = 0; ri < rcfg.boostRippleCount; ri++) {
-          const ripplePhase = (cfg.time * rcfg.boostRippleFreq + ri * rcfg.boostRippleSpacing) % rcfg.boostRippleMaxPhase;
-          const rippleRadius = rcfg.boostRippleRadiusBase + ripplePhase * rcfg.boostRippleRadiusGrowth;
-          const rippleAlpha = boostAlpha * (1 - ripplePhase / rcfg.boostRippleMaxPhase);
-          ctx.strokeStyle = `rgba(${rcfg.boostRippleColor}, ${rippleAlpha})`;
-          ctx.lineWidth = rcfg.boostRippleLineWidth;
-          ctx.beginPath();
-          ctx.arc(gunX, gunNozzleY, rippleRadius * flameScale, 0, Math.PI * 2);
-          ctx.stroke();
-        }
-      }
     }
 
     ctx.restore();

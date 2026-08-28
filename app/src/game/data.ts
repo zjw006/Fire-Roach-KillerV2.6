@@ -29,6 +29,9 @@ export {
   SCENE_ITEM_UNLOCKS,
   SCENE_ROACH_TYPES,
   SCENE_UNLOCK_CHAIN,
+  STORY_LEVELS,
+  getLevelId,
+  getStoryLevelIndex,
   SCENE_GROUND_BOUNDS,
   SCENE_REWARD_ITEMS,
 } from './data/scene-rules';

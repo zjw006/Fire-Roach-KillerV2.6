@@ -71,7 +71,22 @@ const PRE_SHOP_TARGETS = [
   ['emergency_cool', '紧急冷却', PRE_COOL_TARGET],
 ];
 // 测试专用初始资金：仅写入测试浏览器独立 profile 的 localStorage（roach_blaster_menu_money），不影响正常游戏
-const TEST_INITIAL_MONEY = 50000;
+const TEST_INITIAL_MONEY = 5000;
+
+// 每关战前准备优先选择的道具 = 上一关通关奖励的新道具（对应 SCENE_REWARD_ITEMS 解锁链，名称为战前准备界面显示名）
+// 街道→天台的散弹/雷达在天台场景未解锁时点不到（clickText 找不到自动跳过，无害）
+const PREV_REWARD_PRIORITY = {
+  sewer: ['强力风扇'],               // 厨房通关奖励
+  dump: ['燃烧瓶'],                  // 下水道通关奖励
+  basement: ['电蚊拍'],              // 垃圾场通关奖励
+  street: ['杀虫剂'],                // 地下室通关奖励（杀虫喷雾，战前显示名"杀虫剂"）
+  rooftop: ['散弹模式', '雷达激光'], // 街道通关奖励
+  hospital: ['斩螂·110'],            // 天台通关奖励（三连反弹验证）
+  subway: ['蟑叔发票'],              // 医院通关奖励（金币+50%验证）
+  supermarket: ['须须干扰器'],       // 地铁通关奖励（5秒全场混乱+技能失效）
+  school: ['燃烧瓶'],                // 超市通关奖励（货架燃烧弹，复用燃烧瓶）
+  nest: ['杀虫剂'],                  // 学校通关奖励（粉笔灰毒气，复用杀虫剂）
+};
 
 mkdirSync(TRACE_DIR, { recursive: true });
 
@@ -109,11 +124,14 @@ window.__driver = {
   itemTimer: 0,
   prepSelected: false, // 战前准备界面是否已完成道具选择（防止重复选择）
   prepClickedList: [], // 战前准备已点击过的道具名（配合 400ms 间隔逐个选中，避免 React 批处理丢选）
-  talentCurrent: null, // 天赋树中当前选中的天赋名（用于加点循环切换）
-  talentFailed: {},    // 记录本关已"点不动"（点数不足/已满级）的天赋名，避免无限切换
+  prepPriorityItems: null, // 战前准备优先选中的道具名列表（如医院必选"斩螂·110"）
+  invoiceUsed: false,      // 是否已使用蟑叔发票（金币+50% 验证标记）
+  _maxTabFails: null,  // 结算加点模式下各分支页签空扫记录（内部状态）
   preShopTargets: null, // 商店补足清单 [[id, name, target], ...]，进入场景前购买 + 结算后重复购买共用
   setShopFails: 0,     // 结算界面连续打开商店失败次数（≥3 放弃，防卡死）
   utilityTimer: 0,     // 战斗中新消耗品自动使用节流计数（~2s）
+  bkGeo: null,         // 巢穴 BOSS 战几何参数 {nozzleOffsetY, flameRangeRatio}（懒加载自 data.ts）
+  _bkGeoLoading: false, // bkGeo 加载中标记（防重复 import）
 
   visible(el) { return !!(el && el.offsetParent); },
 
@@ -197,8 +215,10 @@ window.__driver = {
       if (!this.prepSelected) {
         if (!this.prepClickedList) this.prepClickedList = [];
         const ITEM_NAMES = ['蟑螂贴板', '强力风扇', '燃烧瓶', '杀虫剂', '散弹模式', '电蚊拍', '雷达激光', '斩螂·110'];
+        // 优先选择指定道具（医院战前必须选中斩螂·110），再按默认顺序补足其余
+        const order = (this.prepPriorityItems || []).concat(ITEM_NAMES);
         let clickedOne = false;
-        for (const n of ITEM_NAMES) {
+        for (const n of order) {
           if (this.prepClickedList.includes(n)) continue; // 已点过的道具不再重复点，避免切换取消选中
           if (this.clickText(n)) { this.prepClickedList.push(n); clickedOne = true; break; }
         }
@@ -244,6 +264,16 @@ window.__driver = {
       } else if (e.itemPlaceState === 'placing') {
         e.onItemRelease();
       } else {
+        // 巢穴 BOSS 战几何参数懒加载（判定炸弹是否进入火焰射程用；加载完成前用兜底值）
+        if (!this.bkGeo && !this._bkGeoLoading) {
+          this._bkGeoLoading = true;
+          import('/src/game/data.ts').then(d => {
+            this.bkGeo = {
+              nozzleOffsetY: d.BALANCE_CONFIG.player.nozzleOffsetY,
+              flameRangeRatio: d.BALANCE_CONFIG.collision.flameRangeRatio,
+            };
+          }).catch(() => { this.bkGeo = { nozzleOffsetY: 327, flameRangeRatio: 0.65 }; });
+        }
         // 自动瞄准：锁定最靠近防线的活蟑螂（y 最大）
         let best = null, count = 0;
         for (const r of e.roaches) {
@@ -251,23 +281,44 @@ window.__driver = {
           count++;
           if (!best || r.y > best.y) best = r;
         }
-        if (best) {
+        // ===== 巢穴 BOSS 战规则：唯一输出 = 火枪引爆 Boss 投掷的炸弹（反伤 200/发）=====
+        // 有飞行中炸弹时优先追踪炸弹 X（玩家 x 跟随，火焰束对齐），
+        // 仅在炸弹进入火焰射程时开火（避免高空空喷浪费燃气）；无炸弹时退回瞄准小怪
+        let bkBomb = null;
+        const bk = e.bossKingSystem;
+        if (bk && bk.isActive && bk.isActive()) {
+          for (const b of bk.bombs.getBombs()) {
+            if (!b.dead && (!bkBomb || b.y > bkBomb.y)) bkBomb = b; // 取最低（最接近防线/射程）的炸弹
+          }
+        }
+        const canFire = !e.player.isOverheated && !(e.player.heatWarningTimer > 0);
+        if (bkBomb) {
+          e.mouseX = bkBomb.x;
+          const geo = this.bkGeo || { nozzleOffsetY: 327, flameRangeRatio: 0.65 };
+          const nozzleY = e.player.y - geo.nozzleOffsetY;
+          const vertDist = nozzleY - bkBomb.y;
+          const inRange = vertDist > 0 && vertDist < e.player.fireRange * geo.flameRangeRatio;
+          e.player.isFiring = canFire && inRange;
+        } else if (best) {
           e.mouseX = best.x; // 玩家 x 跟随，火焰束对齐目标（走近掉落道具时自动拾取）
           // 过热保护：看到过热提示读秒(heatWarningTimer>0)或已过热(isOverheated)时停止开火，
           // 等待冷却读秒完成后 (isOverheated=false 且提示清零) 再恢复开火，避免过热空转/浪费
-          if (e.player.isOverheated || e.player.heatWarningTimer > 0) {
-            e.player.isFiring = false;
-          } else {
-            e.player.isFiring = true;
-          }
+          e.player.isFiring = canFire;
         } else {
           e.player.isFiring = false; // 场上无怪，停火省燃气
         }
         // 自动使用掉落道具：场上有怪且库存非空时，每 ~3 秒用掉第一个（即点即用型直接生效，放置型走上面的放置流程）
+        // 蟑叔发票（invoice）为即点即用：库存含发票时优先使用（验证金币+50% 与浮字提示）
         this.itemTimer++;
         if (count >= 2 && e.inventory.length > 0 && this.itemTimer >= 12) {
           this.itemTimer = 0;
-          e.selectItem(0);
+          const invIdx = e.inventory.findIndex(i => i.type === 'invoice');
+          const useIdx = invIdx >= 0 ? invIdx : 0;
+          e.selectItem(useIdx);
+          if (invIdx >= 0 && !this.invoiceUsed) {
+            this.invoiceUsed = true;
+            console.log('[auto-test] 蟑叔发票已使用（金币+50%），当前金币=' + (e.economy ? e.economy.money : '?'));
+          }
         }
         // 气罐补给：战斗中燃气低于 20% 时自动使用（需从商店购买带入）
         if (e.player && e.consumableInventory && e.consumableInventory['gas_refill'] > 0 &&
@@ -403,77 +454,46 @@ window.__driver = {
     return 'setshop:done_noback';
   },
 
-  // 关闭天赋详情弹窗：点击弹窗背景层（absolute inset-0 bg-black/70，onClick 关闭）
-  closeTalentDetail() {
-    const modals = [...document.querySelectorAll('div.fixed.inset-0')].filter(el =>
-      this.visible(el) && el.classList.contains('z-[110]'));
-    for (const m of modals) {
-      const backdrop = m.querySelector('div.absolute.inset-0');
-      if (backdrop) { backdrop.click(); return true; }
-    }
-    return false;
-  },
-
-  // 天赋加点流程（逐拍调用，处理天赋树内一个动作）
-  // talentNames: 本关要尝试升级的天赋名列表（按优先级顺序），如 ['火焰强化', '射程延伸']
-  // 依赖字段: talentCurrent(当前选中/处理中的天赋名), talentFailed(本关已点不动的天赋名集合)
-  // 动作顺序：跳过引导 → 若详情弹窗打开则尝试升级(点数够连升、不够则关闭切下一个) → 选下一天赋 → 全部结束后点"返回"
-  upgradeTalents(talentNames) {
-    const list = talentNames || [];
-    const open = this.hasText('天赋树');
-    if (!open) return 'talent:not_open'; // 天赋树未打开，调用方应先点"去加点"
-
-    // A. 首次进入天赋树的新手引导遮罩：跳过
-    if (this.clickText('跳过引导')) return 'talent:tutorial_skip';
-
-    // B. 详情弹窗处理（当前已选中天赋）
-    if (this.talentCurrent) {
-      const modalOpen = this.hasText('升级天赋') || this.hasText('已满级') || this.hasText('天赋点不足');
-      if (!modalOpen) {
-        // 弹窗已自动关闭（如已满级自动清空选中）→ 该天赋视为处理完毕，切下一个
-        const t = this.talentCurrent;
-        this.talentFailed[t] = true;
-        this.talentCurrent = null;
-        return 'talent:done:' + t;
-      }
-      // 点数够 → 升级一次（每次进入只升一级），然后关闭详情切下一个天赋
-      if (this.clickText('升级天赋')) {
-        const t = this.talentCurrent;
-        this.talentFailed[t] = true; // 本关本次已升过，跳到下一个
-        this.closeTalentDetail();
-        this.talentCurrent = null;
-        return 'talent:upgrade:' + t;
-      }
-      // 已满级或点数不足 → 标记失败并关闭详情，跳到下一个天赋
-      if (this.hasText('已满级') || this.hasText('天赋点不足')) {
-        const t = this.talentCurrent;
-        this.talentFailed[t] = true;
-        this.closeTalentDetail();
-        this.talentCurrent = null;
-        return 'talent:blocked:' + t;
-      }
-      return null; // 弹窗打开但状态未就绪，等下一拍
-    }
-
-    // C. 列表视图：选下一个未失败的目标天赋
-    const next = list.find(n => !this.talentFailed[n]);
-    if (!next) {
-      // 全部尝试完毕：点"返回"回到结算界面
+  // 天赋点满流程（v4 天赋工坊，仅测试用）：真实 DOM 点击 .tt-node-single.avail 可升级节点（每拍直升 1 级），
+  // 当前分支无可升级节点则切换分支页签（猛火系→长枪系→装备系），点数耗尽或三轮皆空后点"返回"
+  maxOutTalents() {
+    if (!this.hasText('天赋工坊')) return 'talent:not_open';
+    const e = window.__engine;
+    const pts = (e && e.progress && e.progress.talentTree) ? (e.progress.talentTree.points || 0) : 0;
+    if (pts <= 0) {
       if (this.clickText('返回')) return 'talent:back';
       return 'talent:done_no_back';
     }
-    if (this.clickText(next)) {
-      this.talentCurrent = next;
-      return 'talent:select:' + next;
+    // 当前分支页签内有可升级节点 → 点击直升 1 级（React onTap 处理，含音效/粒子/存档）
+    const node = document.querySelector('.tt-node-single.avail');
+    if (node) {
+      this._maxTabFails = {}; // 有升级发生，重置页签空扫记录（层门禁可能因投入解锁新节点）
+      node.click();
+      return 'maxtalent:upgrade';
     }
+    // 当前分支无可升级节点 → 记录空扫并切下一个未空扫的页签
+    const branches = ['猛火系', '长枪系', '装备系'];
+    const curEl = document.querySelector('.tt-tab.active .tt-tname');
+    const cur = curEl ? (curEl.textContent || '').trim() : '';
+    this._maxTabFails = this._maxTabFails || {};
+    if (cur) this._maxTabFails[cur] = true;
+    const rest = branches.filter(b => !this._maxTabFails[b]);
+    if (rest.length === 0) {
+      // 三个分支都点不动（剩余点数买不起/全满级/互斥锁定）→ 结束
+      if (this.clickText('返回')) return 'talent:back';
+      return 'talent:done_no_back';
+    }
+    if (this.clickText(rest[0])) return 'maxtalent:tab:' + rest[0];
     return null;
   },
 
   // 解锁全部关卡 + 全部武器道具（首次运行播种用；武器 ≥4 才会触发战前准备界面，全解锁可覆盖该 UI 路径）
-  unlockAllScenes(scenes) {    const e = window.__engine;
+  // talentPoints：保留参数兼容旧调用；当前传 0 —— 不注入测试天赋点，完全按游戏正常发放（地下室通关解锁天赋系统，此后每关结算加点）
+  unlockAllScenes(scenes, talentPoints) {    const e = window.__engine;
     if (!e) return false;
     e.progress.scenesUnlocked = scenes.slice();
-    e.progress.weaponsUnlocked = ['flamethrower', 'sticky', 'fan', 'molotov', 'poison', 'shotgun', 'swatter', 'radar', 'knife'];
+    e.progress.weaponsUnlocked = ['flamethrower', 'sticky', 'fan', 'molotov', 'poison', 'shotgun', 'swatter', 'radar', 'knife', 'invoice', 'jammer'];
+    if (talentPoints) e.progress.talentTree.points = (e.progress.talentTree.points || 0) + talentPoints;
     try { e.saveProgress(); } catch {}
     return true;
   },
@@ -580,7 +600,11 @@ function loadSessions() {
     data.result = m[2];
     data.scene = scene;
     const mt = statSync(p).mtimeMs;
-    if (!byScene[scene] || mt > byScene[scene].mt) byScene[scene] = { mt, m: metrics(data) };
+    if (!byScene[scene] || mt > byScene[scene].mt) {
+      const m = metrics(data);
+      m.talent = data.talent || null; // 本关战斗开始时的天赋快照 { spent, levels }（老 trace 无此字段为 null）
+      byScene[scene] = { mt, m };
+    }
   }
   return SCENES.map(sc => byScene[sc]).filter(Boolean).map(x => x.m);
 }
@@ -641,7 +665,7 @@ async function main() {
   await page.waitForFunction('window.__engine !== undefined', { timeout: 30_000 });
   await page.evaluate(DRIVER);
   console.log('[auto-test] DRIVER 注入完成，验证 __isAutoTest:', await page.evaluate(() => window.__isAutoTest));
-  await page.evaluate((scenes) => window.__driver.unlockAllScenes(scenes), SCENES);
+  await page.evaluate((scenes) => window.__driver.unlockAllScenes(scenes, 0), SCENES); // 0 = 不注入测试天赋点，走正常发放
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForFunction('window.__engine !== undefined', { timeout: 30_000 });
   await page.evaluate(DRIVER);
@@ -666,18 +690,19 @@ async function main() {
     const scene = scenesToRun[i];
     console.log(`[${i + 1}/${scenesToRun.length}] ${NAME[scene]}(${scene}) — UI 导航中...`);
     try {
-    await page.evaluate((sn, dn, targets) => {
+    await page.evaluate((sn, dn, targets, prioItems) => {
       window.__driver.targetSceneName = sn;
       window.__driver.diffName = dn;
       window.__driver.prepSelected = false; // 每关重置战前准备选择状态
       window.__driver.prepClickedList = []; // 每关重置已点击道具名
-      window.__driver.talentCurrent = null; // 每关重置天赋加点状态
-      window.__driver.talentFailed = {};    // 每关重置"点不动"的天赋记录
+      window.__driver.prepPriorityItems = prioItems; // 战前优先选中上一关通关解锁的新道具（如医院选斩螂·110、地铁选蟑叔发票、超市选须须干扰器）
+      window.__driver.invoiceUsed = false;  // 每关重置发票使用标记
+      window.__driver._maxTabFails = null;  // 每关重置结算加点页签空扫记录
       window.__driver.preShopDone = false;  // 每关重置前置购买状态
       window.__driver.preShopTargets = targets; // 商店补足清单（进入场景前 + 结算后共用）
       window.__driver.setShopFails = 0;     // 每关重置结算商店打开失败计数
       window.__driver.clearTrace();
-    }, SCENE_NAME[scene], DIFF_NAME, PRE_SHOP_TARGETS);
+    }, SCENE_NAME[scene], DIFF_NAME, PRE_SHOP_TARGETS, PREV_REWARD_PRIORITY[scene] || null);
 
     // ── 阶段 1：UI 导航（标题页 → 剧情模式 → 简单 → 选关 → 跳过漫画/对话/引导 → 进入战斗）──
     const uiT0 = Date.now();
@@ -702,6 +727,16 @@ async function main() {
       console.log('  !! 兜底：直接 engine.start 进入本关');
       await page.evaluate((sc, df) => window.__engine.start('story', sc, false, []), scene, DIFF);
     }
+
+    // ── 天赋快照：本关战斗开始时的天赋状态（正常发放点数累计；地下室通关前 spent=0）──
+    const talentSnap = await page.evaluate(() => {
+      const tt = window.__engine?.progress?.talentTree;
+      if (!tt) return null;
+      const levels = { ...(tt.talents || {}) };
+      let spent = 0;
+      for (const v of Object.values(levels)) spent += (v || 0);
+      return { spent, levels };
+    }).catch(() => null);
 
     // ── 阶段 2：战斗循环（瞄准/开火/用道具/拾取战后道具）──
     const t0 = Date.now();
@@ -741,6 +776,7 @@ async function main() {
         const data = JSON.parse(traceJson);
         data.result = result;
         data.scene = scene; // trace JSON 无 scene 字段，需显式补充，否则 metrics 的 name 为 undefined 导致 padEnd 报错
+        data.talent = talentSnap; // 本关战斗开始时的天赋快照（累计投入+各级等级），供报告"天赋影响"一节使用
         const file = join(TRACE_DIR, `roach-trace-${scene}-${result}-${Date.now()}.json`);
         writeFileSync(file, JSON.stringify(data));
         const m = metrics(data);
@@ -752,26 +788,40 @@ async function main() {
       }
     }
 
-    // ── 阶段 3：结算界面 → （胜利时进天赋加点升级火焰强化/射程延伸，再进道具商店买气罐补给）→ 点"下一关"进入下一关 ──
+    // ── 阶段 3：结算界面 → （胜利时按正常点数"去加点"升级天赋，再进道具商店补消耗品）→ 点"下一关"进入下一关 ──
     if (result === 'victory') {
-      // 3a. 结算界面 → 天赋加点：仅当结算界面出现"去加点"（已通关地下室解锁且本关获得未用天赋点）才进入。
-      //     进入天赋树后逐个升级"火焰强化/射程延伸"，升级完点"返回"回到结算界面再继续后续流程。
+      // 3a. 结算界面 → 天赋加点（正常发放点数）：通关获得天赋点时结算界面出现"去加点"（地下室通关解锁天赋系统后自然生效）。
+      //     进入天赋工坊把本关获得的点数全部投入可升级节点（maxOutTalents 按分支页签扫描 .tt-node-single.avail 真实点击），
+      //     点数耗尽后自动点"返回"回到结算界面，再继续 3b/3c 流程进入下一关。
       if (await page.evaluate(() => window.__driver.hasText('去加点'))) {
-        console.log('  天赋：结算界面检测到"去加点"，进入天赋树加点（火焰强化/射程延伸）');
-        for (let k = 0; k < 150; k++) {
+        const before = await page.evaluate(() => {
+          const tt = window.__engine?.progress?.talentTree;
+          if (!tt) return 0;
+          let s = 0; for (const v of Object.values(tt.talents || {})) s += (v || 0);
+          return s;
+        });
+        console.log(`  天赋：结算检测到"去加点"（当前已投入 ${before} 点），进入天赋工坊升级`);
+        for (let k = 0; k < 200; k++) {
           const st = await page.evaluate(() => window.__engine?.state);
           if (st !== 'wave_clear' && st !== 'game_over') break; // 已离开结算界面
-          const action = await page.evaluate((list) => {
-            if (!window.__driver.hasText('天赋树')) {
+          const action = await page.evaluate(() => {
+            if (!window.__driver.hasText('天赋工坊')) {
               window.__driver.clickText('去加点');
               return 'talent:open';
             }
-            return window.__driver.upgradeTalents(list);
-          }, ['火焰强化', '射程延伸']);
-          if (action) console.log(`  天赋: ${action}`);
+            return window.__driver.maxOutTalents();
+          });
+          if (action && action !== 'maxtalent:upgrade') console.log(`  天赋: ${action}`);
           if (action === 'talent:back' || action === 'talent:done_no_back') break; // 加点完成已返回结算
-          await sleep(400);
+          await sleep(300);
         }
+        const after = await page.evaluate(() => {
+          const tt = window.__engine?.progress?.talentTree;
+          if (!tt) return { spent: 0, points: -1 };
+          let s = 0; for (const v of Object.values(tt.talents || {})) s += (v || 0);
+          return { spent: s, points: tt.points || 0 };
+        });
+        console.log(`  天赋：加点结束，本关投入 ${after.spent - before} 点，累计 ${after.spent} 点，剩余未投入 ${after.points} 点`);
       }
       // 3b.（已移除）战后结算商店购买：消耗品前置到"进入场景前"主菜单商店补足（见 0-pre），此处不再重复购买，
       //     避免双重扣减 menuShopMoney；胜利后直接走"下一关"，下一场景若非主菜单则依赖持久化库存。
@@ -864,9 +914,30 @@ function generateReport(sessions, open = true, cfgTotals = null) {
       spawn: num(m.spawn), dmg: num(m.dmg), diff: Math.round(num(m.dmg) - num(m.spawn)), avgDps: +num(m.avgDps).toFixed(1),
       peak: num(m.peak), cbt: +num(m.combatDps).toFixed(1),
       duty: +num(m.duty).toFixed(2), breach: Math.round(num(m.breach)), samples: m.samples,
+      talent: m.talent || null, // { spent, levels } 战斗开始时天赋快照（null = 老 trace 无数据）
       cfg, // 配置总强度：{hp,armor,shield,heal,armorAdd,total}
     };
   });
+
+  // 天赋名称映射（talents.ts 的 id → 显示名，报告"天赋影响"一节用）
+  const TALENT_NAMES = {
+    pressure: '增压阀', hotfuel: '高温燃料', alloy: '耐热合金', bluecore: '蓝焰核心', burst: '爆燃增压',
+    trimastery: '三联专精', overdrive: '过载核心', nozzle: '扩口喷嘴', fins: '散热鳍片', tank: '扩容气罐',
+    steel: '寒钢枪管', focus: '风压聚焦', lance: '聚能长枪', bounty: '赏金猎人', saver: '节约大师',
+    shieldm: '护盾专精', wall: '防线协议', mech: '机械精通', molfuel: '烈焰燃料', poisonup: '毒剂强化',
+    baitm: '诱饵专精', swatterm: '电工精通', knifem: '斩螂专精', radarup: '雷达增程',
+  };
+  // 天赋影响表行：累计投入 / 本关新增（= 上一关结算"去加点"投入的点数）/ 已升级天赋列表
+  let prevSpent = 0;
+  const hasTalentData = DATA.some(d => d.talent);
+  const talentRows = hasTalentData ? DATA.map(d => {
+    const t = d.talent;
+    if (!t) return `<tr><td>${d.name}</td><td colspan="3" style="color:#9ca3af">无天赋快照（老 trace）</td><td>${d.avgDps}</td><td>${d.cbt}</td><td>${d.spawn > 0 ? (d.dmg / d.spawn).toFixed(2) : '-'}</td></tr>`;
+    const added = Math.max(0, t.spent - prevSpent); prevSpent = t.spent;
+    const lv = Object.entries(t.levels || {}).filter(([, v]) => v > 0)
+      .map(([k, v]) => (TALENT_NAMES[k] || k) + 'Lv' + v).join('、') || '—';
+    return `<tr><td>${d.name}</td><td>${t.spent}</td><td class="${added > 0 ? 'good' : ''}">${added > 0 ? '+' + added : '—'}</td><td style="white-space:normal;text-align:left">${lv}</td><td>${d.avgDps}</td><td>${d.cbt}</td><td>${d.spawn > 0 ? (d.dmg / d.spawn).toFixed(2) : '-'}</td></tr>`;
+  }).join('') : '';
 
   const rows = DATA.map(d => {
     const ratio = d.spawn > 0 ? d.dmg / d.spawn : 0;
@@ -926,10 +997,10 @@ function generateReport(sessions, open = true, cfgTotals = null) {
 <body>
 <div class="wrap">
   <h1>喷火枪伤害 vs 关卡难度 · 自测研究报告</h1>
-  <p class="sub">auto-test.mjs 全真 UI 流程自动生成｜难度 ${DIFF}｜干净存档（无天赋）+ 自动使用掉落道具｜0.5s 采样｜${new Date().toLocaleString('zh-CN')}</p>
+  <p class="sub">auto-test.mjs 全真 UI 流程自动生成｜难度 ${DIFF}｜正常发放天赋点（地下室通关后每关结算加点）+ 自动使用掉落道具｜0.5s 采样｜${new Date().toLocaleString('zh-CN')}</p>
 
   <div class="card">
-    <h2>当前喷火枪数值配置（难度 ${DIFF} · 干净存档无天赋）</h2>
+    <h2>当前喷火枪数值配置（难度 ${DIFF} · 基线数值，天赋加成影响见第二节）</h2>
     <table>
       <tr><th style="width:160px">项目</th><th style="width:130px">当前值</th><th>说明</th></tr>
       ${FIRE_INFO.map(([k, v, d]) => `<tr><td>${k}</td><td class="good">${v}</td><td style="text-align:left;color:#9ca3af">${d}</td></tr>`).join('')}
@@ -947,8 +1018,20 @@ function generateReport(sessions, open = true, cfgTotals = null) {
     </div>
   </div>
 
+  ${hasTalentData ? `
   <div class="card">
-    <h2>二、配置难度曲线 vs 喷火枪 DPS（同图）</h2>
+    <h2>二、天赋加点对战斗的影响（地下室通关后开始，每关结算加点）</h2>
+    <table>
+      <tr><th>关卡</th><th>天赋累计投入</th><th>本关新增</th><th>已升级天赋</th><th>平均DPS</th><th>交战DPS</th><th>输出/生成</th></tr>
+      ${talentRows}
+    </table>
+    <div class="note">
+      <b>天赋累计投入</b> = 本关<b>战斗开始时</b>已投入的总点数（游戏正常发放，非测试注入）；<b>本关新增</b> = 上一关通关结算界面经"去加点"投入的点数（点数耗尽自动返回结算）。对比"本关新增 &gt; 0"前后关卡的交战 DPS / 平均 DPS / 输出比值，可观察天赋对战斗的实际提升。注意关卡难度同时递增（叠加新怪/加血/加甲），需结合第三、五节的难度与 DPS 曲线综合归因。
+    </div>
+  </div>` : ''}
+
+  <div class="card">
+    <h2>三、配置难度曲线 vs 喷火枪 DPS（同图）</h2>
     <div class="legend">
       <span><span class="dot" style="background:#4ade80"></span>怪物总强度（读取数值配置：HP+护甲+护盾+加血+加护甲）</span>
       <span><span class="dot" style="background:#fbbf24"></span>喷火枪 DPS（实测交战 DPS，右轴）</span>
@@ -962,7 +1045,7 @@ function generateReport(sessions, open = true, cfgTotals = null) {
   </div>
 
   <div class="card">
-    <h2>三、难度曲线 vs 喷火枪输出曲线</h2>
+    <h2>四、难度曲线 vs 喷火枪输出曲线</h2>
     <div class="legend">
       <span><span class="dot" style="background:#e5e7eb"></span>生成总量（难度）</span>
       <span><span class="dot" style="background:#4ade80"></span>火焰总输出</span>
@@ -973,7 +1056,7 @@ function generateReport(sessions, open = true, cfgTotals = null) {
   </div>
 
   <div class="card">
-    <h2>四、交战 DPS 曲线（火枪真实命中水平）</h2>
+    <h2>五、交战 DPS 曲线（火枪真实命中水平）</h2>
     <canvas id="dps" width="940" height="260"></canvas>
     <div class="note">交战 DPS 越平稳，说明火枪手感越一致；陡降的关卡即数值断点。</div>
   </div>
@@ -989,7 +1072,7 @@ function generateReport(sessions, open = true, cfgTotals = null) {
   </div>
 
   <div class="card">
-    <h2>六、自动结论</h2>
+    <h2>七、自动结论</h2>
     <div class="concl" id="concl"></div>
   </div>
 </div>
@@ -1168,7 +1251,19 @@ if (surScenes.length) html += '火力盈余最大：' + surScenes.slice(0, 3).ma
 html += '</li>';
 html += '<li><b>交战 DPS 区间</b>：' + cbtMin + '（' + minDpsLv.name + '）~ ' + cbtMax + '（' + maxDpsLv.name + '），跨度 ' + (cbtMax / Math.max(1, cbtMin)).toFixed(1) + ' 倍。跨度越小手感越一致；' + minDpsLv.name + ' 为当前数值断点，优先检查。</li>';
 html += '<li><b>平均DPS 区间</b>：' + avgMin + '（' + avgMinLv.name + '）~ ' + avgMax + '（' + avgMaxLv.name + '），反映含清场空档的整体输出水平，越低说明空转/射程不足越明显。</li>';
-html += '<li><b>曲线形态</b>：见第三节，火焰输出曲线若全程 ≥ 生成总量曲线则数值富裕；被难度曲线反超的关卡即需要调整的节点。</li>';
+html += '<li><b>曲线形态</b>：见第四节，火焰输出曲线若全程 ≥ 生成总量曲线则数值富裕；被难度曲线反超的关卡即需要调整的节点。</li>';
+// 天赋影响结论（有天赋快照数据时）
+{
+  const tl = DATA.filter(d => d.talent);
+  if (tl.length) {
+    const last = tl[tl.length - 1];
+    const noT = tl.filter(d => d.talent.spent === 0), withT = tl.filter(d => d.talent.spent > 0);
+    const avg = arr => arr.length ? arr.reduce((a, d) => a + d.cbt, 0) / arr.length : 0;
+    const a0 = avg(noT), a1 = avg(withT);
+    const pct = a0 > 0 ? ((a1 / a0 - 1) * 100).toFixed(0) + '%' : '—（加点前无数据）';
+    html += '<li><b>天赋影响</b>：按正常发放累计投入 ' + last.talent.spent + ' 点（第二节逐关明细）。加点前（地下室及之前）交战 DPS 均值 ' + a0.toFixed(1) + '，加点后 ' + a1.toFixed(1) + '，' + pct + '。注意含关卡难度递增因素，增幅高于纯天赋收益为正常现象，需结合第三、四节曲线归因。</li>';
+  }
+}
 document.getElementById('concl').innerHTML = html;
 
 drawCfgDps();

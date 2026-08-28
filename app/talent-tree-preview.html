@@ -259,8 +259,8 @@
 const GATES = [0, 2, 5, 8, 12];
 const BRANCHES = [
   { id:'inferno', name:'猛火系', sub:'伤害 · 近程爆发', cls:'inferno', exclTier:{5:'与「聚能长枪」互斥'}, tiers:[
-    [ {id:'pressure', n:'增压阀',   i:'🔥', max:3, d:'火焰伤害 +4%/级'} ],
-    [ {id:'hotfuel',  n:'高温燃料', i:'🧪', max:2, d:'伤害 +5%/级'},
+    [ {id:'pressure', n:'增压阀',   i:'🔥', max:3, d:'1级+2%伤害，2级+4%，3级+6%'} ],
+    [ {id:'hotfuel',  n:'高温燃料', i:'🧪', max:2, d:'1级+3%伤害，2级+6%'},
       {id:'alloy',    n:'耐热合金', i:'🛡️', max:2, d:'过热阈值 +10%/级'} ],
     [ {id:'bluecore', n:'蓝焰核心', i:'🔵', max:1, cost:2, key:true, req:[['pressure',3]], d:'伤害+10%，枪身变蓝焰'} ],
     [ {id:'burst',    n:'爆燃增压', i:'💥', max:3, d:'伤害 +4%/级'},
@@ -268,18 +268,18 @@ const BRANCHES = [
     [ {id:'overdrive',n:'过载核心', i:'🌋', max:1, cost:2, key:true, excl:'gunT5', d:'终端改装：伤害+25% 过热+15%，火焰深红'} ],
   ]},
   { id:'lance', name:'长枪系', sub:'射程 · 远程精准', cls:'lance', exclTier:{5:'与「过载核心」互斥'}, tiers:[
-    [ {id:'nozzle',   n:'扩口喷嘴', i:'🎯', max:3, d:'射程 +6%/级'} ],
+    [ {id:'nozzle',   n:'扩口喷嘴', i:'🎯', max:3, d:'1级+2%射程，2级+4%，3级+6%'} ],
     [ {id:'fins',     n:'散热鳍片', i:'💨', max:2, d:'冷却速度 +10%/级'},
       {id:'tank',     n:'扩容气罐', i:'🛢️', max:2, d:'燃气上限 +8%/级'} ],
-    [ {id:'steel',    n:'寒钢枪管', i:'🔩', max:1, cost:2, key:true, req:[['nozzle',3]], d:'射程+10%，枪管变长变银'} ],
+    [ {id:'steel',    n:'寒钢枪管', i:'🔩', max:1, cost:2, key:true, req:[['nozzle',3]], d:'射程+10%，喷嘴圆环染为蓝色'} ],
     [ {id:'focus',    n:'风压聚焦', i:'🌪️', max:3, d:'射程 +5%/级'} ],
     [ {id:'lance',    n:'聚能长枪', i:'⚡', max:1, cost:2, key:true, excl:'gunT5', d:'终端改装：射程+35% 伤害+20%，束变白'} ],
   ]},
   { id:'support', name:'装备系', sub:'生存 · 经济 · 道具专精', cls:'support', tiers:[
     [ {id:'bounty',   n:'赏金猎人', i:'💰', max:3, d:'击杀金币 +8%/级（锚定未来樟叔发票）'} ],
-    [ {id:'saver',    n:'节约大师', i:'📦', max:2, d:'计数型弹药+1枚、时长型+12%/级'},
+    [ {id:'saver',    n:'节约大师', i:'📦', max:2, d:'道具掉落频率 +15%/级'},
       {id:'shieldm',  n:'护盾专精', i:'🛡️', max:2, d:'临时护盾无敌 +1s/级'} ],
-    [ {id:'wall',     n:'防线协议', i:'🧱', max:1, cost:2, key:true, reqAny:[['saver',2],['shieldm',2]], d:'防线HP+25%，加装甲板'},
+    [ {id:'wall',     n:'防线协议', i:'🧱', max:1, cost:2, key:true, reqAny:[['saver',2],['shieldm',2]], d:'防线HP+25%'},
       {id:'mech',     n:'机械精通', i:'⚙️', max:2, d:'风扇减速+5% 持续+10%/级'} ],
     [ {id:'molfuel',  n:'烈焰燃料', i:'🧪', max:2, d:'燃烧瓶：火墙持续+15% 伤害+15%/级'},
       {id:'poisonup', n:'毒剂强化', i:'🧫', max:2, d:'毒气：中毒+1s 毒伤+20% 减速+6%/级'},

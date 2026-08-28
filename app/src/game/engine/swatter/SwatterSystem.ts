@@ -134,7 +134,7 @@ export class SwatterSystem {
     // 动画
     this.swatterActive = true;
     this.swatterAnimTimer = BALANCE_CONFIG.swatter.animTimer;
-    this.swatterSwingX = playerX;
+    this.swatterSwingX = this.config.canvasWidth / 2; // 挥拍 X：屏幕底部中心为基准（不再跟随玩家位置）
     this.config.onPlaySwatter?.();
 
     let hitCount = 0;

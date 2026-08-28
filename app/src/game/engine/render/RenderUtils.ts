@@ -503,8 +503,7 @@ export class RenderUtils {
   }
 
   /**
-   * 渲染防线（虚线 + 护盾光效 + 天赋装甲板）
-   * @param armorPlated 防线协议基石（wall）激活时铺设装甲板
+   * 渲染防线（虚线 + 护盾光效）
    */
   static renderDefenseLine(
     ctx: CanvasRenderingContext2D,
@@ -512,41 +511,10 @@ export class RenderUtils {
     defenseLineY: number,
     defenseLineColor: string,
     time: number,
-    shieldTimer: number,
-    armorPlated: boolean = false
+    shieldTimer: number
   ): void {
     const cfg = BALANCE_CONFIG.render.renderUtils.defenseLine;
     const dl = defenseLineY;
-
-    // 天赋外观进化：防线协议装甲板（铺在防线下方）
-    if (armorPlated) {
-      const pw = cfg.armorPlateWidth;
-      const ph = cfg.armorPlateHeight;
-      const step = pw + cfg.armorPlateGap;
-      const plateY = dl + cfg.armorPlateYOffset;
-      ctx.save();
-      for (let px = 0; px < w; px += step) {
-        // 板体
-        ctx.fillStyle = cfg.armorPlateBodyColor;
-        ctx.fillRect(px, plateY, pw, ph);
-        // 板缘高光（上缘）
-        ctx.fillStyle = cfg.armorPlateEdgeColor;
-        ctx.fillRect(px, plateY, pw, cfg.armorPlateEdgeLineWidth);
-        // 铆钉（板体四角内缩）
-        ctx.fillStyle = cfg.armorPlateRivetColor;
-        const inset = cfg.armorPlateRivetRadius * 2;
-        const rivetY = [plateY + inset, plateY + ph - inset];
-        const rivetX = [px + inset, px + pw - inset];
-        for (const rx of rivetX) {
-          for (const ry of rivetY) {
-            ctx.beginPath();
-            ctx.arc(rx, ry, cfg.armorPlateRivetRadius, 0, Math.PI * 2);
-            ctx.fill();
-          }
-        }
-      }
-      ctx.restore();
-    }
 
     ctx.save();
     ctx.globalCompositeOperation = cfg.blend; // 叠加混合集中于 vfx-balance renderUtils.defenseLine.blend

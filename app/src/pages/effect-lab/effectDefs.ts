@@ -153,19 +153,7 @@ const FIRE_ZONE_SECTIONS: EffectSection[] = [
   },
 ];
 
-/** 强化波纹（火力全开 fireZone boost 叠加层）可编辑节 */
-const BOOST_RIPPLE_SECTIONS: EffectSection[] = [
-  {
-    title: '强化波纹（火力全开叠加层）',
-    obj: renderCfg.fireZone,
-    path: 'render.fireZone',
-    keys: [
-      'boostAlphaMax', 'boostAlphaFade', 'boostRippleCount', 'boostRippleFreq',
-      'boostRippleSpacing', 'boostRippleMaxPhase', 'boostRippleRadiusBase',
-      'boostRippleRadiusGrowth', 'boostRippleLineWidth',
-    ],
-  },
-];
+/** 强化波纹已按需求移除（火力全开仅保留枪口粒子） */
 
 /** 枪口强化喷射（renderUtils.muzzleFlash）可编辑节 */
 const MUZZLE_FLASH_SECTIONS: EffectSection[] = [
@@ -183,9 +171,8 @@ const MUZZLE_FLASH_SECTIONS: EffectSection[] = [
   },
 ];
 
-/** 火力全开（fireZone boost 波纹 + muzzleFlash 枪口强化喷射）可编辑节 */
+/** 火力全开（muzzleFlash 枪口强化喷射；fireZone boost 波纹已移除）可编辑节 */
 const POWER_BOOST_SECTIONS: EffectSection[] = [
-  ...BOOST_RIPPLE_SECTIONS,
   ...MUZZLE_FLASH_SECTIONS,
 ];
 

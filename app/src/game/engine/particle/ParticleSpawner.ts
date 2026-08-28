@@ -25,8 +25,8 @@ export interface ConeFireParams {
   baseDamage: number;
   /** 火焰类型 */
   type?: 'fire' | 'ice' | 'poison';
-  /** 天赋外观进化：蓝焰核心/过载核心/聚能长枪 */
-  flameVariant?: 'normal' | 'blue' | 'overdrive' | 'lance';
+  /** 天赋外观进化：蓝焰核心/过载核心（聚能长枪不再改变火焰主体） */
+  flameVariant?: 'normal' | 'blue' | 'overdrive';
   /** 天赋渐进强化：伤害强度（伤害乘算-1，0 为无加成）；仅缩放粒子尺寸/余烬比，不增数量 */
   intensity?: number;
   /** 天赋渐进强化：射程聚焦（射程乘算-1，0 为无加成）；收敛张角、提升流速 */
@@ -250,11 +250,9 @@ export class ParticleSpawner {
         const variant = params.flameVariant ?? 'normal';
         const fireCfg = variant === 'blue' ? cfg.blueFlameColor
           : variant === 'overdrive' ? cfg.overdriveColor
-          : variant === 'lance' ? cfg.lanceColor
           : cfg.fireColor;
         const emberCfg = variant === 'blue' ? cfg.blueEmberColor
           : variant === 'overdrive' ? cfg.overdriveEmberColor
-          : variant === 'lance' ? cfg.lanceEmberColor
           : cfg.emberColor;
         const temp = Math.random();
         if (temp < 1 - emberRatio) {

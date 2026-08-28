@@ -11,7 +11,7 @@ import {
   Skull, Map, RotateCcw, AlertTriangle, Trash2, Lock,
 } from 'lucide-react';
 import { GameMode, SceneType, type GameProgress } from '@/game/types';
-import { SCENE_CONFIGS, SCENE_ORDER, TEXT_CONFIG } from '@/game/data';
+import { SCENE_CONFIGS, STORY_LEVELS, TEXT_CONFIG } from '@/game/data';
 import { resetSeenComics } from '@/game/comicData';
 import type { AudioManager } from '@/game/audio';
 
@@ -37,9 +37,7 @@ export const GameMenu: React.FC<GameMenuProps> = ({
   const [showModes, setShowModes] = useState(false);
   const [selectedMode, setSelectedMode] = useState<GameMode | null>(null);
   const [selectedScene, setSelectedScene] = useState<SceneType>(SceneType.KITCHEN);
-  /** 剧情模式流程步骤：'difficulty' → 选择难度，'scenes' → 选择关卡 */
-  const [storyStep, setStoryStep] = useState<'difficulty' | 'scenes'>('difficulty');
-  const [storyDifficulty, setStoryDifficulty] = useState<'easy' | 'hard' | null>(null);
+  /** v2.6：难度选择已移除，剧情模式直接进入关卡选择（简单 11 关 + 巢穴后 6 个困难关） */
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   /** 预加载菜单背景图 */
@@ -70,22 +68,16 @@ export const GameMenu: React.FC<GameMenuProps> = ({
     }, 100);
   };
 
-  /** 选择游戏模式：剧情模式进入难度选择流程，其他模式直接进入场景+难度选择 */
+  /** 选择游戏模式：剧情模式直接进入关卡选择（难度选择已移除） */
   const handleModeSelect = (mode: GameMode) => {
     setSelectedMode(mode);
-    if (mode === GameMode.STORY) {
-      setStoryStep('difficulty');
-      setStoryDifficulty(null);
-      setShowModes(true);
-    } else {
-      setShowModes(true);
-    }
+    setShowModes(true);
   };
 
   // Talent overlay REMOVED - handled by parent GameCanvas
   // Achievements overlay REMOVED - handled by parent GameCanvas
 
-  {/* ═══ 剧情模式 → 难度选择 / 关卡选择 ═══ */}
+  {/* ═══ 剧情模式 → 关卡选择（v2.6：难度选择已移除，巢穴后追加 6 个困难关）═══ */}
   if (showModes && selectedMode === GameMode.STORY) {
     return (
       <div className="absolute inset-0 flex items-center justify-center overflow-y-auto py-4 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-stone-700/50 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-stone-600/60">
@@ -104,105 +96,76 @@ export const GameMenu: React.FC<GameMenuProps> = ({
             )}
           </button>
 
-          {storyStep === 'difficulty' ? (
-            <>
-              {/* 步骤 1：难度选择 */}
-              <h2 className="text-2xl font-bold text-white mb-2 flex items-center justify-center gap-2">
-                <Swords size={20} className="text-amber-400" />
-                {TEXT_CONFIG.ui.menu.selectDifficulty}
-              </h2>
-              <p className="text-stone-400 text-sm mb-6">{TEXT_CONFIG.ui.menu.storyMode} — 选择你的挑战</p>
-
-              {/* Easy */}
-              <button
-                onClick={() => { audio?.playClick(); setStoryDifficulty('easy'); setStoryStep('scenes'); }}
-                className="relative w-full transition-all hover:scale-105 active:scale-95 mb-3"
-              >
-                <img src="/assets/UI/btn_easy.png" alt="" className="w-full h-auto" draggable={false} />
-                <span className="absolute inset-0 flex items-center justify-center text-amber-100 font-bold text-lg font-mono tracking-wider [text-shadow:1px_1px_0_#000,-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000] pl-[5%]">{TEXT_CONFIG.ui.menu.easyShort}</span>
-              </button>
-
-              {/* Hard */}
-              <button
-                onClick={() => { audio?.playClick(); setStoryDifficulty('hard'); setStoryStep('scenes'); }}
-                className="relative w-full transition-all hover:scale-105 active:scale-95 mb-3"
-              >
-                <img src="/assets/UI/btn_hard.png" alt="" className="w-full h-auto" draggable={false} />
-                <span className="absolute inset-0 flex items-center justify-center text-amber-100 font-bold text-lg font-mono tracking-wider [text-shadow:1px_1px_0_#000,-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000] pl-[5%]">{TEXT_CONFIG.ui.menu.hardShort}</span>
-              </button>
-
-              <button onClick={() => { audio?.playClick(); setShowModes(false); setSelectedMode(null); setStoryStep('difficulty'); setStoryDifficulty(null); }} className="text-stone-400 hover:text-white text-sm font-mono transition-colors tracking-wider mt-6">
-                [ {TEXT_CONFIG.ui.menu.back} ]
-              </button>
-            </>
-          ) : (
-            <>
-              {/* 步骤 2：关卡选择 */}
-              <h2 className="text-2xl font-bold text-white mb-2 flex items-center justify-center gap-2">
-                <Map size={20} className="text-amber-400" />
-                {TEXT_CONFIG.ui.menu.selectScene}
-              </h2>
-              <p className="text-stone-400 text-sm mb-4">
-                {storyDifficulty === 'easy' ? TEXT_CONFIG.ui.menu.easy : TEXT_CONFIG.ui.menu.hard} — 选择一个场景
-              </p>
-              {/* Draggable scene list */}
-              <div className="w-full mb-4" style={{ maxHeight: '55vh', overflowY: 'auto', touchAction: 'pan-y', WebkitOverflowScrolling: 'touch' }}>
-                <div className="space-y-2 pr-1">
-                  {SCENE_ORDER.map((sceneType) => {
-                    const scene = SCENE_CONFIGS[sceneType];
-                    const isUnlocked = scenesUnlocked.includes(sceneType);
-                    // 该关卡历史最佳星级（0-3，防线血量不含加血评级，过关多次取最多）
-                    const bestStars = progress?.levelStars?.[sceneType] ?? 0;
-                    return (
-                      <button
-                        key={sceneType}
-                        onClick={() => { audio?.playClick(); if (isUnlocked && storyDifficulty) onStart(storyDifficulty, GameMode.STORY, sceneType); }}
-                        disabled={!isUnlocked}
-                        className={`w-full text-left rounded-xl border transition-all overflow-hidden ${
-                          isUnlocked ? 'border-stone-600 hover:border-stone-400 hover:scale-[1.02]' : 'border-stone-800 opacity-40 cursor-not-allowed'
-                        }`}
-                      >
-                        <div className="h-14 flex items-center px-4" style={{ background: `linear-gradient(135deg, ${scene.bgColor}dd, ${scene.bgColor}88)` }}>
-                          <div className="flex items-center gap-3 flex-1">
-                            <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${isUnlocked ? 'bg-white/20' : 'bg-black/30'}`}>
-                              {isUnlocked ? <Map size={16} className="text-white" /> : <Lock size={14} className="text-stone-600" />}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div className={`font-bold text-sm ${isUnlocked ? 'text-white' : 'text-stone-500'}`}>{scene.name}</div>
-                              <div className="text-[10px] text-stone-400 truncate">{scene.description}</div>
-                            </div>
-                          </div>
-                          {/* 星级评价槽：默认3槽，点亮历史最佳（图标与结算界面一致） */}
-                          <div className="flex items-center gap-1 mx-2">
-                            {[1, 2, 3].map((star) => (
-                              <div
-                                key={star}
-                                className={`w-5 h-5 rounded-full flex items-center justify-center ${
-                                  isUnlocked && star <= bestStars
-                                    ? 'bg-yellow-500 text-white shadow-md'
-                                    : 'bg-stone-800/80 text-stone-600 border border-stone-700'
-                                }`}
-                              >
-                                <Flame size={9} />
-                              </div>
-                            ))}
-                          </div>
-                          {isUnlocked ? (
-                            <span className="text-[10px] text-yellow-400 font-bold ml-2">{TEXT_CONFIG.ui.menu.rewardMultiplier(scene.rewardMultiplier)}</span>
-                          ) : (
-                            <span className="text-[10px] text-stone-600 ml-2">{TEXT_CONFIG.ui.menu.locked}</span>
-                          )}
+          {/* 关卡选择（11 简单关 + 6 困难关） */}
+          <h2 className="text-2xl font-bold text-white mb-2 flex items-center justify-center gap-2">
+            <Map size={20} className="text-amber-400" />
+            {TEXT_CONFIG.ui.menu.selectScene}
+          </h2>
+          <p className="text-stone-400 text-sm mb-4">选择一个关卡</p>
+          {/* Draggable scene list */}
+          <div className="w-full mb-4" style={{ maxHeight: '55vh', overflowY: 'auto', touchAction: 'pan-y', WebkitOverflowScrolling: 'touch' }}>
+            <div className="space-y-2 pr-1">
+              {STORY_LEVELS.map((level) => {
+                const scene = SCENE_CONFIGS[level.scene];
+                const isHard = level.difficulty === 'hard';
+                const isUnlocked = scenesUnlocked.includes(level.id);
+                // 该关卡历史最佳星级（0-3，防线血量不含加血评级，过关多次取最多）
+                const bestStars = progress?.levelStars?.[level.id] ?? 0;
+                return (
+                  <button
+                    key={level.id}
+                    onClick={() => { audio?.playClick(); if (isUnlocked) onStart(level.difficulty, GameMode.STORY, level.scene); }}
+                    disabled={!isUnlocked}
+                    className={`w-full text-left rounded-xl border transition-all overflow-hidden ${
+                      isUnlocked
+                        ? isHard ? 'border-red-900/80 hover:border-red-700 hover:scale-[1.02]' : 'border-stone-600 hover:border-stone-400 hover:scale-[1.02]'
+                        : 'border-stone-800 opacity-40 cursor-not-allowed'
+                    }`}
+                  >
+                    <div className="h-14 flex items-center px-4" style={{ background: `linear-gradient(135deg, ${scene.bgColor}dd, ${scene.bgColor}88)` }}>
+                      <div className="flex items-center gap-3 flex-1">
+                        <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${isUnlocked ? 'bg-white/20' : 'bg-black/30'}`}>
+                          {isUnlocked ? <Map size={16} className="text-white" /> : <Lock size={14} className="text-stone-600" />}
                         </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-              <button onClick={() => { audio?.playClick(); setStoryStep('difficulty'); }} className="text-stone-400 hover:text-white text-sm font-mono transition-colors tracking-wider">
-                {TEXT_CONFIG.ui.menu.backToDifficulty}
-              </button>
-            </>
-          )}
+                        <div className="min-w-0 flex-1">
+                          <div className={`font-bold text-sm flex items-center gap-1.5 ${isUnlocked ? 'text-white' : 'text-stone-500'}`}>
+                            {level.name}
+                            {isHard && isUnlocked && (
+                              <span className="text-[9px] font-mono text-red-400 border border-red-700/70 rounded px-1 py-px leading-none">困难</span>
+                            )}
+                          </div>
+                          <div className="text-[10px] text-stone-400 truncate">{scene.description}</div>
+                        </div>
+                      </div>
+                      {/* 星级评价槽：默认3槽，点亮历史最佳（图标与结算界面一致） */}
+                      <div className="flex items-center gap-1 mx-2">
+                        {[1, 2, 3].map((star) => (
+                          <div
+                            key={star}
+                            className={`w-5 h-5 rounded-full flex items-center justify-center ${
+                              isUnlocked && star <= bestStars
+                                ? 'bg-yellow-500 text-white shadow-md'
+                                : 'bg-stone-800/80 text-stone-600 border border-stone-700'
+                            }`}
+                          >
+                            <Flame size={9} />
+                          </div>
+                        ))}
+                      </div>
+                      {isUnlocked ? (
+                        <span className="text-[10px] text-yellow-400 font-bold ml-2">{TEXT_CONFIG.ui.menu.rewardMultiplier(scene.rewardMultiplier)}</span>
+                      ) : (
+                        <span className="text-[10px] text-stone-600 ml-2">{TEXT_CONFIG.ui.menu.locked}</span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <button onClick={() => { audio?.playClick(); setShowModes(false); setSelectedMode(null); }} className="text-stone-400 hover:text-white text-sm font-mono transition-colors tracking-wider">
+            [ {TEXT_CONFIG.ui.menu.back} ]
+          </button>
         </div>
       </div>
     );
@@ -335,8 +298,7 @@ export const GameMenu: React.FC<GameMenuProps> = ({
               </div>
             )}
 
-            <div className="text-center text-white font-bold text-lg mb-3">{TEXT_CONFIG.ui.menu.selectDifficulty}</div>
-            {/* Easy */}
+            {/* 仅简单模式（v2.6：困难模式已移除，困难关卡作为剧情关卡置于巢穴后） */}
             <button
               onClick={() => {
                 audio?.playClick();
@@ -347,19 +309,6 @@ export const GameMenu: React.FC<GameMenuProps> = ({
             >
               <img src="/assets/UI/btn_easy.png" alt="" className="w-full h-auto" draggable={false} />
               <span className="absolute inset-0 flex items-center justify-center text-amber-100 font-bold text-lg font-mono tracking-wider [text-shadow:1px_1px_0_#000,-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000] pl-[5%]">{TEXT_CONFIG.ui.menu.easy}</span>
-            </button>
-
-            {/* Hard */}
-            <button
-              onClick={() => {
-                audio?.playClick();
-                const scene = selectedScene || SceneType.STREET;
-                onStart('hard', selectedMode || GameMode.ENDLESS, scene);
-              }}
-              className="relative w-full transition-all hover:scale-105 active:scale-95"
-            >
-              <img src="/assets/UI/btn_hard.png" alt="" className="w-full h-auto" draggable={false} />
-              <span className="absolute inset-0 flex items-center justify-center text-amber-100 font-bold text-lg font-mono tracking-wider [text-shadow:1px_1px_0_#000,-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000] pl-[5%]">{TEXT_CONFIG.ui.menu.hard}</span>
             </button>
 
             <button onClick={() => { audio?.playClick(); setShowModes(false); setSelectedMode(null); }} className="text-stone-400 hover:text-white text-sm transition-colors mt-1">

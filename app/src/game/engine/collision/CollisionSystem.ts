@@ -82,6 +82,9 @@ export class CollisionSystem {
   /** 武器伤害配置 */
   private weaponDamageConfigs!: Record<string, WeaponDamageConfig>;
 
+  /** 净化诊断：上一帧因无敌帧被拦截火焰直射的小怪数量（拦截开始/结束沿打点） */
+  private _purgeImmuneBlockedCount: number = 0;
+
   /**
    * 构造函数
    */
@@ -137,12 +140,15 @@ export class CollisionSystem {
       guns.push({ x: player.x + tripleFlame.sideOffset, damageMult: tripleFlame.sideDamageMult });
     }
 
+    let purgeBlocked = 0; // 净化诊断：本帧被无敌帧拦截的小怪数
     for (const r of roaches) {
       if (r.state !== RoachState.ALIVE) continue;
       if (r.isBoss) continue;
       if (r.type === RoachType.TIMED_SUICIDE && r.placeTimer && r.placeTimer > 0) continue;
       // 体育生空中飞跃免疫火焰直射（束伤害不生效，火区/火墙由引擎 fire 回调另行拦截）
       if (r.type === RoachType.JOCK && r.jumpPhase === 'air') continue;
+      // 巢穴蟑老大·净化无敌帧：免疫火焰直射（0.5s）
+      if ((r.purgeImmuneTimer ?? 0) > 0) { purgeBlocked++; continue; }
 
       for (const gun of guns) {
         if (r.type === RoachType.FLYING || r.type === RoachType.FLYING_SUICIDE) {
@@ -151,7 +157,8 @@ export class CollisionSystem {
           const flyHitWidth = beamHalfWidth * colCfg.flyingHitWidthMultiplier;
           if (flyDist < flyHitWidth && vertDist > 0 && vertDist < maxRange * colCfg.flyingRangeMultiplier) {
             const falloff = 1 - (vertDist / (maxRange * colCfg.flyingFalloffRange)) * colCfg.flameFalloffFactor;
-            const damage = this.getWeaponDamage(player.currentWeapon) * player.damageMultiplier * falloff * gun.damageMult;
+            const damage = this.getWeaponDamage(player.currentWeapon) * player.damageMultiplier * falloff * gun.damageMult
+              * (player.powerBoostTimer > 0 ? 2 : 1); // 火力全开伤害 ×2
             // 气体护盾拦截：矩形保护内的目标免疫火焰直射，伤害转移至护盾
           const protector = this.config.onFindProtectingShield?.(r);
           if (protector) {
@@ -182,7 +189,8 @@ export class CollisionSystem {
         if (perpDist < beamHalfWidth) {
           const distFromNozzle = clampedT * maxRange;
           const falloff = 1 - (distFromNozzle / maxRange) * colCfg.flameFalloffFactor;
-          let damage = this.getWeaponDamage(player.currentWeapon) * player.damageMultiplier * falloff * gun.damageMult;
+          let damage = this.getWeaponDamage(player.currentWeapon) * player.damageMultiplier * falloff * gun.damageMult
+            * (player.powerBoostTimer > 0 ? 2 : 1); // 火力全开伤害 ×2
 
           if (r.type === RoachType.QUEEN) {
             damage *= (1 - colCfg.bossDamageResist);
@@ -208,6 +216,16 @@ export class CollisionSystem {
           this.triggerPanicOnArmorBreak(r, isStuckByBoard ? isStuckByBoard(r.id) : false);
         }
       }
+    }
+
+    // 净化诊断：无敌帧拦截开始/结束沿打点（仅状态变化时打印，排查生效时机用）
+    if (purgeBlocked !== this._purgeImmuneBlockedCount) {
+      if (purgeBlocked > 0 && this._purgeImmuneBlockedCount === 0) {
+        console.info(`[Collision] 净化无敌帧拦截火焰直射: ${purgeBlocked} 只小怪免疫中`);
+      } else if (purgeBlocked === 0) {
+        console.info(`[Collision] 净化无敌帧拦截结束: 火焰直射恢复命中`);
+      }
+      this._purgeImmuneBlockedCount = purgeBlocked;
     }
   }
 

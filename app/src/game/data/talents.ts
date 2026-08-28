@@ -21,16 +21,16 @@ export const TALENT_TIER_GATE: Record<number, number> = { 2: 2, 3: 5, 4: 8, 5: 1
 export const TALENT_DEFS: Talent[] = [
   // ==================== 🔥 猛火系（伤害 · 近程爆发） ====================
   {
-    id: 'pressure', name: '增压阀', description: '火焰伤害 +4%',
+    id: 'pressure', name: '增压阀', description: '1级+2%伤害，2级+4%伤害，3级+6%伤害',
     maxLevel: 3, currentLevel: 0, cost: 1,
     branch: 'inferno', tier: 1,
-    effect: (level) => ({ damageMultiplier: 1 + level * 0.04 }),
+    effect: (level) => ({ damageMultiplier: 1 + level * 0.02 }),
   },
   {
-    id: 'hotfuel', name: '高温燃料', description: '火焰伤害 +5%',
+    id: 'hotfuel', name: '高温燃料', description: '1级+3%伤害，2级+6%伤害',
     maxLevel: 2, currentLevel: 0, cost: 1,
     branch: 'inferno', tier: 2,
-    effect: (level) => ({ damageMultiplier: 1 + level * 0.05 }),
+    effect: (level) => ({ damageMultiplier: 1 + level * 0.03 }),
   },
   {
     id: 'alloy', name: '耐热合金', description: '过热阈值 +10%',
@@ -67,10 +67,11 @@ export const TALENT_DEFS: Talent[] = [
 
   // ==================== 🔵 长枪系（射程 · 远程精准） ====================
   {
-    id: 'nozzle', name: '扩口喷嘴', description: '火焰射程 +6%',
+    id: 'nozzle', name: '扩口喷嘴', description: '1级+2%射程，2级+4%射程，3级+6%射程',
     maxLevel: 3, currentLevel: 0, cost: 1,
     branch: 'lance', tier: 1,
-    effect: (level) => ({ fireRangeMultiplier: 1 + level * 0.06 }),
+    maxedNote: '射程加6%',
+    effect: (level) => ({ fireRangeMultiplier: 1 + level * 0.02 }),
   },
   {
     id: 'fins', name: '散热鳍片', description: '冷却速度 +10%',
@@ -85,7 +86,7 @@ export const TALENT_DEFS: Talent[] = [
     effect: (level) => ({ gasMultiplier: 1 + level * 0.08 }),
   },
   {
-    id: 'steel', name: '寒钢枪管', description: '火焰射程 +10%，枪管变长变银',
+    id: 'steel', name: '寒钢枪管', description: '火焰射程 +10%，喷嘴圆环染为蓝色',
     maxLevel: 1, currentLevel: 0, cost: 2,
     branch: 'lance', tier: 3, keystone: true,
     requiresTalent: ['nozzle'],
@@ -98,7 +99,7 @@ export const TALENT_DEFS: Talent[] = [
     effect: (level) => ({ fireRangeMultiplier: 1 + level * 0.05 }),
   },
   {
-    id: 'lance', name: '聚能长枪', description: '射程 +35%、伤害 +20%，火束变白变细',
+    id: 'lance', name: '聚能长枪', description: '射程 +35%、伤害 +20%，枪口聚能环+青色准星',
     maxLevel: 1, currentLevel: 0, cost: 2,
     branch: 'lance', tier: 5, keystone: true,
     exclusiveGroup: 'gunT5',
@@ -113,10 +114,10 @@ export const TALENT_DEFS: Talent[] = [
     effect: (level) => ({ rewardMultiplier: 1 + level * 0.08 }),
   },
   {
-    id: 'saver', name: '节约大师', description: '拾取道具时额外 +1 份',
-    maxLevel: 2, currentLevel: 0, cost: 1,
+    id: 'saver', name: '节约大师', description: '道具掉落频率 1级+15%，2级+22%，3级+30%',
+    maxLevel: 3, currentLevel: 0, cost: 1,
     branch: 'support', tier: 2,
-    effect: (level) => ({ itemAmmoFlat: level }),
+    effect: (level) => ({ itemDropFreqMult: 1 + [0, 0.15, 0.22, 0.30][level] }),
   },
   {
     id: 'shieldm', name: '护盾专精', description: '临时护盾无敌时长 +1 秒',
@@ -125,7 +126,7 @@ export const TALENT_DEFS: Talent[] = [
     effect: (level) => ({ shieldDurationAdd: level }),
   },
   {
-    id: 'wall', name: '防线协议', description: '防线 HP +25%，防线加装甲板',
+    id: 'wall', name: '防线协议', description: '防线 HP +25%',
     maxLevel: 1, currentLevel: 0, cost: 2,
     branch: 'support', tier: 3, keystone: true,
     requiresAnyTalent: ['saver', 'shieldm'],
@@ -168,6 +169,12 @@ export const TALENT_DEFS: Talent[] = [
     maxLevel: 1, currentLevel: 0, cost: 2,
     branch: 'support', tier: 5, keystone: true,
     effect: () => ({ swatterCooldownAdd: -15, swatterStunAdd: 2 }),
+  },
+  {
+    id: 'knifem', name: '斩螂专精', description: '斩螂·110 每级多反弹一次（基础三连杀，击杀后在死亡位置反弹寻找下一目标）',
+    maxLevel: 3, currentLevel: 0, cost: 1,
+    branch: 'support', tier: 5,
+    effect: (level) => ({ knifeBounceAdd: level }),
   },
   {
     id: 'radarup', name: '雷达增程', description: '雷达激光弹匣 +6 发、射速 +15%',

@@ -3,8 +3,9 @@
  * @description
  * 点击道具按钮后，刀刃自动跃向场上威胁最高的目标（一击必杀，无视护甲）：
  *   优先级：拆除中的隧道工 > 冲刺中的地铁精英 > 距离玩家最近的蟑螂。
- * 刀刃从防线飞跃至目标（斩击），随后飞回。被斩的地铁精英不触发碾压分裂
- * （分裂仅由列车碾压触发，引擎击杀管线按 killedByTrain 标记区分）。
+ * 刀刃从防线飞跃至目标（斩击）后，在死亡敌人位置反弹寻找下一个目标继续击杀，
+ * 直至击杀数达到上限（1 + 天赋 knifeBounceAdd 级数），随后飞回防线。
+ * 被斩的地铁精英不触发碾压分裂（分裂仅由列车碾压触发，引擎击杀管线按 killedByTrain 标记区分）。
  * Boss（女王）免疫斩击，不会被选为目标。
  */
 
@@ -18,6 +19,8 @@ export interface KnifeSystemConfig {
   getCanvasWidth: () => number;
   /** 获取防线 Y 坐标 */
   getDefenseLineY: () => number;
+  /** 获取反弹次数加成（天赋 knifeBounceAdd，默认 0 → 基础杀 1 个；N → 共杀 N+1 个） */
+  getBounceBonus?: () => number;
   /** 浮动文字 */
   onAddFloatingText: (x: number, y: number, text: string, color: string) => void;
   /** 粒子 */
@@ -50,6 +53,10 @@ interface KnifeDash {
   targetId: number | null;
   /** 飞行方向角（渲染旋转用） */
   angle: number;
+  /** 已击杀数（含本次目标若未击杀则不计） */
+  kills: number;
+  /** 本段起跳点（反弹链上一点，用于渲染旋转） */
+  // 每次反弹后 fromX/fromY 更新为上一击杀点
 }
 
 export class KnifeSystem {
@@ -57,7 +64,7 @@ export class KnifeSystem {
   private dash: KnifeDash = {
     active: false, phase: 'out', timer: 0, duration: 0,
     fromX: 0, fromY: 0, toX: 0, toY: 0, x: 0, y: 0,
-    targetId: null, angle: 0,
+    targetId: null, angle: 0, kills: 0,
   };
 
   constructor(config: KnifeSystemConfig) {
@@ -72,6 +79,7 @@ export class KnifeSystem {
   reset(): void {
     this.dash.active = false;
     this.dash.targetId = null;
+    this.dash.kills = 0;
   }
 
   /** 刀刃是否正在飞跃（飞跃期间不响应再次释放） */
@@ -79,11 +87,18 @@ export class KnifeSystem {
     return this.dash.active;
   }
 
+  /** 本回合最大击杀数 = 3（基础三连杀）+ 天赋反弹加成（每级多弹一次） */
+  private maxKills(): number {
+    const bonus = this.config.getBounceBonus?.() ?? 0;
+    return 3 + Math.max(0, Math.floor(bonus));
+  }
+
   /**
    * 按威胁优先级选择目标：冲刺中的精英 > 最近蟑螂
-   * @returns 目标蟑螂；场上无可斩目标时返回 null
+   * @param fromX 搜索原点 X（首段=玩家 X，反弹段=上一击杀点 X）
+   * @param fromY 搜索原点 Y
    */
-  findTarget(roaches: Roach[], playerX: number, defenseLineY: number): Roach | null {
+  findTarget(roaches: Roach[], fromX: number, fromY: number): Roach | null {
     let chargingElite: Roach | null = null;
     let nearest: Roach | null = null;
     let nearestDist = Infinity;
@@ -96,8 +111,8 @@ export class KnifeSystem {
         chargingElite = r;
         continue;
       }
-      const dx = r.x - playerX;
-      const dy = r.y - defenseLineY;
+      const dx = r.x - fromX;
+      const dy = r.y - fromY;
       const d = dx * dx + dy * dy;
       if (d < nearestDist) {
         nearestDist = d;
@@ -134,20 +149,21 @@ export class KnifeSystem {
       y: defenseLineY,
       targetId: target.id,
       angle: Math.atan2(target.y - defenseLineY, target.x - playerX),
+      kills: 0,
     };
     this.config.onPlaySound();
     this.config.onVibrate();
     return true;
   }
 
-  /** 主更新（每帧调用）：推进刀刃飞跃，到达目标时击杀 */
+  /** 主更新（每帧调用）：推进刀刃飞跃，到达目标时击杀并按需反弹 */
   update(deltaTime: number, roaches: Roach[]): void {
     if (!this.dash.active) return;
     const d = this.dash;
     d.timer -= deltaTime;
     const progress = Math.max(0, Math.min(1, 1 - d.timer / d.duration));
 
-    // 刀刃位置插值（out：防线→目标；back：目标→防线）
+    // 刀刃位置插值（out：起点→目标；back：目标→防线）
     if (d.phase === 'out') {
       d.x = d.fromX + (d.toX - d.fromX) * progress;
       d.y = d.fromY + (d.toY - d.fromY) * progress;
@@ -174,9 +190,12 @@ export class KnifeSystem {
     if (d.phase === 'out') {
       // 到达目标：击杀（目标可能已提前死亡，则只播放斩击特效）
       const target = roaches.find(r => r.id === d.targetId);
+      let killed = false;
       if (target && target.state === RoachState.ALIVE) {
         this.config.onKillRoach(target);
         this.config.onAddFloatingText(target.x, target.y - 40, TEXT_CONFIG.combat.knifeKill.text, TEXT_CONFIG.combat.knifeKill.color);
+        killed = true;
+        d.kills++;
       }
       // 斩击弧光粒子
       for (let k = 0; k < 10; k++) {
@@ -193,9 +212,33 @@ export class KnifeSystem {
         });
       }
       this.config.onScreenShake(5);
-      // 进入回程
+
+      // 反弹：已击杀且未达上限 → 从当前击杀点找下一个目标
+      if (killed && d.kills < this.maxKills()) {
+        const next = this.findTarget(roaches, d.toX, d.toY);
+        if (next) {
+          d.phase = 'out';
+          d.timer = d.duration;
+          d.fromX = d.toX;
+          d.fromY = d.toY;
+          d.toX = next.x;
+          d.toY = next.y;
+          d.targetId = next.id;
+          d.angle = Math.atan2(next.y - d.fromY, next.x - d.fromX);
+          this.config.onPlaySound();
+          return;
+        }
+      }
+
+      // 无更多目标或已达上限 → 进入回程（从当前点飞回防线）
+      const defenseLineY = this.config.getDefenseLineY();
       d.phase = 'back';
       d.timer = d.duration;
+      // back 插值：d.x/y 从 d.toX/toY → d.fromX/fromY；将回程起点设为当前点，终点设为玩家防线
+      d.toX = d.toX;
+      d.toY = d.toY;
+      d.fromX = this.config.getCanvasWidth() / 2;
+      d.fromY = defenseLineY;
     } else {
       // 回到防线，飞跃结束
       d.active = false;

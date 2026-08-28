@@ -9,8 +9,8 @@
  * 所有元素均为 pointer-events-none 容器，仅交互按钮启用 pointer-events-auto。
  */
 import React from 'react';
-import type { Player, Economy, GameProgress, BossBattleState, SceneType, InventoryItem } from '@/game/types';
-import { GameMode } from '@/game/types';
+import type { Player, Economy, GameProgress, BossBattleState, InventoryItem } from '@/game/types';
+import { GameMode, SceneType } from '@/game/types';
 import { SCENE_WAVE_CONFIGS, CONSUMABLE_DEFS, TEXT_CONFIG } from '@/game/data';
 import { Pause, Droplets, Gauge, Target, Flame, ChevronRight } from 'lucide-react';
 import type { AudioManager } from '@/game/audio';
@@ -76,14 +76,16 @@ const WEAPON_ICONS: Record<string, { icon: React.ReactNode; name: string; color:
 
 /** 掉落道具图片映射 */
 const ITEM_IMAGES: Record<string, string> = {
-  sticky: '/assets/item_sticky.png',
-  poison: '/assets/item_poison.png',
-  molotov: '/assets/item_molotov.png',
-  shotgun: '/assets/item_shotgun.png',
-  radar: '/assets/item_radar.png',
-  fan: '/assets/fan.png',
-  swatter: '/assets/item_swatter.png',
+  sticky: '/assets/drop_sticky.png',
+  poison: '/assets/drop_poison.png',
+  molotov: '/assets/drop_molotov.png',
+  shotgun: '/assets/drop_shotgun.png',
+  radar: '/assets/drop_radar.png',
+  fan: '/assets/drop_fan.png',
+  swatter: '/assets/drop_swatter.png',
   knife: '/assets/drop_knife.png',
+  invoice: '/assets/drop__invoice.png',
+  jammer: '/assets/drop_Jammer.png',
 };
 
 /** 掉落道具中文名称映射 */
@@ -96,6 +98,8 @@ const ITEM_NAMES: Record<string, string> = {
   fan: TEXT_CONFIG.items.fan,
   swatter: TEXT_CONFIG.items.swatter,
   knife: TEXT_CONFIG.items.knife,
+  invoice: TEXT_CONFIG.items.invoice,
+  jammer: TEXT_CONFIG.items.jammer,
 };
 
 /** Buff 图标子组件：缩略版（约 12×12），带闪烁动画 */
@@ -194,7 +198,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
     onRegisterTutorialElement?.(id, el);
   };
 
-  const totalWaves = gameMode === GameMode.ENDLESS ? '∞' : (SCENE_WAVE_CONFIGS[currentScene as keyof typeof SCENE_WAVE_CONFIGS]?.length || 10);
+  const totalWaves = gameMode === GameMode.ENDLESS || currentScene === SceneType.NEST ? '∞' : (SCENE_WAVE_CONFIGS[currentScene as keyof typeof SCENE_WAVE_CONFIGS]?.length || 10);
 
   const allWeapons = ['flamethrower'];
   const unlockedWeapons = progress?.weaponsUnlocked || ['flamethrower'];

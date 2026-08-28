@@ -650,6 +650,12 @@ export class AudioManager {
           easy: '/assets/bgm_basement_hard.mp3',
           hard: '/assets/bgm_basement_hard.mp3',
         };
+      case 'nest':
+        // 巢穴场景使用困难难度街道 BGM
+        return {
+          easy: '/assets/bgm_street_hard.mp3',
+          hard: '/assets/bgm_street_hard.mp3',
+        };
       default:
         return null; // 该场景无自定义 BGM
     }
@@ -1467,6 +1473,187 @@ export class AudioManager {
     subOsc.start(now);
   }
 
+  // ========== 蟑老大 Boss 战合成音效（巢穴终局，无音频文件） ==========
+
+  /** 投弹红光预警（全场最重要音效：尖锐三连脉冲，穿透 BGM） */
+  playBossKingWarn() {
+    if (!this.audioContext || this.isMuted) return;
+    const ctx = this.audioContext;
+    const now = ctx.currentTime;
+    for (let i = 0; i < 3; i++) {
+      const t = now + i * 0.35;
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(880, t);
+      osc.frequency.exponentialRampToValueAtTime(1400, t + 0.15);
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(1.8, t);
+      gain.gain.exponentialRampToValueAtTime(0.01, t + 0.3);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.3);
+    }
+  }
+
+  /** 投弹出手（短促下坠呼啸） */
+  playBossKingThrow() {
+    if (!this.audioContext || this.isMuted) return;
+    const ctx = this.audioContext;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(600, now);
+    osc.frequency.exponentialRampToValueAtTime(180, now + 0.4);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(2.5, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.4);
+  }
+
+  /** 空中引爆（清脆高频爆裂 + 亮响泛音，与地面自爆区分） */
+  playBossKingAirburst() {
+    if (!this.audioContext || this.isMuted) return;
+    const ctx = this.audioContext;
+    const now = ctx.currentTime;
+    // 高频脆响
+    const crack = ctx.createOscillator();
+    crack.type = 'triangle';
+    crack.frequency.setValueAtTime(1800, now);
+    crack.frequency.exponentialRampToValueAtTime(300, now + 0.12);
+    const crackGain = ctx.createGain();
+    crackGain.gain.setValueAtTime(5.0, now);
+    crackGain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+    crack.connect(crackGain);
+    crackGain.connect(ctx.destination);
+    crack.start(now);
+    crack.stop(now + 0.15);
+    // 噪声碎片
+    const bufferSize = ctx.sampleRate * 0.25;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * 0.7;
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.setValueAtTime(1200, now);
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(3.5, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+    noise.connect(hp);
+    hp.connect(noiseGain);
+    noiseGain.connect(ctx.destination);
+    noise.start(now);
+    // 亮响泛音尾
+    const ring = ctx.createOscillator();
+    ring.type = 'sine';
+    ring.frequency.setValueAtTime(1200, now + 0.05);
+    ring.frequency.exponentialRampToValueAtTime(2400, now + 0.35);
+    const ringGain = ctx.createGain();
+    ringGain.gain.setValueAtTime(1.2, now + 0.05);
+    ringGain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+    ring.connect(ringGain);
+    ringGain.connect(ctx.destination);
+    ring.start(now + 0.05);
+    ring.stop(now + 0.4);
+  }
+
+  /** 漏弹地面爆炸（闷响冲击） */
+  playBossKingGroundBurst() {
+    if (!this.audioContext || this.isMuted) return;
+    const ctx = this.audioContext;
+    const now = ctx.currentTime;
+    const dong = ctx.createOscillator();
+    dong.type = 'sine';
+    dong.frequency.setValueAtTime(180, now);
+    dong.frequency.exponentialRampToValueAtTime(25, now + 0.5);
+    const dongGain = ctx.createGain();
+    dongGain.gain.setValueAtTime(10.0, now);
+    dongGain.gain.exponentialRampToValueAtTime(0.01, now + 0.8);
+    dong.connect(dongGain);
+    dongGain.connect(ctx.destination);
+    dong.start(now);
+    dong.stop(now + 0.8);
+  }
+
+  /** 汁液溅屏（潮湿拍打声：短噪声 + 低通闷拍） */
+  playBossKingGooSplat() {
+    if (!this.audioContext || this.isMuted) return;
+    const ctx = this.audioContext;
+    const now = ctx.currentTime;
+    const bufferSize = ctx.sampleRate * 0.15;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * 0.6;
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(900, now);
+    lp.frequency.exponentialRampToValueAtTime(200, now + 0.15);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(4.5, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.18);
+    noise.connect(lp);
+    lp.connect(gain);
+    gain.connect(ctx.destination);
+    noise.start(now);
+  }
+
+  /** 吹风（3 秒持续风声：滤波噪声起伏） */
+  playBossKingWind() {
+    if (!this.audioContext || this.isMuted) return;
+    const ctx = this.audioContext;
+    const now = ctx.currentTime;
+    const duration = 3.0;
+    const bufferSize = ctx.sampleRate * duration;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * 0.35;
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.setValueAtTime(400, now);
+    bp.frequency.linearRampToValueAtTime(900, now + duration * 0.5);
+    bp.frequency.linearRampToValueAtTime(350, now + duration);
+    bp.Q.setValueAtTime(0.6, now);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.01, now);
+    gain.gain.linearRampToValueAtTime(3.0, now + 0.4);
+    gain.gain.setValueAtTime(3.0, now + duration - 0.5);
+    gain.gain.linearRampToValueAtTime(0.01, now + duration);
+    noise.connect(bp);
+    bp.connect(gain);
+    gain.connect(ctx.destination);
+    noise.start(now);
+  }
+
+  /** 净化金光（上行清透琶音） */
+  playBossKingPurge() {
+    if (!this.audioContext || this.isMuted) return;
+    const ctx = this.audioContext;
+    const now = ctx.currentTime;
+    const notes = [523, 659, 784, 1047];
+    notes.forEach((freq, i) => {
+      const t = now + i * 0.09;
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, t);
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(1.5, t);
+      gain.gain.exponentialRampToValueAtTime(0.01, t + 0.35);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.35);
+    });
+  }
+
   /** 播放杀虫喷雾 2 秒持续嘶嘶喷射音效 */
   playInsecticideSpray() {
     if (!this.audioContext || this.isMuted) return;
@@ -1781,8 +1968,16 @@ export class AudioManager {
       this.flyingBuzzAudio = this.createAudioElement('/assets/flying_roach_buzz.mp3', 0.4);
       this.flyingBuzzAudio.loop = true;
     }
+    // 修复 2026-08-27：createAudioElement 初始 muted=true，而 setupAudioUnmute 只解除构造期 9 个元素的静音，
+    // 嗡嗡元素为懒创建，必须在此处解除（否则嗡嗡声永远无声）
+    if (!this.isMuted) this.flyingBuzzAudio.muted = false;
     this.flyingBuzzAudio.currentTime = 0;
-    this.flyingBuzzAudio.play().catch(() => {});
+    const el = this.flyingBuzzAudio;
+    el.play().then(() => {
+      // 修复 2026-08-27（iOS 竞态）：play() promise 尚未完成时若已调用 stop（pause），iOS 会忽略 pause 继续播放——
+      // promise 完成时复查标志，若已停止则补一次暂停，防止嗡嗡声在退出场景后永久残留
+      if (!this.flyingBuzzPlaying) el.pause();
+    }).catch(() => {});
     this.flyingBuzzPlaying = true;
   }
 

@@ -125,11 +125,12 @@ export const ENEMY_DEFS: Record<RoachType, {
   [RoachType.TIMED_SUICIDE]: {
     name: '定时自爆蟑螂',
     description: '到达防线前64px放置炸弹，2秒后变身大蟑螂。被杀死后尸体原地爆炸',
-    hp: 14,          // 中低血量（30→20→14，超市量产化后下调，靠闪避与阵型保护生存）
+    hp: 10,          // 低血量（下调：14→10）
     speed: 1.4,      // 较快，需要快速接近防线
     reward: 40,      // 高奖励（医院场景精英）
     color: '#f59e0b', // 琥珀色（警告色）
     size: 60,
+    armor: 6,        // 护甲值（下调）
     special: ['shield', 'bomb_placement', 'transform_large'], // 护盾 / 放置炸弹 / 变身
   },
   // ========== 地铁场景专属蟑螂 ==========
@@ -146,7 +147,8 @@ export const ENEMY_DEFS: Record<RoachType, {
   [RoachType.SUBWAY_ELITE]: {
     name: '地铁蟑螂精英',
     description: '从空中掠过，速度极快，不受地面阻挡影响',
-    hp: 45,          // 较高血量（精英单位；v2.6 移除 10 点护甲并补血：27→45）
+    hp: 32,          // 血量下调：45→32
+    armor: 5,        // 护甲值下调：10→5
     speed: 2.4,      // 与飞行蟑螂一致，速度极快
     reward: 4,       // 与飞行蟑螂一致
     color: '#4a5a6a', // 灰蓝色（与飞行蟑螂一致）
@@ -193,7 +195,7 @@ export const BALANCE_ENEMIES = {
   // 玩家使用火焰喷射器，消耗燃气，过热时需要冷却
   player: {
     baseGasCapacity: 100,        // 基础燃气容量（喷射帧数）
-    baseFireRange: 250,          // 基础火焰射程（像素），天赋满级 ×1.4 = 504
+    baseFireRange: 260,          // 基础火焰射程（像素），天赋满级 ×1.4 = 364
     baseOverheatThreshold: 1800, // 基础过热阈值（累积热量）
     heatWarningDuration: 3,      // 过热警告持续时间（秒），警告剩余 3 秒
     overheatCooldown: {          // 过热冷却时间（秒），按火焰模式
@@ -204,7 +206,7 @@ export const BALANCE_ENEMIES = {
     heatDecayRate: { easy: 1.5, hard: 1 }, // 热量衰减速率（简单模式冷却更快）
     maxReloadTime: { easy: 8, hard: 15 },  // 最大换罐时间（秒）
     shotgunPellets: 5,           // 散弹弹丸数
-    nozzleOffsetY: 322,          // 喷火枪喷嘴 Y 偏移（像素，从屏幕顶部算）
+    nozzleOffsetY: 327,          // 喷火枪喷嘴 Y 偏移（像素，从屏幕顶部算）
     armorShieldCacheInterval: 0.3, // 护甲/护盾缓存刷新间隔（秒）
   },
 
@@ -425,6 +427,13 @@ export const BALANCE_ENEMIES = {
       minX: 50,                // X 钳制左边界
       maxX: 490,               // X 钳制右边界
       jumpStopDistance: 70,    // 距防线小于该距离时不跳（直接冲刺），避免飞跃过头
+      // ===== 落地冲击波（推动周围其它蟑螂，2026-08-27） =====
+      // 落地点向外扩散的力：波纹范围内其它地面蟑螂被向外推开（位移按距离线性衰减）
+      knockback: {
+        radius: 120,           // 冲击波作用半径（像素，与落地尘环 ringEndR=100 配套外扩）
+        strength: 52,          // 最大位移强度（像素，贴脸满推，距离越远越小）
+        yRatio: 0.6,           // Y 方向力度比例（压扁垂直推挤，贴合地面透视，避免推飞过远）
+      },
     },
   },
 } as const;

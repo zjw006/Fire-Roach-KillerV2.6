@@ -64,6 +64,9 @@ export const TEXT_CONFIG = {
     insecticideEnd: { text: '毒气喷射结束', color: '#9ca3af' },
     insecticideHit: { text: (n: number) => `毒气命中${n}只!`, color: '#4ade80' },
 
+    // 须须干扰器
+    jammerActivate: { text: '须须干扰器启动! 全场蟑螂陷入混乱!', color: '#c084fc' },
+
     // 蟑螂AI
     queenSummon: { text: '女王召唤了小蟑螂!', color: '#ff44aa' },
     bombPlaced: { text: '炸弹已安放!', color: '#ef4444' },
@@ -124,6 +127,7 @@ export const TEXT_CONFIG = {
     shieldRepair: { text: '护盾修理!', color: '#a8a29e' },
     knifeKill: { text: '一击必杀!', color: '#e2e8f0' },
     knifeNoTarget: { text: '没有可斩的目标!', color: '#9ca3af' },
+    invoiceBoost: { text: '发票加成！金币收益+50%!', color: '#fbbf24' },
     disintegrate: { text: '解体!', color: '#88ccff' },
     explode: { text: (n: number) => `爆炸!(${n}只受波及)`, color: '#ff6600' },
     embryoBurst: { text: '【胚胎暴走】', color: '#ff0040' },
@@ -268,6 +272,8 @@ export const TEXT_CONFIG = {
     fan: '强力风扇',
     swatter: '电蚊拍',
     knife: '斩螂·110',
+    invoice: '蟑叔发票',
+    jammer: '须须干扰器',
   },
 
   // ===== 武器名称 =====

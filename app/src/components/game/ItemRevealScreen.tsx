@@ -116,7 +116,7 @@ export const ItemRevealScreen: React.FC<ItemRevealScreenProps> = ({ item, onComp
               className="w-22 h-22 object-contain drop-shadow-xl"
               style={{ width: '80px', height: '80px' }}
               onError={(e) => {
-                (e.target as HTMLImageElement).src = '/assets/item_sticky.png';
+                (e.target as HTMLImageElement).src = '/assets/drop_sticky.png';
               }}
             />
           </div>

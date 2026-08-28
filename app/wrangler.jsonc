@@ -1,0 +1,19 @@
+// Cloudflare Workers 全栈部署配置（静态站 + API）
+// 使用 wrangler jsonc 配置；部署前请将下方占位环境变量替换为真实值
+{
+  "name": "fire-roach-killer",
+  "main": "cf-worker.ts",
+  "compatibility_date": "2025-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./dist/public",
+    "binding": "ASSETS",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "single-page-application"
+  },
+  "vars": {
+    "APP_ID": "",
+    "APP_SECRET": "",
+    "DATABASE_URL": ""
+  }
+}

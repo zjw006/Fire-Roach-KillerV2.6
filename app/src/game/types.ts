@@ -241,6 +241,10 @@ export interface TripleFlameState {
   /** 侧枪与中心枪的距离 */
   sideOffset: number;
   sideDamageMult: number;
+  /** 侧枪贴图高度（玩家单位，×s 换算像素；0 表示未配置用回退渲染） */
+  sideBarrelHeight?: number;
+  /** 侧枪贴图 Y 偏移（玩家单位，相对主枪中心） */
+  sideBarrelYOffset?: number;
 }
 
 // [REMOVED] EggPod system completely removed
@@ -369,6 +373,10 @@ export interface Roach {
   fanSlowTimer: number;
   fanSlowFactor: number; // 0.0-1.0 speed reduction
   fanPushY: number; // accumulated upward push from fan (negative = pushed back)
+  // 巢穴蟑老大·吹风技能：移速加成剩余时间（秒，>0 时按 BALANCE_CONFIG.bossKing.wind.speedMult 加速）
+  windBoostTimer?: number;
+  // 巢穴蟑老大·净化技能：无敌帧剩余时间（秒，>0 时免疫火焰直射伤害）
+  purgeImmuneTimer?: number;
   // Sticky drop wrapping
   wrappedByDropId: number | null;
   wrapTimer: number;
@@ -514,8 +522,14 @@ export interface Roach {
   jumpStartY?: number;
   jumpEndX?: number;
   jumpEndY?: number;
-  // 已发射的拖尾粒子槽位数（RoachRenderer 空中拖尾节流用，进入 air 时归零）
-  trailEmitted?: number;
+  // 体育生落地冲击波：一次性位移 X（AI 更新时应用并清零；2026-08-27 落地波纹推动周围蟑螂）
+  knockX?: number;
+  // 体育生落地冲击波：一次性位移 Y（同上）
+  knockY?: number;
+  // 须须干扰器：混乱剩余时长（秒，>0 时四处乱窜）
+  confuseTimer?: number;
+  // 须须干扰器：混乱乱窜当前方向（弧度，周期性随机重置）
+  confuseAngle?: number;
 }
 
 /** 列车横扫碾压状态（地铁场景专属） */
@@ -601,6 +615,8 @@ export interface Player {
   maxReloadTime: number;
   coolingTimer: number;
   fireRange: number;
+  /** 火焰视觉射程（扩口喷嘴/风压聚焦只加伤害射程、不拉长火焰视觉；缺省回退 fireRange） */
+  flameVisualRange?: number;
   damageMultiplier: number;
   heatDecayRate: number;
   overheatThreshold: number;
@@ -820,6 +836,8 @@ export interface Talent {
   /** 每级费用（天赋点），基石节点通常 2 */
   cost: number;
   effect: (level: number) => Record<string, number>;
+  /** 满级后追加展示的总结文案（如「射程加6%」） */
+  maxedNote?: string;
   /** 所属分支 */
   branch: 'inferno' | 'lance' | 'support';
   /** 层级（1-6），层门禁：T2=本系2点、T3=5点、T4=8点、T5=12点 */
@@ -905,9 +923,9 @@ export interface GameProgress {
   highestWave: number;
   highestEndlessWave: number;
   totalKills: number;
-  scenesUnlocked: SceneType[];
-  /** 兼容旧版本的可选字段 */
-  scenesCompleted?: SceneType[];
+  scenesUnlocked: string[];
+  /** 兼容旧版本的可选字段（v2.6 起为关卡 ID，含困难关 `${scene}__hard`） */
+  scenesCompleted?: string[];
   weaponsUnlocked?: string[];
   unlockedItems?: string[];
   encyclopedia?: EncyclopediaData;

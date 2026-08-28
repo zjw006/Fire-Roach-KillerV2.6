@@ -7,7 +7,7 @@
 import React, { useRef, useLayoutEffect } from 'react';
 import { ArrowLeft, Map, Lock, Check, Flame } from 'lucide-react';
 import type { GameProgress, SceneType } from '@/game/types';
-import { SCENE_CONFIGS, SCENE_ORDER } from '@/game/data';
+import { SCENE_CONFIGS, STORY_LEVELS } from '@/game/data';
 import type { AudioManager } from '@/game/audio';
 
 interface SceneSelectScreenProps {
@@ -21,11 +21,11 @@ export const SceneSelectScreen: React.FC<SceneSelectScreenProps> = ({ progress, 
   const scenesUnlocked = progress?.scenesUnlocked || ['kitchen'];
   const containerRef = useRef<HTMLDivElement>(null);
 
-  /** 找到最后一个已解锁场景，用于自动滚动定位 */
-  const lastUnlockedScene = [...SCENE_ORDER].reverse().find(s => scenesUnlocked.includes(s));
-  const lastUnlockedIndex = SCENE_ORDER.indexOf(lastUnlockedScene as SceneType);
+  /** 找到最后一个已解锁关卡，用于自动滚动定位 */
+  const lastUnlockedLevel = [...STORY_LEVELS].reverse().find(l => scenesUnlocked.includes(l.id));
+  const lastUnlockedIndex = lastUnlockedLevel ? STORY_LEVELS.indexOf(lastUnlockedLevel) : 0;
 
-  /** 自动滚动到最新解锁场景 */
+  /** 自动滚动到最新解锁关卡 */
   useLayoutEffect(() => {
     const doScroll = () => {
       const el = document.getElementById('scene-card-' + lastUnlockedIndex);
@@ -39,7 +39,7 @@ export const SceneSelectScreen: React.FC<SceneSelectScreenProps> = ({ progress, 
     setTimeout(doScroll, 50);
   }, [lastUnlockedIndex]);
 
-  /** 场景列表：按 SCENE_ORDER 顺序渲染，已解锁可点击选择，未解锁显示解锁条件 */
+  /** 关卡列表：按 STORY_LEVELS 顺序渲染（11 简单 + 6 困难），已解锁可点击选择 */
   return (
     <div ref={containerRef} className="absolute inset-0 flex items-start justify-center bg-black/90 backdrop-blur-sm overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-stone-700/50 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-stone-600/60">
       <div className="w-full max-w-md mx-4 py-6">
@@ -54,32 +54,33 @@ export const SceneSelectScreen: React.FC<SceneSelectScreenProps> = ({ progress, 
           </button>
           <div className="flex items-center gap-2">
             <Map size={16} className="text-amber-400" />
-            <span className="text-amber-400 font-bold">{scenesUnlocked.length}/{SCENE_ORDER.length}</span>
+            <span className="text-amber-400 font-bold">{scenesUnlocked.length}/{STORY_LEVELS.length}</span>
           </div>
         </div>
 
         <h2 className="text-2xl font-bold text-white text-center mb-4">场景选择</h2>
 
         <div className="space-y-3 pb-8 pt-2">
-          {SCENE_ORDER.map((sceneType, index) => {
-            const scene = SCENE_CONFIGS[sceneType];
-            const isUnlocked = scenesUnlocked.includes(sceneType);
+          {STORY_LEVELS.map((level, index) => {
+            const scene = SCENE_CONFIGS[level.scene];
+            const isHard = level.difficulty === 'hard';
+            const isUnlocked = scenesUnlocked.includes(level.id);
             const isLastUnlocked = index === lastUnlockedIndex;
             // 该关卡历史最佳星级（0-3，防线血量不含加血评级，过关多次取最多）
-            const bestStars = progress?.levelStars?.[sceneType] ?? 0;
+            const bestStars = progress?.levelStars?.[level.id] ?? 0;
 
             return (
               <div
-                key={sceneType}
+                key={level.id}
                 id={'scene-card-' + index}
                 className={isLastUnlocked ? 'ring-2 ring-amber-400 rounded-xl' : ''}
               >
                 <button
-                  onClick={() => { audio?.playClick(); if (isUnlocked) onSelectScene(sceneType); }}
+                  onClick={() => { audio?.playClick(); if (isUnlocked) onSelectScene(level.scene); }}
                   disabled={!isUnlocked}
                   className={`w-full text-left rounded-xl border transition-all overflow-hidden ${
                     isUnlocked
-                      ? 'border-stone-600 hover:border-stone-400 hover:scale-[1.02]'
+                      ? isHard ? 'border-red-900/80 hover:border-red-700 hover:scale-[1.02]' : 'border-stone-600 hover:border-stone-400 hover:scale-[1.02]'
                       : 'border-stone-800 opacity-50 cursor-not-allowed'
                   }`}
                 >
@@ -99,8 +100,11 @@ export const SceneSelectScreen: React.FC<SceneSelectScreenProps> = ({ progress, 
                       )}
                     </div>
                     <div>
-                      <div className={`font-bold text-sm ${isUnlocked ? 'text-white' : 'text-stone-500'}`}>
-                        {scene.name}
+                      <div className={`font-bold text-sm flex items-center gap-1.5 ${isUnlocked ? 'text-white' : 'text-stone-500'}`}>
+                        {level.name}
+                        {isHard && isUnlocked && (
+                          <span className="text-[9px] font-mono text-red-400 border border-red-700/70 rounded px-1 py-px leading-none">困难</span>
+                        )}
                       </div>
                       <div className="text-[10px] text-stone-400">{scene.description}</div>
                     </div>
@@ -118,7 +122,7 @@ export const SceneSelectScreen: React.FC<SceneSelectScreenProps> = ({ progress, 
                       </>
                     ) : (
                       <div className="text-[10px] text-stone-600">
-                        通关{SCENE_ORDER[index - 1] ? SCENE_CONFIGS[SCENE_ORDER[index - 1]].name : ''}解锁
+                        通关{index > 0 ? STORY_LEVELS[index - 1].name : ''}解锁
                       </div>
                     )}
                   </div>

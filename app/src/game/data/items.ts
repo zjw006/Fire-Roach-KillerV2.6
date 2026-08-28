@@ -60,7 +60,9 @@ export const WEAPON_DROP_DEFS = {
   radar:   { name: '雷达激光', color: '#22d3ee', ammo: 20, cooldown: 8 },
   fan:     { name: '强力风扇', color: '#a78bfa', ammo: 5,  cooldown: 8 },
   swatter: { name: '电蚊拍',  color: '#fbbf24', type: 'instant' as const, ammo: 1,  cooldown: 10 }, // type='instant' 表示一次性使用，无需持续计时
-  knife:   { name: '斩螂·110', color: '#e2e8f0', ammo: 3,  cooldown: 5 }, // 近战秒杀：自动跃向威胁最高的目标
+  knife:   { name: '斩螂·110', color: '#e2e8f0', ammo: 3,  cooldown: 5 }, // 近战秒杀：自动跃向威胁最高的目标，击杀后反弹寻找下一目标
+  invoice: { name: '蟑叔发票', color: '#fbbf24', type: 'instant' as const, ammo: 1, cooldown: 15 }, // 30秒金币收益+50%
+  jammer:  { name: '须须干扰器', color: '#c084fc', type: 'instant' as const, ammo: 1, cooldown: 12 }, // 5秒全场蟑螂混乱乱窜 + 部分技能失效（地铁通关奖励）
 };
 
 // 拾取道具回收价格（关卡结束时未使用的道具折合金币）
@@ -74,6 +76,8 @@ export const INVENTORY_SELL_PRICES: Record<string, number> = {
   fan:     8,   // 全场减速控制
   swatter: 15,  // 全屏秒杀，最稀有
   knife:   12,  // 近战秒杀，高价值
+  invoice: 10,  // 金币增益道具
+  jammer:  12,  // 全场混乱控制道具
 };
 
 // ========== Boss 配置 ==========
@@ -148,14 +152,36 @@ export const BALANCE_ITEMS = {
     maxInventory: 3,             // 最大携带数量
   },
 
+  // ===== 蟑叔发票 =====
+  // 医院场景通关奖励道具：使用后 30 秒内金币收益 +50%
+  invoice: {
+    duration: 30,                // 增益持续时间（秒）
+    goldMult: 1.5,               // 金币收益倍率（+50%）
+    maxInventory: 3,             // 最大携带数量
+  },
+
+  // ===== 须须干扰器 =====
+  // 地铁场景通关奖励道具：使用后 10 秒内全场蟑螂四处乱窜，且部分技能暂时失效
+  // （护士加血、隧道工修盾/喷甲、大/小/飞行/自爆类闪避）
+  jammer: {
+    duration: 10,                // 混乱持续时间（秒）2026-08-27: 5→10
+    maxInventory: 3,             // 最大携带数量
+    dirChangePerSec: 2.5,        // 乱窜方向重置频率（次/秒，概率式）
+    speedMult: 1.1,              // 乱窜移动速度倍率
+  },
+
   // ===== 三重火焰 =====
   // 三喷火枪模式，主火焰 + 两侧副火焰，覆盖更广
   tripleFlame: {
     duration: 15,                // 持续时间（秒）
-    sideOffset: 100,             // 侧火焰偏移距离（像素）
+    sideOffset: 65,              // 侧火焰偏移距离（像素，⚠玩法：侧火焰伤害位置；调参台 sideGunSpacing）
     sideDamageMult: 0.8,         // 侧火焰伤害倍率（80%）
     warningThreshold: 5,         // 即将结束警告阈值（秒）
     countdownSeconds: [3, 2, 1] as readonly number[], // 倒计时提示时间点
+    // ===== 侧枪贴图渲染（barrel.png 58×109 竖长枪管，与调参台 flamethrower-vfx.html 同名参数一致） =====
+    sideBarrelTexture: '/assets/barrel.png',  // 侧枪贴图路径（主枪仍用 gun.png）
+    sideBarrelHeight: 34,        // 侧枪贴图高度（玩家单位，×s=4 换算像素；宽度按 58:109 等比）
+    sideBarrelYOffset: -20,      // 侧枪贴图 Y 偏移（玩家单位，相对主枪中心，负=上移）
   },
 
   // ===== 投掷物 =====
@@ -254,6 +280,116 @@ export const BALANCE_ITEMS = {
     bossSize: 120,               // Boss 渲染大小（像素）
     bossReward: 500,             // Boss 击杀奖励金币
     bossYRatio: 0.18,            // Boss Y 坐标占屏幕高度的比例
+  },
+
+  // ===== 蟑老大 Boss 战（巢穴终局，2026-08-24 锁定设计，仅 Easy） =====
+  // 玩家无法直接攻击 Boss；唯一输出 = 火枪引爆其投掷的炸弹反伤
+  bossKing: {
+    hp: 3000,                    // Boss 血量（方案A）
+    size: 200,                   // Boss 体型（像素，原 300 的 2/3）
+    patrolXMin: 50,              // 横向巡逻范围（540 逻辑宽）
+    patrolXMax: 490,
+    patrolSpeed: 0.35,           // 巡逻正弦频率（弧度/秒）
+    hoverYRatio: 0.27,           // 悬浮基准 Y（屏高比例，相对定位禁止写死）
+    hoverYAmpRatio: 0.045,       // 垂直浮动幅度（屏高比例）
+    hoverYFreq: 1.1,             // 垂直浮动频率
+    introSec: 2.0,               // 开场亮相延迟（之后才开始技能轮转）
+    telegraphSec: 1.5,           // 技能前摇（红光/金光/张翅提示）
+    phase2HpRatio: 0.5,          // 进入二阶段血量比例
+    phase3HpRatio: 0.2,          // 进入三阶段血量比例
+    phaseCd: { p1: 8, p2: 6, p3: 4 }, // 各阶段技能 CD（秒）
+    rotationRestSec: 6,          // 每施放 3 个技能后的额外休整（加在阶段CD上，让玩家清小怪）
+    // 技能 AI（按战场态势决策，优先级：净化 > 吹风 > 投弹；均不满足时默认投弹——玩家唯一反伤手段不断供）
+    ai: {
+      purgeMinControlled: 1,     // 被控制/减益的小怪 ≥ N 只 → 释放净化（A）
+      windMinRoaches: 6,         // 场上存活小怪 ≥ N 只 → 释放吹风推动（B）
+      // 战场被清空（无存活小怪）或 A/B 均不满足 → 释放投弹（C/默认）
+    },
+    // 地面阴影（BOSS 空中悬浮投射在地面阻挡面上的椭圆阴影，跟随 X 移动）
+    shadow: {
+      yRatio: 0.58,              // 阴影中心 Y（屏高比例，位于 Boss 与防线之间的地面）
+      rxRatio: 0.27,             // 阴影横向半径（相对 Boss 体型）
+      rySquash: 0.36,            // 阴影纵向压扁系数（透视）
+      alpha: 0.3,                // 阴影基础透明度
+    },
+    // 技能① 净化：清除全场小怪负面状态 + 无敌帧
+    purge: {
+      immuneSec: 0.5,            // 净化后无敌帧时长
+      glowColor: '255,215,120',  // 金光
+    },
+    // 技能② 吹风：地面小怪加速 + 向防线推力（无风扇硬扛水位；三阶段不再加强）
+    wind: {
+      durationSec: 3,            // 吹风持续时间
+      speedMult: 1.5,            // 移速倍率
+      pushPxPerSec: 24,          // 向防线推力（像素/秒）
+      fanPushResist: 0.6,        // 风扇抵消推力比例（有风扇时推力 × (1-0.6)）
+      glowColor: '150,200,255',  // 风压辉光
+      // 屏幕风速流线（透视：越远越短/细/淡，越近越长/粗/亮，横向扇出）
+      streak: {
+        count: 16,               // 流线数量
+        color: '190,225,255',    // 流线颜色
+        speed: 0.55,             // 流线流动速度（全程/秒）
+        minLen: 24,              // 远处（顶部）流线长度
+        maxLen: 96,              // 近处（底部）流线长度
+        maxWidth: 3.2,           // 近处线宽（远处为 1）
+        spreadRatio: 0.44,       // 底部横向扇出半宽（屏宽比例）
+      },
+    },
+    // 技能③ 投弹（核心输出窗口）
+    bomb: {
+      flightSec: 2.4,            // 抛物线飞行总时长
+      tailTimeRatio: 0.35,       // 末段减速时间占比
+      tailSpeedMult: 0.4,        // 末段速度倍率
+      arcHeight: 90,             // 抛物线拱高（像素）
+      burstOffsetFromDefense: 200, // 自动爆炸点距防线距离（defenseLineY()-200，禁止写死）
+      defenseDamage: 30,         // 漏弹（自动爆炸）防线伤害
+      counterDamage: 300,        // 火枪引爆反伤 Boss（3000 HP / 300 = 10 次引爆击杀）
+      hitRadius: 40,             // 引爆判定半径（像素，三重火焰侧焰同效）
+      aoeRadius: 120,            // 空爆波及半径
+      aoeGroundDamage: 50,       // 空爆对地面小怪伤害（飞行小怪半径内秒杀）
+      doubleOffsetX: 60,         // 连发落点半间距（像素，相邻炸弹间距 = 2×此值）
+      burstStaggerSec: 0.5,      // 连发炸弹发射间隔（秒，2026-08-27：双发/三连发错时出手）
+      size: 32,                  // 炸弹视觉直径（像素）
+      telegraphGlowColor: '255,80,60', // 腹部红光预警（Boss 身体周围，非屏幕红光）
+      markerSquash: 0.5,         // 落点标记 Y 轴压缩系数（椭圆透视）
+      // 投掷虚线抛物线轨迹（投弹瞬间显示，与真实飞行路径同公式）
+      trajectory: {
+        color: '255,110,80',     // 轨迹颜色
+        alpha: 0.5,              // 轨迹透明度
+        width: 2,                // 轨迹线宽
+        dash: [7, 6],            // 虚线模式
+      },
+      // 炸弹地面阴影（落点平面，随高度缩放/变淡）
+      groundShadow: {
+        maxRx: 20,               // 贴地时横向半径
+        minRx: 7,                // 高空时横向半径
+        squash: 0.4,             // 纵向压扁系数（透视）
+        maxAlpha: 0.45,          // 贴地透明度
+        minAlpha: 0.1,           // 高空透明度
+        refDropPx: 420,          // 参考落差（阴影插值基准，像素）
+      },
+    },
+    // 屏幕汁液喷溅（仅漏弹触发；贴图空窗期程序圆斑兜底）
+    goo: {
+      countMin: 2,               // 每次漏弹喷溅块数
+      countMax: 3,
+      liveSec: 2.5,              // 存在时长
+      fadeSec: 0.5,              // 渐隐时长
+      radiusMin: 60,             // 污渍半径范围（像素）
+      radiusMax: 130,
+      color: '107,124,62',       // 低饱和橄榄绿
+    },
+    // 退场：转身 → 透视缩小飞向洞穴深处（终点坐标待用户提供，暂用屏顶中央）
+    exit: {
+      turnSec: 0.35,             // 转身阶段时长
+      flySec: 2.0,               // 远去阶段时长
+      endScale: 0.12,            // 终点缩放（透视深入）
+      fadeStartRatio: 0.6,       // 透明度保持比例（之后渐隐至 0）
+      targetXRatio: 0.5,         // TODO: 待用户提供洞穴坐标（屏宽比例）
+      targetYRatio: 0.12,        // TODO: 待用户提供洞穴坐标（屏高比例）
+    },
+    rewardCoins: 2000,           // 通关金币（结算直接发放）
+    rewardTalent: 6,             // 通关天赋点（替代 perScene 表）
   },
 
   // ===== 消耗品 =====

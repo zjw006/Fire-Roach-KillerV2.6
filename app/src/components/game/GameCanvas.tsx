@@ -11,7 +11,7 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { createGameEngine } from '@/game/engine/index';
 import { GameState, GameMode, SceneType, type Player, type Economy, type GameProgress, type DialogConfig, type BossBattleState, type InventoryItem } from '@/game/types';
-import { BALANCE_CONFIG, DIALOG_CONFIGS, SCENE_CONFIGS, SCENE_UNLOCK_CHAIN, SUBWAY_ELITE_TUTORIAL_DIALOG, SUBWAY_KNIFE_TUTORIAL_DIALOG } from '@/game/data';
+import { BALANCE_CONFIG, DIALOG_CONFIGS, SCENE_CONFIGS, STORY_LEVELS, getLevelId, getStoryLevelIndex, SUBWAY_ELITE_TUTORIAL_DIALOG, SUBWAY_KNIFE_TUTORIAL_DIALOG } from '@/game/data';
 import * as Vibration from '@/game/vibration';
 import { trpc } from '@/providers/trpc';
 import { GameHUD } from './GameHUD';
@@ -626,7 +626,7 @@ export const GameCanvas: React.FC = () => {
   //   engineRef.current?.continueFromShop();
   // }, []);
 
-  /** 进入下一关：按解锁链找到下一个场景，依次检查漫画 → 对话 → 开始 */
+  /** 进入下一关：按剧情关卡序列找到下一关（巢穴后依次为 6 个困难关），依次检查漫画 → 对话 → 开始 */
   const handleNextScene = useCallback(() => {
     const engine = engineRef.current;
     if (!engine) return;
@@ -635,16 +635,18 @@ export const GameCanvas: React.FC = () => {
     // Save shop upgrades before transitioning to next scene
     nextSceneUpgradesRef.current = [...(engine.progress.shopUpgrades || [])];
     // Consumables are now auto-saved to localStorage in onWaveClear/onGameOver/onConsumableUpdate
-    // Find next scene in chain
-    const currentIdx = SCENE_UNLOCK_CHAIN.indexOf(engine.currentScene);
-    if (currentIdx >= 0 && currentIdx < SCENE_UNLOCK_CHAIN.length - 1) {
-      const nextScene = SCENE_UNLOCK_CHAIN[currentIdx + 1];
+    // 按剧情关卡序列找下一关（当前关卡含难度，困难关独立计列）
+    const currentIdx = getStoryLevelIndex(engine.getCurrentLevelId());
+    if (currentIdx >= 0 && currentIdx < STORY_LEVELS.length - 1) {
+      const nextLevel = STORY_LEVELS[currentIdx + 1];
+      const nextScene = nextLevel.scene;
+      const diff = nextLevel.difficulty;
       // Check if we need to show a comic first
       if (!hasSeenComic(nextScene)) {
         const chapter = getComicChapter(nextScene);
         if (chapter) {
           setComicChapter(chapter);
-          setPendingComicParams({ diff: 'easy', mode: GameMode.STORY, scene: nextScene });
+          setPendingComicParams({ diff, mode: GameMode.STORY, scene: nextScene });
           setShowComic(true);
           return;
         }
@@ -654,13 +656,13 @@ export const GameCanvas: React.FC = () => {
         const dialogConfig = DIALOG_CONFIGS.find(d => d.sceneType === nextScene);
         if (dialogConfig) {
           setPendingDialogConfig(dialogConfig);
-          setPendingStartParams({ diff: 'easy', mode: GameMode.STORY, scene: nextScene });
+          setPendingStartParams({ diff, mode: GameMode.STORY, scene: nextScene });
           setShowDialog(true);
           return;
         }
       }
       // No dialog needed, start immediately (shop upgrades preserved via ref)
-      doStartGame('easy', GameMode.STORY, nextScene);
+      doStartGame(diff, GameMode.STORY, nextScene);
     }
   }, [doStartGame, shouldShowDialog]);
 
@@ -747,6 +749,10 @@ export const GameCanvas: React.FC = () => {
         engine.consumableInventory[id] = (engine.consumableInventory[id] || 0) + 1;
       }
       setCarriedConsumables({ ...engine.consumableInventory });
+      // 金币池同步：菜单商店与局内经济共用同一金币池，扣减后同步 engine.economy 与
+      // React economy 状态，保证返回结算界面时金币显示已同步扣减（修复金币池 bug）
+      engine.economy.money = newMoney;
+      setEconomy({ ...engine.economy });
       // Save to GameProgress (v3: consumables now persisted in main progress)
       engine.saveProgress();
     }
@@ -1381,8 +1387,8 @@ export const GameCanvas: React.FC = () => {
           currentScene={currentScene}
           isVictory={true}
           hasNextScene={(() => {
-            const idx = SCENE_UNLOCK_CHAIN.indexOf(currentScene);
-            return idx >= 0 && idx < SCENE_UNLOCK_CHAIN.length - 1;
+            const idx = getStoryLevelIndex(getLevelId(currentScene, difficulty));
+            return idx >= 0 && idx < STORY_LEVELS.length - 1;
           })()}
           onRestart={handleRestart}
           onQuit={handleQuit}
@@ -1391,8 +1397,8 @@ export const GameCanvas: React.FC = () => {
           onOpenTalentTree={() => { setTalentFromGameOver(true); setShowTalentTree(true); }}
           talentUnlocked={talentUnlocked}
           onNextScene={(() => {
-            const idx = SCENE_UNLOCK_CHAIN.indexOf(currentScene);
-            if (idx >= 0 && idx < SCENE_UNLOCK_CHAIN.length - 1) {
+            const idx = getStoryLevelIndex(getLevelId(currentScene, difficulty));
+            if (idx >= 0 && idx < STORY_LEVELS.length - 1) {
               return handleNextScene;
             }
             return undefined;

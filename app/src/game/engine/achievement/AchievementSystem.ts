@@ -2,6 +2,7 @@
  * @fileoverview 成就系统模块
  * @description 负责管理游戏中的成就解锁、奖励发放和进度跟踪
  */
+import { branchSpentPoints } from '../../data';
 
 /**
  * 成就数据接口
@@ -161,14 +162,15 @@ export class AchievementSystem {
 
     try {
       // 构造受控作用域：仅暴露 EconomyStats 和 PlayerProgress 中的已知字段
-      const fn = new Function('e', 'p', `
+      const fn = new Function('e', 'p', 'branchSpent', `
         const { totalKills, highestWave, highestEndlessWave, totalMoneyEarned, perfectWaves, breaches, queenKills, flyingKills, armoredKills } = e;
         const weaponsUnlockedCount = (p.weaponsUnlocked?.length || 0);
         const allWeaponsUnlocked = weaponsUnlockedCount >= 5;
         const talentPointsSpent = Object.values(p.talentTree.talents).reduce((s, v) => s + (v || 0), 0);
+        const levelStars = p.levelStars || {};
         return ${jsCondition};
       `);
-      return fn(e, p);
+      return fn(e, p, (branch: string) => branchSpentPoints(p.talentTree.talents, branch));
     } catch {
       // 条件表达式解析失败时返回 false，避免崩溃
       return false;

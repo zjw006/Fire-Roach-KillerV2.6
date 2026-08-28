@@ -110,7 +110,7 @@ import { GameState, RoachType, RoachState, SceneType, WeatherType, ParticleType,
 import { AssetLoader, type AssetEntry } from './assets/AssetLoader';
 import * as Vibration from './vibration';
 import { AudioManager } from './audio';
-import { SCENE_CONFIGS, ENEMY_DEFS, TALENT_DEFS, canUpgradeTalent, branchSpentPoints, WEAPON_DROP_DEFS, INVENTORY_SELL_PRICES, BOSS_CONFIG, SCENE_WAVE_CONFIGS, SCENE_REWARD_ITEMS, SCENE_UNLOCK_CHAIN, SCENE_GROUND_BOUNDS, CONSUMABLE_DEFS, BALANCE_CONFIG, TEXT_CONFIG } from './data';
+import { SCENE_CONFIGS, ENEMY_DEFS, TALENT_DEFS, canUpgradeTalent, branchSpentPoints, WEAPON_DROP_DEFS, INVENTORY_SELL_PRICES, BOSS_CONFIG, SCENE_WAVE_CONFIGS, SCENE_REWARD_ITEMS, STORY_LEVELS, getLevelId, getStoryLevelIndex, SCENE_GROUND_BOUNDS, CONSUMABLE_DEFS, BALANCE_CONFIG, TEXT_CONFIG } from './data';
 import { SaveSystem } from './engine/save/SaveSystem';
 import { EconomyManager } from './engine/economy/EconomyManager';
 import { AchievementSystem } from './engine/achievement/AchievementSystem';
@@ -134,6 +134,8 @@ import { ThrowableSystem } from './engine/throwable/ThrowableSystem';
 import { PoisonSystem } from './engine/poison/PoisonSystem';
 import { ConsumableSystem } from './engine/consumable/ConsumableSystem';
 import { BossBattleSystem } from './engine/boss/BossBattleSystem';
+import { BossKingSystem } from './engine/boss-king/BossKingSystem';
+import { BossKingRenderer } from './engine/boss-king/BossKingRenderer';
 import { WaveManager } from './engine/wave/WaveManager';
 import { WeatherSystem } from './engine/weather/WeatherSystem';
 import { RoachAISystem } from './engine/ai/RoachAISystem';
@@ -281,6 +283,8 @@ export class GameEngine {
   lastVictoryStarBonus: number = 0;
   /** 天赋系统解锁时从待解锁池一次性发放的天赋点（0 = 未发生，供胜利界面弹窗展示） */
   lastTalentUnlockGrant: number = 0;
+  /** 本次通关是否为该关卡首次过关（unlockNextScene 在标记前记录；重复过关不发放心增天赋点） */
+  lastRunFirstClear: boolean = false;
 
   difficulty: 'easy' | 'hard' = 'easy';
   gameMode: GameMode = GameMode.STORY;
@@ -294,7 +298,12 @@ export class GameEngine {
   deltaTime: number = 0;
   lastTime: number = 0;
 
+  /** 蟑叔发票金币增益剩余时间（秒，>0 时金币收益 +50%） */
+  invoiceBoostTimer: number = 0;
+
   gunImg: HTMLImageElement | null = null;
+  /** 三重火焰侧枪贴图（barrel.png 58×109 竖长枪管，仅侧枪渲染用；主枪仍用 gunImg） */
+  barrelImg: HTMLImageElement | null = null;
   /** 天赋外观进化：中/高级改装枪身贴图（占位为 gun.png 复制件，美术替换后生效） */
   gunMk1Img: HTMLImageElement | null = null;
   gunMk2Img: HTMLImageElement | null = null;
@@ -308,8 +317,6 @@ export class GameEngine {
   roachQueenImg: HTMLImageElement | null = null;
   /** 医院场景专属蟑螂图片 */
   roachNurseImg: HTMLImageElement | null = null;
-  /** 护士施法：10帧治疗动画 */
-  nurseCastFrames: (HTMLImageElement | null)[] = [];
   roachMutantImg: HTMLImageElement | null = null;
   /** 变异变形：7帧序列动画（每帧200ms，共1.4秒） */
   mutantTransformFrames: (HTMLImageElement | null)[] = [];
@@ -321,6 +328,10 @@ export class GameEngine {
   roachJockImg: HTMLImageElement | null = null;
   /** 中毒 DEBUFF 图标贴图（debuff_poison.png，紫色像素骷髅） */
   debuffPoisonImg: HTMLImageElement | null = null;
+  /** 须须干扰器 DEBUFF 图标贴图（drop_Jammer.png） */
+  debuffJammerImg: HTMLImageElement | null = null;
+  /** 须须干扰器激活剩余时间（>0 期间：每帧同步影响全部在场/新生蟑螂 + 雷达波特效） */
+  jammerActiveTimer: number = 0;
   roachAISystem!: RoachAISystem;
   /** Boss 图片资源（阶段变体预留给未来使用） */
   /** Boss 动画系统（帧数据由引擎管理，与 bossSystem 共享） */
@@ -443,6 +454,12 @@ export class GameEngine {
   private consumableSystem: ConsumableSystem | null = null;
   /** Boss战斗系统模块（委托给 BossBattleSystem） */
   private bossSystem: BossBattleSystem | null = null;
+  /** 巢穴·蟑老大 Boss 战系统模块（委托给 BossKingSystem，仅巢穴剧情模式启用） */
+  private bossKingSystem: BossKingSystem | null = null;
+  /** 蟑老大序列帧表（key = 动作名，仅巢穴场景懒加载） */
+  private _bossKingFrames: Map<string, (HTMLImageElement | null)[]> = new Map();
+  /** 蟑老大炸弹贴图（assets/boss_bomb.png） */
+  private bossBombImg: HTMLImageElement | null = null;
   /** 波次系统模块（委托给 WaveManager） */
   private waveManager: WaveManager | null = null;
   /** 超市阵型组内成员陆续生成队列（位置固定为槽位坐标，仅时间按 formationMemberStaggerSec 错开） */
@@ -529,7 +546,7 @@ export class GameEngine {
   dailySeed: number = 0;
 
   /** 已通关场景（用于进度追踪） */
-  scenesCleared: Set<SceneType> = new Set();
+  scenesCleared: Set<string> = new Set();
 
   /** 显示地面边界线（蟑螂可走区域可视化） */
   showMovementRange: boolean = false;
@@ -713,6 +730,7 @@ export class GameEngine {
     this.knifeSystem = new KnifeSystem({
       getCanvasWidth: () => this.width,
       getDefenseLineY: () => this.defenseLineY(),
+      getBounceBonus: () => this.talentMultipliers.knifeBounceAdd || 0,
       onAddFloatingText: (x, y, text, color) => { this.addFloatingText(x, y, text, color); },
       onAddParticle: (p) => { this.particles.push(p); },
       onScreenShake: (amount) => { this.screenShake = amount; },
@@ -928,6 +946,45 @@ export class GameEngine {
       () => nextBossId++, // 修复 P0：注入 ID 生成器，消除全局计数器
     );
 
+    // ===== 初始化 BossKingSystem（巢穴·蟑老大 Boss 战，2026-08-24 锁定设计） =====
+    this.bossKingSystem = new BossKingSystem(
+      {
+        onAddFloatingText: (x, y, text, color) => { this.addFloatingText(x, y, text, color); },
+        onSpawnExplosionParticles: (x, y, count) => { ParticleSpawner.spawnExplosionParticles(this.particles, x, y, count); },
+        onSpawnShockwaveRing: (x, y, radius) => { ParticleSpawner.spawnShockwaveRing(this.particles, x, y, radius); },
+        onScreenShake: (intensity) => { this.screenShake = intensity; },
+        onDamageRoach: (roach, damage) => { this.applyDamageToRoach(roach, damage); },
+        onSpawnRoach: (type) => { this.spawnRoach(type); },
+        onGetRoaches: () => this.roaches,
+        onDamageDefense: (damage) => {
+          if (this.player.shieldTimer > 0) {
+            this.addFloatingText(this.width / 2, this.defenseLineY() - 20, TEXT_CONFIG.combat.shieldBlock.text, TEXT_CONFIG.combat.shieldBlock.color);
+            return;
+          }
+          this.defenseHp -= damage;
+          this.starDefenseHp = Math.max(0, this.starDefenseHp - damage);
+        },
+        onVictory: () => {
+          // 与 WaveManager.checkVictory 对齐：先标记通关/星级/解锁/最高波，再进胜利结算
+          const nestWaves = SCENE_WAVE_CONFIGS[SceneType.NEST]?.length ?? 6;
+          this.economy.highestWave = nestWaves;
+          this.progress.highestWave = Math.max(this.progress.highestWave, nestWaves);
+          this.unlockNextScene();
+          this.gameVictory();
+        },
+        onDefeat: () => { this.gameDefeat(); },
+      },
+      {
+        playBossKingWarn: () => { this.audio.playBossKingWarn(); },
+        playBossKingThrow: () => { this.audio.playBossKingThrow(); },
+        playBossKingAirburst: () => { this.audio.playBossKingAirburst(); },
+        playBossKingGroundBurst: () => { this.audio.playBossKingGroundBurst(); },
+        playBossKingGooSplat: () => { this.audio.playBossKingGooSplat(); },
+        playBossKingWind: () => { this.audio.playBossKingWind(); },
+        playBossKingPurge: () => { this.audio.playBossKingPurge(); },
+      },
+    );
+
     // ===== 初始化 RoachAISystem（在 BossBattleSystem 之后，确保 this.bossSystem 可用） =====
     this.roachAISystem = new RoachAISystem({
       roaches: this.roaches,
@@ -1078,6 +1135,7 @@ export class GameEngine {
       entries.push({ key, url, apply });
 
     img('gunImg', '/assets/gun.png', (i) => this.gunImg = i);
+    img('barrelImg', BALANCE_CONFIG.tripleFlame.sideBarrelTexture, (i) => this.barrelImg = i);
     // 天赋改装枪身贴图（加载失败回退默认枪贴图，见 renderPlayer）
     img('gunMk1Img', '/assets/gun_mk1.png', (i) => this.gunMk1Img = i);
     img('gunMk2Img', '/assets/gun_mk2.png', (i) => this.gunMk2Img = i);
@@ -1097,13 +1155,9 @@ export class GameEngine {
     img('roachShieldImg', '/assets/roach_shield01.png', (i) => this.roachShieldImg = i);
     img('roachJockImg', '/assets/roach_jock.png', (i) => this.roachJockImg = i);
     img('debuffPoisonImg', '/assets/UI/debuff_poison.png', (i) => this.debuffPoisonImg = i);
+    img('debuffJammerImg', '/assets/drop_Jammer.png', (i) => this.debuffJammerImg = i);
     img('bombImg', '/assets/bomb.png', (i) => this.bombImg = i);
 
-    // 护士施法动画 10 帧
-    for (let i = 1; i <= 10; i++) {
-      const frameIdx = i - 1;
-      img(`nurseCast_${frameIdx}`, `/assets/nurse_cast_${i.toString().padStart(2, '0')}.png`, (im) => this.nurseCastFrames[frameIdx] = im);
-    }
     // 变异变形序列 7 帧
     for (let i = 1; i <= 7; i++) {
       const frameIdx = i - 1;
@@ -1139,6 +1193,8 @@ export class GameEngine {
       ['/assets/drop_fan.png', 'fan'],
       ['/assets/drop_swatter.png', 'swatter'],
       ['/assets/drop_knife.png', 'knife'],
+      ['/assets/drop__invoice.png', 'invoice'],
+      ['/assets/drop_Jammer.png', 'jammer'],
     ];
     for (const [src, type] of dropImgDefs) {
       img(`drop_${type}`, src, (im) => { if (this._dropImages) this._dropImages[type] = im; });
@@ -1179,6 +1235,21 @@ export class GameEngine {
       entries.push({ key: `trainFrame_${fi}`, url: `/assets/train_${frameNum}.png`, scenes: [SceneType.SUBWAY], apply: (i) => this._trainFrames[fi] = i });
     }
 
+    // 巢穴·蟑老大 Boss 序列帧（public/boss/<action>/bk_<action>_NN.png，仅巢穴场景）
+    const bossKingActionFrames: readonly (readonly [string, number])[] = [
+      ['hover', 5], ['purge', 3], ['wind', 4], ['bomb_warn', 3], ['bomb_throw', 2], ['hit', 2], ['exit', 4],
+    ];
+    for (const [action, frameCount] of bossKingActionFrames) {
+      const frames = new Array<HTMLImageElement | null>(frameCount).fill(null);
+      this._bossKingFrames.set(action, frames);
+      for (let fi = 0; fi < frameCount; fi++) {
+        const frameNum = String(fi + 1).padStart(2, '0');
+        entries.push({ key: `bossKing_${action}_${frameNum}`, url: `/boss/${action}/bk_${action}_${frameNum}.png`, scenes: [SceneType.NEST], apply: (i) => { frames[fi] = i; } });
+      }
+    }
+    // 蟑老大炸弹贴图
+    entries.push({ key: 'bossBombImg', url: '/assets/boss_bomb.png', scenes: [SceneType.NEST], apply: (i) => { this.bossBombImg = i; } });
+
     // 注册清单；先加载 global（首屏关键资源），完成后置 imagesLoaded
     this.assetLoader.register(entries);
     this.assetLoader.loadGlobal().then(() => {
@@ -1212,6 +1283,14 @@ export class GameEngine {
     // 玩家基础属性 — 仅天赋树加成，商店升级不叠加
     // 商店已重新设计为一次性消耗品（燃气补充、防线修复等）
     const fireRange = BALANCE_CONFIG.player.baseFireRange * rangeMult;
+    // 扩口喷嘴/风压聚焦只加伤害射程，不拉长火焰视觉（改由喷嘴白环/风压波纹表现），从视觉射程中剔除其贡献
+    const talents = this.progress.talentTree.talents;
+    const noLenMult = (['nozzle', 'focus'] as const).reduce((m, id) => {
+      const lv = talents[id] || 0;
+      const def = TALENT_DEFS.find(t => t.id === id);
+      return lv > 0 && def ? m * (def.effect(lv).fireRangeMultiplier || 1) : m;
+    }, 1);
+    const flameVisualRange = fireRange / noLenMult;
     const damageMultiplier = this.talentMultipliers.damageMultiplier || 1;
     const heatDecayRate = (isHard ? BALANCE_CONFIG.player.heatDecayRate.hard : BALANCE_CONFIG.player.heatDecayRate.easy) * coolMult;
     const overheatThreshold = BALANCE_CONFIG.player.baseOverheatThreshold * ohMult;
@@ -1234,6 +1313,7 @@ export class GameEngine {
       maxReloadTime: (isHard ? BALANCE_CONFIG.player.maxReloadTime.hard : BALANCE_CONFIG.player.maxReloadTime.easy) * reloadTimeMultiplier,
       coolingTimer: 0,
       fireRange,
+      flameVisualRange,
       damageMultiplier,
       heatDecayRate,
       overheatThreshold,
@@ -1492,6 +1572,7 @@ export class GameEngine {
     this.traceSpawnHp = 0;
     this.consumableSystem?.reset();
     this.roachAISystem?.reset();
+    this.bossKingSystem?.reset(); // 巢穴·蟑老大 Boss 战状态复位（防跨局泄漏）
     this.formationSpawnQueue = []; // 清空阵型陆续生成队列，防重开时旧波残队生成进新局
     // Sync new array references after resetGame() creates new arrays
     this.roachAISystem?.updateConfig({
@@ -1515,6 +1596,7 @@ export class GameEngine {
       currentScene: this.currentScene,
       gameMode: this.gameMode,
       difficulty: this.difficulty as string,
+      loopWaves: this.isBossKingScene(), // 巢穴 Boss 战：波次循环出怪，胜利由 Boss 死亡触发
     });
     this.waveTimer = 1;
     this.bossSystem!.activeBosses = 0;
@@ -1537,6 +1619,7 @@ export class GameEngine {
     // this.trainSystem?.reset();
     this.shieldSystem?.reset();
     this.knifeSystem?.reset();
+    this.invoiceBoostTimer = 0;
     const defMult = this.talentMultipliers.defenseMultiplier || 1;
     // 超市 V4.0：阵型+穿插全程持续施压、无波间修复，防线总池按场景系数上浮
     const sceneDefMult = this.currentScene === SceneType.SUPERMARKET ? BALANCE_CONFIG.supermarket.defenseHpMult : 1;
@@ -1954,8 +2037,18 @@ export class GameEngine {
   /** 触发游戏胜利流程 */
   gameVictory() {
     this.exportTrace('victory'); // 导出本局战斗采样数据
+    // 巢穴·蟑老大：通关金币 2000 直接并入结算池（不走成就 unclaimed 管线，由结算动画展示后发放）
+    if (this.isBossKingScene()) {
+      this.pendingRewards += BALANCE_CONFIG.bossKing.rewardCoins;
+    }
     // 保存关卡内累计的金币奖励到 victoryGoldReward（由结算界面动画展示后发放）
-    this.victoryGoldReward = this.pendingRewards;
+    // 星级金币倍率：1星×1.0 / 2星×1.2 / 3星×1.5（巢穴蟑老大锁定 2000 固定奖励，不乘倍率）
+    let goldReward = this.pendingRewards;
+    if (!this.isBossKingScene()) {
+      const starMult = this.lastStarRating >= 3 ? 1.5 : this.lastStarRating === 2 ? 1.2 : 1.0;
+      goldReward = Math.floor(goldReward * starMult);
+    }
+    this.victoryGoldReward = goldReward;
     this.pendingRewards = 0;
     this.onPendingRewardUpdate?.(0);
 
@@ -1988,16 +2081,23 @@ export class GameEngine {
     }
 
     // Story mode: 按 v4 固定表发放天赋点（普通=perScene，困难=hardMode 按场景链下标 clamp）
+    // 巢穴·蟑老大：锁定设计 6 天赋点（覆盖 perScene 表的 nest:4）
     const rewardCfg = BALANCE_CONFIG.economy.talentPointReward;
     let talentReward: number;
-    if (this.difficulty === 'hard') {
-      const idx = SCENE_UNLOCK_CHAIN.indexOf(this.currentScene);
-      talentReward = rewardCfg.hardMode[Math.max(0, Math.min(idx, rewardCfg.hardMode.length - 1))] ?? 0;
+    if (this.isBossKingScene()) {
+      talentReward = BALANCE_CONFIG.bossKing.rewardTalent;
+    } else if (this.difficulty === 'hard') {
+      // 困难关：按 6 个困难关在关卡序列中的位置（0-5）取 hardMode 天赋点表
+      const easyCount = STORY_LEVELS.length - 6; // 11 个简单关
+      const hardPos = Math.max(0, getStoryLevelIndex(this.getCurrentLevelId()) - easyCount);
+      talentReward = rewardCfg.hardMode[Math.min(hardPos, rewardCfg.hardMode.length - 1)] ?? 0;
     } else {
       talentReward = rewardCfg.perScene[this.currentScene] ?? 0;
     }
+    // 重复过关不再发放额外天赋点，仅首次过关发放心增天赋点
+    if (!this.lastRunFirstClear) talentReward = 0;
     if (talentReward > 0) this.addTalentPoints(talentReward);
-    // 首次三星奖励/解锁礼已在 unlockNextScene 发放到点数池，此处仅汇总显示
+    // 汇总本次通关获得的天赋点（仅首次过关的 perScene 奖励 + 旧存档解锁礼），用于胜利浮动文字展示
     const totalTalentGain = talentReward + this.lastVictoryStarBonus + this.lastTalentUnlockGrant;
     if (totalTalentGain > 0) {
       this.addFloatingText(this.width / 2, this.height * 0.35, TEXT_CONFIG.combat.talentReward.text(totalTalentGain), TEXT_CONFIG.combat.talentReward.color);
@@ -2036,7 +2136,14 @@ export class GameEngine {
         newlyUnlocked.push(reward); // only add to reveal if it's newly unlocked
       }
     }
+    // 重复过关：即使无新道具，也展示本关掉落道具（重复获得），保证「下一关」前出现掉落界面
+    if (newlyUnlocked.length === 0 && rewards.length > 0) {
+      newlyUnlocked.push(rewards[0]);
+    }
     this.saveProgress();
+    // 胜利时立即检查成就（unlockNextScene 已写入 levelStars/星级，避免 WAVE_CLEAR 状态下
+    // update() 提前 return 导致 checkAchievements 不被调用，三星通关等成就延迟到下一局才解锁）
+    this.checkAchievements();
     this.itemRevealData = newlyUnlocked;
     if (this.itemRevealData.length > 0) {
       this.spawnNextRewardDrop(0);
@@ -2116,6 +2223,9 @@ export class GameEngine {
     this.pendingRewards = 0;
     this.onPendingRewardUpdate?.(0);
     this.state = GameState.GAME_OVER;
+    // 修复 2026-08-27：漏弹打空防线（巢穴蟑老大路径）进入失败态后必须通知 UI，
+    // 否则 React 永远停留在战斗界面 + rAF 循环停止 → 屏幕卡死（结算界面永不弹出）
+    this.onStateChange?.(this.state);
     this.addFloatingText(this.width / 2, this.height / 2, TEXT_CONFIG.combat.defeat.text, TEXT_CONFIG.combat.defeat.color);
     this.screenShake = BALANCE_CONFIG.screenShake.bossDeath;
     this.audio.stopBGM();
@@ -2213,6 +2323,8 @@ export class GameEngine {
       this.updateWave();
     }
     this.updateScreenShake();
+    this.invoiceBoostTimer = Math.max(0, this.invoiceBoostTimer - this.deltaTime);
+    this.updateJammer();
     this.swatterSystem!.updateSwatter(this.deltaTime, this.player.x, this.player.y);
     this.weaponSystem!.update(this.deltaTime, this.player, this.defenseLineY(), this.tutorialPauseSpawn || this.eliteTutorialPause || this.knifeTutorialPause);
     // 地铁场景：列车自动碾压 + 斩螂·110 刀刃飞跃（教学对话期间暂停）
@@ -2770,6 +2882,45 @@ export class GameEngine {
       return;
     }
 
+    // Invoice (蟑叔发票)：30秒金币收益 +50%
+    if (item.type === 'invoice') {
+      this.invoiceBoostTimer = BALANCE_CONFIG.invoice?.duration ?? 30;
+      item.count--;
+      startItemCooldown('invoice');
+      if (item.count <= 0) {
+        this.inventory = this.inventory.filter((_, i) => i !== index);
+      }
+      this.addFloatingText(this.player.x, this.player.y - 140, TEXT_CONFIG.combat.invoiceBoost?.text ?? '发票加成！金币+50%', TEXT_CONFIG.combat.invoiceBoost?.color ?? '#fbbf24');
+      this.onInventoryUpdate?.(this.inventory);
+      return;
+    }
+
+    // Jammer (须须干扰器)：10秒全场蟑螂混乱乱窜 + 部分技能失效（护士加血/隧道工修盾喷甲/大小飞行自爆类闪避）
+    // 激活窗口 jammerActiveTimer 内每帧刷新全部在场蟑螂，并覆盖窗口内新生成的蟑螂（updateJammer）
+    if (item.type === 'jammer') {
+      const dur = BALANCE_CONFIG.jammer?.duration ?? 5;
+      this.jammerActiveTimer = dur;
+      for (const r of this.roaches) {
+        if (r.state !== RoachState.ALIVE || r.isBoss) continue;
+        r.confuseTimer = dur;
+        r.confuseAngle = Math.random() * Math.PI * 2; // 立即给一个随机乱窜方向
+        // 技能封锁：护士加血、隧道工修盾/喷甲
+        if (r.type === RoachType.NURSE || r.type === RoachType.TUNNEL_WORKER) {
+          r.skillBlockTimer = Math.max(r.skillBlockTimer ?? 0, dur);
+        }
+        // 闪避封锁：大/小/飞行/自爆类（canDodge 统一判定）
+        r.dodgeBlockTimer = Math.max(r.dodgeBlockTimer ?? 0, dur);
+      }
+      item.count--;
+      startItemCooldown('jammer');
+      if (item.count <= 0) {
+        this.inventory = this.inventory.filter((_, i) => i !== index);
+      }
+      this.addFloatingText(this.player.x, this.player.y - 140, TEXT_CONFIG.combat.jammerActivate.text, TEXT_CONFIG.combat.jammerActivate.color);
+      this.onInventoryUpdate?.(this.inventory);
+      return;
+    }
+
     // Placement items
     if (this.selectedItemIndex === index && this.itemPlaceState !== 'idle') {
       this.cancelItemPlacement();
@@ -3091,6 +3242,9 @@ export class GameEngine {
       dodgeBlockTimer: 0,
       weakenTimer: 0,
       skillBlockTimer: 0,
+      // 须须干扰器：混乱乱窜计时
+      confuseTimer: 0,
+      confuseAngle: 0,
       // Hospital exclusive: timed suicide (now places bomb at defense line, no countdown on roach)
       explodeTimer: 0,
       isCountingDown: false,
@@ -3177,6 +3331,26 @@ export class GameEngine {
     this.roaches.push(r);
     if (type === RoachType.QUEEN) this.bossSystem!.activeBosses++;
     return r;
+  }
+
+  /** 须须干扰器持续生效：激活窗口内每帧刷新在场蟑螂，并覆盖窗口内新生成的蟑螂 */
+  private updateJammer(): void {
+    if (this.jammerActiveTimer <= 0) return;
+    this.jammerActiveTimer = Math.max(0, this.jammerActiveTimer - this.deltaTime);
+    const remain = this.jammerActiveTimer;
+    if (remain <= 0) return;
+    for (const r of this.roaches) {
+      if (r.state !== RoachState.ALIVE || r.isBoss) continue;
+      // 新生蟑螂（confuseTimer 未激活）补发混乱；已激活的刷新为剩余时间保持一致
+      if ((r.confuseTimer ?? 0) < remain) {
+        r.confuseTimer = remain;
+        if ((r.confuseAngle ?? 0) === 0) r.confuseAngle = Math.random() * Math.PI * 2;
+      }
+      if (r.type === RoachType.NURSE || r.type === RoachType.TUNNEL_WORKER) {
+        r.skillBlockTimer = Math.max(r.skillBlockTimer ?? 0, remain);
+      }
+      r.dodgeBlockTimer = Math.max(r.dodgeBlockTimer ?? 0, remain);
+    }
   }
 
   updateStatusEffects(r: Roach) {
@@ -3600,7 +3774,8 @@ export class GameEngine {
     ParticleSpawner.spawnBloodParticles(this.particles,r.x, r.y, r.type === RoachType.QUEEN ? 40 : (r.type === RoachType.LARGE ? 25 : 15));
 
     const sceneMult = this.getSceneConfig().rewardMultiplier;
-    const rewardMult = (this.talentMultipliers.rewardMultiplier || 1) * sceneMult;
+    const invoiceMult = this.invoiceBoostTimer > 0 ? (BALANCE_CONFIG.invoice?.goldMult ?? 1.5) : 1;
+    const rewardMult = (this.talentMultipliers.rewardMultiplier || 1) * sceneMult * invoiceMult;
     let reward = Math.floor((r.reward ?? ENEMY_DEFS[r.type].reward) * rewardMult);
     if (this.difficulty === 'hard') reward = Math.floor(reward * 0.8);
 
@@ -3853,8 +4028,24 @@ export class GameEngine {
     // 跳过波次后道具序列期间的波次逻辑
     if (this.state === GameState.ITEM_DROP || this.state === GameState.ITEM_REVEAL) return;
 
-    const result = this.waveManager!.update(this.deltaTime);
-    if (result.skipRest) return;
+    // ===== 巢穴·蟑老大 Boss 战：Boss 系统 + 波次管理器并行（波次循环供怪，胜利由 Boss 死亡触发） =====
+    if (this.isBossKingScene()) {
+      this.bossKingSystem!.updateConfig({
+        width: this.width, height: this.height, deltaTime: this.deltaTime,
+        time: this.time, defenseHp: this.defenseHp, defenseLineY: this.defenseLineY(),
+        player: this.player,
+        tripleFlame: this.tripleFlameSystem?.getState(),
+      });
+      this.bossKingSystem!.update();
+      // 火枪引爆炸弹检测（在火焰碰撞结算之后执行，引擎主循环顺序已保证）
+      this.bossKingSystem!.checkBombFlameHits();
+      // 波次管理器并行运转（loopWaves 模式：第 6 波清空后回到第 1 波，不触发波次胜利）
+      const result = this.waveManager!.update(this.deltaTime);
+      if (result.skipRest) return;
+    } else {
+      const result = this.waveManager!.update(this.deltaTime);
+      if (result.skipRest) return;
+    }
 
     // ===== 定时自爆：交错生成（每只间隔8秒以保持节奏）。医院/地铁场景生效 =====
     if ((this.currentScene === SceneType.HOSPITAL || this.currentScene === SceneType.SUBWAY) && this.timedSuicideSpawnRemaining > 0) {
@@ -3961,8 +4152,8 @@ export class GameEngine {
       }
     }
 
-    // ===== 医院/超市/地铁：更新已放置的定时炸弹（定时自爆蟑螂在防线放置） =====
-    if (this.currentScene === SceneType.HOSPITAL || this.currentScene === SceneType.SUPERMARKET || this.currentScene === SceneType.SUBWAY) {
+    // ===== 医院/超市/地铁/巢穴：更新已放置的定时炸弹（定时自爆蟑螂在防线放置；巢穴为蟑老大导演 P3 池） =====
+    if (this.currentScene === SceneType.HOSPITAL || this.currentScene === SceneType.SUPERMARKET || this.currentScene === SceneType.SUBWAY || this.isBossKingScene()) {
       for (let bi = this.placedBombs.length - 1; bi >= 0; bi--) {
         const bomb = this.placedBombs[bi];
         bomb.timer -= this.deltaTime;
@@ -4037,6 +4228,11 @@ export class GameEngine {
     this.waveManager!.startWave();
   }
 
+  /** 巢穴·蟑老大 Boss 战是否接管当前关卡（巢穴场景 + 剧情模式；替换原波次内容，仅 Easy） */
+  isBossKingScene(): boolean {
+    return this.currentScene === SceneType.NEST && this.gameMode === GameMode.STORY;
+  }
+
   // Start 3-2-1 countdown before wave spawn. Returns true if countdown was started.
   startCountdown(): boolean {
     return this.waveManager!.startCountdown();
@@ -4044,6 +4240,20 @@ export class GameEngine {
 
   // Called when countdown reaches 0 - actually spawn the wave
   doWaveSpawn() {
+    // 巢穴·蟑老大：3-2-1 倒计时结束 → 开始 Boss 战 + 启动第 1 波（波次系统并行供怪，循环波次）
+    if (this.isBossKingScene()) {
+      this.state = GameState.PLAYING;
+      this.onStateChange?.(this.state);
+      this.bossKingSystem!.updateConfig({
+        width: this.width, height: this.height, deltaTime: this.deltaTime,
+        time: this.time, defenseHp: this.defenseHp, defenseLineY: this.defenseLineY(),
+        player: this.player,
+      });
+      this.bossKingSystem!.startBattle();
+      // 巢穴波次系统（复制天台）：wave 已由 waveManager.startWave() 递增至 1，此处直接生成第 1 波
+      this.waveManager!.doWaveSpawn();
+      return;
+    }
     this.waveManager!.doWaveSpawn();
   }
 
@@ -4051,16 +4261,25 @@ export class GameEngine {
     return this.waveManager!.getWaveConfig(wave);
   }
 
+  /** 当前关卡 ID（存档键）：困难关为 `${scene}__hard`，简单关为 scene 名 */
+  getCurrentLevelId(): string {
+    return getLevelId(this.currentScene, this.difficulty);
+  }
+
   unlockNextScene() {
+    // 当前关卡 ID（困难关 = `${scene}__hard`，简单关 = scene）
+    const levelId = this.getCurrentLevelId();
+
     // Ensure scenesCompleted exists (defensive for optional field)
     if (!this.progress.scenesCompleted) {
       this.progress.scenesCompleted = [];
     }
-    // Mark current scene as completed
-    if (!this.progress.scenesCompleted.includes(this.currentScene)) {
-      this.progress.scenesCompleted.push(this.currentScene);
+    // Mark current level as completed（按关卡 ID，困难关与简单关互不影响）
+    this.lastRunFirstClear = !this.progress.scenesCompleted.includes(levelId);
+    if (!this.progress.scenesCompleted.includes(levelId)) {
+      this.progress.scenesCompleted.push(levelId);
     }
-    this.scenesCleared.add(this.currentScene);
+    this.scenesCleared.add(levelId);
 
     // ===== 星级评价：按防线血量（不含加血）保留比例 —— 100%→3星，60%~99%→2星，0%~59%→1星 =====
     const hpRatio = this.maxDefenseHp > 0
@@ -4069,25 +4288,16 @@ export class GameEngine {
     const stars = hpRatio >= 1 ? 3 : hpRatio >= 0.6 ? 2 : 1;
     this.lastStarRating = stars;
     if (!this.progress.levelStars) this.progress.levelStars = {};
-    // 不管过关几次，只记录该关卡曾经得到的最多星级
-    const prevStars = this.progress.levelStars[this.currentScene] ?? 0;
+    // 不管过关几次，只记录该关卡曾经得到的最多星级（按关卡 ID，困难关独立记录）
+    const prevStars = this.progress.levelStars[levelId] ?? 0;
     if (prevStars < stars) {
-      this.progress.levelStars[this.currentScene] = stars;
+      this.progress.levelStars[levelId] = stars;
     }
 
-    // ===== 天赋点经济（v4）：首次三星 +threeStarBonus；待解锁池在地下室通关时一次性发放 =====
-    const rewardCfg = BALANCE_CONFIG.economy.talentPointReward;
+    // ===== 天赋点经济（v5）：星级与天赋点解耦——三星不再发放天赋点，仅首次过关发放 perScene 天赋点 =====
+    // 星级仅决定结算金币倍率（见 gameVictory），不再产生任何天赋点
     this.lastVictoryStarBonus = 0;
-    if (stars === 3 && prevStars < 3) {
-      this.lastVictoryStarBonus = rewardCfg.threeStarBonus;
-      if (this.progress.scenesCompleted.includes(SceneType.BASEMENT)) {
-        this.progress.talentTree.points += rewardCfg.threeStarBonus;
-      } else {
-        // 天赋系统未解锁：三星点存入待解锁池
-        this.progress.pendingTalentPoints = (this.progress.pendingTalentPoints ?? 0) + rewardCfg.threeStarBonus;
-      }
-    }
-    // 天赋系统解锁（地下室通关）：待解锁池一次性发放，胜利界面弹窗展示
+    // 旧存档兼容：地下室通关时仍将历史待解锁池一次性发放（新版本不再累积该池）
     this.lastTalentUnlockGrant = 0;
     if (this.currentScene === SceneType.BASEMENT && (this.progress.pendingTalentPoints ?? 0) > 0) {
       const grant = this.progress.pendingTalentPoints ?? 0;
@@ -4097,14 +4307,14 @@ export class GameEngine {
     }
     this.saveProgress();
 
-    // Unlock next scene in chain
-    const currentIdx = SCENE_UNLOCK_CHAIN.indexOf(this.currentScene);
-    if (currentIdx >= 0 && currentIdx < SCENE_UNLOCK_CHAIN.length - 1) {
-      const nextScene = SCENE_UNLOCK_CHAIN[currentIdx + 1];
-      if (!this.progress.scenesUnlocked.includes(nextScene)) {
-        this.progress.scenesUnlocked.push(nextScene);
+    // 按剧情关卡序列解锁下一关（巢穴之后依次解锁 6 个困难关）
+    const currentIdx = getStoryLevelIndex(levelId);
+    if (currentIdx >= 0 && currentIdx < STORY_LEVELS.length - 1) {
+      const nextLevel = STORY_LEVELS[currentIdx + 1];
+      if (!this.progress.scenesUnlocked.includes(nextLevel.id)) {
+        this.progress.scenesUnlocked.push(nextLevel.id);
         this.saveProgress(); // Save immediately after unlocking
-        this.addFloatingText(this.width / 2, this.height / 2 + 50, TEXT_CONFIG.combat.sceneUnlock.text(SCENE_CONFIGS[nextScene].name), TEXT_CONFIG.combat.sceneUnlock.color);
+        this.addFloatingText(this.width / 2, this.height / 2 + 50, TEXT_CONFIG.combat.sceneUnlock.text(nextLevel.name), TEXT_CONFIG.combat.sceneUnlock.color);
       }
     }
   }
@@ -4458,6 +4668,8 @@ export class GameEngine {
 
     this.recalcTalentMultipliers();
     this.saveProgress();
+    // 天赋加点后立即检查成就（首次加点/三系首次加点等），菜单加点也能即时解锁
+    this.checkAchievements();
     return true;
   }
 
@@ -4485,10 +4697,9 @@ export class GameEngine {
     return (this.progress.talentTree.talents[id] || 0) > 0;
   }
 
-  /** 天赋外观进化：火焰束变体（T5 互斥优先，其次 T3 基石） */
-  private getFlameVariant(): 'normal' | 'blue' | 'overdrive' | 'lance' {
+  /** 天赋外观进化：火焰束变体（T5 过载核心，其次 T3 蓝焰基石；聚能长枪不再改变火焰主体） */
+  private getFlameVariant(): 'normal' | 'blue' | 'overdrive' {
     if (this.hasTalent('overdrive')) return 'overdrive';
-    if (this.hasTalent('lance')) return 'lance';
     if (this.hasTalent('bluecore')) return 'blue';
     return 'normal';
   }
@@ -4820,6 +5031,46 @@ export class GameEngine {
     }
     this.renderRoaches(ctx);
 
+    // ===== 须须干扰器雷达波特效（jammerActiveTimer 驱动：防线X中心向上发射扩散波环） =====
+    if (this.jammerActiveTimer > 0) {
+      const JM = BALANCE_CONFIG.jammer;
+      const elapsed = JM.duration - this.jammerActiveTimer;
+      const jamCx = this.width / 2;
+      const jamBaseY = this.defenseLineY() - 10;
+      const ringInterval = 0.45;   // 波环发射间隔（秒）
+      const ringLife = 1.5;        // 单环存活（秒）
+      const ringRise = 340;        // 上升总距离（像素）
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      // 发射口常驻脉冲光点
+      const emitPulse = 0.5 + 0.5 * Math.sin(this.time * 10);
+      ctx.fillStyle = `rgba(192, 132, 252, ${0.25 + 0.3 * emitPulse})`;
+      ctx.beginPath();
+      ctx.arc(jamCx, jamBaseY, 6 + 4 * emitPulse, 0, Math.PI * 2);
+      ctx.fill();
+      // 上升扩散波环（自下而上、渐宽渐隐，透视压扁）
+      for (let k = 0; k * ringInterval <= elapsed; k++) {
+        const rt = elapsed - k * ringInterval; // 该环已存活时长
+        if (rt > ringLife) continue;
+        const p = rt / ringLife;               // 0→1
+        const ry = jamBaseY - p * ringRise;
+        const radius = 24 + p * 230;
+        const alpha = (1 - p) * 0.5;
+        ctx.strokeStyle = `rgba(192, 132, 252, ${alpha})`;
+        ctx.lineWidth = Math.max(0.8, 2.5 - p * 1.7);
+        ctx.beginPath();
+        ctx.ellipse(jamCx, ry, radius, radius * 0.32, 0, Math.PI, Math.PI * 2);
+        ctx.stroke();
+        // 环内提亮弧（上半弧内侧细线，增强雷达波体积感）
+        ctx.strokeStyle = `rgba(233, 213, 255, ${alpha * 0.6})`;
+        ctx.lineWidth = Math.max(0.6, 1.2 - p * 0.6);
+        ctx.beginPath();
+        ctx.ellipse(jamCx, ry, radius * 0.72, radius * 0.72 * 0.32, 0, Math.PI * 1.1, Math.PI * 1.9);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
     // 调试：喷火枪攻击范围（束）与辐射范围（粒子区）矩形框
     if (this.showFlameDebug) {
       this.renderFlameDebugRanges(ctx);
@@ -5033,6 +5284,14 @@ export class GameEngine {
     if (this.bossBattle.active) {
       this.renderEggPods(ctx);
     }
+    // ===== 巢穴·蟑老大 Boss 战：地面阴影（贴地）→ Boss 本体 → 风流线 → 炸弹/轨迹/落点标记 =====
+    if (this.bossKingSystem?.isActive()) {
+      const bkState = this.bossKingSystem.getState();
+      BossKingRenderer.renderBossShadow(ctx, w, h, bkState, this.time);
+      BossKingRenderer.renderBoss(ctx, w, h, bkState, this._bossKingFrames as Map<string, HTMLImageElement[]>, this.time);
+      BossKingRenderer.renderWindStreaks(ctx, w, h, bkState, this.defenseLineY(), this.time);
+      BossKingRenderer.renderBombs(ctx, this.bossKingSystem.bombs.getBombs(), this.bossBombImg, this.time);
+    }
     this.renderBaitThrow(ctx);
     this.renderPlayer(ctx);
     // Render danmaku bullets and lasers (above roaches, below player)
@@ -5058,6 +5317,14 @@ export class GameEngine {
     }
 
     ctx.restore();
+
+    // ===== 巢穴·蟑老大：屏幕汁液遮罩 + Boss 血条 HUD（屏幕空间覆盖层，主变换外，模拟溅到"镜头"上） =====
+    if (this.bossKingSystem) {
+      BossKingRenderer.renderGoo(ctx, w, h, this.bossKingSystem.bombs.getGoos());
+      if (this.bossKingSystem.isActive()) {
+        BossKingRenderer.renderHUD(ctx, w, this.bossKingSystem.getState());
+      }
+    }
 
     // ===== HEAT WARNING HUD: display countdown 3 seconds before overheat =====
     // Drawn OUTSIDE the main ctx.save()/restore() to avoid transform issues
@@ -5141,7 +5408,7 @@ export class GameEngine {
 
   renderDefenseLine(ctx: CanvasRenderingContext2D, w: number) {
     const scene = this.getSceneConfig();
-    RenderUtils.renderDefenseLine(ctx, w, this.defenseLineY(), scene.defenseLineColor, this.time, this.player.shieldTimer, this.hasTalent('wall'));
+    RenderUtils.renderDefenseLine(ctx, w, this.defenseLineY(), scene.defenseLineColor, this.time, this.player.shieldTimer);
   }
 
   renderStickyBoards() {
@@ -5204,7 +5471,8 @@ export class GameEngine {
       roachShieldImg: this.roachShieldImg,
       roachJockImg: this.roachJockImg,
       debuffPoisonImg: this.debuffPoisonImg,
-      nurseCastFrames: this.nurseCastFrames, mutantTransformFrames: this.mutantTransformFrames,
+      debuffJammerImg: this.debuffJammerImg,
+      mutantTransformFrames: this.mutantTransformFrames,
       imagesLoaded: this.imagesLoaded, time: this.time, deltaTime: this.deltaTime,
       defenseLineY: this.defenseLineY(), canvasHeight: this.height,
       bossBattle: this.bossBattle, bossAnimState: this.bossAnimState, bossAnimFrames: this.bossAnimFrames,
@@ -5237,6 +5505,7 @@ export class GameEngine {
       const gx = gunXs[i];
       const isSideGun = i > 0;
       const sideScale = 1.0; // Side guns same size as main gun
+      const tfState = this.tripleFlameSystem!.getState();
 
       ctx.save();
       ctx.translate(gx, py);
@@ -5247,8 +5516,18 @@ export class GameEngine {
       ctx.ellipse(3 * s, 8 * s, 22 * s, 10 * s, 0, 0, Math.PI * 2);
       ctx.fill();
 
-      if (this.gunImg && this.imagesLoaded) {
-        const gw = 60 * s;
+      // ===== 三重火焰侧枪：barrel.png 贴图（58×109 竖长枪管，宽度按原比例等比） =====
+      // 中心位置与主枪一致（-80玩家单位×0.6），Y 由 sideBarrelYOffset 调整；X 间距由 sideOffset 控制（⚠玩法）
+      if (isSideGun && this.barrelImg && this.imagesLoaded && tfState.sideBarrelHeight) {
+        const bh = tfState.sideBarrelHeight * s;
+        const bw = bh * (this.barrelImg.width / this.barrelImg.height);
+        ctx.save();
+        ctx.translate(0, -80 * s * 0.6 + (tfState.sideBarrelYOffset ?? 0) * s);
+        ctx.drawImage(this.barrelImg, -bw / 2, -bh / 2, bw, bh);
+        ctx.restore();
+      } else if (this.gunImg && this.imagesLoaded) {
+        // 贴图为 256×256 正方形：宽高同值按 1:1 绘制（修复旧版 60×80 导致的 X 轴压扁）
+        const gw = 80 * s;
         const gh = 80 * s;
         ctx.save();
         ctx.translate(0, -gh * 0.6);
@@ -5281,6 +5560,28 @@ export class GameEngine {
       // DEBUG: Always show warning for testing - drawn in screen coords after gun restore
       // (will be drawn in render() instead)
 
+      ctx.restore();
+    }
+
+    // ===== 射程红点：基础火枪射程位置标记（方便调距查看）=====
+    {
+      const nozzleY = p.y - BALANCE_CONFIG.player.nozzleOffsetY;
+      const dotY = nozzleY - BALANCE_CONFIG.player.baseFireRange; // 260px 处
+      const pulse = 1 + 0.25 * Math.sin(this.time * 5);
+      ctx.save();
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = '#ef4444';
+      ctx.shadowColor = '#ef4444';
+      ctx.shadowBlur = 6;
+      ctx.beginPath();
+      ctx.arc(p.x, dotY, 5 * pulse, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = 'rgba(239, 68, 68, 0.6)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(p.x, dotY, 9 * pulse, 0, Math.PI * 2);
+      ctx.stroke();
       ctx.restore();
     }
 
@@ -5323,21 +5624,18 @@ export class GameEngine {
   /**
    * 天赋外观进化：枪体改造覆盖层
    * 在 renderPlayer 的枪体坐标系内调用（原点 = 玩家锚点，长度值 × s 换算像素）
-   * - steel（寒钢枪管）：银色加长枪管 + 散热环
+   * - steel（寒钢枪管）：无独立特效，仅将喷嘴圆环染色为寒钢蓝
    * - overdrive（过载核心）：枪体深红脉动辉光
    * - lance（聚能长枪）：枪口白热聚能环
-   * - alloy（耐热合金）：枪管散热格栅横线（1级2条→2级3条）
-   * - fins（散热鳍片）：枪身两侧三角鳍片（1级2片→2级4片）
-   * - tank（扩容气罐）：枪身下气罐加高（+15%/级，半透明不遮原贴图）
+   * - nozzle（扩口喷嘴）：喷嘴圆环（1级1个→3级3个，椭圆压扁+底部缺口）
+   * - focus（风压聚焦）：枪体贴图配件——涡轮风机组件（固定枪体、单片旋转、内吸），取代原扩散波纹
+   * （耐热合金/散热鳍片/扩容气罐按需求无视觉特效）
    */
   private renderGunEvolution(ctx: CanvasRenderingContext2D, s: number) {
-    const hasSteel = this.hasTalent('steel');
     const hasOverdrive = this.hasTalent('overdrive');
     const hasLance = this.hasTalent('lance');
-    const alloyLv = this.progress.talentTree.talents['alloy'] || 0;
-    const finsLv = this.progress.talentTree.talents['fins'] || 0;
-    const tankLv = this.progress.talentTree.talents['tank'] || 0;
-    if (!hasSteel && !hasOverdrive && !hasLance && alloyLv === 0 && finsLv === 0 && tankLv === 0) return;
+    const focusLv = this.progress.talentTree.talents['focus'] || 0;
+    if (!hasOverdrive && !hasLance && focusLv === 0) return;
 
     const cfg = BALANCE_CONFIG.render.renderUtils.gunEvolution;
     ctx.save();
@@ -5357,86 +5655,61 @@ export class GameEngine {
       ctx.fill();
     }
 
-    // 寒钢枪管：银色管体 + 高光棱线 + 散热环
-    if (hasSteel) {
-      const halfW = cfg.steelBarrelWidth * s;
-      const len = cfg.steelBarrelLength * s;
-      const bottomY = -cfg.steelBarrelYOffset * s;
-      const topY = bottomY - len;
-      ctx.fillStyle = cfg.steelBarrelBodyColor;
-      ctx.fillRect(-halfW, topY, halfW * 2, len);
-      // 高光棱线（管体右缘）
-      ctx.fillStyle = cfg.steelBarrelEdgeColor;
-      ctx.fillRect(halfW * 0.4, topY, halfW * 0.35, len);
-      // 散热环
-      ctx.strokeStyle = cfg.steelBarrelRingColor;
-      ctx.lineWidth = cfg.steelBarrelRingWidth * s;
-      for (let i = 1; i <= cfg.steelBarrelRingCount; i++) {
-        const ry = topY + (len * i) / (cfg.steelBarrelRingCount + 1);
-        ctx.beginPath();
-        ctx.moveTo(-halfW, ry);
-        ctx.lineTo(halfW, ry);
-        ctx.stroke();
-      }
-    }
-
-    // 聚能长枪：枪口白热聚能环
+    // 聚能长枪：枪口白热聚能环（椭圆压扁长宽比 + 底部缺口）+ 中心青色十字准星
     if (hasLance) {
       const alpha = cfg.lanceRingAlphaBase + Math.sin(this.time * cfg.lanceRingFreq) * cfg.lanceRingAlphaAmp;
       const rr = cfg.lanceRingRadius * s;
       const ry = -cfg.lanceRingYOffset * s;
+      const gap = Math.PI * cfg.lanceRingGapRatio;
       ctx.strokeStyle = `rgba(${cfg.lanceRingColor}, ${alpha})`;
       ctx.lineWidth = cfg.lanceRingLineWidth * s;
       ctx.beginPath();
-      ctx.arc(0, ry, rr, 0, Math.PI * 2);
+      ctx.ellipse(0, ry, rr, rr * cfg.lanceRingScaleY, 0, Math.PI / 2 + gap / 2, Math.PI * 2 + Math.PI / 2 - gap / 2);
+      ctx.stroke();
+      // 中心青色十字准星（随环一起脉动）
+      const cs = cfg.lanceCrossSize * s;
+      ctx.strokeStyle = `rgba(${cfg.lanceCrossColor}, ${alpha})`;
+      ctx.lineWidth = cfg.lanceRingLineWidth * s;
+      ctx.beginPath();
+      ctx.moveTo(-cs, ry); ctx.lineTo(cs, ry);
+      ctx.moveTo(0, ry - cs); ctx.lineTo(0, ry + cs);
       ctx.stroke();
     }
 
-    // 耐热合金：枪管散热格栅横线（1级2条→2级3条）
-    if (alloyLv > 0) {
-      const lineCount = alloyLv + 1;
-      const halfW = cfg.alloyGrillWidth * s;
-      const baseY = -cfg.alloyGrillYOffset * s;
-      ctx.strokeStyle = cfg.alloyGrillColor;
-      ctx.lineWidth = cfg.alloyGrillLineWidth * s;
-      for (let i = 0; i < lineCount; i++) {
-        const gy = baseY - i * cfg.alloyGrillSpacing * s;
+    // 涡轮增强：固定枪体的涡轮贴图配件（风机组件，随枪体移动；叶片绕轴旋转内吸）
+    if (focusLv > 0) {
+      const hy = -cfg.turbineYOffset * s;
+      const R = cfg.turbineRadius * s;
+      const rot = this.time * cfg.turbineRotateSpeed;
+      const blades = cfg.turbineBlades;
+      ctx.save();
+      // 配件为实体贴图，用 source-over 保证不透明壳体正确呈现（不受上方 glow blend 影响）
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.translate(0, hy);
+      ctx.scale(1, cfg.turbineScaleY); // 透视压扁（椭圆），贴合枪管圆柱朝向
+      ctx.strokeStyle = `rgba(${cfg.turbineShellColor}, ${cfg.turbineShellAlpha})`;
+      ctx.lineWidth = Math.max(1, cfg.turbineShellWidth * s);
+      ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.stroke();
+      // 旋转叶片：由中心延伸的叶片，转速 = turbineRotateSpeed
+      ctx.fillStyle = `rgba(${cfg.turbineBladeColor}, ${cfg.turbineBladeAlpha})`;
+      for (let i = 0; i < blades; i++) {
+        const a = rot + (Math.PI * 2 / blades) * i;
+        const tipX = Math.cos(a) * R, tipY = Math.sin(a) * R;
+        const half = cfg.turbineBladeHalf * R;
+        const bx = Math.cos(a + Math.PI / 2) * half, by = Math.sin(a + Math.PI / 2) * half;
         ctx.beginPath();
-        ctx.moveTo(-halfW, gy);
-        ctx.lineTo(halfW, gy);
-        ctx.stroke();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(tipX + bx, tipY + by);
+        ctx.lineTo(tipX - bx, tipY - by);
+        ctx.closePath();
+        ctx.fill();
       }
-    }
-
-    // 散热鳍片：枪身两侧三角鳍片（1级2片→2级4片，左右对称）
-    if (finsLv > 0) {
-      const pairCount = finsLv === 1 ? 1 : 2; // 每侧片数对数：1级1对→2级2对（共2/4片）
-      const fw = cfg.finWidth * s;
-      const fh = cfg.finHeight * s;
-      const baseY = -cfg.finYOffset * s;
-      ctx.fillStyle = cfg.finColor;
-      for (let i = 0; i < pairCount; i++) {
-        const fy = baseY - i * cfg.finSpacing * s;
-        for (const dir of [-1, 1]) {
-          ctx.beginPath();
-          ctx.moveTo(dir * 6 * s, fy);               // 贴枪身侧边
-          ctx.lineTo(dir * (6 * s + fw), fy - fh / 2); // 外尖端
-          ctx.lineTo(dir * 6 * s, fy - fh);          // 贴枪身侧边上沿
-          ctx.closePath();
-          ctx.fill();
-        }
-      }
-    }
-
-    // 扩容气罐：枪身下气罐加高（半透明铜色，不遮原贴图）
-    if (tankLv > 0) {
-      const halfW = cfg.tankCanWidth * s;
-      const ch = cfg.tankCanBaseHeight * (1 + cfg.tankCanGrowPerLevel * tankLv) * s;
-      const bottomY = cfg.tankCanYOffset * s;
-      ctx.fillStyle = cfg.tankCanColor;
-      ctx.fillRect(-halfW, bottomY - ch, halfW * 2, ch);
-      ctx.fillStyle = cfg.tankCanEdgeColor;
-      ctx.fillRect(halfW * 0.3, bottomY - ch, halfW * 0.3, ch); // 右侧高光棱线
+      // 中心毂 + 弱青轴心点缀
+      ctx.fillStyle = `rgba(${cfg.turbineShellColor}, ${cfg.turbineShellAlpha})`;
+      ctx.beginPath(); ctx.arc(0, 0, cfg.turbineHubRadius * s, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = `rgba(${cfg.turbineAccentColor}, 0.85)`;
+      ctx.beginPath(); ctx.arc(0, 0, Math.max(0.8, cfg.turbineHubRadius * s * 0.35), 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
     }
 
     ctx.restore();

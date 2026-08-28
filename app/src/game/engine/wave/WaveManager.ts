@@ -14,6 +14,8 @@ export interface WaveManagerConfig {
   difficulty: string;
   gameMode: GameMode;
   currentScene: SceneType;
+  /** 循环波次模式（巢穴蟑老大 Boss 战）：打完最后一波后回到第 1 波继续出怪，不触发波次胜利（胜利由 Boss 死亡触发） */
+  loopWaves?: boolean;
 }
 
 // ===== 波次管理器回调接口（按职责分组） =====
@@ -116,6 +118,8 @@ export class WaveManager {
   countdownTimer: number = 0;
   /** 倒计时波次待处理标志 */
   countdownWavePending: boolean = false;
+  /** 循环波次模式：已完成至少一轮全部波次（抑制循环后第 1 波的 3-2-1 倒计时/BGM 重启） */
+  private hasCompletedCycle: boolean = false;
 
   constructor(config: WaveManagerConfig, callbacks: WaveCallbacks) {
     this.cfg = config;
@@ -143,6 +147,7 @@ export class WaveManager {
     this.countdownPhase = 0;
     this.countdownTimer = 0;
     this.countdownWavePending = false;
+    this.hasCompletedCycle = false;
     this.pendingFormations = [];
     this.formationIdleTimer = 0;
     this.formationGroupTimer = 0;
@@ -355,6 +360,18 @@ export class WaveManager {
     const configs = SCENE_WAVE_CONFIGS[this.cfg.currentScene] || SCENE_WAVE_CONFIGS[SceneType.KITCHEN];
     if (this.wave < configs.length) return false;
 
+    // 循环波次模式（巢穴蟑老大 Boss 战）：最后一波清空后回到第 1 波继续施压，
+    // 不触发波次胜利——胜利由 Boss 死亡单独触发
+    if (this.cfg.loopWaves) {
+      this.wave = 0;
+      this.hasCompletedCycle = true;
+      this.cb.onAddFloatingText(
+        this.cfg.width / 2, this.cfg.height * 0.35,
+        '更多蟑螂从巢穴涌出！', TEXT_CONFIG.combat.waveCleared.color
+      );
+      return false;
+    }
+
     // 通关：更新进度、解锁下一场景、触发胜利
     const economy = this.cb.onGetEconomy();
     const progress = this.cb.onGetProgress();
@@ -425,6 +442,8 @@ export class WaveManager {
     // Boss模式跳过倒计时；仅第一波显示倒计时，后续波次直接开始
     if (this.cfg.gameMode === GameMode.BOSS) return false;
     if (this.wave > 1) return false;
+    // 循环波次模式：首轮之后的第 1 波不再重复倒计时（BGM 已在战斗中播放）
+    if (this.hasCompletedCycle) return false;
 
     const waveCfg = BALANCE_CONFIG.wave;
     this.countdownPhase = waveCfg.countdownPhases;
@@ -526,6 +545,13 @@ export class WaveManager {
       addToQueue(phase2, RoachType.MUTANT, mutantCount);
       this.cb.onSetTimedSuicideRemaining(timedSuicideCount);
       this.cb.onSetTimedSuicideTimer(timedSuicideCount > 0 ? 5.0 : 0);
+    }
+
+    // 天台特殊单位（最后两波变异蟑螂，混入 phase2）
+    if (this.cfg.currentScene === SceneType.ROOFTOP) {
+      const { mutantCount = 0 } = config;
+      addToQueue(phase2, RoachType.MUTANT, mutantCount);
+      shuffle(phase2);
     }
 
     // 地铁特殊单位（护盾蟑螂最先生成，确保编队锚点先就位；变异蟑螂混入 phase2；定时自爆走独立定时生成）

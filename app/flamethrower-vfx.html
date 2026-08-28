@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>火枪特效调参台 · vfx-balance 可视化编辑</title>
+<style>
+  *{box-sizing:border-box}
+  body{background:#1b1d22;font-family:"Microsoft YaHei",sans-serif;margin:0;color:#d7dbe2;overflow:hidden}
+  #app{display:flex;height:100vh}
+  /* ===== 左侧画布 ===== */
+  #stage{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px;background:#111316}
+  #cv{background:#000;border:1px solid #333;border-radius:6px}
+  #stagebar{font-size:12px;color:#8a919e;margin-top:8px;line-height:1.6;text-align:center}
+  /* ===== 右侧控制面板 ===== */
+  #panel{flex:1;overflow-y:auto;padding:10px 14px 220px}
+  #panel::-webkit-scrollbar{width:8px}
+  #panel::-webkit-scrollbar-thumb{background:#3a3f48;border-radius:4px}
+  h1{font-size:16px;margin:4px 0 10px;color:#e8ecf3}
+  h1 small{font-size:11px;color:#8a919e;font-weight:normal;margin-left:8px}
+  details{background:#22252b;border:1px solid #33363e;border-radius:8px;margin-bottom:8px}
+  details>summary{cursor:pointer;padding:8px 12px;font-size:13px;font-weight:bold;color:#cfd6e0;user-select:none}
+  details>summary:hover{background:#262a31}
+  details .body{padding:4px 12px 10px;border-top:1px solid #2e323a}
+  .row{display:flex;align-items:center;gap:8px;padding:3px 0;font-size:12px}
+  .row label{flex:0 0 168px;color:#9aa3b0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .row input[type=range]{flex:1;min-width:60px;accent-color:#5b9dff}
+  .row input[type=number]{width:64px;background:#17191e;border:1px solid #3a3f48;color:#d7dbe2;border-radius:4px;padding:2px 4px;font-size:12px}
+  .row input[type=color]{width:34px;height:22px;border:1px solid #3a3f48;border-radius:4px;background:#17191e;padding:0;cursor:pointer}
+  .row .hex{font-size:11px;color:#7a8290;width:58px}
+  .row select{background:#17191e;border:1px solid #3a3f48;color:#d7dbe2;border-radius:4px;padding:2px 6px;font-size:12px}
+  .row .tag{font-size:10px;color:#7a8290;margin-left:auto}
+  .warn{color:#e8b45a;font-size:10px}
+  /* ===== 导出面板 ===== */
+  #outPanel{position:fixed;right:14px;bottom:14px;width:430px;background:#22252b;border:1px solid #3a3f48;border-radius:10px;padding:10px 12px;box-shadow:0 4px 16px rgba(0,0,0,.5);z-index:99;font-size:12px}
+  #outPanel textarea{width:100%;height:150px;font-size:10px;font-family:Consolas,monospace;background:#17191e;color:#c9d4e3;border:1px solid #3a3f48;border-radius:6px;margin:6px 0;box-sizing:border-box;padding:6px}
+  #outPanel .btns{display:flex;gap:8px}
+  #outPanel button{flex:1;padding:5px 0;border:1px solid #3a5a8c;background:#2a3a52;color:#cfe2ff;border-radius:6px;cursor:pointer;font-size:12px}
+  #outPanel button:hover{background:#334766}
+  #outPanel .tip{font-size:10px;color:#7a8290;margin-top:6px;line-height:1.5}
+  /* ===== 顶部工具条 ===== */
+  #toolbar{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;background:#22252b;border:1px solid #33363e;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px}
+  #toolbar .grp{display:flex;align-items:center;gap:5px}
+  #toolbar select,#toolbar input[type=number]{background:#17191e;border:1px solid #3a3f48;color:#d7dbe2;border-radius:4px;padding:2px 4px;font-size:12px}
+  #toolbar input[type=checkbox]{accent-color:#5b9dff}
+  #toolbar input[type=range]{accent-color:#5b9dff;width:80px}
+  #toolbar .sep{width:1px;height:18px;background:#3a3f48}
+  #toolbar b{color:#cfd6e0}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage">
+    <canvas id="cv" width="540" height="960"></canvas>
+    <div id="stagebar">540×960 战斗画布 · 玩家锚点 (270, 1060) · s=4 ｜ 渲染逻辑与 engine 逐行一致（renderFireZones / renderMuzzleFlash / renderGunEvolution）</div>
+  </div>
+  <div id="panel">
+    <h1>火枪特效调参台<small>参数 = vfx-balance.ts 实时映射 · 自动本地保存</small></h1>
+    <div id="toolbar">
+      <div class="grp"><b>背景</b><select id="selBg">
+        <option value="assets/bg_supermarket.jpg">超市</option>
+        <option value="assets/bg_hospital.png">医院</option>
+        <option value="assets/bg_subway.jpg">地铁</option>
+        <option value="assets/bg_nest.jpg">巢穴</option>
+        <option value="">纯黑</option>
+      </select></div>
+      <div class="grp"><b>火焰变体</b><select id="selVariant">
+        <option value="normal">默认</option><option value="blue">蓝焰核心</option>
+        <option value="overdrive">过载核心</option>
+      </select></div>
+      <span class="sep"></span>
+      <div class="grp"><label><input type="checkbox" id="ckBoost"> 火力全开(强化)</label></div>
+      <div class="grp"><label><input type="checkbox" id="ckTriple"> 三重火焰</label></div>
+      <div class="grp"><label><input type="checkbox" id="ckRef" checked> 参考线</label></div>
+      <div class="grp">伤害强度 <input type="range" id="rgIntensity" min="0" max="1.6" step="0.05" value="0"><span id="lbIntensity">0</span></div>
+      <span class="sep"></span>
+      <div class="grp"><b>天赋</b></div>
+      <div class="grp">风压聚焦 <select id="tlFocus"><option>0</option><option>1</option><option>2</option><option selected>3</option></select></div>
+      <div class="grp"><label><input type="checkbox" id="tlSteel"> 寒钢枪管</label></div>
+      <div class="grp"><label><input type="checkbox" id="tlLance"> 聚能长枪</label></div>
+      <div class="grp"><label><input type="checkbox" id="tlOverdrive"> 过载核心</label></div>
+    </div>
+    <div id="sections"></div>
+  </div>
+</div>
+<div id="outPanel">
+  <b>导出 JSON（调整后复制发给我，我写入 vfx-balance.ts / enemies.ts）</b>
+  <textarea id="out" readonly></textarea>
+  <div class="btns"><button id="btnCopy">复制 JSON</button><button id="btnReset">恢复内置数据</button></div>
+  <div class="tip">player.* → enemies.ts player 节（影响玩法！）｜fireZone.* → render.fireZone ｜ muzzleFlash.* → render.renderUtils.muzzleFlash ｜ gunEvolution.* → render.renderUtils.gunEvolution ｜ itemsTripleFlame.* → items.ts tripleFlame（三重火焰侧枪：间距⚠玩法/贴图高度/Y偏移）。所有修改自动保存在浏览器本地。</div>
+</div>
+<script>
+'use strict';
+// =====================================================================
+// 内置默认值（与 vfx-balance.ts / enemies.ts 当前值一致，DATA_VER 变化时强制刷新缓存）
+// =====================================================================
+const DATA_VER = 4;
+const LS_KEY = 'flamethrowerVfxTuner_v' + DATA_VER;
+
+const DEFAULTS = {
+  // ---- enemies.ts player ----
+  nozzleOffsetY: 327,
+  baseFireRange: 220,          // ⚠ 玩法参数（伤害射程基准）
+  // ---- render.fireZone ----
+  segments: 31, rangeRatio: 0.65, flameLengthY: 0.75, flameVisualYOffset: -9,
+  baseWidth: 22, widthTaper: 0.58,
+  wiggleFreq: 4.5, wiggleTimeScale: 15, wiggleAmplitude: 2, boostWiggleFreqMult: 1.4,
+  sideGunScale: 0.8, sideGunNozzleOffset: 4, sideGunSpacing: 150,
+  coreGlowSize: 33,
+  coreColorDefault: '160, 210, 255', coreColorBlue: '120, 180, 255',
+  coreColorOverdrive: '255, 204, 219',
+  coreGradAlpha0: 0.55, coreGradAlpha1: 0.95, coreGradAlpha2: 0.45,
+  flameAlphaBase: 0.6, flameRootFade: 0.09,
+  // 渐变（lerp 型：两段色，前段 t∈[0,0.5) 后段 t∈[0.5,1]）
+  flameDefaultFirst:  { rBase: 0,   rRange: 255, gBase: 106, gRange: 32,   bBase: 255, bRange: -117 },
+  flameDefaultSecond: { rBase: 255, rRange: 0,   gBase: 128, gRange: 76,   bBase: 128, bRange: -108 },
+  flameBlueFirst:     { rBase: 40,  rRange: 60,  gBase: 140, gRange: 60,   bBase: 255, bRange: 0 },
+  flameBlueSecond:    { rBase: 100, rRange: 60,  gBase: 200, gRange: 40,   bBase: 255, bRange: -55 },
+  flameOverdriveFirst:  { rBase: 120, rRange: 100, gBase: 20, gRange: 40,  bBase: 60, bRange: 60 },
+  flameOverdriveSecond: { rBase: 220, rRange: 35,  gBase: 40, gRange: -30, bBase: 80, bRange: -60 },
+  // （聚能长枪不再改变火焰主体：白热渐变/细束/核心色已移除）
+  // 强化波纹已按需求移除（火力全开仅保留枪口粒子）
+  // ---- render.renderUtils.muzzleFlash ----
+  mf_sideGunScale: 0.6,
+  mf_boostColor0: '245, 115, 50', mf_boostColor1: '255, 180, 50', mf_boostColor2: '255, 60, 0', mf_boostColor3: '255, 140, 40',
+  mf_boostParticleCount: 4, mf_boostSprayDistMin: 18, mf_boostSprayDistMax: 39,
+  mf_boostSprayYScale: 0.6, mf_boostSprayYRandom: 10,
+  mf_boostParticleSizeBase: 2, mf_boostParticleSizeRange: 3.5,
+  mf_boostAlphaBase: 0.6, mf_boostAlphaRange: 0.4,
+  mf_boostGlowSizeMultiplier: 2, mf_boostGlowAlphaRatio: 0.3, mf_boostAlphaFadeTime: 0.5,
+  // ---- render.renderUtils.gunEvolution ----
+  steelTintColor: 'rgba(255, 36, 248, 0.9)', steelTintGlowColor: 'rgba(255, 255, 255, 0.35)',
+  overdriveGlowRadius: 29, overdriveGlowYOffset: 43, overdriveGlowColor: '255, 50, 90',
+  overdriveGlowAlphaBase: 0.18, overdriveGlowAlphaAmp: 0.18, overdriveGlowFreq: 6,
+  lanceRingRadius: 7, lanceRingYOffset: 89, lanceRingColor: '240, 250, 255',
+  lanceRingAlphaBase: 0.25, lanceRingAlphaAmp: 0.3, lanceRingFreq: 3, lanceRingLineWidth: 0.5,
+  lanceRingScaleY: 0.75, lanceRingGapRatio: 0.32, lanceCrossSize: 5, lanceCrossColor: '34, 211, 238',
+  turbineYOffset: 58, turbineScaleY: 0.62, turbineRadius: 6.2,
+  turbineShellWidth: 1.1, turbineShellColor: '105, 110, 116', turbineShellAlpha: 0.9,
+  turbineBlades: 3, turbineBladeWidth: 0.9, turbineBladeHalf: 0.45,
+  turbineBladeColor: '78, 84, 90', turbineBladeAlpha: 0.95,
+  turbineHubRadius: 2.0, turbineRotateSpeed: 3.0, turbineAccentColor: '152, 214, 208',
+  // 格栅/鳍片/气罐特效已按需求移除
+};
+
+// =====================================================================
+// 参数面板 schema（type: num | rgb | rgba | lerp | dash）
+// =====================================================================
+const NUM = (key, label, min, max, step, tag) => ({ type: 'num', key, label, min, max, step, tag });
+const RGB = (key, label) => ({ type: 'rgb', key, label });
+const RGBA = (key, label) => ({ type: 'rgba', key, label });
+const LERP = (key, label) => ({ type: 'lerp', key, label });
+
+const SECTIONS = [
+  { title: '玩家基准（enemies.ts player）', items: [
+    NUM('nozzleOffsetY', '喷嘴 Y 偏移 nozzleOffsetY', 280, 360, 1, 'px'),
+    NUM('baseFireRange', '基础射程 baseFireRange ⚠玩法', 150, 400, 5, 'px'),
+  ]},
+  { title: '三重火焰侧枪贴图（tripleFlame barrel）', items: [
+    NUM('sideGunSpacing', '三重枪身间距 sideGunSpacing ⚠玩法（=items.ts tripleFlame.sideOffset）', 0, 300, 5, 'px'),
+    NUM('sideBarrelHeight', '侧枪贴图高度 sideBarrelHeight', 10, 90, 1, '玩家单位'),
+    NUM('sideBarrelYOffset', '侧枪贴图 Y 偏移 sideBarrelYOffset', -60, 60, 1, '玩家单位'),
+  ]},
+  { title: '火焰主体形态（fireZone）', items: [
+    NUM('segments', '分段数 segments', 6, 40, 1),
+    NUM('rangeRatio', '长度比例 rangeRatio', 0.4, 1.6, 0.05, '×射程'),
+    NUM('flameLengthY', 'Y方向长度 flameLengthY', 0.3, 1.5, 0.05, '×'),
+    NUM('flameVisualYOffset', '整体 Y 下移 flameVisualYOffset', -30, 30, 1, 'px'),
+    NUM('baseWidth', '基础半宽 baseWidth', 5, 60, 1, 'px'),
+    NUM('widthTaper', '锥形收缩 widthTaper', 0.5, 1.2, 0.01),
+    NUM('wiggleFreq', '摆动频率 wiggleFreq', 1, 14, 0.5),
+    NUM('wiggleTimeScale', '摆动时间缩放 wiggleTimeScale', 0, 80, 1),
+    NUM('wiggleAmplitude', '摆动幅度 wiggleAmplitude', 0, 20, 0.5, 'px'),
+    NUM('boostWiggleFreqMult', '火力全开摆动频率倍率 boostWiggleFreqMult', 1, 4, 0.1, '倍'),
+    NUM('flameAlphaBase', '透明度基数 flameAlphaBase', 0.1, 1, 0.05),
+    NUM('flameRootFade', '根部渐隐 flameRootFade', 0, 0.5, 0.01, '段长比'),
+    NUM('sideGunScale', '侧火焰缩放 sideGunScale', 0.2, 1.2, 0.05),
+    NUM('sideGunNozzleOffset', '侧枪喷嘴偏移 sideGunNozzleOffset', -60, 60, 1, 'px'),
+  ]},
+  { title: '核心辉光（fireZone core）', items: [
+    NUM('coreGlowSize', '辉光大小 coreGlowSize', 10, 90, 1, 'px'),
+    NUM('coreGradAlpha0', '渐变α@0 coreGradAlpha0', 0, 1, 0.05),
+    NUM('coreGradAlpha1', '渐变α@0.3 coreGradAlpha1', 0, 1, 0.05),
+    NUM('coreGradAlpha2', '渐变α@0.6 coreGradAlpha2', 0, 1, 0.05),
+    RGB('coreColorDefault', '核心色·默认 coreColorDefault'),
+    RGB('coreColorBlue', '核心色·蓝焰 coreColorBlue'),
+    RGB('coreColorOverdrive', '核心色·过载 coreColorOverdrive'),
+  ]},
+  { title: '火焰渐变·默认（flameDefault*）', items: [
+    LERP('flameDefaultFirst', '前段 flameDefaultFirst'),
+    LERP('flameDefaultSecond', '后段 flameDefaultSecond'),
+  ]},
+  { title: '火焰渐变·蓝焰核心（flameBlue*）', items: [
+    LERP('flameBlueFirst', '前段 flameBlueFirst'),
+    LERP('flameBlueSecond', '后段 flameBlueSecond'),
+  ]},
+  { title: '火焰渐变·过载核心（flameOverdrive*）', items: [
+    LERP('flameOverdriveFirst', '前段 flameOverdriveFirst'),
+    LERP('flameOverdriveSecond', '后段 flameOverdriveSecond'),
+  ]},
+  { title: '枪口强化粒子（muzzleFlash，火力全开时）', items: [
+    NUM('mf_boostParticleCount', '粒子数 boostParticleCount', 1, 12, 1),
+    NUM('mf_boostSprayDistMin', '喷射最小距 boostSprayDistMin', 0, 80, 1, 'px'),
+    NUM('mf_boostSprayDistMax', '喷射最大距 boostSprayDistMax', 10, 120, 1, 'px'),
+    NUM('mf_boostSprayYScale', '喷射Y缩放 boostSprayYScale', 0.1, 1.5, 0.05),
+    NUM('mf_boostSprayYRandom', '喷射Y随机 boostSprayYRandom', 0, 40, 1, 'px'),
+    NUM('mf_boostParticleSizeBase', '粒子基础大小 boostParticleSizeBase', 0.5, 8, 0.5, 'px'),
+    NUM('mf_boostParticleSizeRange', '粒子大小范围 boostParticleSizeRange', 0, 10, 0.5, 'px'),
+    NUM('mf_boostAlphaBase', '基础透明度 boostAlphaBase', 0, 1, 0.05),
+    NUM('mf_boostAlphaRange', '透明度范围 boostAlphaRange', 0, 1, 0.05),
+    NUM('mf_boostGlowSizeMultiplier', '辉光倍率 boostGlowSizeMultiplier', 0.5, 6, 0.5),
+    NUM('mf_boostGlowAlphaRatio', '辉光透明比 boostGlowAlphaRatio', 0, 1, 0.05),
+    NUM('mf_boostAlphaFadeTime', '衰减时间 boostAlphaFadeTime', 0.1, 2, 0.1, 's'),
+    NUM('mf_sideGunScale', '侧枪缩放 sideGunScale', 0.2, 1.2, 0.05),
+    RGB('mf_boostColor0', '粒子色1 boostColors[0]'),
+    RGB('mf_boostColor1', '粒子色2 boostColors[1]'),
+    RGB('mf_boostColor2', '粒子色3 boostColors[2]'),
+    RGB('mf_boostColor3', '粒子色4 boostColors[3]'),
+  ]},
+  { title: '涡轮增强·枪体贴图配件（gunEvolution turbine）', items: [
+    NUM('turbineYOffset', '涡轮中心Y偏移 turbineYOffset', 20, 95, 0.5, '玩家单位'),
+    NUM('turbineScaleY', '透视压扁 turbineScaleY', 0.2, 1, 0.05, ''),
+    NUM('turbineRadius', '外壳半径 turbineRadius', 2, 15, 0.5),
+    NUM('turbineShellWidth', '外壳线宽 turbineShellWidth', 0.1, 3, 0.1),
+    NUM('turbineBlades', '叶片数 turbineBlades', 2, 8, 1),
+    NUM('turbineBladeWidth', '叶片线宽 turbineBladeWidth', 0.1, 3, 0.1, ''),
+    NUM('turbineBladeHalf', '叶片半宽 turbineBladeHalf', 0.1, 0.9, 0.05, '×半径'),
+    NUM('turbineHubRadius', '中心毂半径 turbineHubRadius', 0.5, 8, 0.5),
+    NUM('turbineRotateSpeed', '转速 turbineRotateSpeed', 0, 12, 0.2, '弧度/秒'),
+    RGB('turbineShellColor', '外壳色 turbineShellColor'),
+    NUM('turbineShellAlpha', '外壳透明度 turbineShellAlpha', 0, 1, 0.05),
+    RGB('turbineBladeColor', '叶片色 turbineBladeColor'),
+    NUM('turbineBladeAlpha', '叶片透明度 turbineBladeAlpha', 0, 1, 0.05),
+    RGB('turbineAccentColor', '轴心点缀色 turbineAccentColor'),
+  ]},
+  { title: '寒钢枪管（染色喷嘴圆环，gunEvolution steel）', items: [
+    RGBA('steelTintColor', '染色颜色 steelTintColor'),
+    RGBA('steelTintGlowColor', '染色辉光 steelTintGlowColor'),
+  ]},
+  { title: '聚能长枪环（gunEvolution lance）', items: [
+    NUM('lanceRingRadius', '环半径 lanceRingRadius', 3, 25, 0.5),
+    NUM('lanceRingYOffset', '环上移 lanceRingYOffset', 60, 95, 0.5),
+    NUM('lanceRingAlphaBase', '基础透明 lanceRingAlphaBase', 0, 1, 0.05),
+    NUM('lanceRingAlphaAmp', '脉动幅度 lanceRingAlphaAmp', 0, 1, 0.05),
+    NUM('lanceRingFreq', '脉动频率 lanceRingFreq', 1, 25, 1),
+    NUM('lanceRingLineWidth', '环线宽 lanceRingLineWidth', 0.1, 3, 0.1),
+    NUM('lanceRingScaleY', '长宽比 lanceRingScaleY', 0.1, 1.5, 0.05),
+    NUM('lanceRingGapRatio', '底部缺口 lanceRingGapRatio', 0, 0.5, 0.01, '圆周比'),
+    NUM('lanceCrossSize', '准星半长 lanceCrossSize', 1, 15, 0.5),
+    RGB('lanceCrossColor', '准星颜色 lanceCrossColor'),
+    RGB('lanceRingColor', '环颜色 lanceRingColor'),
+  ]},
+  { title: '过载核心辉光（gunEvolution overdrive）', items: [
+    NUM('overdriveGlowRadius', '辉光半径 overdriveGlowRadius', 10, 60, 1),
+    NUM('overdriveGlowYOffset', '辉光上移 overdriveGlowYOffset', 20, 80, 1),
+    NUM('overdriveGlowAlphaBase', '基础透明 overdriveGlowAlphaBase', 0, 0.8, 0.02),
+    NUM('overdriveGlowAlphaAmp', '脉动幅度 overdriveGlowAlphaAmp', 0, 0.5, 0.02),
+    NUM('overdriveGlowFreq', '脉动频率 overdriveGlowFreq', 1, 15, 0.5),
+    RGB('overdriveGlowColor', '辉光颜色 overdriveGlowColor'),
+  ]},
+];
+
+// =====================================================================
+// 状态（localStorage 持久化）
+// =====================================================================
+let S = loadState();
+const UI = loadUiState();
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (raw) { const d = JSON.parse(raw); if (d && typeof d === 'object') return Object.assign({}, DEFAULTS, d); }
+  } catch (e) {}
+  return JSON.parse(JSON.stringify(DEFAULTS));
+}
+function saveState() { try { localStorage.setItem(LS_KEY, JSON.stringify(S)); } catch (e) {} }
+function loadUiState() {
+  try {
+    const raw = localStorage.getItem(LS_KEY + '_ui');
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  return { bg: 'assets/bg_supermarket.jpg', variant: 'normal', boost: false, triple: false, ref: true,
+    intensity: 0, focusLv: 3, steel: false, lance: false, overdrive: false };
+}
+function saveUiState() { try { localStorage.setItem(LS_KEY + '_ui', JSON.stringify(UI)); } catch (e) {} }
+
+// =====================================================================
+// 颜色工具
+// =====================================================================
+function rgbToHex(str) {
+  const p = str.split(',').map(v => parseInt(v.trim(), 10) || 0);
+  return '#' + p.slice(0, 3).map(v => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join('');
+}
+function hexToRgb(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  return `${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}`;
+}
+function rgbaParse(str) {
+  const m = str.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)/);
+  if (!m) return { hex: '#ffffff', alpha: 1 };
+  return { hex: rgbToHex(`${m[1]},${m[2]},${m[3]}`), alpha: m[4] === undefined ? 1 : parseFloat(m[4]) };
+}
+function rgbaStr(hex, alpha) {
+  const rgb = hexToRgb(hex);
+  return `rgba(${rgb}, ${Math.round(alpha * 100) / 100})`;
+}
+function lerpEnds(c) { // {rBase,rRange,...} -> [起始hex, 结束hex]
+  const clamp = v => Math.max(0, Math.min(255, Math.round(v)));
+  const a = [clamp(c.rBase), clamp(c.gBase), clamp(c.bBase)];
+  const b = [clamp(c.rBase + c.rRange), clamp(c.gBase + c.gRange), clamp(c.bBase + c.bRange)];
+  const toHex = p => '#' + p.map(v => v.toString(16).padStart(2, '0')).join('');
+  return [toHex(a), toHex(b)];
+}
+function lerpFromEnds(startHex, endHex) {
+  const p = h => { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+  const a = p(startHex), b = p(endHex);
+  return { rBase: a[0], rRange: b[0] - a[0], gBase: a[1], gRange: b[1] - a[1], bBase: a[2], bRange: b[2] - a[2] };
+}
+
+// =====================================================================
+// 面板构建
+// =====================================================================
+const sectionsRoot = document.getElementById('sections');
+function buildPanel() {
+  sectionsRoot.innerHTML = '';
+  for (const sec of SECTIONS) {
+    const det = document.createElement('details');
+    const sum = document.createElement('summary');
+    sum.textContent = sec.title;
+    det.appendChild(sum);
+    const body = document.createElement('div');
+    body.className = 'body';
+    for (const it of sec.items) body.appendChild(buildRow(it));
+    det.appendChild(body);
+    sectionsRoot.appendChild(det);
+  }
+}
+
+function buildRow(it) {
+  const row = document.createElement('div');
+  row.className = 'row';
+  const lb = document.createElement('label');
+  lb.textContent = it.label;
+  lb.title = it.key;
+  row.appendChild(lb);
+
+  if (it.type === 'num') {
+    const rg = document.createElement('input');
+    rg.type = 'range'; rg.min = it.min; rg.max = it.max; rg.step = it.step; rg.value = S[it.key];
+    const nm = document.createElement('input');
+    nm.type = 'number'; nm.min = it.min; nm.max = it.max; nm.step = it.step; nm.value = S[it.key];
+    rg.oninput = () => { S[it.key] = parseFloat(rg.value); nm.value = rg.value; onChange(); };
+    nm.oninput = () => { const v = parseFloat(nm.value); if (!isNaN(v)) { S[it.key] = v; rg.value = v; onChange(); } };
+    row.appendChild(rg); row.appendChild(nm);
+    if (it.tag) { const t = document.createElement('span'); t.className = 'tag'; t.textContent = it.tag; row.appendChild(t); }
+    if (String(it.label).includes('⚠')) { const t = document.createElement('span'); t.className = 'warn'; t.textContent = '玩法'; row.appendChild(t); }
+  } else if (it.type === 'rgb') {
+    const cp = document.createElement('input');
+    cp.type = 'color'; cp.value = rgbToHex(S[it.key]);
+    const hx = document.createElement('span'); hx.className = 'hex'; hx.textContent = cp.value;
+    cp.oninput = () => { S[it.key] = hexToRgb(cp.value); hx.textContent = cp.value; onChange(); };
+    row.appendChild(cp); row.appendChild(hx);
+  } else if (it.type === 'rgba') {
+    const pa = rgbaParse(S[it.key]);
+    const cp = document.createElement('input');
+    cp.type = 'color'; cp.value = pa.hex;
+    const rg = document.createElement('input');
+    rg.type = 'range'; rg.min = 0; rg.max = 1; rg.step = 0.05; rg.value = pa.alpha;
+    const nm = document.createElement('input');
+    nm.type = 'number'; nm.min = 0; nm.max = 1; nm.step = 0.05; nm.value = pa.alpha;
+    const sync = () => { S[it.key] = rgbaStr(cp.value, parseFloat(rg.value)); nm.value = rg.value; onChange(); };
+    cp.oninput = sync; rg.oninput = sync;
+    nm.oninput = () => { const v = parseFloat(nm.value); if (!isNaN(v)) { rg.value = v; sync(); } };
+    row.appendChild(cp); row.appendChild(rg); row.appendChild(nm);
+  } else if (it.type === 'lerp') {
+    const [h0, h1] = lerpEnds(S[it.key]);
+    const mk = (val, idx) => {
+      const cp = document.createElement('input');
+      cp.type = 'color'; cp.value = val;
+      cp.oninput = () => {
+        const cur = lerpEnds(S[it.key]);
+        cur[idx] = cp.value;
+        S[it.key] = lerpFromEnds(cur[0], cur[1]);
+        onChange();
+      };
+      return cp;
+    };
+    const t0 = document.createElement('span'); t0.className = 'tag'; t0.textContent = '起';
+    const t1 = document.createElement('span'); t1.className = 'tag'; t1.textContent = '止';
+    row.appendChild(t0); row.appendChild(mk(h0, 0));
+    row.appendChild(t1); row.appendChild(mk(h1, 1));
+  } else if (it.type === 'dash') {
+    const mk = idx => {
+      const nm = document.createElement('input');
+      nm.type = 'number'; nm.min = 0; nm.max = 12; nm.step = 0.1; nm.value = S[it.key + idx];
+      nm.oninput = () => { const v = parseFloat(nm.value); if (!isNaN(v)) { S[it.key + idx] = v; onChange(); } };
+      return nm;
+    };
+    const t0 = document.createElement('span'); t0.className = 'tag'; t0.textContent = '实段';
+    const t1 = document.createElement('span'); t1.className = 'tag'; t1.textContent = '空段';
+    row.appendChild(t0); row.appendChild(mk(0)); row.appendChild(t1); row.appendChild(mk(1));
+  }
+  return row;
+}
+
+function onChange() { saveState(); exportJson(); }
+
+// =====================================================================
+// 导出 JSON（分组映射回配置路径）
+// =====================================================================
+function exportJson() {
+  const fireZone = {};
+  for (const k of ['segments','rangeRatio','flameLengthY','flameVisualYOffset','baseWidth','widthTaper','wiggleFreq','wiggleTimeScale',
+    'wiggleAmplitude','boostWiggleFreqMult','sideGunScale','sideGunNozzleOffset','coreGlowSize','coreColorDefault','coreColorBlue',
+    'coreColorOverdrive','coreGradAlpha0','coreGradAlpha1','coreGradAlpha2','flameAlphaBase','flameRootFade',
+    'flameDefaultFirst','flameDefaultSecond','flameBlueFirst','flameBlueSecond',
+    'flameOverdriveFirst','flameOverdriveSecond']) fireZone[k] = S[k];
+  const muzzleFlash = {
+    sideGunScale: S.mf_sideGunScale,
+    boostColors: [S.mf_boostColor0, S.mf_boostColor1, S.mf_boostColor2, S.mf_boostColor3],
+    boostParticleCount: S.mf_boostParticleCount,
+    boostSprayDistMin: S.mf_boostSprayDistMin, boostSprayDistMax: S.mf_boostSprayDistMax,
+    boostSprayYScale: S.mf_boostSprayYScale, boostSprayYRandom: S.mf_boostSprayYRandom,
+    boostParticleSizeBase: S.mf_boostParticleSizeBase, boostParticleSizeRange: S.mf_boostParticleSizeRange,
+    boostAlphaBase: S.mf_boostAlphaBase, boostAlphaRange: S.mf_boostAlphaRange,
+    boostGlowSizeMultiplier: S.mf_boostGlowSizeMultiplier, boostGlowAlphaRatio: S.mf_boostGlowAlphaRatio,
+    boostAlphaFadeTime: S.mf_boostAlphaFadeTime,
+  };
+  const gunEvolution = {
+    steelTintColor: S.steelTintColor, steelTintGlowColor: S.steelTintGlowColor,
+    overdriveGlowRadius: S.overdriveGlowRadius, overdriveGlowYOffset: S.overdriveGlowYOffset,
+    overdriveGlowColor: S.overdriveGlowColor, overdriveGlowAlphaBase: S.overdriveGlowAlphaBase,
+    overdriveGlowAlphaAmp: S.overdriveGlowAlphaAmp, overdriveGlowFreq: S.overdriveGlowFreq,
+    lanceRingRadius: S.lanceRingRadius, lanceRingYOffset: S.lanceRingYOffset,
+    lanceRingColor: S.lanceRingColor, lanceRingAlphaBase: S.lanceRingAlphaBase,
+    lanceRingAlphaAmp: S.lanceRingAlphaAmp, lanceRingFreq: S.lanceRingFreq, lanceRingLineWidth: S.lanceRingLineWidth,
+    lanceRingScaleY: S.lanceRingScaleY, lanceRingGapRatio: S.lanceRingGapRatio,
+    lanceCrossSize: S.lanceCrossSize, lanceCrossColor: S.lanceCrossColor,
+    turbineYOffset: S.turbineYOffset, turbineScaleY: S.turbineScaleY,
+    turbineRadius: S.turbineRadius, turbineShellWidth: S.turbineShellWidth,
+    turbineShellColor: S.turbineShellColor, turbineShellAlpha: S.turbineShellAlpha,
+    turbineBlades: S.turbineBlades, turbineBladeWidth: S.turbineBladeWidth,
+    turbineBladeHalf: S.turbineBladeHalf, turbineBladeColor: S.turbineBladeColor,
+    turbineBladeAlpha: S.turbineBladeAlpha,
+    turbineHubRadius: S.turbineHubRadius, turbineRotateSpeed: S.turbineRotateSpeed,
+    turbineAccentColor: S.turbineAccentColor,
+  };
+  const out = {
+    player: { nozzleOffsetY: S.nozzleOffsetY, baseFireRange: S.baseFireRange },
+    itemsTripleFlame: { sideOffset: S.sideGunSpacing, sideBarrelHeight: S.sideBarrelHeight, sideBarrelYOffset: S.sideBarrelYOffset, sideBarrelTexture: 'assets/barrel.png' },
+    fireZone, muzzleFlash, gunEvolution,
+  };
+  document.getElementById('out').value = JSON.stringify(out, null, 2);
+}
+
+// =====================================================================
+// 渲染（与 BackgroundRenderer.renderFireZones / RenderUtils.renderMuzzleFlash /
+//      engine.renderGunEvolution 逐行对应）
+// =====================================================================
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const W = 540, H = 960, S_SCALE = 4;
+const PX = 270, PY = H + 100; // 玩家锚点（与游戏一致：playerBaseY = height + 100）
+const DEFENSE_Y = 830;
+// 三重火焰枪身间距：S.sideGunSpacing（对应 items.ts tripleFlame.sideOffset）
+
+let time = 0, lastTs = 0;
+const bgImg = new Image();
+const gunImg = new Image();
+let bgReady = false, gunReady = false;
+bgImg.onload = () => bgReady = true;
+gunImg.onload = () => gunReady = true;
+// 资源路径回退：file:// 直开用 public/assets/...，vite 服务器用 assets/...
+function loadWithFallback(img, rel, onok) {
+  const cands = ['public/' + rel, rel, '/' + rel];
+  let i = 0;
+  img.onerror = () => { i++; if (i < cands.length) img.src = cands[i]; };
+  img.onload = onok;
+  img.src = cands[0];
+}
+loadWithFallback(gunImg, 'assets/gun.png', () => gunReady = true);
+// 三重火焰侧枪贴图（58×109 竖长枪管贴图，仅侧枪使用）
+const barrelImg = new Image();
+let barrelReady = false;
+loadWithFallback(barrelImg, 'assets/barrel.png', () => barrelReady = true);
+function setBg(src) {
+  bgReady = false;
+  if (src) loadWithFallback(bgImg, src, () => bgReady = true);
+}
+
+// ---- getFlameColor 移植（仅 flamethrower 分支 + 变体） ----
+function getFlameColor(t, variant) {
+  let first, second;
+  if (variant === 'blue') { first = S.flameBlueFirst; second = S.flameBlueSecond; }
+  else if (variant === 'overdrive') { first = S.flameOverdriveFirst; second = S.flameOverdriveSecond; }
+  else { first = S.flameDefaultFirst; second = S.flameDefaultSecond; }
+  let r, g, b;
+  if (t < 0.5) {
+    const u = t * 2;
+    r = first.rBase + u * first.rRange; g = first.gBase + u * first.gRange; b = first.bBase + u * first.bRange;
+  } else {
+    const u = (t - 0.5) * 2;
+    r = second.rBase + u * second.rRange; g = second.gBase + u * second.gRange; b = second.bBase + u * second.bRange;
+  }
+  // 根部渐隐：前 flameRootFade 段用 smoothstep 从 0 升到 1，让火焰根部变虚
+  const ramp = S.flameRootFade > 0 ? Math.min(1, t / S.flameRootFade) : 1;
+  const rootAlpha = ramp * ramp * (3 - 2 * ramp);
+  const a = S.flameAlphaBase * (1 - t) * (1 - t) * rootAlpha;
+  return `rgba(${r}, ${g}, ${b}, ${a})`;
+}
+
+// ---- renderFireZones 移植 ----
+function renderFireZones() {
+  const variant = UI.variant;
+  // 视觉射程：剔除扩口喷嘴/风压聚焦贡献（与 engine.createPlayer 一致）
+  const visualRange = S.baseFireRange * (UI.steel ? 1.10 : 1) * (UI.lance ? 1.35 : 1);
+  const maxRange = visualRange * S.rangeRatio * S.flameLengthY;
+  const nozzleY = PY - S.nozzleOffsetY + S.flameVisualYOffset;
+  const endY = nozzleY - maxRange;
+  const talentScale = visualRange / S.baseFireRange;
+  const intensityWidthMult = 1 + Math.max(0, UI.intensity) * 0.15;
+
+  const gunXs = [PX];
+  if (UI.triple) { gunXs.push(PX - S.sideGunSpacing, PX + S.sideGunSpacing); }
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+
+  for (let gi = 0; gi < gunXs.length; gi++) {
+    const gunX = gunXs[gi];
+    const isSideGun = gi > 0;
+    const flameScale = isSideGun ? S.sideGunScale : 1.0;
+    const nozzleYOffset = isSideGun ? S.sideGunNozzleOffset : 0;
+    const gunNozzleY = nozzleY + nozzleYOffset;
+    const gunEndY = endY + nozzleYOffset;
+
+    const segments = Math.max(1, Math.round(S.segments));
+    // 火力全开：火焰摆动频率加大
+    const boostWiggle = UI.boost ? S.boostWiggleFreqMult : 1;
+    const wiggleFreq = S.wiggleFreq * boostWiggle;
+    const wiggleTime = S.wiggleTimeScale * boostWiggle;
+    for (let i = 0; i < segments; i++) {
+      const t0 = i / segments, t1 = (i + 1) / segments;
+      const y0 = gunNozzleY + (gunEndY - gunNozzleY) * t0;
+      const y1 = gunNozzleY + (gunEndY - gunNozzleY) * t1;
+      const baseWidth = S.baseWidth * flameScale * talentScale * intensityWidthMult;
+      const w0 = baseWidth * (1 - t0 * S.widthTaper) + Math.sin(t0 * Math.PI * wiggleFreq + time * wiggleTime + gi) * S.wiggleAmplitude;
+      const w1 = baseWidth * (1 - t1 * S.widthTaper) + Math.sin(t1 * Math.PI * wiggleFreq + time * wiggleTime + gi) * S.wiggleAmplitude;
+      ctx.fillStyle = getFlameColor(t0, variant);
+      ctx.beginPath();
+      ctx.moveTo(gunX - w0, y0); ctx.lineTo(gunX - w1, y1);
+      ctx.lineTo(gunX + w1, y1); ctx.lineTo(gunX + w0, y0);
+      ctx.closePath(); ctx.fill();
+    }
+
+    // 核心辉光
+    let coreColor = S.coreColorDefault;
+    if (variant === 'blue') coreColor = S.coreColorBlue;
+    else if (variant === 'overdrive') coreColor = S.coreColorOverdrive;
+    const glowSize = S.coreGlowSize * flameScale * talentScale;
+    const coreGrad = ctx.createRadialGradient(gunX, gunNozzleY, 0, gunX, gunNozzleY, glowSize);
+    coreGrad.addColorStop(0, `rgba(${coreColor}, ${S.coreGradAlpha0})`);
+    coreGrad.addColorStop(0.3, `rgba(${coreColor}, ${S.coreGradAlpha1})`);
+    coreGrad.addColorStop(0.6, `rgba(${coreColor}, ${S.coreGradAlpha2})`);
+    coreGrad.addColorStop(1, 'rgba(255, 0, 0, 0)');
+    ctx.fillStyle = coreGrad;
+    ctx.beginPath(); ctx.arc(gunX, gunNozzleY, glowSize, 0, Math.PI * 2); ctx.fill();
+    // 火力全开波纹已按需求移除（仅保留枪口粒子）
+  }
+  ctx.restore();
+}
+
+// ---- renderMuzzleFlash 移植 ----
+function renderMuzzleFlash() {
+  if (!UI.boost) return;
+  const my = PY - S.nozzleOffsetY;
+  const gunXs = [PX];
+  if (UI.triple) { gunXs.push(PX - S.sideGunSpacing, PX + S.sideGunSpacing); }
+  const colors = [S.mf_boostColor0, S.mf_boostColor1, S.mf_boostColor2, S.mf_boostColor3];
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+  for (let gi = 0; gi < gunXs.length; gi++) {
+    const mx = gunXs[gi];
+    const scale = gi > 0 ? S.mf_sideGunScale : 1.0;
+    for (let pi = 0; pi < Math.round(S.mf_boostParticleCount); pi++) {
+      const sprayAngle = Math.random() * Math.PI * 2;
+      const sprayDist = S.mf_boostSprayDistMin + Math.random() * (S.mf_boostSprayDistMax - S.mf_boostSprayDistMin);
+      const px = mx + Math.cos(sprayAngle) * sprayDist;
+      const py = my + Math.sin(sprayAngle) * sprayDist * S.mf_boostSprayYScale - Math.random() * S.mf_boostSprayYRandom;
+      const pSize = (S.mf_boostParticleSizeBase + Math.random() * S.mf_boostParticleSizeRange) * scale;
+      const color = colors[Math.floor(Math.random() * colors.length)];
+      const pAlpha = S.mf_boostAlphaBase + Math.random() * S.mf_boostAlphaRange;
+
+      ctx.fillStyle = `rgba(${color}, ${pAlpha})`;
+      ctx.beginPath(); ctx.arc(px, py, pSize, 0, Math.PI * 2); ctx.fill();
+
+      // 粒子辉光（径向渐变，等效游戏内 getBoostGlowGradient）
+      const gr = pSize * S.mf_boostGlowSizeMultiplier;
+      const grad = ctx.createRadialGradient(px, py, 0, px, py, gr);
+      grad.addColorStop(0, `rgba(${color}, ${pAlpha * S.mf_boostGlowAlphaRatio})`);
+      grad.addColorStop(1, `rgba(${color}, 0)`);
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.arc(px, py, gr, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
+// ---- renderGunEvolution 移植（枪体坐标系：原点=玩家锚点，长度×s） ----
+function renderGunEvolution(gx) {
+  const hasOverdrive = UI.overdrive, hasLance = UI.lance;
+  const focusLv = UI.focusLv;
+  if (!hasOverdrive && !hasLance && !focusLv) return;
+
+  const s = S_SCALE;
+  ctx.save();
+  ctx.translate(gx, PY);
+  ctx.globalCompositeOperation = 'screen';
+
+  if (hasOverdrive) {
+    const alpha = S.overdriveGlowAlphaBase + Math.sin(time * S.overdriveGlowFreq) * S.overdriveGlowAlphaAmp;
+    const gr = S.overdriveGlowRadius * s, gy = -S.overdriveGlowYOffset * s;
+    const grad = ctx.createRadialGradient(0, gy, 0, 0, gy, gr);
+    grad.addColorStop(0, `rgba(${S.overdriveGlowColor}, ${alpha})`);
+    grad.addColorStop(1, `rgba(${S.overdriveGlowColor}, 0)`);
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(0, gy, gr, 0, Math.PI * 2); ctx.fill();
+  }
+
+  if (hasLance) {
+    const alpha = S.lanceRingAlphaBase + Math.sin(time * S.lanceRingFreq) * S.lanceRingAlphaAmp;
+    const rr = S.lanceRingRadius * s, ry = -S.lanceRingYOffset * s;
+    const gap = Math.PI * S.lanceRingGapRatio;
+    ctx.strokeStyle = `rgba(${S.lanceRingColor}, ${alpha})`;
+    ctx.lineWidth = S.lanceRingLineWidth * s;
+    ctx.beginPath();
+    ctx.ellipse(0, ry, rr, rr * S.lanceRingScaleY, 0, Math.PI / 2 + gap / 2, Math.PI * 2 + Math.PI / 2 - gap / 2);
+    ctx.stroke();
+    // 中心青色十字准星（随环一起脉动）
+    const cs = S.lanceCrossSize * s;
+    ctx.strokeStyle = `rgba(${S.lanceCrossColor}, ${alpha})`;
+    ctx.lineWidth = S.lanceRingLineWidth * s;
+    ctx.beginPath();
+    ctx.moveTo(-cs, ry); ctx.lineTo(cs, ry);
+    ctx.moveTo(0, ry - cs); ctx.lineTo(0, ry + cs);
+    ctx.stroke();
+  }
+
+  // 涡轮增强：固定枪体的涡轮贴图配件（风机组件，随枪体移动；叶片绕轴旋转内吸）
+  if (focusLv > 0) {
+    const hy = -S.turbineYOffset * s;
+    const R = S.turbineRadius * s;
+    const rot = time * S.turbineRotateSpeed;
+    const blades = Math.round(S.turbineBlades);
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.translate(0, hy);
+    ctx.scale(1, S.turbineScaleY);
+    ctx.strokeStyle = `rgba(${S.turbineShellColor}, ${S.turbineShellAlpha})`;
+    ctx.lineWidth = Math.max(1, S.turbineShellWidth * s);
+    ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = `rgba(${S.turbineBladeColor}, ${S.turbineBladeAlpha})`;
+    for (let i = 0; i < blades; i++) {
+      const a = rot + (Math.PI * 2 / blades) * i;
+      const tipX = Math.cos(a) * R, tipY = Math.sin(a) * R;
+      const half = S.turbineBladeHalf * R;
+      const bx = Math.cos(a + Math.PI / 2) * half, by = Math.sin(a + Math.PI / 2) * half;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(tipX + bx, tipY + by);
+      ctx.lineTo(tipX - bx, tipY - by);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.fillStyle = `rgba(${S.turbineShellColor}, ${S.turbineShellAlpha})`;
+    ctx.beginPath(); ctx.arc(0, 0, S.turbineHubRadius * s, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = `rgba(${S.turbineAccentColor}, 0.85)`;
+    ctx.beginPath(); ctx.arc(0, 0, Math.max(0.8, S.turbineHubRadius * s * 0.35), 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  ctx.restore();
+}
+
+// ---- 枪体（renderPlayer 枪体部分移植，与 engine.ts renderPlayer 逐行对应）----
+// gx: 枪体 X；isSide: 是否三重火焰侧枪
+function renderGun(gx, isSide) {
+  const s = S_SCALE;
+  ctx.save();
+  ctx.translate(gx, PY);
+  // 地面阴影椭圆（引擎对每支枪——含侧枪——都绘制）
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath();
+  ctx.ellipse(3 * s, 8 * s, 22 * s, 10 * s, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // ===== 三重火焰侧枪：barrel.png 贴图（58×109 竖长枪管）=====
+  // 引擎回退链：侧枪且 sideBarrelHeight>0 且贴图就绪 → barrel；否则回退主枪 gun.png；再回退矩形示意
+  if (isSide && S.sideBarrelHeight > 0) {
+    const h = S.sideBarrelHeight * s;
+    const ratio = barrelReady ? (barrelImg.width / barrelImg.height) : (58 / 109);
+    const w = h * ratio;
+    ctx.translate(0, -80 * s * 0.6 + S.sideBarrelYOffset * s);
+    if (barrelReady) {
+      ctx.drawImage(barrelImg, -w / 2, -h / 2, w, h);
+    } else {
+      // 贴图未就绪兜底：等比竖长矩形示意
+      ctx.fillStyle = '#6a7f8c'; ctx.fillRect(-w / 2, -h / 2, w, h);
+      ctx.fillStyle = '#8fb3c4'; ctx.fillRect(-w / 2, -h / 2, w, h * 0.18);
+    }
+  } else if (gunReady) {
+    const gw = 80 * s, gh = 80 * s; // 与游戏一致：1:1 正方形绘制（修复 X 轴压扁）
+    ctx.save();
+    ctx.translate(0, -gh * 0.6);
+    ctx.drawImage(gunImg, -gw / 2, -gh / 2, gw, gh);
+    ctx.restore();
+  } else {
+    ctx.fillStyle = isSide ? '#666' : '#555'; ctx.fillRect(-6 * s, -56 * s, 12 * s, 40 * s);
+    ctx.fillStyle = isSide ? '#888' : '#777'; ctx.fillRect(-5 * s, -64 * s, 10 * s, 10 * s);
+  }
+  ctx.restore();
+}
+
+// ---- 参考线 ----
+function renderRefs() {
+  if (!UI.ref) return;
+  const s = S_SCALE;
+  const nozzleY = PY - S.nozzleOffsetY + S.flameVisualYOffset;
+  const visualRange = S.baseFireRange * (UI.steel ? 1.10 : 1) * (UI.lance ? 1.35 : 1);
+  const endY = nozzleY - visualRange * S.rangeRatio * S.flameLengthY;
+  ctx.save();
+  // 防线
+  ctx.strokeStyle = 'rgba(239, 68, 68, 0.6)';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([8, 6]);
+  ctx.beginPath(); ctx.moveTo(0, DEFENSE_Y); ctx.lineTo(W, DEFENSE_Y); ctx.stroke();
+  ctx.setLineDash([]);
+  // 涡轮中心 Y 标注（左侧绿色十字 + 数值）
+  if (UI.focusLv > 0) {
+    const ry = PY - S.turbineYOffset * s;
+    ctx.strokeStyle = 'rgba(140, 240, 180, 0.9)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(PX - 8, ry); ctx.lineTo(PX + 8, ry);
+    ctx.moveTo(PX, ry - 8); ctx.lineTo(PX, ry + 8);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(140, 240, 180, 0.9)';
+    ctx.font = '11px sans-serif';
+    ctx.fillText(`涡轮中心 Y:${S.turbineYOffset}`, PX - 14, ry + 3);
+  }
+  // 喷嘴（火焰起点）
+  ctx.strokeStyle = 'rgba(255, 220, 100, 0.7)';
+  ctx.beginPath(); ctx.moveTo(PX - 8, nozzleY); ctx.lineTo(PX + 8, nozzleY); ctx.stroke();
+  // 火焰末端
+  ctx.strokeStyle = 'rgba(255, 120, 120, 0.6)';
+  ctx.beginPath(); ctx.moveTo(PX - 14, endY); ctx.lineTo(PX + 14, endY); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,120,120,0.8)';
+  ctx.fillText('火焰末端', PX + 18, endY + 3);
+  ctx.restore();
+}
+
+function frame(ts) {
+  const dt = Math.min(0.05, (ts - lastTs) / 1000 || 0);
+  lastTs = ts;
+  time += dt;
+
+  ctx.clearRect(0, 0, W, H);
+  // 背景
+  if (bgReady && UI.bg) {
+    ctx.drawImage(bgImg, 0, 0, W, H);
+    ctx.fillStyle = 'rgba(10, 10, 14, 0.25)';
+    ctx.fillRect(0, 0, W, H);
+  } else {
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // 与游戏 render() 顺序一致：火焰区域 → 枪口闪光 → 玩家(枪+进化覆盖层)
+  renderFireZones();
+  renderMuzzleFlash();
+  // 主枪居首（与 renderFireZones 的 gunXs 序一致），侧枪用 barrel.png 贴图（见 renderGun）
+  const gunXs = UI.triple ? [PX, PX - S.sideGunSpacing, PX + S.sideGunSpacing] : [PX];
+  gunXs.forEach((gx, i) => { renderGun(gx, i > 0); renderGunEvolution(gx); });
+  renderRefs();
+
+  requestAnimationFrame(frame);
+}
+
+// =====================================================================
+// UI 绑定
+// =====================================================================
+function bindToolbar() {
+  const $ = id => document.getElementById(id);
+  $('selBg').value = UI.bg;
+  $('selBg').onchange = e => { UI.bg = e.target.value; setBg(UI.bg); saveUiState(); };
+  $('selVariant').value = UI.variant;
+  $('selVariant').onchange = e => { UI.variant = e.target.value; saveUiState(); };
+  $('ckBoost').checked = UI.boost;
+  $('ckBoost').onchange = e => { UI.boost = e.target.checked; saveUiState(); };
+  $('ckTriple').checked = UI.triple;
+  $('ckTriple').onchange = e => { UI.triple = e.target.checked; saveUiState(); };
+  $('ckRef').checked = UI.ref;
+  $('ckRef').onchange = e => { UI.ref = e.target.checked; saveUiState(); };
+  $('rgIntensity').value = UI.intensity;
+  $('lbIntensity').textContent = UI.intensity;
+  $('rgIntensity').oninput = e => { UI.intensity = parseFloat(e.target.value); $('lbIntensity').textContent = e.target.value; saveUiState(); };
+  const bindLv = (id, key) => {
+    $(id).value = String(UI[key]);
+    $(id).onchange = e => { UI[key] = parseInt(e.target.value, 10); saveUiState(); };
+  };
+  bindLv('tlFocus', 'focusLv');
+  const bindCk = (id, key) => {
+    $(id).checked = UI[key];
+    $(id).onchange = e => { UI[key] = e.target.checked; saveUiState(); };
+  };
+  bindCk('tlSteel', 'steel'); bindCk('tlLance', 'lance'); bindCk('tlOverdrive', 'overdrive');
+
+  $('btnCopy').onclick = () => {
+    const ta = document.getElementById('out');
+    ta.select();
+    navigator.clipboard?.writeText(ta.value).catch(() => document.execCommand('copy'));
+    document.execCommand('copy');
+    const btn = $('btnCopy');
+    btn.textContent = '已复制 ✓';
+    setTimeout(() => btn.textContent = '复制 JSON', 1200);
+  };
+  $('btnReset').onclick = () => {
+    if (!confirm('恢复内置默认值？（清空本地修改）')) return;
+    S = JSON.parse(JSON.stringify(DEFAULTS));
+    saveState(); buildPanel(); exportJson();
+  };
+}
+
+// 画布自适应缩放（CSS 等比）
+function fitCanvas() {
+  const stage = document.getElementById('stage');
+  const availH = window.innerHeight - 60;
+  const scale = availH / H;
+  cv.style.width = (W * scale) + 'px';
+  cv.style.height = availH + 'px';
+  stage.style.width = (W * scale + 20) + 'px';
+}
+window.addEventListener('resize', fitCanvas);
+
+// 初始化
+setBg(UI.bg);
+buildPanel();
+bindToolbar();
+exportJson();
+fitCanvas();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

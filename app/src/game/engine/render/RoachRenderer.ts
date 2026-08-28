@@ -29,7 +29,8 @@ export interface RoachRendererConfig {
   roachJockImg?: HTMLImageElement | null;
   /** 中毒 DEBUFF 图标贴图（debuff_poison.png，紫色像素骷髅；null 时回退程序化绘制） */
   debuffPoisonImg?: HTMLImageElement | null;
-  nurseCastFrames: (HTMLImageElement | null)[];
+  /** 须须干扰器 DEBUFF 图标贴图（drop_Jammer.png；null 时回退程序化绘制） */
+  debuffJammerImg?: HTMLImageElement | null;
   mutantTransformFrames: (HTMLImageElement | null)[];
   imagesLoaded: boolean;
 
@@ -474,40 +475,10 @@ export class RoachRenderer {
       ctx.globalCompositeOperation = jv.blend;
     }
     ctx.restore();
-
-    // —— 跳跃拖尾（air）：身后速度粒子流（世界坐标生成，紧跟蟑螂模型尾部） ——
-    if (phase === 'air') {
-      const t = jv.trail;
-      const airElapsed = jc.airTime - (r.jumpTimer ?? jc.airTime); // 已腾空时长
-      const slots = Math.floor(airElapsed / t.spawnInterval);
-      const emitted = r.trailEmitted ?? 0;
-      if (slots > emitted) {
-        r.trailEmitted = slots;
-        for (let i = emitted; i < slots; i++) {
-          // 紧跟模型：用 follow 系数从尾部（而非 0.6·life 远后）采样，拖尾贴近本体
-          const backX = r.x - (r.vx ?? 0) * t.particleLife * t.follow;
-          const backY = r.y - (r.vy ?? 0) * t.particleLife * t.follow;
-          // 拖尾贴合腾空抛物线弧线：向后采样的时刻位处更高的弧高点，据此上移
-          const backP = (airElapsed - t.particleLife * t.follow) / jc.airTime; // 后采样时刻进度
-          const arcLift = h * jc.jumpHeight * 4 * backP * (1 - backP);
-          config.onAddParticle({
-            x: backX + (Math.random() - 0.5) * 6,
-            y: backY + (Math.random() - 0.5) * 6 - arcLift,
-            vx: -(r.vx ?? 0) * 0.2 + (Math.random() - 0.5) * t.speedJitter,
-            vy: -(r.vy ?? 0) * 0.2 + (Math.random() - 0.5) * t.speedJitter,
-            life: t.particleLife,
-            maxLife: t.particleLife,
-            size: t.particleSize,
-            color: `rgba(${jv.colorMid}, ${t.alphaBase})`,
-            type: ParticleType.SPARK,
-            blend: jv.blend,
-          });
-        }
-      }
-    }
+    // 跳跃拖尾粒子流已按需求移除（原 air 阶段每 1ms 生成粒子，是学校场景卡顿主因）
   }
 
-  /** Render nurse body with cast animation frames and heal range circle */
+  /** Render nurse body（施法序列帧已删除，统一用普通贴图）and heal range circle */
   private static renderNurseBody(
     config: RoachRendererConfig,
     ctx: CanvasRenderingContext2D,
@@ -515,26 +486,7 @@ export class RoachRenderer {
     w: number,
     h: number
   ): void {
-    let castImg: HTMLImageElement | null = null;
-    if (r.healPhase && r.healPhase !== 'idle' && r.state === RoachState.ALIVE) {
-      let frameIdx = 0;
-      const phase = r.healPhase;
-      const timer = r.healPhaseTimer || 0;
-      if (phase === 'charging') {
-        const progress = 1 - timer / 1.0;
-        frameIdx = Math.min(3, Math.floor(progress * 4));
-      } else if (phase === 'spraying') {
-        const cyclePos = (1 - timer / 2.0) % 0.5;
-        if (cyclePos < 0.17) frameIdx = 4;
-        else if (cyclePos < 0.34) frameIdx = 5;
-        else frameIdx = 6;
-      } else if (phase === 'dissipating') {
-        const progress = 1 - timer / 1.0;
-        frameIdx = 7 + Math.min(2, Math.floor(progress * 3));
-      }
-      castImg = config.nurseCastFrames[frameIdx] || config.roachNurseImg;
-    }
-    const img = castImg || config.roachNurseImg;
+    const img = config.roachNurseImg;
     if (img) ctx.drawImage(img, -w / 2, -h / 2, w, h);
 
     // Nurse heal range circle under feet
@@ -1344,7 +1296,7 @@ export class RoachRenderer {
     // ===== 护盾蟑螂气体护盾——极简玻璃穹顶（常驻特效，不受 showShieldRange 调试开关控制） =====
     // 参考图：高度透明半球，罩内蟑螂完全清晰可见。仅保留 4 个玻璃特征层，无环纹/放射棱线/晶屑/雾化斑：
     //   ① 罩体径向渐变（中心全透 → 边缘微蓝）② 外缘亮描边 + lighter 辉光 ③ 顶部镜面高光弧 ④ 底部贴地亮环基座。
-    // 动态（无状态确定性）：呼吸胀缩 + 高光弧明暗脉动；受击（shieldHitFlash）罩面泛白闪光；
+    // 动态（无状态确定性）：呼吸胀缩 + 高光弧明暗脉动；受击泛白闪光已移除（2026-08-27）；
     //   受损（shieldHp 下降）整体透明度按比例变暗。视觉尺寸 = size × 配置比例，随透视缩放自适应。
     if (r.type === RoachType.SHIELD && r.state === RoachState.ALIVE && (r.shieldHp ?? 0) > 0) {
       const sub = BALANCE_CONFIG.subway;
@@ -1352,7 +1304,6 @@ export class RoachRenderer {
       const rh = size * sub.shieldDomeHeight;      // 穹顶高度（脚下贴地 → 头顶余量）
       const originY = r.y - 5;            // 罩底边 = 本体下缘
       const hpRatio = Math.max(0, (r.shieldHp ?? 0) / (r.maxShieldHp || 1));
-      const flash = Math.min(1, (r.shieldHitFlash ?? 0) / 0.15); // 受击闪光剩余（0→1）
       // 呼吸胀缩（火焰直射命中时振幅加大）；r.id 错相避免多盾同步
       const breath = Math.sin(2 * Math.PI * sub.shieldDomeBreathFreq * config.time + r.id);
       const flameFlash = (r.shieldFlameHitFlash ?? 0) > 0;
@@ -1388,14 +1339,7 @@ export class RoachRenderer {
       ctx.closePath();
       ctx.fill();
 
-      // 受击泛白闪光（罩面整体提亮后快速消退）
-      if (flash > 0) {
-        ctx.fillStyle = `rgba(${sub.shieldDomeSpecColor}, ${flash * sub.shieldDomeHitFlashAlpha * dim})`;
-        ctx.beginPath();
-        ctx.ellipse(0, 0, rx, ry, 0, Math.PI, Math.PI * 2);
-        ctx.closePath();
-        ctx.fill();
-      }
+      // （受击泛白闪光层已移除 2026-08-27：shieldHitFlash 数据保留，不再做罩面泛白渲染）
 
       // --- ② 外缘描边（玻璃穹顶核心特征：边缘亮）+ lighter 辉光 ---
       ctx.strokeStyle = `rgba(${sub.shieldDomeRimColor}, ${sub.shieldDomeRimAlpha * dim})`;
@@ -1669,9 +1613,10 @@ export class RoachRenderer {
     }
 
     // Poison DEBUFF 图标（紫色骷髅贴头顶，呼吸闪烁脉动，poisonTimer 驱动；无外框）
+    // 2026-08-27：图标尺寸统一为固定像素，不随怪物尺寸/透视缩放，保证全场可读性一致
     if (r.poisonTimer > 0) {
       const pi = BALANCE_CONFIG.render.roach.poisonIndicator;
-      const iconSize = Math.max(9, size * 0.32) * perspScale; // 图标半径（随透视缩放）
+      const iconSize = 9; // 图标半径（固定像素，不随怪物尺寸/透视变化）
       const pulse = Math.sin(config.time * pi.pulseFreq);
       const scalePulse = pi.scaleBase + pulse * pi.scalePulseAmp;
       const alphaPulse = pi.alphaBase + pulse * pi.alphaPulseAmp;
@@ -1735,6 +1680,40 @@ export class RoachRenderer {
         }
       }
 
+      ctx.restore();
+    }
+
+    // 须须干扰器 DEBUFF 图标（混乱期间贴头顶显示干扰器图标，confuseTimer 驱动；与中毒图标并排右侧，避免重叠）
+    if ((r.confuseTimer ?? 0) > 0) {
+      const pi = BALANCE_CONFIG.render.roach.poisonIndicator; // 复用中毒图标的脉动/位置参数
+      const iconSize = 9; // 图标半径（固定像素，与中毒图标统一，不随怪物尺寸变化）
+      const pulse = Math.sin(config.time * pi.pulseFreq);
+      const scalePulse = pi.scaleBase + pulse * pi.scalePulseAmp;
+      const alphaPulse = pi.alphaBase + pulse * pi.alphaPulseAmp;
+      const iconR = iconSize * scalePulse;
+      // 若同时中毒，向右错开一格，避免两图标重叠
+      const jamIconX = r.x + size * pi.offsetXRatio * perspScale + (r.poisonTimer > 0 ? iconR * 2.2 : 0);
+      const jamIconY = r.y - size - pi.offsetUp * perspScale;
+
+      ctx.save();
+      ctx.globalAlpha = alphaPulse;
+      const jamImg = config.debuffJammerImg;
+      if (jamImg && jamImg.complete && jamImg.naturalWidth > 0) {
+        ctx.drawImage(jamImg, jamIconX - iconR, jamIconY - iconR, iconR * 2, iconR * 2);
+      } else {
+        // 回退：紫色圆点 + 波浪天线（贴图未加载时兜底）
+        ctx.fillStyle = 'rgb(192, 132, 252)';
+        ctx.beginPath();
+        ctx.arc(jamIconX, jamIconY, iconR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+        ctx.lineWidth = Math.max(1, iconR * 0.12);
+        for (let w = 0; w < 2; w++) {
+          ctx.beginPath();
+          ctx.arc(jamIconX, jamIconY + iconR * 0.3, iconR * (0.45 + w * 0.35), Math.PI * 1.25, Math.PI * 1.75);
+          ctx.stroke();
+        }
+      }
       ctx.restore();
     }
 

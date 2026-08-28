@@ -33,14 +33,22 @@ export class TripleFlameSystem {
 
   constructor(config: TripleFlameSystemConfig) {
     this.config = config;
+    this.tripleFlame = this.buildState();
+  }
+
+  /** 从 BALANCE_CONFIG.tripleFlame 构建初始状态（含侧枪 barrel 贴图渲染参数） */
+  private buildState(): TripleFlameState {
     const tfCfg = BALANCE_CONFIG.tripleFlame;
     const durMult = this.config.talentMultipliers?.tripleFlameDurationMult || 1;
-    this.tripleFlame = {
+    return {
       active: false,
       timer: 0,
       duration: tfCfg.duration * durMult,
       sideOffset: tfCfg.sideOffset,
       sideDamageMult: tfCfg.sideDamageMult,
+      // 侧枪贴图渲染参数（barrel.png；与调参台 flamethrower-vfx.html 导出的 itemsTripleFlame.* 同名对应）
+      sideBarrelHeight: tfCfg.sideBarrelHeight,
+      sideBarrelYOffset: tfCfg.sideBarrelYOffset,
     };
   }
 
@@ -120,14 +128,6 @@ export class TripleFlameSystem {
   }
 
   reset(): void {
-    const tfCfg = BALANCE_CONFIG.tripleFlame;
-    const durMult = this.config.talentMultipliers?.tripleFlameDurationMult || 1;
-    this.tripleFlame = {
-      active: false,
-      timer: 0,
-      duration: tfCfg.duration * durMult,
-      sideOffset: tfCfg.sideOffset,
-      sideDamageMult: tfCfg.sideDamageMult,
-    };
+    this.tripleFlame = this.buildState();
   }
 }

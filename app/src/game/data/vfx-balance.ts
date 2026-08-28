@@ -66,16 +66,16 @@ export const BALANCE_VFX = {
       plusSpawnInterval: 0.5,                 // +号生成间隔（秒）
       blend: 'lighter' as GlobalCompositeOperation, // 叠加混合（喷涂流与+号粒子，lighter 提亮）
     },
-    // 护盾修复连线（隧道工→护盾蟑螂，替换旧粒子特效）
+    // 护盾修复连线（隧道工→护盾蟑螂，替换旧粒子特效）（2026-08-27 调细调透明）
     shieldRepairLine: {
       color: '96, 165, 250',       // 蓝色（#60a5fa，与修盾+号统一蓝色系）
-      alphaBase: 0.7,                // 基础透明度
-      alphaPulseAmp: 0.15,           // 脉冲透明度振幅
+      alphaBase: 0.3,                // 基础透明度（原 0.7 → 收淡）
+      alphaPulseAmp: 0.08,           // 脉冲透明度振幅（原 0.15）
       alphaPulseFreq: 8,             // 脉冲频率（Hz）
-      lineWidth: 2.5,                // 线宽（像素）
+      lineWidth: 1.2,                // 线宽（像素，原 2.5 → 调细）
       glowColor: '59, 130, 246',     // 发光颜色（蓝 #3b82f6，去红色传输效果）
       glowBlur: 8,                   // 发光模糊半径
-      glowAlphaRatio: 0.4,           // 发光透明度比例
+      glowAlphaRatio: 0.25,          // 发光透明度比例（原 0.4 → 收淡）
       dashLen: 8,                    // 虚线长度（像素）
       dashGap: 4,                    // 虚线间隔（像素）
       flowSpeed: 60,                 // 虚线流动速度（像素/秒，正值=流向护盾）
@@ -144,13 +144,11 @@ export const BALANCE_VFX = {
       emberColor:  { r: 255, gMin: 200, gMax: 255, bMin: 50, bMax: 100, aMin: 0.5, aMax: 1.0 },
       iceColor:    { rMin: 180, rMax: 220, gMin: 220, gMax: 240, b: 255, aMin: 0.5, aMax: 1.0 }, // 冷冻模式粒子颜色
       poisonColor: { rMin: 100, rMax: 140, gMin: 220, gMax: 250, bMin: 100, bMax: 140, aMin: 0.4, aMax: 0.8 }, // 毒气模式粒子颜色
-      // 天赋外观进化色带（蓝焰核心/过载核心/聚能长枪）
+      // 天赋外观进化色带（蓝焰核心/过载核心；聚能长枪不再改变火焰主体）
       blueFlameColor:  { r: 80, gMin: 120, gMax: 200, bMin: 220, bMax: 255, aMin: 0.7, aMax: 1.0 },   // 蓝焰核心
       blueEmberColor:  { r: 120, gMin: 180, gMax: 220, bMin: 240, bMax: 255, aMin: 0.5, aMax: 1.0 }, // 蓝焰余烬
       overdriveColor:  { r: 180, gMin: 20, gMax: 60, bMin: 40, bMax: 100, aMin: 0.7, aMax: 1.0 },    // 过载核心（深红紫）
       overdriveEmberColor: { r: 220, gMin: 60, gMax: 120, bMin: 80, bMax: 160, aMin: 0.5, aMax: 1.0 }, // 过载余烬
-      lanceColor:      { r: 220, gMin: 240, gMax: 255, bMin: 240, bMax: 255, aMin: 0.8, aMax: 1.0 }, // 聚能长枪（白热）
-      lanceEmberColor: { r: 200, gMin: 220, gMax: 240, bMin: 220, bMax: 255, aMin: 0.5, aMax: 1.0 }, // 聚能余烬
       // 天赋渐进强化（普通天赋量变反馈；引擎传入 intensity=伤害乘算超出部分、focus=射程乘算超出部分）
       // 性能约束：只缩放尺寸/形态/流速，不增加粒子数量（countMin/Max 不变）、不提高 alpha（避免火焰遮蟑螂）
       talentBoost: {
@@ -384,39 +382,34 @@ export const BALANCE_VFX = {
     },
     // 【喷火枪】火焰区域渲染（火焰锥形效果）
     fireZone: {
-      segments: 20,            // 火焰形状分段数（越多越平滑）
-      rangeRatio: 1,         // 火焰范围占射程的比例
-      baseWidth: 25,           // 火焰基础宽度（像素）
-      widthTaper: 0.94,        // 火焰宽度锥形收缩率
-      wiggleFreq: 6,           // 火焰摆动频率
-      wiggleTimeScale: 30,     // 火焰摆动时间缩放
-      wiggleAmplitude: 5,      // 火焰摆动幅度（像素）
-      sideGunScale: 0.6,       // 侧火焰缩放
-      sideGunNozzleOffset: 0,  // 侧火焰喷嘴偏移（像素，0 = 与主枪口 Y 轴位置一致）
-      coreGlowSize: 36,        // 核心发光大小（像素）
+      segments: 31,            // 火焰形状分段数（越多越平滑）
+      rangeRatio: 0.65,      // 火焰范围占射程的比例
+      flameLengthY: 0.75,    // 火焰主体 Y 方向长度系数（纯视觉：压短/拉长火焰，不影响伤害区域与天赋射程）
+      flameVisualYOffset: -9,  // 基础火焰特效整体 Y 偏移（像素，正=向下）
+      baseWidth: 22,           // 火焰基础宽度（像素）
+      widthTaper: 0.58,        // 火焰宽度锥形收缩率
+      wiggleFreq: 4.5,         // 火焰摆动频率
+      wiggleTimeScale: 15,     // 火焰摆动时间缩放
+      wiggleAmplitude: 2,      // 火焰摆动幅度（像素）
+      sideGunScale: 0.8,       // 侧火焰缩放
+      sideGunNozzleOffset: 4,  // 侧火焰喷嘴偏移（像素，0 = 与主枪口 Y 轴位置一致）
+      coreGlowSize: 33,        // 核心发光大小（像素）
       coreColorDefault: '160, 210, 255',   // 默认火焰核心颜色（浅蓝白）
       coreColorSticky: '250, 200, 50',     // 粘板模式核心颜色（金色）
       coreColorPoison: '200, 160, 255',    // 毒气模式核心颜色（紫色）
-      coreGradAlpha0: 0.9,     // 核心辉光渐变 stop0 透明度
-      coreGradAlpha1: 0.5,     // 核心辉光渐变 stop0.3 透明度
-      coreGradAlpha2: 0.3,     // 核心辉光渐变 stop0.6 透明度
+      coreGradAlpha0: 0.55,    // 核心辉光渐变 stop0 透明度
+      coreGradAlpha1: 0.95,    // 核心辉光渐变 stop0.3 透明度
+      coreGradAlpha2: 0.45,    // 核心辉光渐变 stop0.6 透明度
       coreGradEndColor: 'rgba(255, 0, 0, 0)', // 核心辉光渐变末端颜色（透明）
-      boostAlphaMax: 0.25,     // 强化模式下最大透明度
-      boostAlphaFade: 0.5,     // 强化模式透明度衰减率
-      boostRippleCount: 3,     // 强化波纹数量
-      boostRippleFreq: 4,      // 强化波纹频率
-      boostRippleSpacing: 2.1, // 强化波纹间距
-      boostRippleMaxPhase: 3,  // 强化波纹最大相位
-      boostRippleRadiusBase: 30,    // 强化波纹基础半径
-      boostRippleRadiusGrowth: 25,  // 强化波纹半径增长
-      boostRippleLineWidth: 1.5,    // 强化波纹线宽
-      boostRippleColor: '255, 255, 255', // 强化波纹颜色（RGB）
+      // （火力全开波纹特效已按需求移除，仅保留枪口粒子 muzzleFlash）
+      boostWiggleFreqMult: 1.4, // 火力全开时火焰摆动频率倍率（wiggleFreq 与 wiggleTimeScale 同乘）
       blend: 'screen' as GlobalCompositeOperation, // 火焰区域叠加混合方式
-      // 火焰段颜色（按位置 t∈[0,1] 插值，getFlameColor 使用；透明度 = alphaBase × (1-t)²）
-      flameAlphaBase: 0.75,          // 火焰透明度基数
+      // 火焰段颜色（按位置 t∈[0,1] 插值，getFlameColor 使用；透明度 = alphaBase × (1-t)² × 根部渐隐）
+      flameAlphaBase: 0.6,           // 火焰透明度基数
+      flameRootFade: 0.09,           // 火焰根部渐隐：前 9% 长度透明度从 0 平滑升至 1（0=关闭）
       // 默认喷火枪：t<0.5 蓝→过渡，t≥0.5 过渡→红
-      flameDefaultFirst:  { rBase: 60,  rRange: 140, gBase: 140, gRange: -80, bBase: 255, bRange: -100 },
-      flameDefaultSecond: { rBase: 200, rRange: 55,  gBase: 60,  gRange: -60, bBase: 155, bRange: -155 },
+      flameDefaultFirst:  { rBase: 0,   rRange: 255, gBase: 106, gRange: 32,  bBase: 255, bRange: -117 },
+      flameDefaultSecond: { rBase: 255, rRange: 0,   gBase: 128, gRange: 76,  bBase: 128, bRange: -108 },
       flameSticky:  { r: 250, gBase: 200, gRange: 55,  bBase: 50, bRange: 50  },  // 粘板模式（金色）
       flamePoison:  { rBase: 150, rRange: -100, gBase: 100, gRange: 100, bBase: 200, bRange: -50 }, // 毒气模式（紫→绿）
       flameShotgun: { r: 255, gBase: 150, gRange: 105, bBase: 50, bRange: 100 },  // 散弹模式（橙）
@@ -428,12 +421,8 @@ export const BALANCE_VFX = {
       // 过载核心（inferno T5）：深红紫高温焰
       flameOverdriveFirst:  { rBase: 120, rRange: 100, gBase: 20, gRange: 40,  bBase: 60, bRange: 60 },
       flameOverdriveSecond: { rBase: 220, rRange: 35,  gBase: 40, gRange: -30, bBase: 80, bRange: -60 },
-      coreColorOverdrive: '255, 60, 120',
-      // 聚能长枪（lance T5）：白热细束
-      flameLanceFirst:  { rBase: 200, rRange: 55, gBase: 220, gRange: 35, bBase: 255, bRange: 0 },
-      flameLanceSecond: { rBase: 240, rRange: 15, gBase: 245, gRange: 10, bBase: 255, bRange: 0 },
-      coreColorLance: '240, 250, 255',
-      lanceWidthMult: 0.55,   // 聚能长枪：火束宽度倍率（变细）
+      coreColorOverdrive: '255, 204, 219',
+      // （聚能长枪不再改变火焰主体：白热渐变/细束/核心色已移除，视觉由枪口聚能环+准星承担）
     },
     // 【掉落道具】掉落物渲染参数
     drop: {
@@ -752,15 +741,7 @@ export const BALANCE_VFX = {
           landCircleR: 26,             // 落点虚线圆半径（像素）
           landCircleFlatten: 0.5,      // 落点圆 Y 压扁比（贴合地面透视）
         },
-        // —— 跳跃拖尾（air 0.5s）：身后速度粒子流，紧跟蟑螂模型（小尺寸、高密度、短寿命，随生命渐隐） ——
-        trail: {
-          spawnInterval: 0.001,        // 拖尾粒子生成间隔（秒，更密集 → 数量更多）
-          particleLife: 0.5,           // 单粒子生命（秒，寿命减少 → 拖尾更紧凑）
-          particleSize: 1,             // 粒子大小（像素，缩小）
-          speedJitter: 25,             // 粒子速度抖动（像素/秒，更收敛）
-          alphaBase: 0.7,              // 粒子透明度基础值（随生命渐隐）
-          follow: 0.25,                // 后采样系数（0~1）：越大越贴近模型尾部（紧跟蟑螂）
-        },
+        // —— 跳跃拖尾（air）已移除：原 1ms 生成间隔导致单次腾空中数百粒子，是学校场景卡顿主因 ——
         // —— 落地（land 0.3s）：冲击尘环扩散，标识硬直反打窗口（加强版：更大、更亮、尘点更多） ——
         land: {
           ringStartR: 25,              // 冲击环起始半径（像素）
@@ -877,10 +858,10 @@ export const BALANCE_VFX = {
       muzzleFlash: {
         blend: 'screen' as GlobalCompositeOperation, // 叠加混合
         sideGunScale: 0.6,                    // 侧火焰缩放
-        boostColors: ['255, 100, 20', '255, 180, 50', '255, 60, 0', '255, 140, 40'] as readonly string[], // 强化模式颜色
+        boostColors: ['245, 115, 50', '255, 180, 50', '255, 60, 0', '255, 140, 40'] as readonly string[], // 强化模式颜色
         boostParticleCount: 4,                // 强化模式粒子数
-        boostSprayDistMin: 15,                // 强化模式喷射最小距离
-        boostSprayDistMax: 50,                // 强化模式喷射最大距离
+        boostSprayDistMin: 18,                // 强化模式喷射最小距离
+        boostSprayDistMax: 39,                // 强化模式喷射最大距离
         boostSprayYScale: 0.6,                // 强化模式喷射 Y 缩放
         boostSprayYRandom: 10,                // 强化模式喷射 Y 随机
         boostParticleSizeBase: 2,             // 强化模式粒子基础大小
@@ -894,51 +875,69 @@ export const BALANCE_VFX = {
       // 【天赋外观进化】火枪枪体改造覆盖层（renderPlayer 中叠加在枪 sprite 之上）
       // 量纲约定：所有长度值为「玩家单位」，渲染时 × s（s=4）换算为画布像素
       gunEvolution: {
-        // 寒钢枪管（lance T3 steel）：银色加长枪管（枪 sprite 顶部约 -88s，喷嘴 -80.5s）
-        steelBarrelWidth: 3.5,         // 枪管半宽（玩家单位）
-        steelBarrelLength: 25,         // 枪管长度（玩家单位）
-        steelBarrelYOffset: 70,        // 枪管底部相对玩家锚点的上移（玩家单位）
-        steelBarrelBodyColor: 'rgba(170, 180, 195, 0.95)',  // 管体银灰
-        steelBarrelEdgeColor: 'rgba(230, 238, 248, 0.9)',   // 管身高光
-        steelBarrelRingColor: 'rgba(90, 100, 115, 0.9)',    // 散热环深色
-        steelBarrelRingCount: 3,       // 散热环数量
-        steelBarrelRingWidth: 0.5,     // 散热环线宽（玩家单位）
+        // 寒钢枪管（lance T3 steel）：无独立特效，仅将喷嘴圆环染色
+        steelTintColor: 'rgba(255, 36, 248, 0.9)',    // 染色（亮）
+        steelTintGlowColor: 'rgba(255, 255, 255, 0.35)', // 染色（外辉光）
         // 过载核心（inferno T5 overdrive）：枪体深红脉动辉光
-        overdriveGlowRadius: 30,       // 辉光半径（玩家单位）
-        overdriveGlowYOffset: 45,      // 辉光中心相对玩家锚点的上移（玩家单位，约枪体中心）
+        overdriveGlowRadius: 29,       // 辉光半径（玩家单位）
+        overdriveGlowYOffset: 43,      // 辉光中心相对玩家锚点的上移（玩家单位，约枪体中心）
         overdriveGlowColor: '255, 50, 90',     // 辉光颜色（RGB）
         overdriveGlowAlphaBase: 0.18,  // 辉光基础透明度
-        overdriveGlowAlphaAmp: 0.12,   // 辉光脉动幅度
+        overdriveGlowAlphaAmp: 0.18,   // 辉光脉动幅度
         overdriveGlowFreq: 6,          // 辉光脉动频率
-        // 聚能长枪（lance T5 lance）：枪口聚能环（喷嘴约 -80.5s）
-        lanceRingRadius: 10,           // 聚能环半径（玩家单位）
-        lanceRingYOffset: 80,          // 环中心相对玩家锚点的上移（玩家单位）
+        // 聚能长枪（lance T5 lance）：枪口聚能环
+        lanceRingRadius: 7,            // 聚能环半径（玩家单位）
+        lanceRingYOffset: 89,          // 环中心相对玩家锚点的上移（玩家单位）
         lanceRingColor: '240, 250, 255',       // 环颜色（RGB 白热）
-        lanceRingAlphaBase: 0.6,       // 环基础透明度
+        lanceRingAlphaBase: 0.25,      // 环基础透明度
         lanceRingAlphaAmp: 0.3,        // 环脉动幅度
-        lanceRingFreq: 10,             // 环脉动频率
-        lanceRingLineWidth: 0.6,       // 环线宽（玩家单位）
+        lanceRingFreq: 3,              // 环脉动频率
+        lanceRingLineWidth: 0.5,       // 环线宽（玩家单位）
+        lanceRingScaleY: 0.75,         // 聚能环长宽比（Y 轴压扁）
+        lanceRingGapRatio: 0.32,       // 聚能环底部缺口占圆周比例（缺口居中于正下方）
+        lanceCrossSize: 5,             // 中心青色十字准星半长（玩家单位）
+        lanceCrossColor: '34, 211, 238', // 十字准星颜色（青色 RGB）
+        // 喷嘴位置锚点（绑定喷嘴类特效：扩口喷嘴圆环 / 风压聚焦波纹）
+        nozzleAnchorY: 74.5,           // 喷嘴中心相对玩家锚点的上移（玩家单位）
+        // 扩口喷嘴（nozzle）：喷嘴圆环，1级1个 → 3级3个（沿喷嘴向上堆叠）
+        nozzleRingRadius: 3.5,         // 圆环半径（玩家单位）
+        nozzleRingSpacing: 3,          // 圆环纵向间距（玩家单位）
+        nozzleRingWidth: 0.1,          // 圆环线宽（玩家单位）
+        nozzleRingColor: 'rgba(0, 255, 170, 0.65)',   // 圆环颜色
+        nozzleRingGlowColor: 'rgba(0, 255, 225, 0.5)', // 圆环外辉光
+        nozzleRingScaleY: 0.75,        // 圆环 Y 轴压扁比例（椭圆，贴合枪管圆柱透视）
+        nozzleRingGapRatio: 0.35,      // 圆环底部缺口（占圆周比例，缺口朝下不遮枪管）
+        // 涡轮增强/风压聚焦（focus）：内吸波纹（椭圆+透视），相位推进时波纹由外向内收缩下沉，级别越高吸得越快（频率=focusRippleFreqPerLevel×等级）
+        focusRippleYOffset: 79,        // 波纹中心 Y 偏移锚点（玩家单位，独立于喷嘴锚点）
+        focusRippleScaleX: 1.15,       // 波纹 X 轴宽度系数（椭圆 rx = 半径 × 系数）
+        focusRippleScaleY: 0.75,       // 波纹 Y 轴宽度系数（压扁制造透视感）
+        focusRippleCenterRise: 11.5,   // 透视下沉：内吸时波纹中心随收缩下沉量（玩家单位/相位，波越收越向下沉向枪口）
+        focusRippleColor: '190, 235, 255', // 波纹颜色（风压淡青白）
+        focusRippleAlpha: 0.25,        // 波纹最大透明度
+        focusRippleCount: 5,           // 同时存在的波纹数
+        focusRippleFreqPerLevel: 2,    // 每级扩展频率（相位/秒）
+        focusRippleSpacing: 0.4,       // 波纹相位间距
+        focusRippleMaxPhase: 1.5,      // 波纹最大相位
+        focusRippleRadiusBase: 1.5,    // 波纹基础半径（玩家单位）
+        focusRippleRadiusGrowth: 6.5,  // 波纹半径增长（玩家单位/相位）
+        focusRippleLineWidth: 1,       // 波纹线宽（玩家单位）
+        // 涡轮增强：固定枪体的涡轮贴图配件（风机组件，随枪体移动，叶片旋转内吸）
+        turbineYOffset: 55.5,          // 涡轮中心 Y 偏移（玩家单位，正值在枪口上方枪体处）
+        turbineScaleY: 0.62,           // 透视压扁（椭圆短/长半径比）
+        turbineRadius: 4.5,            // 涡轮外壳半径（玩家单位）
+        turbineShellWidth: 1.1,        // 外壳环线宽（玩家单位）
+        turbineShellColor: '105, 110, 116',  // 外壳低饱和钢灰
+        turbineShellAlpha: 0,
+        turbineBlades: 3,              // 叶片数量
+        turbineBladeWidth: 0.9,        // 叶片线宽（玩家单位）
+        turbineBladeHalf: 0.25,        // 叶片半宽（占半径比例）
+        turbineBladeColor: '255, 255, 255',   // 叶片白色
+        turbineBladeAlpha: 0.25,
+        turbineHubRadius: 1,           // 中心毂半径（玩家单位）
+        turbineRotateSpeed: 9.6,       // 叶片转速（弧度/秒）
+        turbineAccentColor: '219, 255, 251', // 轴心浅青点缀
         blend: 'screen' as GlobalCompositeOperation, // 覆盖层叠加混合
-        // ===== 普通天赋部件（量变可视化；Canvas 程序化绘制，开销可忽略） =====
-        // 耐热合金（alloy）：枪管散热格栅横线，1级2条 → 2级3条
-        alloyGrillWidth: 5,            // 格栅半宽（玩家单位，略宽于枪身）
-        alloyGrillYOffset: 55,         // 格栅区底部上移（玩家单位）
-        alloyGrillSpacing: 4,          // 格栅线间距（玩家单位）
-        alloyGrillColor: 'rgba(120, 125, 135, 0.85)',  // 格栅深灰
-        alloyGrillLineWidth: 0.5,      // 格栅线宽（玩家单位）
-        // 散热鳍片（fins）：枪身两侧三角鳍片，1级2片 → 2级4片
-        finWidth: 3,                   // 鳍片外伸宽度（玩家单位）
-        finHeight: 5,                  // 单片鳍片高度（玩家单位）
-        finSpacing: 7,                 // 鳍片纵向间距（玩家单位）
-        finYOffset: 40,                // 首片鳍片上移（玩家单位）
-        finColor: 'rgba(150, 160, 175, 0.9)',          // 鳍片银灰
-        // 扩容气罐（tank）：枪身下气罐加高 +15%/级（气罐区约 -10s ~ -30s）
-        tankCanWidth: 7,               // 气罐半宽（玩家单位）
-        tankCanBaseHeight: 20,         // 气罐基础高度（玩家单位）
-        tankCanYOffset: 10,            // 气罐底部下移（玩家单位）
-        tankCanGrowPerLevel: 0.15,     // 每级加高比例
-        tankCanColor: 'rgba(198, 120, 60, 0.55)',      // 气罐铜色（半透明，不遮原贴图）
-        tankCanEdgeColor: 'rgba(230, 160, 90, 0.7)',   // 气罐高光
+        // （耐热合金/散热鳍片/扩容气罐按需求无视觉特效，配置已移除）
       },
       // 【掉落道具】雷达激光渲染
       radarLaser: {
@@ -1101,16 +1100,6 @@ export const BALANCE_VFX = {
         shieldCoreAlphaRatio: 0.6, // 护盾核心透明度比例
         shieldColor: '6, 182, 212',    // 护盾颜色
         shieldCoreColor: '165, 243, 252', // 护盾核心颜色
-        // ===== 天赋外观进化：防线协议装甲板（wall 基石激活时沿线铺设） =====
-        armorPlateWidth: 46,          // 单板宽度（像素）
-        armorPlateHeight: 14,         // 单板高度（像素）
-        armorPlateGap: 6,             // 板间缝隙（像素）
-        armorPlateYOffset: 6,         // 板顶相对防线 Y 的下移（像素）
-        armorPlateBodyColor: 'rgba(110, 120, 135, 0.85)',  // 板体钢灰
-        armorPlateEdgeColor: 'rgba(200, 212, 228, 0.75)',  // 板缘高光
-        armorPlateRivetColor: 'rgba(55, 60, 70, 0.9)',     // 铆钉深色
-        armorPlateRivetRadius: 1.6,   // 铆钉半径（像素）
-        armorPlateEdgeLineWidth: 1.5, // 板缘线宽（像素）
       },
       // 【掉落道具】投掷物渲染（燃烧瓶尾迹）
       throwable: {
@@ -2020,16 +2009,16 @@ export const SHIELD_DOME_HEIGHT = 1.1;                   // 穹顶视觉高度�
 
 // --- 罩体填充（径向渐变：中心全透明 → 边缘微蓝；透明度极低，罩内蟑螂完全清晰可见） ---
 export const SHIELD_DOME_FILL_COLOR = '186, 230, 253';    // 罩体 RGB（#bae6fd 冰晶淡蓝）
-export const SHIELD_DOME_FILL_ALPHA_EDGE = 0.14;          // 罩体边缘峰值透明度（中心为 0，向边缘渐显）
+export const SHIELD_DOME_FILL_ALPHA_EDGE = 0.08;          // 罩体边缘峰值透明度（中心为 0，向边缘渐显；原 0.14 → 更通透）
 export const SHIELD_DOME_DEEP_COLOR = '125, 211, 252';    // 罩体近底缘 RGB（#7dd3fc，轻微加厚感）
-export const SHIELD_DOME_DEEP_ALPHA = 0.10;               // 近底缘透明度（收敛避免压暗本体）
+export const SHIELD_DOME_DEEP_ALPHA = 0.05;               // 近底缘透明度（原 0.10 → 减半，进一步不压暗本体）
 
 // --- 外缘描边 + 辉光（玻璃穹顶核心特征：边缘亮、内部透） ---
 export const SHIELD_DOME_RIM_COLOR = '125, 211, 252';     // 外缘描边 RGB（#7dd3fc 明亮晶蓝）
-export const SHIELD_DOME_RIM_ALPHA = 0.35                // 外缘描边透明度
+export const SHIELD_DOME_RIM_ALPHA = 0.28                // 外缘描边透明度（原 0.35 → 更轻的玻璃描边）
 export const SHIELD_DOME_RIM_LINE_WIDTH = 2;            // 外缘描边线宽（像素）
 export const SHIELD_DOME_RIM_GLOW_COLOR = '186, 230, 253';// 外缘辉光 RGB（lighter）
-export const SHIELD_DOME_RIM_GLOW_ALPHA = 0.2;            // 外缘辉光透明度
+export const SHIELD_DOME_RIM_GLOW_ALPHA = 0.12;            // 外缘辉光透明度（原 0.2 → 辉光收淡）
 export const SHIELD_DOME_RIM_GLOW_BLUR = 10;              // 外缘辉光模糊半径（像素）
 
 // --- 顶部镜面高光弧（玻璃反光：左上压扁亮弧，随呼吸明暗脉动） ---
@@ -2064,8 +2053,8 @@ export const SHIELD_FLUFF_INSET = 0.82;                  // 贴罩面内缩系�
 export const SHIELD_FLUFF_SIZE_MIN = 4;                  // 絮状物最小半径（像素）
 export const SHIELD_FLUFF_SIZE_AMP = 2.5;                // 大小脉动振幅（像素）
 export const SHIELD_FLUFF_SIZE_FREQ = 1.2;               // 大小脉动频率（Hz）
-export const SHIELD_FLUFF_ALPHA_BASE = 0.10;             // 基础透明度
-export const SHIELD_FLUFF_ALPHA_AMP = 0.07;              // 透明度脉动振幅
+export const SHIELD_FLUFF_ALPHA_BASE = 0.06;             // 基础透明度（原 0.10 → 与罩体同步收淡）
+export const SHIELD_FLUFF_ALPHA_AMP = 0.04;              // 透明度脉动振幅（原 0.07 → 收小）
 export const SHIELD_FLUFF_ALPHA_FREQ = 1.6;              // 透明度脉动频率（Hz）
 export const SHIELD_FLUFF_COLOR = '165, 243, 252';       // 絮状物颜色 RGB 通道（#a5f3fc 浅青，与罩体高光同色系）
 export const SHIELD_FLUFF_BLEND: GlobalCompositeOperation = 'lighter'; // 叠加混合（lighter 发光）

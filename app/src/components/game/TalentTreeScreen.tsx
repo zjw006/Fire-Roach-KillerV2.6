@@ -113,7 +113,18 @@ export const TalentTreeScreen: React.FC<TalentTreeScreenProps> = ({ progress, ta
   const talents = progress.talentTree.talents;
 
   // ── 页签（三分支随时切换） ──
-  const [activeTab, setActiveTab] = useState<BranchId>('inferno');
+  const [activeTab, setActiveTab] = useState<BranchId>(() => {
+    // 记忆上次进入时所在的页签（localStorage 持久化）
+    try {
+      const saved = localStorage.getItem('talent_active_tab');
+      if (saved === 'inferno' || saved === 'lance' || saved === 'support') return saved as BranchId;
+    } catch { /* ignore */ }
+    return 'inferno';
+  });
+  // 页签变化时持久化，再次进入保持同一页签
+  useEffect(() => {
+    try { localStorage.setItem('talent_active_tab', activeTab); } catch { /* ignore */ }
+  }, [activeTab]);
 
   // ── Toast ──
   const [toast, setToast] = useState<{ title: string; desc?: string } | null>(null);
@@ -211,7 +222,7 @@ export const TalentTreeScreen: React.FC<TalentTreeScreenProps> = ({ progress, ta
         return;
       case 'maxed':
         audio?.playClick();
-        showToast(`${TALENT_EMOJI[def.id] || '✨'} ${def.name} · ${T.maxedSuffix}`, def.description);
+        showToast(`${TALENT_EMOJI[def.id] || '✨'} ${def.name} · ${T.maxedSuffix}${def.maxedNote ? ` · ${def.maxedNote}` : ''}`, def.description);
         return;
       case 'pts':
         audio?.playClick();
@@ -404,7 +415,7 @@ export const TalentTreeScreen: React.FC<TalentTreeScreenProps> = ({ progress, ta
                                     <div className="tt-tooltip">
                                       <div className="tt-tt-name">{def.name}{lv > 0 && <span className="tt-tt-lv">Lv.{lv}</span>}</div>
                                       {lv >= def.maxLevel ? (
-                                        <div className="tt-tt-max">{T.maxedSuffix}</div>
+                                        <div className="tt-tt-max">{T.maxedSuffix}{def.maxedNote ? ` · ${def.maxedNote}` : ''}</div>
                                       ) : (
                                         <>
                                           <div className="tt-tt-next">下一级效果</div>
