@@ -41,26 +41,20 @@ export const SceneSelectScreen: React.FC<SceneSelectScreenProps> = ({ progress, 
 
   /** 关卡列表：按 STORY_LEVELS 顺序渲染（11 简单 + 6 困难），已解锁可点击选择 */
   return (
-    <div ref={containerRef} className="absolute inset-0 flex items-start justify-center bg-black/90 backdrop-blur-sm overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-stone-700/50 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-stone-600/60">
-      <div className="w-full max-w-md mx-4 py-6">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <button
-            onClick={() => { audio?.playClick(); onClose(); }}
-            className="flex items-center gap-1 text-stone-400 hover:text-white transition-colors"
-          >
-            <ArrowLeft size={18} />
-            <span className="text-sm">返回</span>
-          </button>
-          <div className="flex items-center gap-2">
-            <Map size={16} className="text-amber-400" />
-            <span className="text-amber-400 font-bold">{scenesUnlocked.length}/{STORY_LEVELS.length}</span>
-          </div>
-        </div>
+    <div ref={containerRef} className="absolute inset-0 flex flex-col bg-black/90 backdrop-blur-sm">
+      <div className="w-full max-w-md mx-auto px-4 pt-4 pb-2 shrink-0">
+        {/* Header - 顶部固定区域 */}
+        <h2 className="text-2xl font-bold text-white text-center mb-4 flex items-center justify-center gap-2">
+          <Map size={20} className="text-amber-400" />
+          场景选择
+          <span className="text-sm font-normal text-amber-400 ml-1">({scenesUnlocked.length}/{STORY_LEVELS.length})</span>
+        </h2>
+      </div>
 
-        <h2 className="text-2xl font-bold text-white text-center mb-4">场景选择</h2>
-
-        <div className="space-y-3 pb-8 pt-2">
+      {/* 中间可滚动列表区 */}
+      <div className="flex-1 overflow-y-auto px-4 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-stone-700/50 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-stone-600/60">
+        <div className="w-full max-w-md mx-auto">
+          <div className="space-y-3 py-2">
           {STORY_LEVELS.map((level, index) => {
             const scene = SCENE_CONFIGS[level.scene];
             const isHard = level.difficulty === 'hard';
@@ -156,7 +150,21 @@ export const SceneSelectScreen: React.FC<SceneSelectScreenProps> = ({ progress, 
               </div>
             );
           })}
+          </div>
+          {/* 底部占位，给返回按钮留出可视空间 */}
+          <div className="h-2" />
         </div>
+      </div>
+
+      {/* 底部固定返回按钮区域 */}
+      <div className="w-full max-w-md mx-auto px-4 pt-2 pb-[max(16px,env(safe-area-inset-bottom))] shrink-0">
+        <button
+          onClick={() => { audio?.playClick(); onClose(); }}
+          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-stone-800/80 border border-stone-700 text-stone-300 hover:text-white hover:border-stone-500 hover:bg-stone-700/80 active:scale-[0.98] transition-all"
+        >
+          <ArrowLeft size={18} />
+          <span className="text-sm font-medium">返回主菜单</span>
+        </button>
       </div>
     </div>
   );

@@ -105,6 +105,73 @@ export const DIALOG_CONFIGS: DialogConfig[] = [
       { speaker: '蟑叔', text: '副本？不不不，这是你的工作！发票开"医疗废弃物处理费"，走！', emotion: 'happy' },
     ],
   },
+  // Scene 8: Subway - 地铁，列车碾压 + 精英/破盾教学在战斗中第1/4波触发
+  {
+    sceneType: SceneType.SUBWAY,
+    title: '第八关：地铁',
+    bgImage: '/assets/bg_subway.jpg',
+    lines: [
+      { speaker: '蟑叔', text: '末班车停运三年了，但铁轨上的"乘客"可一点没少。', emotion: 'normal' },
+      { speaker: '你', text: '……所长，这条线的蟑螂是不是有点太壮了？' },
+      { speaker: '蟑叔', text: '地铁蟑螂！天天扒列车练出来的，个个腿粗触须硬！', emotion: 'serious' },
+      { speaker: '蟑叔', text: '不过好消息——虽然末班车停运了，调度系统还没坏！铁轨上的列车会定时驶过，拦路的蟑螂统统被碾过去！', emotion: 'excited' },
+      { speaker: '你', text: '免费的帮手？那我们把它们往铁轨上赶？' },
+      { speaker: '蟑叔', text: '聪明！贴板、火墙，把它们安排到轨道上"安检"！', emotion: 'happy' },
+      { speaker: '蟑叔', text: '但要小心——听说这站最近来了个"大家伙"，连贴板都粘不住它……来了再说，先上车！', emotion: 'scared' },
+      { speaker: '你', text: '发票这单开什么？' },
+      { speaker: '蟑叔', text: '"轨道交通公共卫生服务费"……记得让螂老大签字报销！', emotion: 'excited' },
+    ],
+  },
+  // Scene 9: Supermarket - 废弃超市，蟑螂阵型协同作战 + 隧道工修盾
+  {
+    sceneType: SceneType.SUPERMARKET,
+    title: '第九关：废弃超市',
+    bgImage: '/assets/bg_supermarket.jpg',
+    lines: [
+      { speaker: '蟑叔', text: '快看！蟑螂们组团来抢购了！……不对，它们是排队来送死的！', emotion: 'happy' },
+      { speaker: '你', text: '它们居然在列队前进。蟑螂界也开始卷军事化了？' },
+      { speaker: '蟑叔', text: '这叫【阵型】！护盾蟑螂顶在前面挡火，护士蟑螂在后面奶，还有新面孔——【隧道工蟑螂】！', emotion: 'serious' },
+      { speaker: '蟑叔', text: '隧道工会喷加固胶，被它罩住的蟑螂壳更硬！它还会给护盾蟑螂修盾，蓝色连线就是它在施工！', emotion: 'normal' },
+      { speaker: '你', text: '那先斩了修理工不就行了？' },
+      { speaker: '蟑叔', text: '聪明！记住口诀：擒贼先擒王，破阵先破锚！护盾、护士、隧道工就是阵型的锚点，锚点全灭，阵型当场解散！', emotion: 'excited' },
+      { speaker: '蟑叔', text: '还有还有，有的阵列会左右摇摆，有的绕圈巡逻——别被阵型带着跑，盯着锚点烧！', emotion: 'normal' },
+      { speaker: '你', text: '……所长，您管这叫抢购？这明明是攻城。' },
+      { speaker: '蟑叔', text: '攻城好啊！发票开"大型商超消杀服务费"，加急翻倍！冲！', emotion: 'excited' },
+    ],
+  },
+  // Scene 10: School - 废弃学校，体育生蟑螂跳跃袭击 + 地铁精英复现
+  {
+    sceneType: SceneType.SCHOOL,
+    title: '第十关：废弃学校',
+    bgImage: '/assets/bg_school.jpg',
+    lines: [
+      { speaker: '蟑叔', text: '我的天……这学校的蟑螂，居然在晨跑？！', emotion: 'scared' },
+      { speaker: '你', text: '操场那一排……是穿着运动服的蟑螂？' },
+      { speaker: '蟑叔', text: '那是【体育生蟑螂】！它蓄力时会亮出红色抛物线虚线——那就是它的起跳路线，快躲开落点！', emotion: 'serious' },
+      { speaker: '蟑叔', text: '它腾空一跃能飞出老远，落地还有冲击波！更糟的是铁轨那批地铁精英也转学来这了，冲刺照样横冲直撞！', emotion: 'normal' },
+      { speaker: '你', text: '跳来跳去的，火焰怎么烧？' },
+      { speaker: '蟑叔', text: '蓄力那0.7秒它动不了！看到红虚线就往它站的位置猛喷，让它起跳前先吃个满嘴灰！', emotion: 'excited' },
+      { speaker: '你', text: '以其人之道，还治其人之身。' },
+      { speaker: '蟑叔', text: '对！打完这单，发票开"课外兴趣班场地消毒费"……别愣着，上课铃响了！', emotion: 'happy' },
+    ],
+  },
+  // Scene 11: Nest - 蟑螂巢穴，蟑老大最终决战（引爆炸弹反伤 Boss）
+  {
+    sceneType: SceneType.NEST,
+    title: '第十一关：蟑螂巢穴',
+    bgImage: '/assets/bg_nest.jpg',
+    lines: [
+      { speaker: '蟑叔', text: '到了……就是这里。整座城市的蟑螂，都是从这个洞里爬出来的。', emotion: 'serious' },
+      { speaker: '螂老大（巢穴深处）', text: '张螂……你终究还是追到本皇的老巢来了。' },
+      { speaker: '蟑叔', text: '老巢？好啊，端了老窝，发票开"根除服务"，这单我要开十倍的价！', emotion: 'excited' },
+      { speaker: '螂老大', text: '愚蠢！本皇的甲壳淬炼千年，防火防电防发票！你的火焰，烧不到本皇一根触须！' },
+      { speaker: '你', text: '……它好像真的不怕火。' },
+      { speaker: '蟑叔', text: '别慌！它怕自己的炸弹！它每过一阵就会朝我们扔炸弹——用火枪在半空引爆那些炸弹，爆炸就能崩掉它300血！', emotion: 'serious' },
+      { speaker: '蟑叔', text: '注意三件事：它周身冒红光是技能预警；它扇风时小怪会加速冲锋；它召唤的净化金光会解除小怪身上的减益！', emotion: 'normal' },
+      { speaker: '你', text: '也就是说，它扔十次炸弹，我引爆十次，它就完了？' },
+      { speaker: '蟑叔', text: '没错！这里的蟑螂杀不完也没关系——杀死螂老大，一切就都结束了。最后一单，走！', emotion: 'excited' },
+    ],
+  },
 ];
 
 /**

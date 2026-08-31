@@ -10,6 +10,7 @@ import { BossKingSkill } from './types';
 
 /** 各动作帧率（与序列帧节奏匹配） */
 const ACTION_FPS: Record<BossKingAnimAction, number> = {
+  enter: 8,
   hover: 8,
   purge: 8,
   wind: 10,
@@ -35,6 +36,11 @@ export class BossKingRenderer {
     const cfg = BALANCE_CONFIG.bossKing;
     const sh = cfg.shadow;
     let alpha = sh.alpha;
+    // 入场飞来时阴影同步淡入（远处现身 → 贴近地面投影渐显）
+    if (state.enterStage === 'flying') {
+      const progress = Math.min(1, 1 - state.enterTimer / cfg.enter.flySec);
+      alpha *= progress;
+    }
     // 退场远去时阴影同步淡出（透视缩小后不残留）
     if (state.exitStage === 'fly') {
       const progress = Math.min(1, 1 - state.exitTimer / cfg.exit.flySec);
@@ -115,11 +121,23 @@ export class BossKingRenderer {
     const cfg = BALANCE_CONFIG.bossKing;
     const boss = state.boss;
 
-    // ===== 退场变换（转身 → 透视缩小飞向洞穴深处 → 渐隐） =====
+    // ===== 入场变换（从洞穴深处飞向悬浮位：由小变大、由透明变不透明；退场的镜像） =====
     let drawX = boss.x;
     let drawY = boss.y;
     let scale = 1;
     let alpha = 1;
+    if (state.enterStage === 'flying') {
+      const progress = Math.min(1, 1 - state.enterTimer / cfg.enter.flySec);
+      const eased = 1 - (1 - progress) * (1 - progress); // ease-out 减速抵达
+      const fromX = w * cfg.enter.fromXRatio;
+      const fromY = h * cfg.enter.fromYRatio;
+      drawX = fromX + (state.enterTargetX - fromX) * eased;
+      drawY = fromY + (state.enterTargetY - fromY) * eased;
+      scale = cfg.enter.startScale + (1 - cfg.enter.startScale) * eased;
+      // 前 fadeInRatio 路程内透明度 0→1，之后保持不透明
+      alpha = Math.min(1, progress / cfg.enter.fadeInRatio);
+    }
+    // ===== 退场变换（转身 → 透视缩小飞向洞穴深处 → 渐隐） =====
     if (state.exitStage === 'fly' || state.exitStage === 'done') {
       const progress = Math.min(1, 1 - state.exitTimer / cfg.exit.flySec);
       const eased = progress * progress; // ease-in 加速远去
@@ -157,7 +175,7 @@ export class BossKingRenderer {
     }
 
     // ===== 序列帧绘制 =====
-    const action = state.exitStage !== 'none' ? 'exit' : boss.animAction;
+    const action = state.exitStage !== 'none' ? 'exit' : state.enterStage === 'flying' ? 'enter' : boss.animAction;
     let actionFrames = frames.get(action);
     if (!actionFrames || actionFrames.length === 0 || !actionFrames[0]) {
       actionFrames = frames.get('hover'); // 缺失动作回退悬停
@@ -339,7 +357,7 @@ export class BossKingRenderer {
     w: number,
     state: BossKingBattleState
   ): void {
-    if (!state.active) return;
+    if (!state.active || state.enterStage === 'flying') return; // 入场飞来期间不显示血条
     const boss = state.boss;
     const barW = Math.min(400, w * 0.7);
     const barH = 18;

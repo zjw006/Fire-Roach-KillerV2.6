@@ -1956,39 +1956,8 @@ export class AudioManager {
     }
   }
 
-  /** 飞行蟑螂循环嗡嗡音频实例 */
-  private flyingBuzzAudio: HTMLAudioElement | null = null;
-  /** 飞行蟑螂嗡嗡是否正在播放 */
-  private flyingBuzzPlaying: boolean = false;
-
-  /** 启动飞行蟑螂持续嗡嗡循环（场上存在飞行蟑螂时调用） */
-  startFlyingBuzzLoop() {
-    if (this.isMuted || this.flyingBuzzPlaying) return;
-    if (!this.flyingBuzzAudio) {
-      this.flyingBuzzAudio = this.createAudioElement('/assets/flying_roach_buzz.mp3', 0.4);
-      this.flyingBuzzAudio.loop = true;
-    }
-    // 修复 2026-08-27：createAudioElement 初始 muted=true，而 setupAudioUnmute 只解除构造期 9 个元素的静音，
-    // 嗡嗡元素为懒创建，必须在此处解除（否则嗡嗡声永远无声）
-    if (!this.isMuted) this.flyingBuzzAudio.muted = false;
-    this.flyingBuzzAudio.currentTime = 0;
-    const el = this.flyingBuzzAudio;
-    el.play().then(() => {
-      // 修复 2026-08-27（iOS 竞态）：play() promise 尚未完成时若已调用 stop（pause），iOS 会忽略 pause 继续播放——
-      // promise 完成时复查标志，若已停止则补一次暂停，防止嗡嗡声在退出场景后永久残留
-      if (!this.flyingBuzzPlaying) el.pause();
-    }).catch(() => {});
-    this.flyingBuzzPlaying = true;
-  }
-
-  /** 停止飞行蟑螂持续嗡嗡循环 */
-  stopFlyingBuzzLoop() {
-    if (this.flyingBuzzAudio) {
-      this.flyingBuzzAudio.pause();
-      this.flyingBuzzAudio.currentTime = 0;
-    }
-    this.flyingBuzzPlaying = false;
-  }
+  // 飞行蟑螂循环嗡嗡声（flying_roach_buzz.mp3）已于 2026-08-28 整体移除：
+  // iOS 对懒创建循环元素的 pause() 吞没导致战败后嗡嗡声残留，且该音效体验争议较大
 
   /** 播放飞行蟑螂死亡时的一次性死亡音效 */
   playFlyingDeath() {
@@ -2003,7 +1972,6 @@ export class AudioManager {
     if (this.isMuted) {
       this.stopBGM();
       this.stopFire();
-      this.stopFlyingBuzzLoop();
     } else {
       this.resumeBGM();
     }
@@ -2016,7 +1984,6 @@ export class AudioManager {
     if (muted) {
       this.stopBGM();
       this.stopFire();
-      this.stopFlyingBuzzLoop();
       this.stopGameOverBGM();
       this.stopVictoryBGM();
     }

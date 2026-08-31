@@ -80,10 +80,10 @@ export const GameMenu: React.FC<GameMenuProps> = ({
   {/* ═══ 剧情模式 → 关卡选择（v2.6：难度选择已移除，巢穴后追加 6 个困难关）═══ */}
   if (showModes && selectedMode === GameMode.STORY) {
     return (
-      <div className="absolute inset-0 flex items-center justify-center overflow-y-auto py-4 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-stone-700/50 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-stone-600/60">
+      <div className="absolute inset-0 flex items-stretch justify-center">
         <div className="absolute inset-0 bg-cover bg-center transition-opacity duration-700" style={{ backgroundImage: 'url(/assets/bg_kitchen_easy.jpg)', opacity: bgLoaded ? 1 : 0 }} />
         <div className="absolute inset-0 bg-black/70" />
-        <div className="relative z-10 text-center max-w-sm w-full mx-4 my-auto">
+        <div className="relative z-10 text-center max-w-sm w-full mx-4 py-4 flex flex-col">
           {/* Talent tree button */}
           <button
             onClick={() => { audio?.playClick(); onOpenTalentTree(); }}
@@ -97,13 +97,13 @@ export const GameMenu: React.FC<GameMenuProps> = ({
           </button>
 
           {/* 关卡选择（11 简单关 + 6 困难关） */}
-          <h2 className="text-2xl font-bold text-white mb-2 flex items-center justify-center gap-2">
+          <h2 className="text-2xl font-bold text-white mb-1 flex items-center justify-center gap-2">
             <Map size={20} className="text-amber-400" />
             {TEXT_CONFIG.ui.menu.selectScene}
           </h2>
-          <p className="text-stone-400 text-sm mb-4">选择一个关卡</p>
-          {/* Draggable scene list */}
-          <div className="w-full mb-4" style={{ maxHeight: '55vh', overflowY: 'auto', touchAction: 'pan-y', WebkitOverflowScrolling: 'touch' }}>
+          <p className="text-stone-400 text-sm mb-3">选择一个关卡</p>
+          {/* Draggable scene list：带外框，向下延展占满剩余空间（仅此区域可滚动） */}
+          <div className="w-full flex-1 min-h-0 mb-3 rounded-xl border border-stone-700/80 bg-stone-950/50 p-2 shadow-[inset_0_1px_8px_rgba(0,0,0,0.5),0_0_12px_rgba(0,0,0,0.4)] backdrop-blur-sm overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-stone-700/50 [&::-webkit-scrollbar-thumb]:rounded-full" style={{ touchAction: 'pan-y', WebkitOverflowScrolling: 'touch' }}>
             <div className="space-y-2 pr-1">
               {STORY_LEVELS.map((level) => {
                 const scene = SCENE_CONFIGS[level.scene];
@@ -163,7 +163,8 @@ export const GameMenu: React.FC<GameMenuProps> = ({
               })}
             </div>
           </div>
-          <button onClick={() => { audio?.playClick(); setShowModes(false); setSelectedMode(null); }} className="text-stone-400 hover:text-white text-sm font-mono transition-colors tracking-wider">
+          {/* 返回按钮：固定屏幕底部 */}
+          <button onClick={() => { audio?.playClick(); setShowModes(false); setSelectedMode(null); }} className="text-stone-400 hover:text-white text-sm font-mono transition-colors tracking-wider pb-[max(4px,env(safe-area-inset-bottom))]">
             [ {TEXT_CONFIG.ui.menu.back} ]
           </button>
         </div>

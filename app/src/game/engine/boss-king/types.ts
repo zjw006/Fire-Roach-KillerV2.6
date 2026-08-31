@@ -20,6 +20,7 @@ export type BossKingSkillState = 'idle' | 'telegraph' | 'active';
 
 /** Boss 动画动作（对应 public/boss/<action>/bk_<action>_NN.png） */
 export type BossKingAnimAction =
+  | 'enter'
   | 'hover'
   | 'purge'
   | 'wind'
@@ -88,6 +89,13 @@ export interface BossKingBattleState {
   windTimer: number;
   /** 开场亮相剩余时间 */
   introTimer: number;
+  /** 入场阶段：none → flying → done（flying 期间由渲染层做 远处飞来/由小变大/由透明变不透明 变换） */
+  enterStage: 'none' | 'flying' | 'done';
+  /** 入场飞行剩余时间 */
+  enterTimer: number;
+  /** 入场终点（悬浮基准位，入场期间 boss.x/y 即此目标） */
+  enterTargetX: number;
+  enterTargetY: number;
   /** 退场阶段：none → turn → fly → done */
   exitStage: 'none' | 'turn' | 'fly' | 'done';
   exitTimer: number;
@@ -114,6 +122,10 @@ export function createBossKingState(): BossKingBattleState {
     telegraphSkill: BossKingSkill.BOMB,
     windTimer: 0,
     introTimer: 0,
+    enterStage: 'none',
+    enterTimer: 0,
+    enterTargetX: 0,
+    enterTargetY: 0,
     exitStage: 'none',
     exitTimer: 0,
     exitStartX: 0,

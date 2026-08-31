@@ -973,6 +973,8 @@ export class GameEngine {
           this.gameVictory();
         },
         onDefeat: () => { this.gameDefeat(); },
+        // 蟑老大入场动画完成 → 此时才生成第 1 波（Boss 入场先于战斗波次）
+        onEntranceComplete: () => { this.waveManager?.doWaveSpawn(); },
       },
       {
         playBossKingWarn: () => { this.audio.playBossKingWarn(); },
@@ -1237,7 +1239,7 @@ export class GameEngine {
 
     // 巢穴·蟑老大 Boss 序列帧（public/boss/<action>/bk_<action>_NN.png，仅巢穴场景）
     const bossKingActionFrames: readonly (readonly [string, number])[] = [
-      ['hover', 5], ['purge', 3], ['wind', 4], ['bomb_warn', 3], ['bomb_throw', 2], ['hit', 2], ['exit', 4],
+      ['enter', 5], ['hover', 5], ['purge', 3], ['wind', 4], ['bomb_warn', 3], ['bomb_throw', 2], ['hit', 2], ['exit', 4],
     ];
     for (const [action, frameCount] of bossKingActionFrames) {
       const frames = new Array<HTMLImageElement | null>(frameCount).fill(null);
@@ -1675,7 +1677,6 @@ export class GameEngine {
       this.audio.stopFire();
       this.audio.stopFanLoop();
       this.audio.stopFireWallBurn();
-      this.audio.stopFlyingBuzzLoop();
       cancelAnimationFrame(this.animationId);
       this.onStateChange?.(this.state);
     }
@@ -1704,7 +1705,6 @@ export class GameEngine {
     this.audio.stopFire();
     this.audio.stopFanLoop();
     this.audio.stopFireWallBurn();
-    this.audio.stopFlyingBuzzLoop();
     cancelAnimationFrame(this.animationId);
     this.onStateChange?.(this.state);
   }
@@ -2069,7 +2069,6 @@ export class GameEngine {
     this.audio.stopFire();
     this.audio.stopFanLoop();
     this.audio.stopFireWallBurn();
-    this.audio.stopFlyingBuzzLoop();
     // 播放胜利 BGM（替换场景 BGM）
     this.audio.playVictoryBGM();
 
@@ -2125,9 +2124,11 @@ export class GameEngine {
       }
     }
 
-    // 剧情模式：正常道具掉落奖励流程
-    const rewards = SCENE_REWARD_ITEMS[this.currentScene];
-    // 只揭示新解锁的道具（跳过已解锁的）
+    // 剧情模式：道具掉落奖励流程（仅首次通关解锁新道具时播放掉落动画）
+    // 学校/巢穴：通关后不解锁新道具，直接进结算（无掉落动画）
+    const skipItemReward = this.currentScene === SceneType.SCHOOL || this.currentScene === SceneType.NEST;
+    const rewards = skipItemReward ? [] : SCENE_REWARD_ITEMS[this.currentScene];
+    // 只揭示新解锁的道具（跳过已解锁的；重复通关无新道具 → 不播放掉落动画，直接结算）
     const newlyUnlocked: typeof rewards = [];
     for (const reward of rewards) {
       if (!this.progress.weaponsUnlocked?.includes(reward.type)) {
@@ -2135,10 +2136,6 @@ export class GameEngine {
         this.progress.weaponsUnlocked.push(reward.type);
         newlyUnlocked.push(reward); // only add to reveal if it's newly unlocked
       }
-    }
-    // 重复过关：即使无新道具，也展示本关掉落道具（重复获得），保证「下一关」前出现掉落界面
-    if (newlyUnlocked.length === 0 && rewards.length > 0) {
-      newlyUnlocked.push(rewards[0]);
     }
     this.saveProgress();
     // 胜利时立即检查成就（unlockNextScene 已写入 levelStars/星级，避免 WAVE_CLEAR 状态下
@@ -2232,7 +2229,6 @@ export class GameEngine {
     this.audio.stopFire();
     this.audio.stopFanLoop();
     this.audio.stopFireWallBurn();
-    this.audio.stopFlyingBuzzLoop();
     // Play game over BGM immediately (don't wait for state change)
     this.audio.playGameOverBGM();
     // Notify UI after short delay (for visual effect)
@@ -3129,15 +3125,10 @@ export class GameEngine {
       // 阵型整阵生成（超市 V3.1）：出生点即阵型槽位，由 FormationSystem 计划提供
       baseX = spawnX;
       baseY = spawnY;
-      if (type === RoachType.FLYING || type === RoachType.FLYING_SUICIDE) {
-        this.audio.startFlyingBuzzLoop();
-      }
     } else if (type === RoachType.FLYING || type === RoachType.FLYING_SUICIDE) {
       // Flying roaches spawn at sides and fly across
       baseX = Math.random() < 0.5 ? -20 : this.width + 20;
       baseY = this.height * 0.3 + Math.random() * this.height * 0.2;
-      // Start flying buzz loop (continuous while any flying roach is alive)
-      this.audio.startFlyingBuzzLoop();
     } else if (type === RoachType.SUBWAY_ELITE) {
       // Subway elite roaches spawn at sides and fly across (like flying roaches)
       baseX = Math.random() < 0.5 ? -25 : this.width + 25;
@@ -3465,7 +3456,6 @@ export class GameEngine {
         this.audio.stopFire();
         this.audio.stopFanLoop();
         this.audio.stopFireWallBurn();
-        this.audio.stopFlyingBuzzLoop();
         this.economy.highestWave = Math.max(this.economy.highestWave, this.wave);
         this.progress.highestWave = Math.max(this.progress.highestWave, this.wave);
         this.progress.totalKills += this.economy.totalKills;
@@ -3655,16 +3645,9 @@ export class GameEngine {
     // 清理死亡蟑螂的粘液弹包裹（委托给 StickySystem）
     this.stickySystem!.cleanupRoachDeath(r);
 
-    // 飞行蟑螂：播放死亡音效，如果没有活着的飞行蟑螂则停止嗡嗡声循环
+    // 飞行蟑螂：播放死亡音效
     if (r.type === RoachType.FLYING || r.type === RoachType.FLYING_SUICIDE) {
       this.audio.playFlyingDeath();
-      // 检查是否还有活着的飞行蟑螂
-      const anyFlyingAlive = this.roaches.some(
-        ro => (ro.type === RoachType.FLYING || ro.type === RoachType.FLYING_SUICIDE) && ro.state === RoachState.ALIVE
-      );
-      if (!anyFlyingAlive) {
-        this.audio.stopFlyingBuzzLoop();
-      }
     }
 
     // 分裂蟑螂：首次死亡时生成 5 只小蟑螂
@@ -4005,7 +3988,6 @@ export class GameEngine {
       this.audio.stopFire();
       this.audio.stopFanLoop();
       this.audio.stopFireWallBurn();
-      this.audio.stopFlyingBuzzLoop();
       this.economy.highestWave = Math.max(this.economy.highestWave, this.wave);
       if (this.gameMode === GameMode.ENDLESS) {
         this.economy.highestEndlessWave = Math.max(this.economy.highestEndlessWave, this.wave);
@@ -4240,7 +4222,8 @@ export class GameEngine {
 
   // Called when countdown reaches 0 - actually spawn the wave
   doWaveSpawn() {
-    // 巢穴·蟑老大：3-2-1 倒计时结束 → 开始 Boss 战 + 启动第 1 波（波次系统并行供怪，循环波次）
+    // 巢穴·蟑老大：3-2-1 倒计时结束 → Boss 先入场（由小变大/由透明变不透明飞来），
+    // 入场完成后经 onEntranceComplete 回调生成第 1 波（Boss 入场先于战斗波次）
     if (this.isBossKingScene()) {
       this.state = GameState.PLAYING;
       this.onStateChange?.(this.state);
@@ -4250,8 +4233,6 @@ export class GameEngine {
         player: this.player,
       });
       this.bossKingSystem!.startBattle();
-      // 巢穴波次系统（复制天台）：wave 已由 waveManager.startWave() 递增至 1，此处直接生成第 1 波
-      this.waveManager!.doWaveSpawn();
       return;
     }
     this.waveManager!.doWaveSpawn();

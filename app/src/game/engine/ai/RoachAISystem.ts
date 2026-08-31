@@ -1647,7 +1647,6 @@ export class RoachAISystem {
     this.cfg.audio.stopFire();
     this.cfg.audio.stopFanLoop();
     this.cfg.audio.stopFireWallBurn();
-    this.cfg.audio.stopFlyingBuzzLoop();
     economy.highestWave = Math.max(economy.highestWave, wave);
     this.cfg.onEconomyUpdate(economy);
     this.cfg.progress.highestWave = Math.max(this.cfg.progress.highestWave, wave);
@@ -1685,12 +1684,6 @@ export class RoachAISystem {
     // Flying roach death
     if (r.type === RoachType.FLYING || r.type === RoachType.FLYING_SUICIDE) {
       this.cfg.audio.playFlyingDeath();
-      const anyFlyingAlive = roaches.some(
-        ro => (ro.type === RoachType.FLYING || ro.type === RoachType.FLYING_SUICIDE) && ro.state === RoachState.ALIVE
-      );
-      if (!anyFlyingAlive) {
-        this.cfg.audio.stopFlyingBuzzLoop();
-      }
     }
 
     // Splitting roach

@@ -61,6 +61,8 @@ export interface BossKingCallbacks {
   onDamageDefense: (damage: number) => void;
   onVictory: () => void;
   onDefeat: () => void;
+  /** 入场动画完成（engine 接线：此时才生成第 1 波，Boss 入场先于战斗波次） */
+  onEntranceComplete: () => void;
 }
 
 /**
@@ -120,7 +122,7 @@ export class BossKingSystem {
     this.purgeImmuneActiveCount = 0;
   }
 
-  /** 开始 Boss 战（巢穴场景 resetGame 后调用） */
+  /** 开始 Boss 战（巢穴场景 resetGame 后调用）：先入场动画 → 完成后回调启动波次 */
   startBattle(): void {
     this.reset();
     const cfg = BALANCE_CONFIG.bossKing;
@@ -130,7 +132,13 @@ export class BossKingSystem {
     s.boss.maxHp = cfg.hp;
     s.boss.x = (this.frame?.width ?? 540) / 2;
     s.boss.y = (this.frame?.height ?? 960) * cfg.hoverYRatio;
-    s.introTimer = cfg.introSec;
+    // 入场序列：从洞穴深处飞向悬浮位（位置/缩放/透明度变换由渲染层按 enterTimer 进度计算）
+    s.enterStage = 'flying';
+    s.enterTimer = cfg.enter.flySec;
+    s.enterTargetX = s.boss.x;
+    s.enterTargetY = s.boss.y;
+    s.boss.animAction = 'enter';
+    s.boss.animTimer = 0;
     this.cb.onAddFloatingText(s.boss.x, s.boss.y + 120, '蟑老大现身！', '#ff6b4a');
     this.cb.onScreenShake(BALANCE_CONFIG.screenShake.bossDeath);
   }
@@ -160,6 +168,23 @@ export class BossKingSystem {
     // ===== 动画计时（渲染层按 timer×fps 取帧） =====
     s.boss.animTimer += dt;
     if (s.boss.damageFlash > 0) s.boss.damageFlash -= dt;
+
+    // ===== 入场序列（从洞穴深处飞向悬浮位；期间不巡逻/不放技能/不投弹） =====
+    if (s.enterStage === 'flying') {
+      s.enterTimer -= dt;
+      if (s.enterTimer <= 0) {
+        s.enterStage = 'done';
+        s.boss.x = s.enterTargetX;
+        s.boss.y = s.enterTargetY;
+        s.boss.animAction = 'hover';
+        s.boss.animTimer = 0;
+        s.introTimer = cfg.introSec;
+        this.cb.onScreenShake(BALANCE_CONFIG.screenShake.largeExplosion);
+        this.cb.onEntranceComplete(); // engine 接线：生成第 1 波，战斗波次开始
+      }
+      // 入场期间仅推进动画计时（悬停浮动由渲染层的插值路径体现）
+      return;
+    }
 
     // ===== 退场序列（转身 → 透视缩小飞向洞穴深处 → 结算） =====
     if (s.exitStage !== 'none') {

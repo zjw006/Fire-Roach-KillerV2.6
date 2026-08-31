@@ -585,7 +585,6 @@ export const GameCanvas: React.FC = () => {
     engine.audio.stopFire();
     engine.audio.stopFanLoop();
     engine.audio.stopFireWallBurn();
-    engine.audio.stopFlyingBuzzLoop();
 
     // 停止游戏循环
     cancelAnimationFrame(engine.animationId);
@@ -661,10 +660,10 @@ export const GameCanvas: React.FC = () => {
           return;
         }
       }
-      // No dialog needed, start immediately (shop upgrades preserved via ref)
-      doStartGame(diff, GameMode.STORY, nextScene);
+      // No dialog needed, check preparation screen (shop upgrades preserved via ref)
+      maybeShowPreparation(diff, GameMode.STORY, nextScene);
     }
-  }, [doStartGame, shouldShowDialog]);
+  }, [maybeShowPreparation, shouldShowDialog]);
 
   /** 道具回收动画完成：应用回收金币 → 刷新 UI → 关闭动画 */
   const handleRecycleComplete = useCallback(() => {

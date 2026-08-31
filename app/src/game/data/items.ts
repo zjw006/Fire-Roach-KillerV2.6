@@ -294,6 +294,14 @@ export const BALANCE_ITEMS = {
     hoverYAmpRatio: 0.045,       // 垂直浮动幅度（屏高比例）
     hoverYFreq: 1.1,             // 垂直浮动频率
     introSec: 2.0,               // 开场亮相延迟（之后才开始技能轮转）
+    // 入场：从洞穴深处（屏顶）飞向悬浮位，由小变大、由透明变不透明（退场的镜像）
+    enter: {
+      flySec: 2.2,               // 入场飞行时长
+      fromXRatio: 0.5,           // 起点 X（屏宽比例，洞穴深处 = 退场终点同方向）
+      fromYRatio: 0.08,          // 起点 Y（屏高比例）
+      startScale: 0.15,          // 起始缩放（远处透视小）
+      fadeInRatio: 0.45,         // 前 45% 路程内透明度 0→1（先现身再飞近）
+    },
     telegraphSec: 1.5,           // 技能前摇（红光/金光/张翅提示）
     phase2HpRatio: 0.5,          // 进入二阶段血量比例
     phase3HpRatio: 0.2,          // 进入三阶段血量比例
