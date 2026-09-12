@@ -2103,22 +2103,31 @@ export class GameEngine {
     }
     this.lastVictoryStarBonus = 0;
 
-    // ===== 医院专属：三星评级系统 =====
+    // ===== 医院专属：四星评级系统 =====
     if (this.currentScene === SceneType.HOSPITAL) {
       // 计算星级评定
       // ⭐: 通关
-      // ⭐⭐: 通关 + 防线突破 <= 1
-      // ⭐⭐⭐: 通关 + 0次防线突破
+      // ⭐⭐: 通关 + 防线突破 <= 2
+      // ⭐⭐⭐: 通关 + 防线突破 <= 1
+      // ⭐⭐⭐⭐: 通关 + 0次防线突破
       let stars = 1; // 基础：通关
-      if (this.hospitalBreaches <= 1) stars = 2;
-      if (this.hospitalBreaches === 0) stars = 3;
+      if (this.hospitalBreaches <= 2) stars = 2;
+      if (this.hospitalBreaches <= 1) stars = 3;
+      if (this.hospitalBreaches === 0) stars = 4;
       this.hospitalStarRating = stars;
 
       // 显示星级评定浮动文字
       const starText = '⭐'.repeat(stars);
       const ratingTexts = TEXT_CONFIG.combat.starRating.text;
+      const ratingColor = stars === 4
+        ? TEXT_CONFIG.combat.waveCleared.color
+        : stars === 3
+          ? TEXT_CONFIG.combat.starRating.color
+          : stars === 2
+            ? TEXT_CONFIG.combat.weaponExpired.color
+            : TEXT_CONFIG.combat.weaponExpired.color;
       this.addFloatingText(this.width / 2, this.height * 0.45, starText, TEXT_CONFIG.combat.starRating.color);
-      this.addFloatingText(this.width / 2, this.height * 0.5, ratingTexts[stars], stars === 3 ? TEXT_CONFIG.combat.waveCleared.color : (stars === 2 ? TEXT_CONFIG.combat.starRating.color : TEXT_CONFIG.combat.weaponExpired.color));
+      this.addFloatingText(this.width / 2, this.height * 0.5, ratingTexts[stars], ratingColor);
       if (this.hospitalBreaches > 0) {
         this.addFloatingText(this.width / 2, this.height * 0.55, TEXT_CONFIG.combat.breachCount.text(this.hospitalBreaches), TEXT_CONFIG.combat.breachCount.color);
       }
@@ -4262,11 +4271,11 @@ export class GameEngine {
     }
     this.scenesCleared.add(levelId);
 
-    // ===== 星级评价：按防线血量（不含加血）保留比例 —— 100%→3星，60%~99%→2星，0%~59%→1星 =====
+    // ===== 星级评价：按防线血量（不含加血）保留比例 —— 100%→4星，75%~99%→3星，50%~74%→2星，1%~49%→1星 =====
     const hpRatio = this.maxDefenseHp > 0
       ? Math.max(0, Math.min(1, this.starDefenseHp / this.maxDefenseHp))
       : 0;
-    const stars = hpRatio >= 1 ? 3 : hpRatio >= 0.6 ? 2 : 1;
+    const stars = hpRatio >= 1 ? 4 : hpRatio >= 0.75 ? 3 : hpRatio >= 0.5 ? 2 : 1;
     this.lastStarRating = stars;
     if (!this.progress.levelStars) this.progress.levelStars = {};
     // 不管过关几次，只记录该关卡曾经得到的最多星级（按关卡 ID，困难关独立记录）

@@ -1,118 +1,149 @@
 /**
- * @fileoverview 标题屏幕组件 — 游戏启动时的主菜单界面，包含废土风格的加载进度条和模拟加载提示。
- * 加载完成后显示"点击开始"闪烁提示，点击或按键后淡出并进入游戏。
- * 包含 CRT 扫描线效果、暗角叠加、废土工业风进度条及中英文标题。
- * 支持音频静音切换。
+ * @fileoverview 标题屏幕（LOADING）组件 — 游戏启动时播放统一的 LOADING 动画视频
+ * （背景 + 进度条合为一段 540×960 / ~5s 的 MP4），动画播完且资源就绪后点击或按键淡出进入游戏。
+ *
+ * 实现方式：视频以静音内联自动播放，<video> 硬件顺序解码（不做逐帧 seek，避免拖动抖动、最省电流畅）；
+ * 播放进度即加载进度（资源为本地打包，加载耗时≈视频时长），视频 'ended' 且资源就绪 → 允许进入。
+ * 视频未就绪时用 poster（loading_title.jpg）兜底首帧；视频加载失败时回退为静帧 + CSS 进度条。
+ *
+ * v2.6 适配：画面严格按 9:16（540×960 逻辑坐标）居中显示，等比缩放，超出区域纯黑填充；无叠加文字。
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
-import { TEXT_CONFIG } from '@/game/data';
 import type { AudioManager } from '@/game/audio';
 
+const LOADING_VIDEO = '/assets/UI/loading_anim.mp4';
+const LOADING_POSTER = '/comics/loading_title.jpg';
 
 interface TitleScreenProps {
   onStart: () => void;
   audioMuted: boolean;
   onToggleMute: () => void;
   audio?: AudioManager;
+  /** 游戏画布在视口中的位置/尺寸：标题画面按 540×960(9:16) 逻辑坐标居中时用于对齐与缩放 */
+  canvasBounds?: { left: number; top: number; width: number; height: number } | null;
 }
-
-// Wasteland-style loading hints
-const LOADING_HINTS = TEXT_CONFIG.ui.title.loadingHints;
 
 export const TitleScreen: React.FC<TitleScreenProps> = ({
   onStart,
   audioMuted,
-  onToggleMute, audio}) => {
-  const [bgLoaded, setBgLoaded] = useState(false);
-  const [showPressHint, setShowPressHint] = useState(false);
+  onToggleMute, audio, canvasBounds}) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [videoReady, setVideoReady] = useState(false);   // 已可播放（canplay）
+  const [videoFailed, setVideoFailed] = useState(false); // 视频加载失败 → 回退静帧
   const [fadingOut, setFadingOut] = useState(false);
 
-  // Loading progress state
+  // 加载进度（0..1）：视频模式下由播放时间驱动；回退模式下由 rAF 计时驱动
   const [loadProgress, setLoadProgress] = useState(0);
   const [loadComplete, setLoadComplete] = useState(false);
-  const [currentHint, setCurrentHint] = useState<string>(LOADING_HINTS[0]);
-  const progressRef = useRef(0);
   const rafRef = useRef<number>(0);
 
-  /** 模拟加载进度条：使用 requestAnimationFrame 驱动非线性进度动画（快→慢→快），持续约 3.5s */
-  // Simulate loading progress
-  useEffect(() => {
-    const startTime = Date.now();
-    const duration = 3500; // 3.5 seconds total loading
+  /** 资源就绪标志：本地打包资源，挂载后即视为就绪（保留扩展点供未来真实预加载对接） */
+  const assetsReadyRef = useRef(false);
+  const [assetsReady, setAssetsReady] = useState(false);
 
+  // 资源就绪（本地资源，下一帧即就绪）
+  useEffect(() => {
+    const id = window.setTimeout(() => { assetsReadyRef.current = true; setAssetsReady(true); }, 0);
+    return () => window.clearTimeout(id);
+  }, []);
+
+  /** 尝试静音内联自动播放（muted+playsInline 允许自动播放）；带看门狗，任何原因暂停/被节流都自动恢复 */
+  useEffect(() => {
+    if (videoFailed) return;
+    const v = videoRef.current;
+    if (!v) return;
+    const tryPlay = () => {
+      if (v.ended) return;
+      const p = v.play();
+      if (p && typeof p.catch === 'function') {
+        p.catch(() => {
+          // 自动播放被拦截（极少见，因已静音）：任意首次手势后重试
+          const resume = () => { v.play().catch(() => {}); };
+          window.addEventListener('pointerdown', resume, { once: true });
+        });
+      }
+    };
+    // 就绪即播（媒体事件在 JSX 里也会调 tryPlay，这里覆盖 effect 注册时机晚于事件的情况）
+    if (v.readyState >= 2) tryPlay();
+    else {
+      v.addEventListener('canplay', tryPlay, { once: true });
+      v.addEventListener('loadeddata', tryPlay, { once: true });
+    }
+    // 看门狗：页面可见、视频就绪但被暂停（后台标签节流/自动播放延迟/stall）时自动恢复播放
+    const watchdog = window.setInterval(() => {
+      if (document.visibilityState === 'visible' && !v.ended && v.paused && v.readyState >= 2) {
+        tryPlay();
+      }
+    }, 400);
+    // 回到前台时立即恢复
+    const onVis = () => { if (!document.hidden && !v.ended && v.readyState >= 2) tryPlay(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      window.clearInterval(watchdog);
+      document.removeEventListener('visibilitychange', onVis);
+      v.removeEventListener('canplay', tryPlay);
+      v.removeEventListener('loadeddata', tryPlay);
+    };
+  }, [videoFailed]);
+
+  /** 视频播放进度 → loadProgress；ended 且资源就绪 → 完成 */
+  useEffect(() => {
+    if (videoFailed) return;
+    const v = videoRef.current;
+    if (!v) return;
+    const onTime = () => {
+      const dur = v.duration || 5.08;
+      setLoadProgress(Math.min(v.currentTime / dur, 1));
+      // 保险：播放到最后一帧（个别浏览器可能漏发 ended）且资源就绪 → 完成
+      if (v.currentTime >= dur - 0.05 && assetsReadyRef.current) setLoadComplete(true);
+    };
+    const onEnded = () => {
+      setLoadProgress(1);
+      if (assetsReadyRef.current) setLoadComplete(true);
+      else {
+        // 视频播完但资源尚未就绪：停在最后一帧，轮询直到就绪
+        const iv = window.setInterval(() => {
+          if (assetsReadyRef.current) { setLoadComplete(true); window.clearInterval(iv); }
+        }, 100);
+      }
+    };
+    v.addEventListener('timeupdate', onTime);
+    v.addEventListener('ended', onEnded);
+    return () => {
+      v.removeEventListener('timeupdate', onTime);
+      v.removeEventListener('ended', onEnded);
+    };
+  }, [videoFailed, assetsReady]);
+
+  /** 回退模式（视频不可用）：rAF 计时模拟进度，约 3.5s */
+  useEffect(() => {
+    if (!videoFailed) return;
+    const startTime = Date.now();
+    const duration = 3500;
     const animate = () => {
       const elapsed = Date.now() - startTime;
-      const rawProgress = Math.min(elapsed / duration, 1);
-
-      // Non-linear progress: starts fast, slows in middle, speeds up at end
-      let easedProgress: number;
-      if (rawProgress < 0.3) {
-        // Fast start
-        easedProgress = rawProgress * 1.5;
-      } else if (rawProgress < 0.7) {
-        // Slow middle (stalls around 40-60%)
-        easedProgress = 0.45 + (rawProgress - 0.3) * 0.5;
-      } else {
-        // Fast finish
-        easedProgress = 0.65 + (rawProgress - 0.7) * 1.17;
-      }
-
-      const finalProgress = Math.min(Math.max(easedProgress, 0), 1);
-      progressRef.current = finalProgress;
-      setLoadProgress(finalProgress);
-
-      // Update hint based on progress
-      const newHintIdx = Math.min(
-        Math.floor(finalProgress * LOADING_HINTS.length),
-        LOADING_HINTS.length - 1
-      );
-      setCurrentHint(LOADING_HINTS[newHintIdx]);
-
-      if (rawProgress < 1) {
-        rafRef.current = requestAnimationFrame(animate);
-      } else {
-        setLoadComplete(true);
-        setLoadProgress(100);
-      }
+      const raw = Math.min(elapsed / duration, 1);
+      let eased: number;
+      if (raw < 0.3) eased = raw * 1.5;
+      else if (raw < 0.7) eased = 0.45 + (raw - 0.3) * 0.5;
+      else eased = 0.65 + (raw - 0.7) * 1.17;
+      setLoadProgress(Math.min(Math.max(eased, 0), 1));
+      if (raw < 1) rafRef.current = requestAnimationFrame(animate);
+      else { setLoadComplete(true); setLoadProgress(1); }
     };
-
     rafRef.current = requestAnimationFrame(animate);
-
-    return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    };
-  }, []);
-
-  /** 加载完成后使"点击开始"文字闪烁（800ms 间隔切换可见性） */
-  // Show "press to start" after loading is done
-  useEffect(() => {
-    if (!loadComplete) return;
-    const interval = setInterval(() => {
-      setShowPressHint((prev) => !prev);
-    }, 800);
-    return () => clearInterval(interval);
-  }, [loadComplete]);
-
-  /** 预加载标题背景图片，加载完成后渐显 */
-  // Background image loading
-  useEffect(() => {
-    const img = new Image();
-    img.onload = () => setBgLoaded(true);
-    img.onerror = () => setBgLoaded(true);
-    img.src = '/comics/loading_title.jpg';
-  }, []);
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, [videoFailed]);
 
   const handleClick = useCallback(() => {
     if (fadingOut || !loadComplete) return;
     setFadingOut(true);
-    setTimeout(() => {
-      onStart();
-    }, 600);
+    setTimeout(() => { onStart(); }, 600);
   }, [fadingOut, loadComplete, onStart]);
 
-  // Keyboard handler
+  // 键盘：任意键进入
   useEffect(() => {
     const handleKey = () => handleClick();
     window.addEventListener('keydown', handleKey);
@@ -121,261 +152,125 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
   const progressPercent = Math.floor(loadProgress * 100);
 
+  // ── 9:16（540×960）逻辑坐标层：等比缩放并在画布/视口中居中，层外纯黑填充 ──
+  const DESIGN_W = 540;
+  const DESIGN_H = 960;
+  const vw = canvasBounds?.width ?? (typeof window !== 'undefined' ? window.innerWidth : DESIGN_W);
+  const vh = canvasBounds?.height ?? (typeof window !== 'undefined' ? window.innerHeight : DESIGN_H);
+  const vx = canvasBounds?.left ?? 0;
+  const vy = canvasBounds?.top ?? 0;
+  const scale = Math.min(vw / DESIGN_W, vh / DESIGN_H);
+  const frameW = DESIGN_W * scale;
+  const frameH = DESIGN_H * scale;
+  const frameStyle: React.CSSProperties = {
+    position: 'fixed',
+    left: vx + (vw - frameW) / 2,
+    top: vy + (vh - frameH) / 2,
+    width: DESIGN_W,
+    height: DESIGN_H,
+    transform: `scale(${scale})`,
+    transformOrigin: 'top left',
+  };
+  // 背景层：Fixed Height（开发准则 27.5）——高度填满，宽按比例水平居中，窄屏左右裁切、宽屏两侧黑
+  const bgLayerStyle: React.CSSProperties = {
+    position: 'fixed',
+    left: vx, top: vy, width: vw, height: vh,
+    overflow: 'hidden',
+  };
+
   return (
     <div
-      className={`absolute inset-0 z-50 flex flex-col items-center justify-between overflow-hidden select-none transition-opacity duration-600 ${
-        fadingOut ? 'opacity-0 pointer-events-none' : 'opacity-100'
-      } ${loadComplete ? 'cursor-pointer' : 'cursor-default'}`}
+      className="absolute inset-0 z-50 overflow-hidden select-none"
+      style={{
+        background: '#000',
+        opacity: fadingOut ? 0 : 1,
+        transition: 'opacity .6s',
+        pointerEvents: fadingOut ? 'none' : 'auto',
+        cursor: loadComplete ? 'pointer' : 'default',
+      }}
       onClick={() => { audio?.playClick(); handleClick(); }}
     >
-      {/* Background image */}
-      <div
-        className="absolute inset-0 bg-cover bg-center transition-opacity duration-1000"
-        style={{
-          backgroundImage: 'url(/comics/loading_title.jpg)',
-          opacity: bgLoaded ? 1 : 0,
-        }}
-      />
-
-      {/* Dark overlay */}
-      <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/20 to-black/70" />
-
-      {/* Vignette */}
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{ boxShadow: 'inset 0 0 120px 40px rgba(0,0,0,0.6)' }}
-      />
-
-      {/* Scanlines overlay - CRT effect */}
-      <div
-        className="absolute inset-0 pointer-events-none opacity-[0.04]"
-        style={{
-          backgroundImage:
-            'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.15) 2px, rgba(0,0,0,0.15) 4px)',
-        }}
-      />
-
-      {/* Top: Sound toggle */}
-      <div className="relative z-10 w-full flex justify-end px-4 pt-4">
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleMute();
-          }}
-          className="w-10 h-10 flex items-center justify-center rounded-full bg-black/40 hover:bg-black/60 text-white/60 hover:text-white transition-all backdrop-blur-sm border border-white/10"
-        >
-          {audioMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
-        </button>
-      </div>
-
-      {/* Center: Title */}
-      <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-6 -mt-8">
-        {/* Chinese title */}
-        <h1
-          className="text-5xl sm:text-6xl font-black mb-3"
-          style={{
-            color: '#f0e6d3',
-            letterSpacing: '0.15em',
-            textShadow:
-              '0 0 20px rgba(0,0,0,0.9), 0 2px 4px rgba(0,0,0,0.8), 0 4px 12px rgba(0,0,0,0.6), 0 0 2px rgba(0,0,0,1)',
-          }}
-        >
-          {TEXT_CONFIG.ui.title.title}
-        </h1>
-
-        {/* English subtitle */}
-        <h2
-          className="text-xs sm:text-sm font-bold tracking-[0.4em] mb-6"
-          style={{
-            color: '#c9a96e',
-            textShadow:
-              '0 0 12px rgba(0,0,0,0.9), 0 1px 3px rgba(0,0,0,0.8), 0 0 1px rgba(0,0,0,1)',
-          }}
-        >
-          ROACH BLASTER
-        </h2>
-
-        {/* Decorative line */}
-        <div className="flex items-center gap-3 mb-5">
-          <div className="h-px w-14 sm:w-16 bg-gradient-to-r from-transparent to-amber-600/60" />
-          <div className="w-1.5 h-1.5 rotate-45 border border-amber-500/60" />
-          <div className="h-px w-14 sm:w-16 bg-gradient-to-l from-transparent to-amber-600/60" />
-        </div>
-
-        {/* Lore quote */}
-        <p
-          className="text-xs text-center max-w-[260px] leading-relaxed"
-          style={{
-            color: 'rgba(201, 169, 110, 0.7)',
-            textShadow: '0 1px 4px rgba(0,0,0,0.9), 0 0 1px rgba(0,0,0,1)',
-          }}
-        >
-          {TEXT_CONFIG.ui.title.lore}
-        </p>
-      </div>
-
-      {/* Bottom: Loading bar + press to start */}
-      <div className="relative z-10 w-full max-w-[340px] mx-auto px-4 pb-10 flex flex-col items-center gap-4">
-        {/* === WASTELAND LOADING BAR === */}
-        {!loadComplete && (
-          <div className="w-full flex flex-col items-center gap-2">
-            {/* Progress bar container - industrial metal style */}
-            <div className="relative w-full h-5 flex items-center">
-              {/* Left bolt */}
-              <div className="absolute -left-1.5 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-gradient-to-br from-gray-500 to-gray-700 border border-gray-600 z-20 shadow-lg">
-                <div className="absolute inset-[2px] rounded-full bg-gray-800" />
-                <div className="absolute top-[1px] left-[4px] w-[3px] h-[1px] bg-gray-400 rotate-45" />
-              </div>
-              {/* Right bolt */}
-              <div className="absolute -right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-gradient-to-br from-gray-500 to-gray-700 border border-gray-600 z-20 shadow-lg">
-                <div className="absolute inset-[2px] rounded-full bg-gray-800" />
-                <div className="absolute top-[1px] left-[4px] w-[3px] h-[1px] bg-gray-400 rotate-45" />
-              </div>
-
-              {/* Bar background - rusted metal */}
-              <div
-                className="flex-1 h-4 mx-1 rounded-sm overflow-hidden relative"
-                style={{
-                  background:
-                    'linear-gradient(180deg, #2a2218 0%, #1a1410 40%, #1a1410 60%, #2a2218 100%)',
-                  border: '1px solid #3d3020',
-                  boxShadow:
-                    'inset 0 1px 2px rgba(0,0,0,0.8), 0 1px 0 rgba(255,255,255,0.05)',
-                }}
-              >
-                {/* Rust texture overlay */}
-                <div
-                  className="absolute inset-0 opacity-30"
-                  style={{
-                    backgroundImage:
-                      'repeating-linear-gradient(90deg, transparent, transparent 8px, rgba(90,60,30,0.3) 8px, rgba(90,60,30,0.3) 9px)',
-                  }}
-                />
-
-                {/* Progress fill - fire gradient */}
-                <div
-                  className="h-full relative transition-all duration-100 ease-out"
-                  style={{
-                    width: `${progressPercent}%`,
-                    background: `linear-gradient(180deg,
-                      #8B4513 0%,
-                      #D2691E 20%,
-                      #FF6B1A 40%,
-                      #CC3300 60%,
-                      #8B2500 80%,
-                      #4A1500 100%)`,
-                    boxShadow:
-                      'inset 0 1px 0 rgba(255,200,100,0.4), inset 0 -1px 0 rgba(0,0,0,0.5)',
-                  }}
-                >
-                  {/* Flame shimmer effect */}
-                  <div
-                    className="absolute inset-0 opacity-40"
-                    style={{
-                      backgroundImage:
-                        'repeating-linear-gradient(90deg, transparent, transparent 3px, rgba(255,160,60,0.5) 3px, rgba(255,160,60,0.5) 5px, transparent 5px, transparent 8px)',
-                      animation: 'shimmer 0.5s linear infinite',
-                    }}
-                  />
-
-                  {/* Leading edge glow */}
-                  {progressPercent > 0 && progressPercent < 100 && (
-                    <div
-                      className="absolute right-0 top-0 bottom-0 w-[2px]"
-                      style={{
-                        background:
-                          'linear-gradient(180deg, rgba(255,200,100,0.8), rgba(255,100,30,1), rgba(255,200,100,0.8))',
-                        boxShadow:
-                          '0 0 6px 2px rgba(255,100,30,0.6), 0 0 12px 4px rgba(255,60,0,0.3)',
-                      }}
-                    />
-                  )}
-                </div>
-
-                {/* Grid lines overlay */}
-                <div
-                  className="absolute inset-0"
-                  style={{
-                    backgroundImage:
-                      'repeating-linear-gradient(90deg, transparent, transparent 24px, rgba(0,0,0,0.3) 24px, rgba(0,0,0,0.3) 25px)',
-                  }}
-                />
-              </div>
-            </div>
-
-            {/* Percentage + hint text */}
-            <div className="flex items-center justify-between w-full px-1">
-              <span
-                className="text-[11px] font-mono tracking-wider"
-                style={{
-                  color: 'rgba(201, 169, 110, 0.9)',
-                  textShadow: '0 0 8px rgba(0,0,0,0.9), 0 1px 2px rgba(0,0,0,0.8)',
-                  fontFamily: 'monospace',
-                }}
-              >
-                {currentHint}
-              </span>
-              <span
-                className="text-[11px] font-mono tabular-nums"
-                style={{
-                  color: 'rgba(255, 140, 60, 0.9)',
-                  textShadow: '0 0 8px rgba(255,80,0,0.4), 0 1px 2px rgba(0,0,0,0.8)',
-                  fontFamily: 'monospace',
-                }}
-              >
-                {progressPercent}%
-              </span>
-            </div>
-          </div>
+      {/* 背景层：Fixed-Height 铺满。视频为主（含背景+进度条动画），失败时回退静帧 */}
+      <div style={bgLayerStyle}>
+        {!videoFailed && (
+          <video
+            ref={videoRef}
+            src={LOADING_VIDEO}
+            poster={LOADING_POSTER}
+            muted
+            playsInline
+            preload="auto"
+            autoPlay
+            className="absolute top-0"
+            style={{
+              left: '50%', height: '100%', width: 'auto',
+              transform: 'translateX(-50%)',
+              opacity: videoReady ? 1 : 0,
+              transition: 'opacity .4s',
+              objectFit: 'contain',
+            }}
+            onCanPlay={(e) => { setVideoReady(true); const v = e.currentTarget; if (!v.ended) v.play().catch(() => {}); }}
+            onLoadedData={(e) => { setVideoReady(true); const v = e.currentTarget; if (!v.ended) v.play().catch(() => {}); }}
+            onError={() => setVideoFailed(true)}
+          />
         )}
+        {videoFailed && (
+          <img
+            src={LOADING_POSTER}
+            alt=""
+            draggable={false}
+            className="absolute top-0"
+            style={{ left: '50%', height: '100%', width: 'auto', transform: 'translateX(-50%)' }}
+          />
+        )}
+      </div>
 
-        {/* === COMPLETE: Press to start === */}
-        {loadComplete && (
-          <div className="flex flex-col items-center gap-3">
+      {/* UI 层：540×960 等比 Contain 居中，透明底 */}
+      <div style={frameStyle}>
+        {/* 标题 Logo 叠加（位置/尺寸来自 UI 布局编辑器导出，浮于 LOADING 视频之上，不拦截点击） */}
+        <img
+          src="/assets/UI/main_logo_main_zh.png"
+          alt=""
+          draggable={false}
+          className="absolute pointer-events-none"
+          style={{ left: 93, top: 36.1, width: 354, height: 150 }}
+        />
+
+        {/* 静音开关（右上角，层内坐标） */}
+        <button
+          onClick={(e) => { e.stopPropagation(); onToggleMute(); }}
+          className="absolute flex items-center justify-center rounded-full bg-black/40 text-stone-300 hover:text-amber-300 transition-colors"
+          style={{ left: 486, top: 16, width: 42, height: 42 }}
+        >
+          {audioMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
+        </button>
+
+        {/* 回退模式：视频不可用时才显示 CSS 进度条（正常模式进度条已烤入视频） */}
+        {videoFailed && !loadComplete && (
+          <div className="absolute" style={{ left: 100, top: 884, width: 340, height: 14 }}>
             <div
-              className={`transition-opacity duration-300 ${
-                showPressHint ? 'opacity-100' : 'opacity-15'
-              }`}
-            >
-              <span
-                className="text-sm font-medium tracking-[0.25em]"
-                style={{
-                  color: 'rgba(240, 230, 211, 0.9)',
-                  textShadow:
-                    '0 0 12px rgba(0,0,0,0.9), 0 1px 3px rgba(0,0,0,0.8), 0 0 1px rgba(0,0,0,1)',
-                }}
-              >
-                {TEXT_CONFIG.ui.title.clickToStart}
-              </span>
-            </div>
-
-            {/* Version */}
-            <span
-              className="text-[10px]"
+              className="absolute inset-0 rounded-sm overflow-hidden"
               style={{
-                color: 'rgba(201, 169, 110, 0.3)',
+                background: 'linear-gradient(180deg, #2a2218 0%, #1a1410 50%, #2a2218 100%)',
+                border: '1px solid #3d3020',
+                boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.8)',
               }}
             >
-              v1.0.0
-            </span>
+              <div
+                className="h-full transition-all duration-100 ease-out"
+                style={{
+                  width: `${progressPercent}%`,
+                  background: 'linear-gradient(180deg, #8B4513 0%, #D2691E 20%, #FF6B1A 40%, #CC3300 60%, #8B2500 80%, #4A1500 100%)',
+                  boxShadow: 'inset 0 1px 0 rgba(255,200,100,0.4)',
+                }}
+              />
+            </div>
           </div>
         )}
       </div>
 
-      {/* CSS Animations */}
-      <style>{`
-        @keyframes shimmer {
-          0% { transform: translateX(0); }
-          100% { transform: translateX(-8px); }
-        }
-      `}</style>
-
-      {/* Loading placeholder */}
-      {!bgLoaded && (
-        <div className="absolute inset-0 bg-gray-950 flex items-center justify-center z-20">
-          <div className="text-gray-600 text-sm font-mono">{TEXT_CONFIG.ui.title.initializing}</div>
-        </div>
-      )}
+      {/* 视频未就绪时的纯黑底，避免闪白（poster 会在视频首帧前显示） */}
+      {!videoReady && !videoFailed && <div className="absolute inset-0" style={{ background: '#000' }} />}
     </div>
   );
 };

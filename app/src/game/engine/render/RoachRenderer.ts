@@ -248,12 +248,8 @@ export class RoachRenderer {
       } else if (r.type === RoachType.FLYING_SUICIDE && config.roachFlyingSuicideImg) {
         ctx.drawImage(config.roachFlyingSuicideImg, -w / 2, -h / 2, w, h);
       } else if (r.type === RoachType.ARMORED && config.roachArmoredImg) {
-        const isArmorBroken = r.armorHp <= 0;
-        if (isArmorBroken && config.roachImg) {
-          ctx.drawImage(config.roachImg, -w / 2, -h / 2, w, h);
-        } else {
-          ctx.drawImage(config.roachArmoredImg, -w / 2, -h / 2, w, h);
-        }
+        // 护甲蟑螂：无论是否破甲，身体始终使用护甲蟑螂贴图（破甲后仅护甲护盾光圈/护甲条消失，不再回退为大蟑螂贴图）
+        ctx.drawImage(config.roachArmoredImg, -w / 2, -h / 2, w, h);
       } else if (r.type === RoachType.SPLITTING && config.roachSplittingImg) {
         ctx.drawImage(config.roachSplittingImg, -w / 2, -h / 2, w, h);
       } else if (r.type === RoachType.TUNNEL_WORKER && config.roachTunnelWorkerImg) {

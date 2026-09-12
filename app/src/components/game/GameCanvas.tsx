@@ -97,6 +97,8 @@ export const GameCanvas: React.FC = () => {
   const [showEncyclopedia, setShowEncyclopedia] = useState(false);
   const [talentPoints, setTalentPoints] = useState(0);
   const [progress, setProgress] = useState<GameProgress | null>(null);
+  /** 返回主菜单时自动打开关卡选择地图并定位到的关卡箭头（SceneType），null = 不自动打开 */
+  const [menuOpenLevelSelect, setMenuOpenLevelSelect] = useState<SceneType | null>(null);
   // 天赋系统解锁门槛：通关地下室后解锁，此后结算/商店常驻天赋入口
   const talentUnlocked = !!progress?.scenesCompleted?.includes('basement');
 
@@ -625,46 +627,6 @@ export const GameCanvas: React.FC = () => {
   //   engineRef.current?.continueFromShop();
   // }, []);
 
-  /** 进入下一关：按剧情关卡序列找到下一关（巢穴后依次为 6 个困难关），依次检查漫画 → 对话 → 开始 */
-  const handleNextScene = useCallback(() => {
-    const engine = engineRef.current;
-    if (!engine) return;
-    engine.audio.stopBGM();
-    engine.audio.stopVictoryBGM();
-    // Save shop upgrades before transitioning to next scene
-    nextSceneUpgradesRef.current = [...(engine.progress.shopUpgrades || [])];
-    // Consumables are now auto-saved to localStorage in onWaveClear/onGameOver/onConsumableUpdate
-    // 按剧情关卡序列找下一关（当前关卡含难度，困难关独立计列）
-    const currentIdx = getStoryLevelIndex(engine.getCurrentLevelId());
-    if (currentIdx >= 0 && currentIdx < STORY_LEVELS.length - 1) {
-      const nextLevel = STORY_LEVELS[currentIdx + 1];
-      const nextScene = nextLevel.scene;
-      const diff = nextLevel.difficulty;
-      // Check if we need to show a comic first
-      if (!hasSeenComic(nextScene)) {
-        const chapter = getComicChapter(nextScene);
-        if (chapter) {
-          setComicChapter(chapter);
-          setPendingComicParams({ diff, mode: GameMode.STORY, scene: nextScene });
-          setShowComic(true);
-          return;
-        }
-      }
-      // Check if we need to show a dialog
-      if (shouldShowDialog(nextScene, GameMode.STORY)) {
-        const dialogConfig = DIALOG_CONFIGS.find(d => d.sceneType === nextScene);
-        if (dialogConfig) {
-          setPendingDialogConfig(dialogConfig);
-          setPendingStartParams({ diff, mode: GameMode.STORY, scene: nextScene });
-          setShowDialog(true);
-          return;
-        }
-      }
-      // No dialog needed, check preparation screen (shop upgrades preserved via ref)
-      maybeShowPreparation(diff, GameMode.STORY, nextScene);
-    }
-  }, [maybeShowPreparation, shouldShowDialog]);
-
   /** 道具回收动画完成：应用回收金币 → 刷新 UI → 关闭动画 */
   const handleRecycleComplete = useCallback(() => {
     const engine = engineRef.current;
@@ -713,8 +675,45 @@ export const GameCanvas: React.FC = () => {
     setAchievementsFromGameOver(false);
     setShowSceneSelect(false);
     setShowEncyclopedia(false);
+    setShowMenuShop(false);
+    setMenuOpenLevelSelect(null);
     setGameState(GameState.MENU);
   }, []);
+
+  /** 结算界面点击屏幕：返回关卡选择地图；胜利 → 箭头指向下一关，失败 → 箭头留在当前关 */
+  const handleReturnToSceneSelect = useCallback((isVictory: boolean) => {
+    const engine = engineRef.current;
+    engine?.audio.stopBGM();
+    engine?.audio.stopVictoryBGM();
+    engine?.audio.stopGameOverBGM();
+    engine?.audio.stopFire();
+    engine?.audio.stopFanLoop();
+    engine?.audio.stopFireWallBurn();
+    engine?.saveProgress();
+    if (engine) {
+      setMenuShopMoney(engine.economy.money);
+      try { localStorage.setItem('roach_blaster_menu_money', String(engine.economy.money)); } catch { /* ignore */ }
+    }
+    engine?.stop();
+    setShowTalentTree(false);
+    setTalentFromGameOver(false);
+    setShowAchievements(false);
+    setAchievementsFromGameOver(false);
+    setShowSceneSelect(false);
+    setShowEncyclopedia(false);
+    setShowMenuShop(false);
+
+    // 计算箭头目标关卡：剧情模式胜利指向下一关；失败/非剧情模式留在当前关
+    let target: SceneType = currentScene;
+    if (isVictory && gameMode === GameMode.STORY) {
+      const idx = getStoryLevelIndex(getLevelId(currentScene, difficulty));
+      if (idx >= 0 && idx < STORY_LEVELS.length - 1) {
+        target = STORY_LEVELS[idx + 1].scene;
+      }
+    }
+    setMenuOpenLevelSelect(target);
+    setGameState(GameState.MENU);
+  }, [currentScene, difficulty, gameMode]);
 
   const handleEmergencyCool = useCallback(() => {
     engineRef.current?.emergencyCool();
@@ -1244,6 +1243,7 @@ export const GameCanvas: React.FC = () => {
           audioMuted={audioMuted}
           onToggleMute={handleToggleMute}
           audio={engineRef.current?.audio}
+          canvasBounds={canvasBounds}
         />
       )}
 
@@ -1257,10 +1257,12 @@ export const GameCanvas: React.FC = () => {
           onOpenEncyclopedia={() => setShowEncyclopedia(true)}
           audioMuted={audioMuted}
           onToggleMute={handleToggleMute}
-          onOpenShop={() => setShowMenuShop(true)}
+          onOpenShop={(scene) => { setMenuOpenLevelSelect(scene ?? null); setShowMenuShop(true); }}
           progress={progress}
           talentPoints={talentPoints}
           audio={engineRef.current?.audio}
+          canvasBounds={canvasBounds}
+          initialLevelSelect={menuOpenLevelSelect}
         />
       )}
 
@@ -1350,9 +1352,7 @@ export const GameCanvas: React.FC = () => {
           gameMode={gameMode}
           currentScene={currentScene}
           isVictory={false}
-          hasNextScene={false}
-          onRestart={handleRestart}
-          onQuit={handleQuit}
+          onReturnToSceneSelect={() => handleReturnToSceneSelect(false)}
           talentPoints={talentPoints}
           bossDefeated={bossDefeated}
           onOpenTalentTree={() => { setTalentFromGameOver(true); setShowTalentTree(true); }}
@@ -1362,7 +1362,6 @@ export const GameCanvas: React.FC = () => {
           starRating={0}
           unclaimedAchievementCount={engineRef.current?.getUnclaimedAchievementCount?.() ?? 0}
           onOpenAchievements={() => { setAchievementsFromGameOver(true); setShowAchievements(true); }}
-          onOpenShop={() => setShowMenuShop(true)}
         />
       )}
 
@@ -1385,23 +1384,11 @@ export const GameCanvas: React.FC = () => {
           gameMode={gameMode}
           currentScene={currentScene}
           isVictory={true}
-          hasNextScene={(() => {
-            const idx = getStoryLevelIndex(getLevelId(currentScene, difficulty));
-            return idx >= 0 && idx < STORY_LEVELS.length - 1;
-          })()}
-          onRestart={handleRestart}
-          onQuit={handleQuit}
+          onReturnToSceneSelect={() => handleReturnToSceneSelect(true)}
           talentPoints={talentPoints}
           bossDefeated={false}
           onOpenTalentTree={() => { setTalentFromGameOver(true); setShowTalentTree(true); }}
           talentUnlocked={talentUnlocked}
-          onNextScene={(() => {
-            const idx = getStoryLevelIndex(getLevelId(currentScene, difficulty));
-            if (idx >= 0 && idx < STORY_LEVELS.length - 1) {
-              return handleNextScene;
-            }
-            return undefined;
-          })()}
           audio={engineRef.current?.audio}
           menuMoney={menuShopMoney}
           victoryGoldReward={victoryGoldReward}
@@ -1411,7 +1398,6 @@ export const GameCanvas: React.FC = () => {
           talentUnlockGrant={engineRef.current?.lastTalentUnlockGrant ?? 0}
           unclaimedAchievementCount={engineRef.current?.getUnclaimedAchievementCount?.() ?? 0}
           onOpenAchievements={() => { setAchievementsFromGameOver(true); setShowAchievements(true); }}
-          onOpenShop={() => setShowMenuShop(true)}
         />
       )}
 

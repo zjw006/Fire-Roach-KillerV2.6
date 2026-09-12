@@ -181,7 +181,7 @@ export const TEXT_CONFIG = {
     // 结算
     itemRecycle: { text: (amount: number) => `道具回收 +¥${amount}`, color: '#fbbf24' },
     talentReward: { text: (points: number) => `+${points} 天赋点!`, color: '#fbbf24' },
-    starRating: { text: ['', '通关!', '优秀!', '完美!'] as readonly string[], color: '#fbbf24' },
+    starRating: { text: ['', '通关!', '良好!', '优秀!', '完美!'] as readonly string[], color: '#fbbf24' },
     breachCount: { text: (count: number) => `防线突破: ${count}次`, color: '#f87171' },
     defeat: { text: '防线被攻破! 战斗失败!', color: '#ef4444' },
 

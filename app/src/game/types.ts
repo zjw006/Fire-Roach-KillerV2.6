@@ -936,7 +936,7 @@ export interface GameProgress {
   autoUseEnabled?: Record<string, boolean>;
   /** 未领取金币的成就 ID 列表（成就解锁但金币尚未在成就界面领取） */
   unclaimedRewards?: string[];
-  /** 各场景历史最高星级评价（0-3，按防线血量不含加血比例计算，过关多次取最佳） */
+  /** 各场景历史最高星级评价（0-4，按防线血量不含加血比例计算，过关多次取最佳） */
   levelStars?: Record<string, number>;
   /** 天赋系统解锁前获得的天赋点（三星奖励），解锁时一次性发放 */
   pendingTalentPoints?: number;

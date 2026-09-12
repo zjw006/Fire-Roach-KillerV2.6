@@ -1,11 +1,11 @@
 /**
  * @fileoverview 游戏结束结算界面组件
  * 根据胜利/失败状态展示不同的结算画面，包含到达波次、总击杀、最终资金等战斗统计数据，
- * 胜利时支持进入下一场景或前往天赋树加点，失败时可重新开始或返回主菜单。
+ * 点击屏幕后返回关卡选择界面（胜利时箭头指向下一关，失败时停留在当前关）。
  */
 
 import React, { useRef, useState, useEffect } from 'react';
-import { RotateCcw, Home, Skull, Trophy, Flame, Sparkles, Map, ChevronRight, Lightbulb, Award, ShoppingCart } from 'lucide-react';
+import { Skull, Trophy, Flame, Sparkles, Map, Lightbulb, Award } from 'lucide-react';
 import { TEXT_CONFIG } from '@/game/data';
 import type { Economy, GameMode, SceneType } from '@/game/types';
 import type { AudioManager } from '@/game/audio';
@@ -17,11 +17,8 @@ interface GameOverScreenProps {
   gameMode?: GameMode;
   currentScene?: SceneType;
   isVictory: boolean;
-  hasNextScene?: boolean;
-  nextSceneName?: string;
-  onRestart: () => void;
-  onQuit: () => void;
-  onNextScene?: () => void;
+  /** 点击屏幕后返回关卡选择界面 */
+  onReturnToSceneSelect: () => void;
   talentPoints?: number;
   bossDefeated?: boolean;
   onOpenTalentTree?: () => void;
@@ -37,8 +34,6 @@ interface GameOverScreenProps {
   unclaimedAchievementCount?: number;
   /** 打开成就界面回调 */
   onOpenAchievements?: () => void;
-  /** 打开商店回调 */
-  onOpenShop?: () => void;
   /** 天赋系统是否已解锁（通关地下室后），用于显示常驻天赋加点入口 */
   talentUnlocked?: boolean;
   /** 天赋系统解锁时从待解锁池一次性发放的天赋点数（>0 时展示解锁礼横幅） */
@@ -47,7 +42,7 @@ interface GameOverScreenProps {
   starRating?: number;
 }
 
-export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, gameMode, isVictory, hasNextScene, nextSceneName, onRestart, onQuit, onNextScene, talentPoints, bossDefeated, onOpenTalentTree, audio, victoryGoldReward, achievementGoldReward = 0, onSettleGold, unclaimedAchievementCount, onOpenAchievements, onOpenShop, talentUnlocked, talentUnlockGrant = 0, starRating = 0}) => {
+export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, gameMode, isVictory, onReturnToSceneSelect, talentPoints, bossDefeated, onOpenTalentTree, audio, victoryGoldReward, achievementGoldReward = 0, onSettleGold, unclaimedAchievementCount, onOpenAchievements, talentUnlocked, talentUnlockGrant = 0, starRating = 0}) => {
   const isBossMode = bossDefeated;
   const isEndless = gameMode === 'endless';
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -72,6 +67,12 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, g
     setDisplayAchieveReward(0);
     setAnimationDone(true);
     onSettleGold?.();
+  };
+
+  // 点击屏幕：先结算金币动画（若未完成），再返回关卡选择界面
+  const handleScreenClick = () => {
+    if (!animationDone) skipAnimation();
+    onReturnToSceneSelect();
   };
 
   useEffect(() => {
@@ -113,8 +114,8 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, g
   return (
     <div
       className="absolute inset-0 flex flex-col items-center justify-center overflow-hidden"
-      onClick={skipAnimation}
-      style={{ cursor: animationDone ? 'default' : 'pointer' }}
+      onClick={handleScreenClick}
+      style={{ cursor: 'pointer' }}
     >
       {/* Video background - full screen loop */}
       <video
@@ -276,7 +277,7 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, g
               <div className="text-yellow-400/70 text-xs">{TEXT_CONFIG.ui.gameOver.talentDesc}</div>
             </div>
             <button
-              onClick={() => { audio?.playClick(); onOpenTalentTree(); }}
+              onClick={(e) => { e.stopPropagation(); audio?.playClick(); onOpenTalentTree(); }}
               className="shrink-0 bg-yellow-600 hover:bg-yellow-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1"
             >
               <Sparkles size={12} />
@@ -294,7 +295,7 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, g
               <div className="text-yellow-400/70 text-xs">{unclaimedAchievementCount} 个成就金币未领取</div>
             </div>
             <button
-              onClick={() => { audio?.playClick(); onOpenAchievements(); }}
+              onClick={(e) => { e.stopPropagation(); audio?.playClick(); onOpenAchievements(); }}
               className="shrink-0 bg-yellow-600 hover:bg-yellow-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1"
             >
               <Award size={12} />
@@ -303,45 +304,7 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ economy, wave, g
           </div>
         )}
 
-        {/* Buttons */}
-        <div className="w-full space-y-2">
-          {/* Next Scene button - only show on victory in story mode when next scene exists */}
-          {isVictory && hasNextScene && onNextScene && (
-            <button
-              onClick={() => { audio?.playClick(); onNextScene(); }}
-              className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-white font-bold py-3 px-6 rounded-xl transition-all hover:scale-105 active:scale-95 shadow-lg shadow-amber-900/40 animate-pulse"
-            >
-              <span>{TEXT_CONFIG.ui.gameOver.nextLevel(nextSceneName || '')}</span>
-              <ChevronRight size={18} />
-            </button>
-          )}
-
-          <button
-            onClick={() => { audio?.playClick(); onRestart(); }}
-            className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 text-white font-bold py-3 px-6 rounded-xl transition-all hover:scale-105 active:scale-95 shadow-lg shadow-red-900/40"
-          >
-            <RotateCcw size={18} />
-            {TEXT_CONFIG.ui.gameOver.playAgain}
-          </button>
-
-          {onOpenShop && (
-            <button
-              onClick={() => { audio?.playClick(); onOpenShop(); }}
-              className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-500 hover:to-yellow-500 text-white font-bold py-3 px-6 rounded-xl transition-all hover:scale-105 active:scale-95 shadow-lg shadow-amber-900/40"
-            >
-              <ShoppingCart size={18} />
-              {TEXT_CONFIG.ui.menu.shop}
-            </button>
-          )}
-
-          <button
-            onClick={() => { audio?.playClick(); onQuit(); }}
-            className="w-full flex items-center justify-center gap-2 bg-stone-800/80 hover:bg-stone-700/80 text-white font-bold py-3 px-6 rounded-xl transition-all hover:scale-105 active:scale-95 border border-stone-600/50 backdrop-blur-sm"
-          >
-            <Home size={18} />
-            {TEXT_CONFIG.ui.gameOver.backToMenu}
-          </button>
-        </div>
+        {/* 点击屏幕返回关卡选择（按钮已移除） */}
       </div>
     </div>
   );

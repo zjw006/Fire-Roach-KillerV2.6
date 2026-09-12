@@ -1,0 +1,1778 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>火焰蟑螂杀手 · UI 布局编辑器（540 逻辑画布 · 所见即所得）</title>
+<style>
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{background:#f5efe4;font-family:"Microsoft YaHei",sans-serif;margin:0;color:#4a4036;display:flex;flex-direction:column;overflow:hidden}
+  h1{font-size:17px;margin:0;font-weight:bold;color:#5a4632}
+  header{padding:8px 14px 6px;border-bottom:1px solid #ddd0b8;background:#fdfaf3;flex:none}
+  header .sub{font-size:11px;color:#9a8c76;margin-top:2px;line-height:1.5}
+  /* ---------- 工具栏 ---------- */
+  #toolbar{flex:none;display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:7px 14px;background:#fdfaf3;border-bottom:1px solid #ddd0b8;font-size:12px}
+  #toolbar button,#toolbar select{font-size:12px;font-family:inherit}
+  .btn{padding:4px 10px;border:1px solid #c9b896;background:#f0e6cf;border-radius:6px;cursor:pointer;color:#4a4036}
+  .btn:hover{background:#e8dcc0}
+  .btn.armed{background:#e8c87a;border-color:#b8933f;font-weight:bold}
+  .btn.danger{background:#f0d0c8;border-color:#c0584a;color:#8a2f22}
+  .btn.primary{background:#e8c87a;border-color:#b8933f;font-weight:bold}
+  .sep{width:1px;height:20px;background:#ddd0b8;margin:0 3px;flex:none}
+  .tlab{color:#8a7d6b;white-space:nowrap}
+  select{padding:3px 6px;border:1px solid #c9b896;border-radius:6px;background:#f8f3e6;color:#4a4036}
+  /* ---------- 主区域 ---------- */
+  #main{flex:1;display:flex;min-height:0}
+  .panel{background:#fdfaf3;border-right:1px solid #ddd0b8;display:flex;flex-direction:column;min-height:0}
+  #libPanel{width:188px;flex:none}
+  #rightPanel{width:272px;flex:none;border-right:none;border-left:1px solid #ddd0b8}
+  .panel h2{font-size:13px;margin:0;padding:8px 10px 6px;color:#6b4f2e;border-bottom:1px solid #eadfc8;flex:none;display:flex;align-items:center;gap:6px}
+  .panel h2 .hint{font-weight:normal;font-size:10px;color:#a99a82;margin-left:auto}
+  .panelBody{overflow-y:auto;flex:1;padding:8px}
+  /* ---------- 素材库 ---------- */
+  .libCat{font-size:11px;color:#8a7d6b;margin:8px 0 4px;font-weight:bold}
+  .libCat:first-child{margin-top:0}
+  .libGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}
+  .libItem{background:#f8f3e6;border:1px solid #e2d6bd;border-radius:6px;padding:4px 2px;cursor:pointer;text-align:center;position:relative;min-height:44px;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .libItem:hover{border-color:#b8933f;background:#f3e9d2}
+  .libItem img{max-width:100%;max-height:34px;pointer-events:none}
+  .libItem .lb{font-size:9px;color:#7a6c58;line-height:1.2;margin-top:2px;word-break:break-all}
+  .libItem .ph{width:30px;height:30px;border:1px dashed #c9b896;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:9px;color:#b0a28c}
+  .uploadRow{margin-top:10px}
+  .uploadRow label{display:block;text-align:center;padding:6px;border:1px dashed #c9b896;border-radius:6px;cursor:pointer;font-size:11px;color:#7a6c58;background:#f8f3e6}
+  .uploadRow label:hover{background:#f3e9d2;border-color:#b8933f}
+  .uploadRow input{display:none}
+  /* ---------- 舞台 ---------- */
+  #stageScroll{flex:1;overflow:auto;background:#e9e1d0;padding:26px;display:flex;justify-content:center;align-items:flex-start}
+  #stageBox{flex:none;position:relative;box-shadow:0 6px 24px rgba(90,70,40,.28);border-radius:4px;overflow:hidden}
+  #stage{position:absolute;left:0;top:0;transform-origin:top left;background:#ffffff;touch-action:none;overflow:hidden}
+  /* 底图层：界面截图/背景图，位于所有可编辑元素之下，不拦截点击 */
+  #bgOv{position:absolute;inset:0;pointer-events:none;background-size:cover;background-position:center;background-repeat:no-repeat;z-index:0}
+  #bgOv.checked{background-image:
+    linear-gradient(45deg,#d8d0c0 25%,transparent 25%),
+    linear-gradient(-45deg,#d8d0c0 25%,transparent 25%),
+    linear-gradient(45deg,transparent 75%,#d8d0c0 75%),
+    linear-gradient(-45deg,transparent 75%,#d8d0c0 75%);
+    background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0;background-color:#fbf8f0}
+  #bgOpacityWrap{display:none;align-items:center;gap:4px;font-size:11px;color:#8a7d6b}
+  #bgOpacityWrap.on{display:flex}
+  #bgOpacityWrap input{width:64px}
+  #gridOv{position:absolute;inset:0;pointer-events:none;display:none;
+    background-image:linear-gradient(to right,rgba(90,120,160,.18) 1px,transparent 1px),
+                     linear-gradient(to bottom,rgba(90,120,160,.18) 1px,transparent 1px);
+    background-size:10px 10px}
+  #safeOv{position:absolute;inset:0;pointer-events:none;display:none;z-index:9998}
+  #safeOv .sTop{position:absolute;left:0;right:0;top:44px;border-top:1.5px dashed rgba(232,80,60,.55)}
+  #safeOv .sBot{position:absolute;left:0;right:0;bottom:34px;border-bottom:1.5px dashed rgba(232,80,60,.55)}
+  /* 窄屏左右裁切安全区：独立层，由「窄屏」按钮控制；垂直遮罩把窄屏下会被裁切的两侧遮盖掉 */
+  #narrowOv{position:absolute;inset:0;pointer-events:none;display:none;z-index:9999}
+  #narrowOv .nLeft{position:absolute;left:0;top:0;bottom:0;width:64px;background:rgba(0,0,0,.45);border-right:1px dashed rgba(255,120,90,.7)}
+  #narrowOv .nRight{position:absolute;right:0;top:0;bottom:0;width:64px;background:rgba(0,0,0,.45);border-left:1px dashed rgba(255,120,90,.7)}
+  /* 元素包装 */
+  .el{position:absolute;left:0;top:0;user-select:none;-webkit-user-select:none}
+  .el img{width:100%;height:100%;display:block;pointer-events:none;-webkit-user-drag:none}
+  /* 九宫格辅助线：启用九宫格即显示红色虚线（不依赖选中状态） */
+  .el .sliceGuide{position:absolute;inset:0;pointer-events:none;display:none;overflow:visible;z-index:49}
+  .el.slice .sliceGuide{display:block}
+  .el .sliceGuide .sgLine{position:absolute;pointer-events:none;background:transparent;border:0}
+  .el .sliceGuide .sgH{left:0;right:0;height:0;border-top:1px dashed rgba(239,68,68,.9)}
+  .el .sliceGuide .sgV{top:0;bottom:0;width:0;border-left:1px dashed rgba(239,68,68,.9)}
+  /* 图片元素统一用 canvas 渲染 */
+  .el canvas.elCanvas{width:100%;height:100%;display:block;pointer-events:none}
+  /* 空 src 的占位图素：半透明虚线框，便于在未替换图素前定位与调整 */
+  .el canvas.elCanvas[src=""]{background:repeating-linear-gradient(45deg,rgba(120,120,120,.12),rgba(120,120,120,.12) 8px,rgba(120,120,120,.24) 8px,rgba(120,120,120,.24) 16px);outline:1px dashed rgba(0,0,0,.35);outline-offset:-1px}
+  .el .txt{width:100%;height:100%;display:flex;word-break:break-word;white-space:pre-wrap;overflow:hidden}
+  .el.sel{outline:2px solid #38bdf8;outline-offset:1px}
+  .el.locked{pointer-events:none}
+  .el.hiddenEl{display:none}
+  .handle{position:absolute;width:11px;height:11px;background:#fff;border:2px solid #38bdf8;border-radius:2px;z-index:50;display:none}
+  .el.sel .handle{display:block}
+  .h-nw{left:0;top:0;transform:translate(-50%,-50%);cursor:nwse-resize}
+  .h-n {left:50%;top:0;transform:translate(-50%,-50%);cursor:ns-resize}
+  .h-ne{left:100%;top:0;transform:translate(-50%,-50%);cursor:nesw-resize}
+  .h-e {left:100%;top:50%;transform:translate(-50%,-50%);cursor:ew-resize}
+  .h-se{left:100%;top:100%;transform:translate(-50%,-50%);cursor:nwse-resize}
+  .h-s {left:50%;top:100%;transform:translate(-50%,-50%);cursor:ns-resize}
+  .h-sw{left:0;top:100%;transform:translate(-50%,-50%);cursor:nesw-resize}
+  .h-w {left:0;top:50%;transform:translate(-50%,-50%);cursor:ew-resize}
+  /* ---------- 图层面板 ---------- */
+  .layerCtrls{display:flex;gap:4px;padding:6px 10px;border-bottom:1px solid #eadfc8;flex:none}
+  .layerCtrls button{flex:1;padding:3px 0;font-size:11px}
+  #layerList{flex:1;overflow-y:auto;padding:6px}
+  .layer{display:flex;align-items:center;gap:5px;padding:4px 6px;border:1px solid transparent;border-radius:6px;cursor:pointer;font-size:11px;background:transparent}
+  .layer:hover{background:#f3e9d2}
+  .layer.sel{background:#f6e7c2;border-color:#d9b968}
+  .layer.dragoverTop{box-shadow:0 -2px 0 #38bdf8}
+  .layer.dragoverBot{box-shadow:0 2px 0 #38bdf8}
+  .layer .ico{width:18px;height:18px;flex:none;display:flex;align-items:center;justify-content:center;font-size:10px;background:#f0e6cf;border-radius:4px;border:1px solid #e2d6bd;color:#7a6c58}
+  .layer .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .layer .nm input{width:100%;font-size:11px;font-family:inherit;border:1px solid #b8933f;border-radius:4px;padding:1px 3px}
+  .layer .tog{width:20px;text-align:center;cursor:pointer;color:#8a7d6b;flex:none;font-size:12px}
+  .layer .tog.off{color:#c9bda6}
+  .layer.empty{color:#a99a82;justify-content:center;cursor:default;padding:14px 0;line-height:1.8}
+  .layer.empty:hover{background:transparent}
+  /* ---------- 属性面板 ---------- */
+  .propGroup{margin-bottom:10px}
+  .propGroup .pgTitle{font-size:11px;font-weight:bold;color:#8a6f4c;margin-bottom:4px;border-bottom:1px dashed #e2d6bd;padding-bottom:3px}
+  .prow{display:flex;align-items:center;gap:6px;margin-bottom:5px;font-size:11px}
+  .prow label{width:52px;flex:none;color:#7a6c58}
+  .prow input[type=number],.prow input[type=text]{flex:1;width:0;min-width:0;padding:3px 6px;border:1px solid #c9b896;border-radius:5px;background:#f8f3e6;font-size:11px;font-family:inherit;color:#4a4036}
+  .prow input[type=color]{width:34px;height:24px;padding:0;border:1px solid #c9b896;border-radius:5px;background:#f8f3e6;cursor:pointer}
+  .prow textarea{flex:1;width:0;min-width:0;padding:3px 6px;border:1px solid #c9b896;border-radius:5px;background:#f8f3e6;font-size:11px;font-family:inherit;color:#4a4036;resize:vertical;min-height:44px}
+  .prow .chk{display:flex;align-items:center;gap:4px;flex:1}
+  .prow.range label{width:auto}
+  .prow input[type=range]{flex:1}
+  .prow .val{width:34px;text-align:right;color:#7a6c58;flex:none}
+  .propBtns{display:flex;gap:5px;margin-top:6px}
+  .propBtns button{flex:1;padding:4px 0;font-size:11px}
+  #propsEmpty{font-size:11px;color:#a99a82;text-align:center;padding:24px 10px;line-height:1.9}
+  /* ---------- 弹窗 ---------- */
+  #modal{position:fixed;inset:0;background:rgba(60,48,30,.45);display:none;align-items:center;justify-content:center;z-index:200}
+  #modal.open{display:flex}
+  .modalBox{background:#fdfaf3;border:1px solid #c9b896;border-radius:12px;width:min(620px,92vw);max-height:86vh;display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(60,40,10,.4)}
+  .modalBox h3{margin:0;padding:12px 16px;font-size:14px;color:#6b4f2e;border-bottom:1px solid #eadfc8}
+  .modalBox .mBody{padding:12px 16px;overflow-y:auto;flex:1}
+  .modalBox textarea{width:100%;height:280px;font-family:Consolas,monospace;font-size:10px;background:#f8f3e6;border:1px solid #ddd0b8;border-radius:6px;padding:8px;box-sizing:border-box;resize:vertical}
+  .modalBox .mFoot{padding:10px 16px;border-top:1px solid #eadfc8;display:flex;gap:8px;justify-content:flex-end}
+  .mTip{font-size:11px;color:#9a8c76;line-height:1.7;margin:0 0 8px}
+  kbd{background:#f0e6cf;border:1px solid #c9b896;border-radius:4px;padding:0 5px;font-size:10px;font-family:Consolas,monospace}
+</style>
+</head>
+<body>
+<header>
+  <h1>火焰蟑螂杀手 · UI 布局编辑器</h1>
+  <div class="sub">540 逻辑宽度画布 · 所见即所得坐标（导出 JSON 可直接用于游戏 canvas 绘制）｜推荐 dev server 访问 <b>http://localhost:3000/ui-editor.html</b>；直接双击本文件（file://）也能显示图标（自动读取同级 public/assets）</div>
+</header>
+
+<div id="toolbar">
+  <span class="tlab">添加：</span>
+  <button class="btn" id="btnAddText">文字</button>
+  <button class="btn" id="btnAddRect">圆角面板</button>
+  <button class="btn" id="btnAddButton">按钮</button>
+  <button class="btn" id="btnAddHit">选中区域</button>
+  <span class="sep"></span>
+  <span class="tlab">载入现有界面：</span>
+  <select id="selPreset">
+    <option value="">— 选择界面 —</option>
+    <option value="main_menu">主菜单（剧情/图鉴/每日/设置）</option>
+    <option value="loading_title">LOADING 载入界面（背景图/标题/进度条）</option>
+    <option value="scene_select">关卡选择界面（3D 地图/关卡箭头/星级/商店/天赋/成就/图鉴）</option>
+    <option value="shop">商店界面（道具购买/已拥有道具）</option>
+  </select>
+  <span class="sep"></span>
+  <span class="tlab">底图：</span>
+  <select id="selBg"></select>
+  <span id="bgOpacityWrap" title="底图不透明度（对照摆放时可调淡）">底图淡
+    <input type="range" id="bgOpacity" min="0.15" max="1" step="0.05"></span>
+  <input type="file" id="bgFile" accept="image/*" style="display:none">
+  <button class="btn" id="btnDownloadBg" title="把当前底图截图下载为 menu_bg.jpg">下载底图</button>
+  <span class="sep"></span>
+  <span class="tlab">画布高：</span>
+  <select id="selHeight">
+    <option value="800">800（短屏）</option>
+    <option value="960" selected>960（标准）</option>
+    <option value="1080">1080（长屏）</option>
+    <option value="custom">自定义…</option>
+  </select>
+  <span class="sep"></span>
+  <span class="tlab">缩放：</span>
+  <button class="btn" id="btnZoomOut">－</button>
+  <span id="zoomVal" style="width:42px;text-align:center">100%</span>
+  <button class="btn" id="btnZoomIn">＋</button>
+  <button class="btn" id="btnZoomFit">适应</button>
+  <span class="sep"></span>
+  <button class="btn" id="btnGrid">网格</button>
+  <button class="btn" id="btnSnap">吸附</button>
+  <button class="btn" id="btnSafe">安全区</button>
+  <button class="btn" id="btnNarrow">窄屏</button>
+  <span class="sep"></span>
+  <button class="btn" id="btnUndo" title="Ctrl+Z">撤销</button>
+  <button class="btn" id="btnRedo" title="Ctrl+Y">重做</button>
+  <span class="sep"></span>
+  <button class="btn primary" id="btnExport">导出 / 导入</button>
+  <button class="btn danger" id="btnClear">清空</button>
+</div>
+
+<div id="main">
+  <!-- 左：素材库 -->
+  <div class="panel" id="libPanel">
+    <h2>图标素材<span class="hint">点击添加</span></h2>
+    <div class="panelBody">
+      <div id="libGrid"></div>
+      <div class="uploadRow">
+        <label>上传本地图片（仅存于本机浏览器）
+          <input type="file" id="fileUpload" accept="image/*">
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <!-- 中：舞台 -->
+  <div id="stageScroll">
+    <div id="stageBox">
+      <div id="stage">
+        <div id="bgOv"></div>
+        <div id="gridOv"></div>
+        <div id="safeOv">
+          <div class="sTop"></div><div class="sBot"></div>
+        </div>
+        <div id="narrowOv">
+          <div class="nLeft"></div><div class="nRight"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 右：图层 + 属性 -->
+  <div class="panel" id="rightPanel">
+    <h2>图层<span class="hint">上层 = 后渲染</span></h2>
+    <div class="layerCtrls">
+      <button class="btn" id="btnTop" title="置顶">顶</button>
+      <button class="btn" id="btnUp" title="上移一层">↑</button>
+      <button class="btn" id="btnDown" title="下移一层">↓</button>
+      <button class="btn" id="btnBottom" title="置底">底</button>
+      <button class="btn danger" id="btnLayerDel" title="删除选中层（Del）">删</button>
+    </div>
+    <div id="layerList"></div>
+    <h2>属性<span class="hint" id="propHint"></span></h2>
+    <div class="panelBody" id="propsBody">
+      <div id="propsEmpty">未选中元素<br>点击舞台元素或图层进行编辑<br><br>
+        移动：拖拽 / 方向键（Shift×10）<br>
+        缩放：8 个手柄（Shift 等比）<br>
+        删除 <kbd>Del</kbd>　复制 <kbd>Ctrl+D</kbd><br>
+        双击文字元素可快速改内容
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 导出/导入弹窗 -->
+<div id="modal">
+  <div class="modalBox">
+    <h3>导出 / 导入布局 JSON</h3>
+    <div class="mBody">
+      <p class="mTip">坐标基于 540 逻辑宽度、原点为画布左上角，与游戏 canvas 绘制坐标一致。把 JSON 发给我即可写入游戏 UI 配置；也可粘贴之前导出的 JSON 到下方并点「导入」恢复。</p>
+      <textarea id="ioText" spellcheck="false"></textarea>
+    </div>
+    <div class="mFoot">
+      <button class="btn danger" id="btnImport">导入下方 JSON</button>
+      <button class="btn" id="btnDownload">下载 .json</button>
+      <button class="btn primary" id="btnCopy">复制 JSON</button>
+      <button class="btn" id="btnClose">关闭</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* ============================================================
+ * UI 布局编辑器：元素数组顺序 = 图层顺序（index 0 最底层）
+ * 元素模型：{id,type,name,x,y,w,h,rotation,opacity,visible,locked,...样式}
+ * ============================================================ */
+
+/* ---------- 内置素材（路径相对 dev server 根，public/ 目录） ---------- */
+const LIB = [
+  {cat:'UI 按钮', items:[
+    ['/assets/UI/btn_story_zh.png','剧情模式'],['/assets/UI/btn_daily_zh.png','每日活动'],
+    ['/assets/UI/btn_shop_zh.png','商店'],['/assets/UI/btn_talent_zh.png','天赋'],
+    ['/assets/UI/btn_achievement_zh.png','成就'],['/assets/UI/btn_encyclopedia_zh.png','图鉴'],
+    ['/assets/UI/main_btn_settings_normal.png','设置'],['/assets/UI/scene_level_back.png','返回'],
+    ['/assets/UI/bg_level_clear_zh.png','已解锁标签'],['/assets/UI/bg_level_lock_zh.png','未解锁标签'],
+    ['/assets/UI/debuff_poison.png','中毒']
+  ]},
+  {cat:'商店界面', items:[
+    ['/assets/UI/bg_shop_zh.png','商店背景'],['/assets/UI/bg_shop_title_zh.png','商店标题'],
+    ['/assets/UI/btn_shop_back_zh.png','商店返回'],['/assets/UI/btn_shop_gun_item_tab_zh.png','战场道具标签'],
+    ['/assets/UI/btn_shop_gun_skin_tab_zh.png','火枪皮肤标签'],['/assets/UI/bg_shop_bottom_item_bar_zh.png','已拥有道具栏'],
+    ['/assets/UI/btn_bg_buy_zh.png','购买按钮'],['/assets/UI/icon_coin_zh.png','金币图标'],
+    ['/assets/UI/shop_card_bg_zh.png','道具卡片背景'],['/assets/UI/shop_card_bg01_zh.png','已拥有卡片背景'],
+    ['/assets/UI/bg_shop_gold_bar_zh.png','金币栏背景'],
+    ['/assets/UI/bg_item_num_bg_zh.png','数量背景'],['/assets/UI/shop_scroll_track.png','滚动条轨道'],
+    ['/assets/UI/shop_scroll_bar.png','滚动条滑块']
+  ]},
+  {cat:'消耗品', items:[
+    ['/assets/consumable_gas.png','燃气'],['/assets/consumable_cool.png','冷却'],
+    ['/assets/consumable_power.png','火力'],['/assets/consumable_repair.png','修理'],
+    ['/assets/consumable_shield.png','护盾'],['/assets/consumable_bait.png','诱饵']
+  ]},
+  {cat:'掉落道具', items:[
+    ['/assets/drop_molotov.png','燃烧瓶'],['/assets/drop_swatter.png','苍蝇拍'],
+    ['/assets/drop_knife.png','菜刀'],['/assets/drop_shotgun.png','霰弹枪'],
+    ['/assets/drop_fan.png','风扇'],['/assets/drop_sticky.png','粘板'],
+    ['/assets/drop_poison.png','毒药'],['/assets/drop_radar.png','雷达'],
+    ['/assets/drop_signal.png','信号弹'],['/assets/drop_Jammer.png','干扰器'],
+    ['/assets/drop__invoice.png','发票']
+  ]},
+  {cat:'武器物件', items:[
+    ['/assets/gun.png','火枪'],['/assets/gun_mk1.png','火枪MK1'],['/assets/gun_mk2.png','火枪MK2'],
+    ['/assets/barrel.png','油桶'],['/assets/barrel_m1.png','油桶M1'],['/assets/barrel_m2.png','油桶M2'],
+    ['/assets/bomb.png','炸弹'],['/assets/boss_bomb.png','Boss炸弹'],['/assets/fan.png','风扇物件']
+  ]},
+  {cat:'角色 / 蟑螂', items:[
+    ['/assets/avatar_player.png','玩家头像'],['/assets/avatar_zhangshu.png','蟑叔头像'],
+    ['/assets/roach.png','小蟑螂'],['/assets/roach_armored.png','装甲蟑螂'],
+    ['/assets/roach_flying.png','飞行蟑螂'],['/assets/roach_flying_suicide.png','飞行自爆'],
+    ['/assets/roach_suicide.png','自爆蟑螂'],['/assets/roach_timed_suicide.png','定时自爆'],
+    ['/assets/roach_splitting.png','分裂蟑螂'],['/assets/roach_shield01.png','护盾蟑螂'],
+    ['/assets/roach_nurse.png','护士蟑螂'],['/assets/roach_tunnel_worker.png','隧道工'],
+    ['/assets/roach_jock.png','体育生'],['/assets/roach_subway_elite.png','地铁精英'],
+    ['/assets/roach_mutant.png','变异蟑螂'],['/assets/roach_queen.png','蟑螂女王']
+  ]}
+];
+const BACKGROUNDS = [
+  ['','（无 / 纯白）'],['__checker','棋盘格'],
+  ['/assets/bg_kitchen_easy.jpg','厨房 · 易'],['/assets/bg_kitchen_hard.jpg','厨房 · 难'],
+  ['/assets/bg_sewer_easy.jpg','下水道 · 易'],['/assets/bg_sewer_hard.jpg','下水道 · 难'],
+  ['/assets/bg_dump_easy.jpg','垃圾场 · 易'],['/assets/bg_dump_hard.jpg','垃圾场 · 难'],
+  ['/assets/bg_basement_easy.jpg','地下室 · 易'],['/assets/bg_basement_hard.jpg','地下室 · 难'],
+  ['/assets/bg_rooftop_easy.jpg','天台 · 易'],['/assets/bg_rooftop_hard.jpg','天台 · 难'],
+  ['/assets/bg_street_easy.jpg','街道 · 易'],['/assets/bg_street_hard.jpg','街道 · 难'],
+  ['/assets/bg_hospital.png','废弃医院'],['/assets/bg_subway.jpg','废弃地铁'],
+  ['/assets/bg_supermarket.jpg','废弃超市'],['/assets/bg_school.jpg','废弃学校'],
+  ['/assets/bg_nest.jpg','蟑螂巢穴']
+];
+/* ---------- 现有游戏界面预设（按钮 = 游戏内已绑定脚本的按钮，bind 为回写标识；w 为逻辑宽，h 按图片比例自动） ---------- */
+const UI_PRESETS = {
+  main_menu: {
+    name: '主菜单',
+    // bg 留空：载入时不覆盖你上传的底图截图（bgCustom），也不强加厨房背景
+    bg: '',
+    // 坐标与游戏内 GameMenu.tsx 当前实现保持一致（UI 布局编辑器导出 → 回写）
+    items: [
+      {name:'背景图',  src:'/assets/UI/main_bg.png.jpg', x:0, y:0, w:540, h:960},
+      {name:'标题 Logo',  src:'/assets/UI/main_logo_main_zh.png', x:90,   y:28.9, w:354, h:150},
+      {name:'主角色立绘', src:'/assets/UI/main_char_01_zh.png',   x:7.6,  y:294.8, w:302, h:579},
+      {bind:'menu.settings',     name:'设置',     src:'/assets/UI/main_btn_settings_normal.png', x:413.1, y:203.9, w:48.6, h:50},
+      {bind:'menu.story',        name:'剧情模式', src:'/assets/UI/btn_story_zh.png',        x:334.2, y:297.8, w:128, h:128},
+      {bind:'menu.encyclopedia', name:'图鉴',     src:'/assets/UI/btn_encyclopedia _zh.png', x:340.7, y:443,   w:128, h:128},
+      {bind:'menu.daily',        name:'每日活动', src:'/assets/UI/btn_daily_zh.png',        x:342.3, y:602.7, w:128, h:128}
+    ]
+  },
+
+  /* LOADING 载入界面（TitleScreen）：背景 + 进度条已合为一段视频 /assets/UI/loading_anim.mp4（540×960/~5s）。
+     编辑器中以首帧海报 loading_title.jpg 作视觉参考（img 无法播放 mp4）。
+     bind 为回写标识：loading.anim=背景+进度条视频、loading.title=标题文字、loading.mute=静音键 */
+  loading_title: {
+    name: 'LOADING 载入界面',
+    bg: '',
+    items: [
+      {type:'image', bind:'loading.anim',  name:'LOADING 视频（背景+进度条，loading_anim.mp4）', src:'/comics/loading_title.jpg', x:0, y:0, w:540},
+      {type:'image', bind:'loading.logo',  name:'标题 Logo（叠加在视频上）', src:'/assets/UI/main_logo_main_zh.png', x:93, y:36.1, w:354},
+      {type:'image', bind:'loading.mute',  name:'静音键（占位）', src:'/assets/UI/main_btn_settings_normal.png', x:486, y:16, w:42}
+    ]
+  },
+
+  /* 关卡选择界面（SceneSelect / StoryLevelSelect）：9:16（540×960）地图式关卡选择。
+     顶部：返回按钮 + "选择关卡" 标题栏。
+     中部：地图底图 + 3D 地图总图 + 关卡节点（箭头/星级/名称标签）。
+     底部：商店 / 天赋 / 成就 / 图鉴 四个功能入口按钮（自主菜单移入）。
+     bind 标识：scene.bg / scene.map / scene.currentTitle / scene.shop / scene.talent / scene.achievement / scene.encyclopedia + 各关卡节点。
+     节点编号顺序与 STORY_LEVELS 一致：0 厨房,1 下水道,2 垃圾场,3 地下室,4 天台,5 医院,6 街道,7 地铁,8 超市,9 学校,10 巢穴（之后为困难关）。 */
+  scene_select: {
+    name: '关卡选择界面',
+    bg: '',
+    items: [
+      {type:'image', bind:'scene.bg', name:'地图底图（背景图）', src:'/assets/UI/scene_level_bg.png', x:0, y:0, w:540, h:960},
+      {type:'image', bind:'scene.map', name:'3D 地图总图', src:'/assets/UI/scene_level_map_3d.png', x:0, y:177, w:540, h:783},
+      {type:'image', bind:'scene.topBar', name:'顶部标签栏', src:'/assets/UI/scene_level_tab_bar_zh.png', x:73.2, y:18.7, w:396.5, h:92.2},
+      {type:'image', bind:'scene.arrow.current', name:'当前选择箭头', src:'/assets/UI/scene_level_arrow_current.png', x:336.7, y:593.2, w:24, h:31.5},
+      {type:'image', bind:'scene.back', name:'返回按钮', src:'/assets/UI/scene_level_back.png', x:82.5, y:27.6, w:67.7, h:67.7},
+      {type:'hit', bind:'scene.hit.0', name:'关卡0 选中区域（虚线框，游戏内不显示）', x:64.3, y:240, w:100.2, h:104.5},
+      {type:'image', bind:'scene.stars.0', name:'关卡0 星级', src:'/assets/UI/scene_level_star_gray.png', x:132.9, y:331.3, w:62, h:14},
+      {type:'image', bind:'scene.label.0', name:'关卡0 名称标签', src:'/assets/UI/bg_level_lock_zh.png', x:132.9, y:306, w:60, h:24},
+      {type:'text', bind:'', name:'关卡0 名称文字', text:'厨房', x:137.1, y:309.2, w:50.9, h:20, fontSize:13, color:'#ffffff', bold:true, align:'center'},
+      {type:'hit', bind:'scene.hit.1', name:'关卡1 选中区域（虚线框，游戏内不显示）', x:234.1, y:221.3, w:74, h:103.1},
+      {type:'image', bind:'scene.stars.1', name:'关卡1 星级', src:'/assets/UI/scene_level_star_gray.png', x:240, y:334.2, w:62, h:14},
+      {type:'image', bind:'scene.label.1', name:'关卡1 名称标签', src:'/assets/UI/bg_level_lock_zh.png', x:237.4, y:305.2, w:66.1, h:24},
+      {type:'text', bind:'', name:'关卡1 名称文字', text:'下水道', x:239.8, y:309.5, w:61.4, h:20, fontSize:13, color:'#ffffff', bold:true, align:'center'},
+      {type:'hit', bind:'scene.hit.2', name:'关卡2 选中区域（虚线框，游戏内不显示）', x:304.8, y:335.1, w:74, h:74},
+      {type:'image', bind:'scene.stars.2', name:'关卡2 星级', src:'/assets/UI/scene_level_star_gray.png', x:406.2, y:338.7, w:62, h:14},
+      {type:'image', bind:'scene.label.2', name:'关卡2 名称标签', src:'/assets/UI/bg_level_lock_zh.png', x:317.3, y:396, w:60, h:24},
+      {type:'text', bind:'', name:'关卡2 名称文字', text:'垃圾场', x:319.7, y:400.2, w:55.9, h:13.8, fontSize:13, color:'#ffffff', bold:true, align:'center'},
+      {type:'hit', bind:'scene.hit.3', name:'关卡3 选中区域（虚线框，游戏内不显示）', x:402.2, y:266.4, w:75.6, h:78.9},
+      {type:'image', bind:'scene.stars.3', name:'关卡3 星级', src:'/assets/UI/scene_level_star_gray.png', x:317.9, y:418.9, w:64, h:14},
+      {type:'image', bind:'scene.label.3', name:'关卡3 名称标签', src:'/assets/UI/bg_level_lock_zh.png', x:399, y:307.6, w:75, h:24},
+      {type:'text', bind:'', name:'关卡3 名称文字', text:'地下室', x:400.7, y:312.6, w:71.9, h:20, fontSize:13, color:'#ffffff', bold:true, align:'center'},
+      {type:'hit', bind:'scene.hit.4', name:'关卡4 选中区域（虚线框，游戏内不显示）', x:225.1, y:443.3, w:118.4, h:109},
+      {type:'image', bind:'scene.stars.4', name:'关卡4 星级', src:'/assets/UI/scene_level_star_gray.png', x:269.1, y:580.4, w:62, h:14},
+      {type:'image', bind:'scene.label.4', name:'关卡4 名称标签', src:'/assets/UI/bg_level_lock_zh.png', x:260.8, y:547.7, w:79, h:24},
+      {type:'text', bind:'', name:'关卡4 名称文字', text:'城市街道', x:264.5, y:550.6, w:72.2, h:20, fontSize:13, color:'#ffffff', bold:true, align:'center'},
+      {type:'hit', bind:'scene.hit.5', name:'关卡5 选中区域（虚线框，游戏内不显示）', x:401.7, y:376, w:88.6, h:120.6},
+      {type:'image', bind:'scene.stars.5', name:'关卡5 星级', src:'/assets/UI/scene_level_star_gray.png', x:408, y:470, w:62, h:14},
+      {type:'image', bind:'scene.label.5', name:'关卡5 名称标签', src:'/assets/UI/bg_level_lock_zh.png', x:415, y:447.4, w:44, h:24},
+      {type:'text', bind:'', name:'关卡5 名称文字', text:'天台', x:413, y:450, w:50, h:24, fontSize:13, color:'#ffffff', bold:true, align:'center'},
+      {type:'hit', bind:'scene.hit.6', name:'关卡6 选中区域（虚线框，游戏内不显示）', x:64.3, y:441.8, w:107.4, h:143.2},
+      {type:'image', bind:'scene.stars.6', name:'关卡6 星级', src:'/assets/UI/scene_level_star_gray.png', x:104.4, y:589.6, w:62, h:14},
+      {type:'image', bind:'scene.label.6', name:'关卡6 名称标签', src:'/assets/UI/bg_level_lock_zh.png', x:96.7, y:564.1, w:79, h:24},
+      {type:'text', bind:'', name:'关卡6 名称文字', text:'废弃医院', x:99.7, y:567.4, w:69.8, h:20, fontSize:13, color:'#ffffff', bold:true, align:'center'},
+      {type:'hit', bind:'scene.hit.7', name:'关卡7 选中区域（虚线框，游戏内不显示）', x:377.4, y:511.3, w:148, h:79.7},
+      {type:'image', bind:'scene.stars.7', name:'关卡7 星级', src:'/assets/UI/scene_level_star_gray.png', x:410.4, y:597.4, w:62, h:14},
+      {type:'image', bind:'scene.label.7', name:'关卡7 名称标签', src:'/assets/UI/bg_level_lock_zh.png', x:401.5, y:568.4, w:79, h:24},
+      {type:'text', bind:'', name:'关卡7 名称文字', text:'废弃地铁', x:406.1, y:571.5, w:73.2, h:20, fontSize:13, color:'#ffffff', bold:true, align:'center'},
+      {type:'hit', bind:'scene.hit.8', name:'关卡8 选中区域（虚线框，游戏内不显示）', x:220.9, y:610.1, w:107.6, h:100},
+      {type:'image', bind:'scene.stars.8', name:'关卡8 星级', src:'/assets/UI/scene_level_star_gray.png', x:113.9, y:766.3, w:62, h:14},
+      {type:'image', bind:'scene.label.8', name:'关卡8 名称标签', src:'/assets/UI/bg_level_lock_zh.png', x:244.6, y:689.7, w:79, h:24},
+      {type:'text', bind:'', name:'关卡8 名称文字', text:'废弃超市', x:253.1, y:692.1, w:67.7, h:20, fontSize:13, color:'#ffffff', bold:true, align:'center'},
+      {type:'hit', bind:'scene.hit.9', name:'关卡9 选中区域（虚线框，游戏内不显示）', x:70.3, y:642.3, w:112.1, h:111},
+      {type:'image', bind:'scene.stars.9', name:'关卡9 星级', src:'/assets/UI/scene_level_star_gray.png', x:253.9, y:717.4, w:62, h:14},
+      {type:'image', bind:'scene.label.9', name:'关卡9 名称标签', src:'/assets/UI/bg_level_lock_zh.png', x:104.8, y:739.9, w:79, h:24},
+      {type:'text', bind:'', name:'关卡9 名称文字', text:'废弃学校', x:104.1, y:744.3, w:80.8, h:20, fontSize:13, color:'#ffffff', bold:true, align:'center'},
+      {type:'hit', bind:'scene.hit.10', name:'关卡10 选中区域（虚线框，游戏内不显示）', x:372.2, y:660, w:104.9, h:112.7},
+      {type:'image', bind:'scene.stars.10', name:'关卡10 星级', src:'/assets/UI/scene_level_star_gray.png', x:372.7, y:780.2, w:62, h:14},
+      {type:'image', bind:'scene.label.10', name:'关卡10 名称标签', src:'/assets/UI/bg_level_lock_zh.png', x:360.8, y:755.5, w:79, h:24},
+      {type:'text', bind:'', name:'关卡10 名称文字', text:'巢穴', x:373.6, y:757.4, w:55.6, h:20, fontSize:13, color:'#ffffff', bold:true, align:'center'},
+      {type:'image', bind:'scene.shop', name:'商店', src:'/assets/UI/btn_shop_zh.png', x:76, y:865.4, w:80, h:80},
+      {type:'image', bind:'scene.talent', name:'天赋', src:'/assets/UI/btn_talent_zh.png', x:178.8, y:864.9, w:80, h:80},
+      {type:'image', bind:'scene.achievement', name:'成就', src:'/assets/UI/btn_achievement_zh.png', x:282.5, y:863.9, w:80, h:80},
+      {type:'image', bind:'scene.encyclopedia', name:'图鉴', src:'/assets/UI/btn_encyclopedia_zh.png', x:377.2, y:863.2, w:80, h:80},
+    ]
+  },
+
+  /* 商店界面（ShopScreen）：540×960 道具购买界面。
+     顶部：返回按钮 + 商店标题 + 金币显示。
+     左侧：战场道具 / 火枪皮肤 两个垂直标签（火枪皮肤默认锁定）。
+     中部：2×3 道具卡片网格，火焰类（气罐补给、火力全开）为黄色卡片，辅助类为蓝色卡片。
+     底部：已拥有道具栏。
+     bind 标识：shop.bg / shop.back / shop.title / shop.coinIcon / shop.coinText / shop.tab.* / shop.card.* / shop.icon.* / shop.name.* / shop.buy.* / shop.owned*。 */
+  shop: {
+    name: '商店界面',
+    bg: '',
+    items: [
+      /* 全屏底图 + 中部背景（九宫格） */
+      {type:'image', bind:'', name:'全屏底图', src:'/assets/UI/main_bg.png.jpg', x:0, y:0.5, w:540, h:960},
+      {type:'image', bind:'shop.bg', name:'商店背景', src:'/assets/UI/bg_shop_zh.png', x:107.4, y:143.5, w:369, h:681.2, sliceEnabled:true, sliceT:128, sliceR:0, sliceB:128, sliceL:0},
+
+      /* 顶部：返回 + 标题 */
+      {type:'image', bind:'shop.back', name:'返回按钮', src:'/assets/UI/btn_shop_back_zh.png', x:82.2, y:11.3, w:70, h:50},
+      {type:'image', bind:'shop.title', name:'商店标题', src:'/assets/UI/bg_shop_title_zh.png', x:250, y:10, w:87.4, h:44.8},
+
+      /* 金币栏 */
+      {type:'image', bind:'shop.coinText', name:'金币栏背景', src:'/assets/UI/bg_shop_gold_bar_zh.png', x:101.3, y:72.6, w:337.5, h:55.1},
+      {type:'text', bind:'', name:'金币数量', text:'5000', x:297.1, y:78.4, w:94, h:41.1, fontSize:30, color:'#debc17', bold:true, align:'center', strokeColor:'#545454', strokeWidth:1},
+      {type:'image', bind:'shop.coinIcon', name:'金币图标', src:'/assets/UI/icon_coin_zh.png', x:389.7, y:79.7, w:38.7, h:38.1},
+
+      /* 左侧标签 */
+      {type:'image', bind:'shop.tab.battle', name:'战场道具标签', src:'/assets/UI/btn_shop_gun_item_tab_zh.png', x:60, y:170, w:48.1, h:189.2},
+      {type:'image', bind:'shop.tab.skin', name:'火枪皮肤标签（锁定）', src:'/assets/UI/btn_shop_gun_skin_tab_zh.png', x:60, y:360, w:47.4, h:186.8},
+
+      /* 道具卡片背景（2×3，150×190） */
+      {type:'image', bind:'shop.card.gas', name:'气罐补给卡片', src:'/assets/UI/shop_card_bg_zh.png', x:130, y:170, w:150, h:190},
+      {type:'image', bind:'shop.card.cool', name:'紧急冷却卡片', src:'/assets/UI/shop_card_bg_zh.png', x:290, y:170, w:150, h:190},
+      {type:'image', bind:'shop.card.power', name:'火力全开卡片', src:'/assets/UI/shop_card_bg_zh.png', x:131.5, y:379.6, w:150, h:190},
+      {type:'image', bind:'shop.card.repair', name:'防线修复卡片', src:'/assets/UI/shop_card_bg_zh.png', x:290, y:380, w:150, h:190},
+      {type:'image', bind:'shop.card.shield', name:'防线护盾卡片', src:'/assets/UI/shop_card_bg_zh.png', x:130, y:590, w:150, h:190},
+      {type:'image', bind:'shop.card.bait', name:'蟑螂诱饵卡片', src:'/assets/UI/shop_card_bg_zh.png', x:290, y:590, w:150, h:190},
+
+      /* 道具图标 */
+      {type:'image', bind:'shop.icon.gas', name:'气罐补给图标', src:'/assets/consumable_gas.png', x:150, y:180, w:110, h:110},
+      {type:'image', bind:'shop.icon.cool', name:'紧急冷却图标', src:'/assets/consumable_cool.png', x:311.6, y:171.5, w:110, h:110},
+      {type:'image', bind:'shop.icon.power', name:'火力全开图标', src:'/assets/consumable_power.png', x:150, y:390, w:110, h:110},
+      {type:'image', bind:'shop.icon.repair', name:'防线修复图标', src:'/assets/consumable_repair.png', x:310, y:400, w:110, h:110},
+      {type:'image', bind:'shop.icon.shield', name:'防线护盾图标', src:'/assets/consumable_shield.png', x:150, y:600, w:110, h:110},
+      {type:'image', bind:'shop.icon.bait', name:'蟑螂诱饵图标', src:'/assets/consumable_bait.png', x:310, y:600, w:110, h:110},
+
+      /* 道具名称 */
+      {type:'text', bind:'shop.name.gas', name:'气罐补给文字', text:'气罐补给', x:160, y:290, w:90.4, h:40, fontSize:20, color:'#4a4036', bold:false, align:'center'},
+      {type:'text', bind:'shop.name.cool', name:'紧急冷却文字', text:'紧急冷却', x:297.3, y:286.2, w:125.5, h:40, fontSize:20, color:'#4a4036', bold:false, align:'center'},
+      {type:'text', bind:'shop.name.power', name:'火力全开文字', text:'火力全开', x:150, y:500, w:110, h:27, fontSize:20, color:'#4a4036', bold:false, align:'center'},
+      {type:'text', bind:'shop.name.repair', name:'防线修复文字', text:'防线修复', x:310, y:500, w:107.1, h:28.3, fontSize:20, color:'#4a4036', bold:false, align:'center'},
+      {type:'text', bind:'shop.name.shield', name:'防线护盾文字', text:'防线护盾', x:140, y:710, w:121.9, h:26.9, fontSize:20, color:'#4a4036', bold:false, align:'center'},
+      {type:'text', bind:'shop.name.bait', name:'蟑螂诱饵文字', text:'蟑螂诱饵', x:310, y:710, w:101, h:28.8, fontSize:20, color:'#4a4036', bold:false, align:'center'},
+
+      /* 道具价格 */
+      {type:'text', bind:'shop.price.gas', name:'气罐补给价格', text:'250', x:160, y:320, w:90.4, h:40, fontSize:20, color:'#4a4036', bold:false, align:'center'},
+      {type:'text', bind:'shop.price.cool', name:'紧急冷却价格', text:'400', x:300, y:320, w:125.5, h:40, fontSize:20, color:'#4a4036', bold:false, align:'center'},
+      {type:'text', bind:'shop.price.power', name:'火力全开价格', text:'800', x:150, y:530, w:110, h:27, fontSize:20, color:'#4a4036', bold:false, align:'center'},
+      {type:'text', bind:'shop.price.repair', name:'防线修复价格', text:'400', x:330, y:530, w:70, h:30, fontSize:20, color:'#4a4036', bold:false, align:'center'},
+      {type:'text', bind:'shop.price.shield', name:'防线护盾价格', text:'700', x:140, y:740, w:121.9, h:26.9, fontSize:20, color:'#4a4036', bold:false, align:'center'},
+      {type:'text', bind:'shop.price.bait', name:'蟑螂诱饵价格', text:'400', x:310, y:740, w:101, h:28.8, fontSize:20, color:'#4a4036', bold:false, align:'center'},
+
+      /* 购买按钮 */
+      {type:'image', bind:'shop.buy.gas', name:'气罐补给购买', src:'/assets/UI/btn_bg_buy_zh.png', x:240, y:320, w:34, h:34.5},
+      {type:'image', bind:'shop.buy.cool', name:'紧急冷却购买', src:'/assets/UI/btn_bg_buy_zh.png', x:400, y:320, w:34, h:34.5},
+      {type:'image', bind:'shop.buy.power', name:'火力全开购买', src:'/assets/UI/btn_bg_buy_zh.png', x:240, y:530, w:34, h:34.5},
+      {type:'image', bind:'shop.buy.repair', name:'防线修复购买', src:'/assets/UI/btn_bg_buy_zh.png', x:400, y:530, w:34, h:34.5},
+      {type:'image', bind:'shop.buy.shield', name:'防线护盾购买', src:'/assets/UI/btn_bg_buy_zh.png', x:240, y:740, w:34, h:34.5},
+      {type:'image', bind:'shop.buy.bait', name:'蟑螂诱饵购买', src:'/assets/UI/btn_bg_buy_zh.png', x:400, y:740, w:34, h:34.5},
+
+      /* 底部已拥有道具栏（去掉卡片背景，道具图标 58px 间距，起点 122.5） */
+      {type:'image', bind:'shop.ownedBar', name:'已拥有道具栏背景', src:'/assets/UI/bg_shop_bottom_item_bar_zh.png', x:111.5, y:832, w:361.9, h:117.9},
+      {type:'text', bind:'', name:'已拥有道具标题', text:'已拥有道具', x:182.3, y:838.7, w:220, h:40, fontSize:20, color:'#f9c453', bold:false, align:'center', strokeColor:'#000000', strokeWidth:0},
+      {type:'image', bind:'', name:'数量背景', src:'/assets/UI/bg_item_num_bg_zh.png', x:154.9, y:910, w:30.1, h:34},
+      {type:'image', bind:'shop.owned.gas', name:'已拥有-气罐', src:'/assets/consumable_gas.png', x:122.5, y:880.1, w:58.1, h:58.1},
+      {type:'text', bind:'', name:'已拥有数量文字', text:'X3', x:160, y:918.1, w:21.5, h:20.9, fontSize:15, color:'#3f3d36', bold:true, align:'center', strokeColor:'#000000', strokeWidth:0},
+
+      /* 滚动条 */
+      {type:'image', bind:'', name:'滚动条轨道', src:'/assets/UI/shop_scroll_track.png', x:450, y:180, w:20, h:603.3, sliceEnabled:true, sliceT:20, sliceR:0, sliceB:20, sliceL:0},
+      {type:'image', bind:'', name:'滚动条滑块', src:'/assets/UI/shop_scroll_bar.png', x:450, y:240, w:20, h:460}
+    ]
+  }
+};
+const TYPE_ICO = {image:'图', text:'文', rect:'板', button:'钮', hit:'区'};
+const TYPE_NAME = {image:'图片', text:'文字', rect:'面板', button:'按钮', hit:'选中区域'};
+const STORE_KEY = 'roach_ui_editor_v2';
+const GRID = 10;
+
+/* ---------- 状态 ---------- */
+let state = {
+  stage:{w:540, h:960, bg:'', bgCustom:'', bgOpacity:1, zoom:1, grid:false, snap:false, safe:false, narrow:false},
+  elements:[], selId:null
+};
+let idSeq = 1;
+let hist = [], hidx = -1;
+let drag = null; // {mode,id,sx,sy,startMouse,startEl}
+
+const $ = id => document.getElementById(id);
+const stage = $('stage'), stageBox = $('stageBox'), layerList = $('layerList'), propsBody = $('propsBody');
+/* 资源路径适配：http(dev server) 下 /assets 由根服务；file:// 双击直开时重写到同级 public/assets，
+   使图片在两种打开方式下都能显示。data:/http/blob 路径原样返回。元素存储仍用 /assets 逻辑路径（导出回写游戏用） */
+const IS_FILE = location.protocol === 'file:';
+function asset(p){
+  if(!p || typeof p!=='string') return p;
+  if(p.startsWith('data:') || p.startsWith('http') || p.startsWith('blob:')) return p;
+  if(IS_FILE && p.charAt(0)==='/') return 'public'+p;
+  return p;
+}
+const r1 = n => Math.round(n*10)/10;
+
+/* ---------- 元素工厂 ---------- */
+function makeEl(type, extra){
+  const base = {id:'el_'+(idSeq++), type, name:TYPE_NAME[type],
+    x:80, y:120, w:200, h:80, rotation:0, opacity:1, visible:true, locked:false};
+  if(type==='image') Object.assign(base, {w:96,h:96, src:'', sliceEnabled:false, sliceT:20, sliceR:20, sliceB:20, sliceL:20});
+  if(type==='text') Object.assign(base, {w:220,h:40, text:'文字', fontSize:26, color:'#4a4036', bold:false, align:'center', lineHeight:1.3, strokeColor:'#000000', strokeWidth:0, gradEnabled:false, gradFrom:'#ff6b6b', gradTo:'#4ecdc4', gradAngle:90, shadowEnabled:false, shadowColor:'#000000', shadowOffsetX:0, shadowOffsetY:2, shadowBlur:0});
+  if(type==='rect') Object.assign(base, {w:220,h:130, fill:'#fdfaf3', stroke:'#c9b896', strokeW:2, radius:14});
+  if(type==='button') Object.assign(base, {w:180,h:64, fill:'#e8c87a', stroke:'#b8933f', strokeW:2, radius:16,
+    label:'按钮', fontSize:26, textColor:'#4a3a20', src:''});
+  if(type==='hit') Object.assign(base, {w:74,h:74, fill:'rgba(56,189,248,0.10)', stroke:'#38bdf8', strokeW:2, radius:0, dashed:true});
+  return Object.assign(base, extra||{});
+}
+const selEl = () => state.elements.find(e=>e.id===state.selId) || null;
+
+/* ---------- 历史 ---------- */
+function snapshot(){ return JSON.stringify({stage:state.stage, elements:state.elements, idSeq}); }
+function pushHistory(){
+  hist = hist.slice(0, hidx+1);
+  hist.push(snapshot());
+  if(hist.length>60) hist.shift();
+  hidx = hist.length-1;
+  saveNow();
+}
+function restore(s){
+  const d = JSON.parse(s);
+  state.stage = d.stage; state.elements = d.elements; idSeq = d.idSeq||1;
+  if(!state.elements.some(e=>e.id===state.selId)) state.selId=null;
+  renderAll();
+}
+function undo(){ if(hidx>0){ hidx--; restore(hist[hidx]); } }
+function redo(){ if(hidx<hist.length-1){ hidx++; restore(hist[hidx]); } }
+
+/* ---------- 持久化 ---------- */
+let saveTimer=null;
+function saveNow(){
+  clearTimeout(saveTimer);
+  try{ localStorage.setItem(STORE_KEY, snapshot()); }catch(_){}
+}
+function scheduleSave(){ clearTimeout(saveTimer); saveTimer=setTimeout(saveNow,300); }
+function loadStore(){
+  try{
+    const raw = localStorage.getItem(STORE_KEY);
+    if(!raw) return false;
+    const d = JSON.parse(raw);
+    if(!d || !Array.isArray(d.elements)) return false;
+    state.stage = Object.assign(state.stage, d.stage);
+    state.elements = d.elements; idSeq = d.idSeq||(state.elements.length+1);
+    return true;
+  }catch(_){ return false; }
+}
+
+/* ---------- 舞台渲染 ---------- */
+function renderStageShell(){
+  const {w,h,zoom,bg,bgCustom,bgOpacity} = state.stage;
+  stage.style.width = w+'px';
+  stage.style.height = h+'px';
+  stage.style.transform = 'scale('+zoom+')';
+  stageBox.style.width = (w*zoom)+'px';
+  stageBox.style.height = (h*zoom)+'px';
+  // 底图层：自定义界面截图优先，其次内置背景/棋盘格
+  const bgOv = $('bgOv');
+  bgOv.className = (bg==='__checker' && !bgCustom) ? 'checked' : '';
+  bgOv.style.backgroundImage = '';
+  if(bgCustom){
+    bgOv.style.backgroundImage = 'url("'+bgCustom+'")';
+    bgOv.style.opacity = bgOpacity;
+  } else if(bg && bg!=='__checker'){
+    bgOv.style.backgroundImage = 'url("'+bg+'")';
+    bgOv.style.opacity = bgOpacity;
+  } else {
+    bgOv.style.opacity = 1;
+  }
+  $('bgOpacityWrap').classList.toggle('on', !!(bgCustom || (bg && bg!=='__checker' && bg!=='')));
+  $('bgOpacity').value = bgOpacity;
+  // 下拉选中态同步
+  selBg.value = bgCustom ? '__custom__' : bg;
+  $('gridOv').style.display = state.stage.grid ? 'block' : 'none';
+  $('safeOv').style.display = state.stage.safe ? 'block' : 'none';
+  // 窄屏左右裁切安全区：标准设计基准固定 9:16（540×960），最窄屏 21:9（0.4286）。
+  // 窄屏两侧各裁切 = (540 - 960×9/21) / 2 ≈ 64px（固定设计坐标，不随画布高变化）
+  const DESIGN_W = 540, DESIGN_H = 960, NARROW_RATIO = 9 / 21;
+  const sideCut = Math.max(0, (DESIGN_W - DESIGN_H * NARROW_RATIO) / 2);
+  $('narrowOv').style.display = state.stage.narrow ? 'block' : 'none';
+  const nL = document.querySelector('#narrowOv .nLeft');
+  const nR = document.querySelector('#narrowOv .nRight');
+  if (nL) nL.style.width = sideCut + 'px';
+  if (nR) nR.style.width = sideCut + 'px';
+  $('zoomVal').textContent = Math.round(zoom*100)+'%';
+  $('btnGrid').classList.toggle('armed', state.stage.grid);
+  $('btnSnap').classList.toggle('armed', state.stage.snap);
+  $('btnSafe').classList.toggle('armed', state.stage.safe);
+  $('btnNarrow').classList.toggle('armed', state.stage.narrow);
+}
+
+/* ---------- 图片缓存与九宫格绘制 ---------- */
+const imgCache = new Map();
+function loadImage(src, cb){
+  if(!src){ cb(null); return; }
+  const key = src;
+  if(imgCache.has(key)){
+    const cached = imgCache.get(key);
+    if(cached.loaded){ cb(cached.img); }
+    else { cached.cbs.push(cb); }
+    return;
+  }
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  const entry = {img, loaded:false, cbs:[cb]};
+  imgCache.set(key, entry);
+  img.onload = ()=>{
+    entry.loaded = true;
+    entry.cbs.forEach(fn=>fn(img));
+    entry.cbs = [];
+  };
+  img.onerror = ()=>{
+    entry.loaded = true;
+    entry.cbs.forEach(fn=>fn(null));
+    entry.cbs = [];
+  };
+  img.src = (src.startsWith('data:') || src.startsWith('http')) ? src : asset(src);
+}
+function draw9Slice(ctx, img, el){
+  const iw = img.naturalWidth, ih = img.naturalHeight;
+  // 切片距离（源图像素，四角以源图 1:1 锁定绘制、不随目标缩放）
+  let st = Math.max(0, el.sliceT || 0), sr = Math.max(0, el.sliceR || 0);
+  let sb = Math.max(0, el.sliceB || 0), sl = Math.max(0, el.sliceL || 0);
+  const dw = ctx.canvas.width, dh = ctx.canvas.height;
+  // 锁定四角图素大小：若目标尺寸小于左右/上下切片之和，等比缩小四角，避免中间负尺寸导致重叠/缺失
+  const totalW = sl + sr, totalH = st + sb;
+  if(totalW > 0 && dw < totalW){ const k = dw / totalW; sl *= k; sr *= k; }
+  if(totalH > 0 && dh < totalH){ const k = dh / totalH; st *= k; sb *= k; }
+  // 源切片坐标与尺寸
+  const sx = [0, sl, iw - sr];
+  const sy = [0, st, ih - sb];
+  const sw = [sl, Math.max(0, iw - sl - sr), sr];
+  const sh = [st, Math.max(0, ih - st - sb), sb];
+  // 目标切片坐标与尺寸（四角锁定、中间拉伸补齐剩余空间）
+  const dx = [0, sl, dw - sr];
+  const dy = [0, st, dh - sb];
+  const dw2 = [sl, Math.max(0, dw - sl - sr), sr];
+  const dh2 = [st, Math.max(0, dh - st - sb), sb];
+  ctx.clearRect(0, 0, dw, dh);
+  for(let row=0; row<3; row++){
+    for(let col=0; col<3; col++){
+      if(sw[col] > 0 && sh[row] > 0 && dw2[col] > 0 && dh2[row] > 0){
+        ctx.drawImage(img, sx[col], sy[row], sw[col], sh[row], dx[col], dy[row], dw2[col], dh2[row]);
+      }
+    }
+  }
+}
+function updateSliceGuide(d, el){
+  const guide = d.querySelector('.sliceGuide');
+  if(!guide) return;
+  guide.querySelector('[data-dir="t"]').style.top = (el.sliceT || 0)+'px';
+  guide.querySelector('[data-dir="b"]').style.bottom = (el.sliceB || 0)+'px';
+  guide.querySelector('[data-dir="l"]').style.left = (el.sliceL || 0)+'px';
+  guide.querySelector('[data-dir="r"]').style.right = (el.sliceR || 0)+'px';
+}
+function redrawImage(el){
+  const d = stage.querySelector('.el[data-id="'+el.id+'"]');
+  if(!d) return;
+  // 无论图片是否加载完成，都立即更新九宫格辅助线位置
+  updateSliceGuide(d, el);
+  const canvas = d.querySelector('canvas.elCanvas');
+  if(!canvas) return;
+  const w = Math.max(1, Math.floor(el.w)), h = Math.max(1, Math.floor(el.h));
+  if(canvas.width !== w || canvas.height !== h){
+    canvas.width = w;
+    canvas.height = h;
+  }
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, w, h);
+  if(!el.src){
+    // 空 src：画半透明占位
+    ctx.fillStyle = 'rgba(120,120,120,.12)';
+    ctx.fillRect(0,0,w,h);
+    ctx.setLineDash([6,6]);
+    ctx.strokeStyle = 'rgba(0,0,0,.35)';
+    ctx.strokeRect(0,0,w,h);
+    ctx.setLineDash([]);
+    return;
+  }
+  loadImage(el.src, (img)=>{
+    if(!img) return;
+    if(el.sliceEnabled){
+      draw9Slice(ctx, img, el);
+    } else {
+      ctx.drawImage(img, 0, 0, w, h);
+    }
+  });
+}
+
+function buildElDom(el){
+  const d = document.createElement('div');
+  d.className = 'el';
+  d.dataset.id = el.id;
+  if(el.type==='image'){
+    d.classList.toggle('slice', !!el.sliceEnabled);
+    const canvas = document.createElement('canvas');
+    canvas.className = 'elCanvas';
+    canvas.alt='';
+    d.appendChild(canvas);
+    const guide = document.createElement('div');
+    guide.className = 'sliceGuide';
+    guide.innerHTML = '<div class="sgLine sgH" data-dir="t"></div><div class="sgLine sgH" data-dir="b"></div><div class="sgLine sgV" data-dir="l"></div><div class="sgLine sgV" data-dir="r"></div>';
+    d.appendChild(guide);
+  } else if(el.type==='text'){
+    const t = document.createElement('div');
+    t.className='txt';
+    d.appendChild(t);
+  } else if(el.type==='button'){
+    // 按钮：设置了图片素材则渲染为图片（等同图片元素，可换图），否则渲染色块+文字
+    if(el.src){
+      const img = document.createElement('img');
+      img.alt='';
+      img.onerror = function(){ this.style.opacity=.12; };
+      d.appendChild(img);
+    } else {
+      const t = document.createElement('div');
+      t.className='txt';
+      d.appendChild(t);
+    }
+  }
+  // rect：纯色块，无内部元素
+  ['nw','n','ne','e','se','s','sw','w'].forEach(function(k){
+    const h = document.createElement('div');
+    h.className='handle h-'+k;
+    const map={nw:[-1,-1],n:[0,-1],ne:[1,-1],e:[1,0],se:[1,1],s:[0,1],sw:[-1,1],w:[-1,0]};
+    h.dataset.sx = map[k][0]; h.dataset.sy = map[k][1];
+    h.addEventListener('pointerdown', onHandleDown);
+    d.appendChild(h);
+  });
+  d.addEventListener('pointerdown', onElPointerDown);
+  d.addEventListener('dblclick', onElDblClick);
+  return d;
+}
+
+function syncElDom(el){
+  const d = stage.querySelector('.el[data-id="'+el.id+'"]');
+  if(!d) return;
+  d.style.left = r1(el.x)+'px';
+  d.style.top = r1(el.y)+'px';
+  d.style.width = r1(el.w)+'px';
+  d.style.height = r1(el.h)+'px';
+  d.style.transform = 'rotate('+r1(el.rotation)+'deg)';
+  d.style.opacity = el.opacity;
+  d.style.zIndex = el._z;
+  d.classList.toggle('sel', el.id===state.selId);
+  d.classList.toggle('locked', !!el.locked);
+  d.classList.toggle('hiddenEl', !el.visible);
+  if(el.type==='image'){
+    d.classList.toggle('slice', !!el.sliceEnabled);
+    redrawImage(el);
+  } else if(el.type==='text'){
+    const t = d.querySelector('.txt');
+    t.textContent = el.text;
+    t.style.fontSize = el.fontSize+'px';
+    t.style.fontWeight = el.bold ? 'bold' : 'normal';
+    t.style.justifyContent = el.align==='center'?'center':(el.align==='right'?'flex-end':'flex-start');
+    t.style.textAlign = el.align;
+    t.style.alignItems = 'flex-start';
+    t.style.lineHeight = el.lineHeight;
+    // 描边（-webkit-text-stroke；Firefox 回退为多重 text-shadow）+ 投影（text-shadow）
+    const sw = Math.max(0, el.strokeWidth || 0);
+    const shadows = [];
+    if(sw > 0){
+      const sc = el.strokeColor || '#000000';
+      t.style.webkitTextStroke = sw + 'px ' + sc;
+      shadows.push([
+        [-1,-1],[1,-1],[-1,1],[1,1],[0,-1],[0,1],[-1,0],[1,0]
+      ].map(o=>o[0]*sw+'px '+o[1]*sw+'px 0 '+sc).join(','));
+    } else {
+      t.style.webkitTextStroke = '';
+    }
+    if(el.shadowEnabled && el.shadowColor){
+      const ox = el.shadowOffsetX != null ? el.shadowOffsetX : 0;
+      const oy = el.shadowOffsetY != null ? el.shadowOffsetY : 2;
+      const blur = el.shadowBlur != null ? el.shadowBlur : 0;
+      shadows.push(ox+'px '+oy+'px '+blur+'px '+el.shadowColor);
+    }
+    t.style.textShadow = shadows.join(',');
+    // 颜色渐变（background-clip:text）
+    if(el.gradEnabled && el.gradFrom && el.gradTo){
+      const angle = el.gradAngle != null ? el.gradAngle : 90;
+      t.style.backgroundImage = 'linear-gradient(' + angle + 'deg, ' + el.gradFrom + ', ' + el.gradTo + ')';
+      t.style.webkitBackgroundClip = 'text';
+      t.style.backgroundClip = 'text';
+      t.style.webkitTextFillColor = 'transparent';
+      t.style.color = 'transparent';
+    } else {
+      t.style.backgroundImage = '';
+      t.style.webkitBackgroundClip = '';
+      t.style.backgroundClip = '';
+      t.style.webkitTextFillColor = '';
+      t.style.color = el.color;
+    }
+  } else if(el.type==='rect' || el.type==='button' || el.type==='hit'){
+    const btnImg = el.type==='button' ? d.querySelector('img') : null;
+    if(btnImg){
+      // 图片按钮：透明底无边框，图片铺满；同步 src
+      d.style.background = 'transparent';
+      d.style.border = 'none';
+      d.style.borderRadius = '0';
+      d.style.boxSizing = 'border-box';
+      const a = asset(el.src);
+      if(btnImg.getAttribute('src') !== a) btnImg.src = a;
+    } else {
+      d.style.background = el.fill;
+      d.style.border = el.strokeW+'px '+(el.dashed?'dashed':'solid')+' '+el.stroke;
+      d.style.borderRadius = el.radius+'px';
+      d.style.boxSizing = 'border-box';
+      if(el.type==='button'){
+        const t = d.querySelector('.txt');
+        if(t){
+          t.textContent = el.label;
+          t.style.fontSize = el.fontSize+'px';
+          t.style.color = el.textColor;
+          t.style.fontWeight = 'bold';
+          t.style.justifyContent = 'center';
+          t.style.alignItems = 'center';
+          t.style.textAlign = 'center';
+        }
+      }
+    }
+  }
+}
+
+function renderStage(){
+  renderStageShell();
+  // 保留 overlay，移除旧元素
+  stage.querySelectorAll('.el').forEach(n=>n.remove());
+  state.elements.forEach((el,i)=>{ el._z = i+1; stage.appendChild(buildElDom(el)); syncElDom(el); });
+}
+
+/* ---------- 图层面板 ---------- */
+function renderLayers(){
+  layerList.innerHTML='';
+  if(!state.elements.length){
+    layerList.innerHTML='<div class="layer empty">暂无图层<br>从左侧素材库或顶部<br>「文字 / 面板 / 按钮」添加</div>';
+    return;
+  }
+  // 顶层在前
+  for(let i=state.elements.length-1;i>=0;i--){
+    const el = state.elements[i];
+    const row = document.createElement('div');
+    row.className='layer'+(el.id===state.selId?' sel':'');
+    row.draggable = true;
+    row.dataset.idx = i;
+    row.innerHTML =
+      '<span class="tog vis" title="显示/隐藏">'+(el.visible?'👁':'—')+'</span>'+
+      '<span class="ico">'+TYPE_ICO[el.type]+'</span>'+
+      '<span class="nm">'+escapeHtml(el.name)+'</span>'+
+      '<span class="tog lck" title="锁定/解锁">'+(el.locked?'🔒':'·')+'</span>';
+    row.addEventListener('click', e=>{
+      if(e.target.classList.contains('tog')) return;
+      select(el.id);
+    });
+    row.querySelector('.vis').addEventListener('click', ()=>{ pushHistory(); el.visible=!el.visible; renderAll(); });
+    row.querySelector('.lck').addEventListener('click', ()=>{ pushHistory(); el.locked=!el.locked; renderAll(); });
+    const nm = row.querySelector('.nm');
+    nm.addEventListener('dblclick', e=>{
+      e.stopPropagation();
+      const inp = document.createElement('input');
+      inp.value = el.name;
+      nm.textContent=''; nm.appendChild(inp);
+      inp.focus(); inp.select();
+      const commit=()=>{ pushHistory(); el.name=inp.value.trim()||el.name; renderAll(); };
+      inp.addEventListener('blur', commit);
+      inp.addEventListener('keydown', ev=>{ if(ev.key==='Enter') inp.blur(); if(ev.key==='Escape'){ renderLayers(); } });
+      ev.preventDefault();
+    });
+    // 拖拽排序
+    row.addEventListener('dragstart', e=>{ e.dataTransfer.setData('text/plain', String(i)); e.dataTransfer.effectAllowed='move'; });
+    row.addEventListener('dragover', e=>{
+      e.preventDefault();
+      const r = row.getBoundingClientRect();
+      const after = e.clientY > r.top + r.height/2;
+      row.classList.toggle('dragoverBot', after);
+      row.classList.toggle('dragoverTop', !after);
+    });
+    row.addEventListener('dragleave', ()=> row.classList.remove('dragoverTop','dragoverBot'));
+    row.addEventListener('drop', e=>{
+      e.preventDefault();
+      row.classList.remove('dragoverTop','dragoverBot');
+      const from = parseInt(e.dataTransfer.getData('text/plain'),10);
+      if(isNaN(from) || from===i) return;
+      const r = row.getBoundingClientRect();
+      const after = e.clientY > r.top + r.height/2;
+      let to = i + (after?1:0);
+      if(from<to) to--;
+      pushHistory();
+      const [moved] = state.elements.splice(from,1);
+      state.elements.splice(to,0,moved);
+      renderAll();
+    });
+    layerList.appendChild(row);
+  }
+}
+
+/* ---------- 属性面板 ---------- */
+function numRow(label, key, opts){
+  opts = opts||{};
+  const step = opts.step||1, min = opts.min!==undefined?opts.min:null, max = opts.max!==undefined?opts.max:null;
+  const div = document.createElement('div'); div.className='prow';
+  div.innerHTML = '<label>'+label+'</label><input type="number" step="'+step+'"'+(min!==null?' min="'+min+'"':'')+(max!==null?' max="'+max+'"':'')+'>';
+  const inp = div.querySelector('input');
+  inp.value = selEl()[key];
+  inp.addEventListener('input', ()=>{
+    const v = parseFloat(inp.value);
+    if(isNaN(v)) return;
+    const el = selEl(); if(!el) return;
+    el[key] = (min!==null&&v<min)?min:(max!==null&&v>max?max:v);
+    syncElDom(el); scheduleSave();
+  });
+  inp.addEventListener('change', ()=>{ pushHistory(); renderAll(); });
+  return div;
+}
+function colorRow(label, key){
+  const div = document.createElement('div'); div.className='prow';
+  div.innerHTML = '<label>'+label+'</label><input type="color">';
+  const inp = div.querySelector('input');
+  inp.value = selEl()[key];
+  inp.addEventListener('input', ()=>{ const el=selEl(); if(!el)return; el[key]=inp.value; syncElDom(el); scheduleSave(); });
+  inp.addEventListener('change', pushHistory);
+  return div;
+}
+function textRow(label, key, area){
+  const div = document.createElement('div'); div.className='prow';
+  div.innerHTML = '<label>'+label+'</label>'+(area?'<textarea></textarea>':'<input type="text">');
+  const inp = div.querySelector(area?'textarea':'input');
+  inp.value = selEl()[key];
+  inp.addEventListener('input', ()=>{ const el=selEl(); if(!el)return; el[key]=inp.value; syncElDom(el); if(area) renderLayers(); scheduleSave(); });
+  inp.addEventListener('change', pushHistory);
+  return div;
+}
+function checkRow(label, key){
+  const div = document.createElement('div'); div.className='prow';
+  div.innerHTML = '<label></label><span class="chk"><input type="checkbox" id="chk_'+key+'"> '+label+'</span>';
+  const inp = div.querySelector('input');
+  inp.checked = !!selEl()[key];
+  inp.addEventListener('change', ()=>{ pushHistory(); const el=selEl(); if(!el)return; el[key]=inp.checked; syncElDom(el); renderLayers(); });
+  return div;
+}
+function alignRow(){
+  const div = document.createElement('div'); div.className='prow';
+  div.innerHTML = '<label>对齐</label><select style="flex:1"><option value="left">左</option><option value="center">中</option><option value="right">右</option></select>';
+  const sel = div.querySelector('select');
+  sel.value = selEl().align;
+  sel.addEventListener('change', ()=>{ pushHistory(); const el=selEl(); if(!el)return; el.align=sel.value; syncElDom(el); });
+  return div;
+}
+
+function renderProps(){
+  propsBody.innerHTML='';
+  const el = selEl();
+  if(!el){ propsBody.innerHTML='<div id="propsEmpty">未选中元素<br>点击舞台元素或图层进行编辑<br><br>移动：拖拽 / 方向键（Shift×10）<br>缩放：8 个手柄（Shift 等比）<br>删除 <kbd>Del</kbd>　复制 <kbd>Ctrl+D</kbd><br>双击文字元素可快速改内容</div>'; return; }
+  $('propHint').textContent = TYPE_NAME[el.type]+' · '+el.name;
+
+  const g1 = document.createElement('div'); g1.className='propGroup';
+  g1.innerHTML='<div class="pgTitle">变换</div>';
+  g1.appendChild(numRow('X', 'x'));
+  g1.appendChild(numRow('Y', 'y'));
+  g1.appendChild(numRow('宽', 'w', {min:4}));
+  g1.appendChild(numRow('高', 'h', {min:4}));
+  g1.appendChild(numRow('旋转°', 'rotation', {min:-360, max:360}));
+  const opRow = document.createElement('div'); opRow.className='prow range';
+  opRow.innerHTML='<label>不透明</label><input type="range" min="0.1" max="1" step="0.05"><span class="val"></span>';
+  const rg = opRow.querySelector('input'), rv = opRow.querySelector('.val');
+  rg.value = el.opacity; rv.textContent = Math.round(el.opacity*100)+'%';
+  rg.addEventListener('input', ()=>{ el.opacity=parseFloat(rg.value); rv.textContent=Math.round(el.opacity*100)+'%'; syncElDom(el); scheduleSave(); });
+  rg.addEventListener('change', pushHistory);
+  g1.appendChild(opRow);
+  const quick = document.createElement('div'); quick.className='propBtns';
+  quick.innerHTML='<button class="btn" id="pCenterH">水平居中</button><button class="btn" id="pCenterV">垂直居中</button>';
+  g1.appendChild(quick);
+  propsBody.appendChild(g1);
+  quick.querySelector('#pCenterH').addEventListener('click', ()=>{ pushHistory(); el.x=r1((state.stage.w-el.w)/2); renderAll(); });
+  quick.querySelector('#pCenterV').addEventListener('click', ()=>{ pushHistory(); el.y=r1((state.stage.h-el.h)/2); renderAll(); });
+
+  const g2 = document.createElement('div'); g2.className='propGroup';
+  g2.innerHTML='<div class="pgTitle">样式</div>';
+  if(el.type==='image' || el.type==='button'){
+    // 已绑定游戏脚本的按钮：显示回写标识（位置/图片导出后回写游戏，点击逻辑不受影响）
+    if(el.bind){
+      const bindRow = document.createElement('div'); bindRow.className='prow';
+      bindRow.innerHTML = '<label>绑定按钮</label><div style="flex:1;font-size:10px;color:#6b4f2e;background:#f6e7c2;border:1px solid #d9b968;border-radius:5px;padding:4px 7px;line-height:1.5"><b>'+escapeHtml(el.bind)+'</b><br>已关联游戏脚本，拖动/换图后导出 JSON 即可回写，点击功能不受影响</div>';
+      g2.appendChild(bindRow);
+    }
+    buildImageControls(el, g2);
+  }
+  if(el.type==='text'){
+    g2.appendChild(textRow('文字内容','text', true));
+    g2.appendChild(numRow('字号', 'fontSize', {min:8, max:200}));
+    g2.appendChild(colorRow('颜色', 'color'));
+    g2.appendChild(alignRow());
+    g2.appendChild(checkRow('粗体', 'bold'));
+    g2.appendChild(numRow('行高', 'lineHeight', {step:0.1, min:0.6, max:4}));
+    // 描边
+    g2.appendChild(colorRow('描边色', 'strokeColor'));
+    g2.appendChild(numRow('描边宽', 'strokeWidth', {min:0, max:20, step:0.5}));
+    // 颜色渐变
+    g2.appendChild(checkRow('颜色渐变', 'gradEnabled'));
+    g2.appendChild(colorRow('渐变起色', 'gradFrom'));
+    g2.appendChild(colorRow('渐变止色', 'gradTo'));
+    g2.appendChild(numRow('渐变角度', 'gradAngle', {min:0, max:360}));
+    // 投影
+    g2.appendChild(checkRow('投影', 'shadowEnabled'));
+    g2.appendChild(colorRow('投影颜色', 'shadowColor'));
+    g2.appendChild(numRow('投影偏移X', 'shadowOffsetX', {min:-50, max:50, step:1}));
+    g2.appendChild(numRow('投影偏移Y', 'shadowOffsetY', {min:-50, max:50, step:1}));
+    g2.appendChild(numRow('投影模糊', 'shadowBlur', {min:0, max:50, step:1}));
+  }
+  // rect 始终是色块；button 仅在未使用图片时显示色块/文字样式（用图后渲染为图片按钮）
+  if(el.type==='rect' || (el.type==='button' && !el.src)){
+    g2.appendChild(colorRow('填充色', 'fill'));
+    g2.appendChild(colorRow('描边色', 'stroke'));
+    g2.appendChild(numRow('描边宽', 'strokeW', {min:0, max:20}));
+    g2.appendChild(numRow('圆角', 'radius', {min:0, max:200}));
+    if(el.type==='button'){
+      g2.appendChild(textRow('按钮文字','label'));
+      g2.appendChild(numRow('字号', 'fontSize', {min:8, max:120}));
+      g2.appendChild(colorRow('文字色', 'textColor'));
+    }
+  }
+  // hit 选中区域：虚线框，仅编辑器可见，游戏内不显示；显示绑定标识说明
+  if(el.type==='hit'){
+    if(el.bind){
+      const bindRow = document.createElement('div'); bindRow.className='prow';
+      bindRow.innerHTML = '<label>绑定区域</label><div style="flex:1;font-size:10px;color:#0c4a6e;background:#e0f2fe;border:1px solid #38bdf8;border-radius:5px;padding:4px 7px;line-height:1.5"><b>'+escapeHtml(el.bind)+'</b><br>关卡点击热区：仅在编辑器中显示虚线框，游戏内不显示；调整位置/大小后导出 JSON 回写游戏</div>';
+      g2.appendChild(bindRow);
+    }
+    g2.appendChild(colorRow('填充色', 'fill'));
+    g2.appendChild(colorRow('描边色', 'stroke'));
+    g2.appendChild(numRow('描边宽', 'strokeW', {min:0, max:20}));
+  }
+  propsBody.appendChild(g2);
+
+  const g3 = document.createElement('div'); g3.className='propGroup';
+  g3.innerHTML='<div class="pgTitle">图层操作</div>';
+  const gb = document.createElement('div'); gb.className='propBtns';
+  gb.innerHTML='<button class="btn" id="pDup">复制 (Ctrl+D)</button><button class="btn danger" id="pDel">删除 (Del)</button>';
+  g3.appendChild(gb);
+  propsBody.appendChild(g3);
+  gb.querySelector('#pDup').addEventListener('click', duplicateSel);
+  gb.querySelector('#pDel').addEventListener('click', deleteSel);
+}
+
+function renderAll(){ renderStage(); renderLayers(); renderProps(); scheduleSave(); }
+
+/* ---------- 选择 ---------- */
+function select(id){
+  state.selId = id;
+  stage.querySelectorAll('.el').forEach(n=>n.classList.toggle('sel', n.dataset.id===id));
+  renderLayers(); renderProps();
+}
+
+/* ---------- 坐标换算 ---------- */
+function toStage(e){
+  const r = stage.getBoundingClientRect();
+  return {x:(e.clientX-r.left)/state.stage.zoom, y:(e.clientY-r.top)/state.stage.zoom};
+}
+const snapV = v => state.stage.snap ? Math.round(v/GRID)*GRID : r1(v);
+
+/* ---------- 指针交互：移动 / 缩放 ---------- */
+function onElPointerDown(e){
+  const id = this.dataset.id;
+  const el = state.elements.find(x=>x.id===id);
+  if(!el || el.locked) return;
+  if(e.button!==undefined && e.button!==0) return;
+  select(id);
+  e.preventDefault();
+  const m = toStage(e);
+  pushHistory();
+  drag = {mode:'move', id, startMouse:m, startEl:{x:el.x,y:el.y}};
+  window.addEventListener('pointermove', onDragMove);
+  window.addEventListener('pointerup', onDragUp, {once:true});
+}
+function onHandleDown(e){
+  e.stopPropagation();
+  e.preventDefault();
+  const id = this.closest('.el').dataset.id;
+  const el = state.elements.find(x=>x.id===id);
+  if(!el) return;
+  select(id);
+  pushHistory();
+  drag = {mode:'resize', id, sx:parseInt(this.dataset.sx,10), sy:parseInt(this.dataset.sy,10),
+          startEl:{x:el.x,y:el.y,w:el.w,h:el.h,rotation:el.rotation}, shift:e.shiftKey};
+  window.addEventListener('pointermove', onDragMove);
+  window.addEventListener('pointerup', onDragUp, {once:true});
+}
+function onDragMove(e){
+  if(!drag) return;
+  const el = state.elements.find(x=>x.id===drag.id);
+  if(!el) return;
+  const m = toStage(e);
+  if(drag.mode==='move'){
+    el.x = drag.startEl.x + (m.x-drag.startMouse.x);
+    el.y = drag.startEl.y + (m.y-drag.startMouse.y);
+    if(el.rotation===0){ el.x=snapV(el.x); el.y=snapV(el.y); }
+    syncElDom(el);
+  } else {
+    resizeEl(el, m, e.shiftKey);
+    syncElDom(el);
+  }
+}
+function onDragUp(){
+  if(drag){ drag=null; }
+  window.removeEventListener('pointermove', onDragMove);
+  renderAll();
+}
+/* 缩放：把鼠标位置换算到元素局部坐标（绕中心逆旋转），按手柄方向改边界 */
+function resizeEl(el, m, shift){
+  const s = drag.startEl;
+  const cx = s.x + s.w/2, cy = s.y + s.h/2;
+  const ang = -s.rotation*Math.PI/180;
+  const dx = m.x-cx, dy = m.y-cy;
+  const lx = dx*Math.cos(ang) - dy*Math.sin(ang);
+  const ly = dx*Math.sin(ang) + dy*Math.cos(ang);
+  let left=-s.w/2, right=s.w/2, top=-s.h/2, bottom=s.h/2;
+  const sx=drag.sx, sy=drag.sy;
+  let nw=s.w, nh=s.h;
+  if(shift && sx!==0 && sy!==0){
+    // 等比：以对角为锚，取较大缩放
+    let pw = sx>0 ? (lx+s.w/2) : (s.w/2-lx);
+    let ph = sy>0 ? (ly+s.h/2) : (s.h/2-ly);
+    const sc = Math.max(pw/s.w, ph/s.h);
+    nw = Math.max(8, s.w*sc); nh = Math.max(8, s.h*sc);
+    const fx = -sx*s.w/2, fy = -sy*s.h/2; // 固定对角（局部）
+    left = sx>0?fx:fx-nw;  right = sx>0?fx+nw:fx;
+    top  = sy>0?fy:fy-nh;  bottom= sy>0?fy+nh:fy;
+  } else {
+    if(sx>0) right=lx; else if(sx<0) left=lx;
+    if(sy>0) bottom=ly; else if(sy<0) top=ly;
+    nw = Math.max(8,right-left); nh = Math.max(8,bottom-top);
+  }
+  const nlcx=(left+right)/2, nlcy=(top+bottom)/2;
+  const a2 = s.rotation*Math.PI/180;
+  const wcx = nlcx*Math.cos(a2) - nlcy*Math.sin(a2);
+  const wcy = nlcx*Math.sin(a2) + nlcy*Math.cos(a2);
+  el.w = r1(nw); el.h = r1(nh);
+  el.x = r1(cx + wcx - nw/2);
+  el.y = r1(cy + wcy - nh/2);
+  if(s.rotation===0){ el.x=snapV(el.x); el.y=snapV(el.y); el.w=snapV(el.w); el.h=snapV(el.h); }
+}
+function onElDblClick(){
+  const el = state.elements.find(x=>x.id===this.dataset.id);
+  if(!el) return;
+  renderProps();
+  if(el.type==='text' || el.type==='button'){
+    const key = el.type==='text'?'text':'label';
+    const ta = propsBody.querySelector('textarea');
+    const inp = ta || Array.from(propsBody.querySelectorAll('input[type=text]')).find(i=>{
+      const lbl = i.closest('.prow').querySelector('label'); return lbl && (lbl.textContent==='文字内容'||lbl.textContent==='按钮文字');
+    });
+    if(inp){ inp.focus(); inp.select(); }
+  }
+}
+
+/* ---------- 添加 / 删除 / 复制 / 图层移动 ---------- */
+function addElement(el){
+  pushHistory();
+  state.elements.push(el);
+  state.selId = el.id;
+  renderAll();
+}
+function addImage(src, name){
+  const el = makeEl('image', {src, name:name||'图片', x:r1(60+Math.random()*120), y:r1(120+Math.random()*120)});
+  const img = new Image();
+  img.onload = function(){
+    const sc = Math.min(1, 150/Math.max(img.naturalWidth, img.naturalHeight));
+    el.w = r1(img.naturalWidth*sc); el.h = r1(img.naturalHeight*sc);
+    el.natW = img.naturalWidth; el.natH = img.naturalHeight;
+    renderAll();
+  };
+  img.onerror = function(){ renderAll(); };
+  img.src = src;
+  addElement(el);
+}
+/* 更换已有图片元素的素材：保持中心点，按比例适配进原框，防止拉伸变形 */
+function changeImage(el, src, newName){
+  pushHistory();
+  el.src = src;
+  if(newName) el.name = newName;
+  const cx = el.x + el.w/2, cy = el.y + el.h/2;
+  const img = new Image();
+  img.onload = function(){
+    const sc = Math.min(el.w/img.naturalWidth, el.h/img.naturalHeight, 1);
+    el.w = r1(Math.max(20, img.naturalWidth*sc));
+    el.h = r1(Math.max(20, img.naturalHeight*sc));
+    el.x = r1(cx - el.w/2); el.y = r1(cy - el.h/2);
+    el.natW = img.naturalWidth; el.natH = img.naturalHeight;
+    renderAll();
+  };
+  img.onerror = function(){ renderAll(); };
+  img.src = src;
+  renderAll();
+}
+/* 给元素应用一张图片素材。色块按钮首次用图时按图片原始比例定尺寸（转成图片按钮）；其余沿用 changeImage（保持中心、适配原框） */
+function applyImg(el, src, name){
+  if(el.type==='button' && !el.src){
+    pushHistory();
+    el.src = src;
+    if(name) el.name = name;
+    const cx = el.x + el.w/2, cy = el.y + el.h/2;
+    const im = new Image();
+    im.onload = function(){
+      const sc = Math.min(1, 260/Math.max(im.naturalWidth, im.naturalHeight));
+      el.w = r1(Math.max(20, im.naturalWidth*sc));
+      el.h = r1(Math.max(20, im.naturalHeight*sc));
+      el.x = r1(cx - el.w/2); el.y = r1(cy - el.h/2);
+      renderAll();
+    };
+    im.onerror = function(){ renderAll(); };
+    im.src = (src && (src.startsWith('data:') || src.startsWith('http'))) ? src : asset(src);
+    renderAll();
+  } else {
+    changeImage(el, src, name);
+  }
+}
+/* 图片/按钮共用的素材控件：内置素材下拉 + 本地上传 + 素材路径 + 还原尺寸；按钮额外可清除图片恢复色块 */
+function buildImageControls(el, g2){
+  const isBtn = el.type==='button';
+  // 更换素材：内置素材下拉（按分类分组）
+  const pickRow = document.createElement('div'); pickRow.className='prow';
+  pickRow.innerHTML = '<label>'+(isBtn?'按钮图片':'更换素材')+'</label><select style="flex:1"></select>';
+  const pick = pickRow.querySelector('select');
+  const cur = document.createElement('option'); cur.value='';
+  cur.textContent = isBtn
+    ? (el.src ? '— 更换内置图标 —' : '— 选择图标，转为图片按钮 —')
+    : '— 选择内置图标 —';
+  pick.appendChild(cur);
+  let matched = false;
+  LIB.forEach(group=>{
+    const og = document.createElement('optgroup'); og.label = group.cat;
+    group.items.forEach(([src,name])=>{
+      const o = document.createElement('option'); o.value=src; o.textContent=name;
+      if(src===el.src){ matched = true; }
+      og.appendChild(o);
+    });
+    pick.appendChild(og);
+  });
+  if(el.src && el.src.startsWith('data:')) cur.textContent = '（本地上传图片）';
+  else if(el.src && !matched) cur.textContent = '（自定义路径）';
+  pick.addEventListener('change', ()=>{
+    if(!pick.value) return;
+    const item = LIB.flatMap(g=>g.items).find(([s])=>s===pick.value);
+    applyImg(el, pick.value, item ? item[1] : null);
+  });
+  g2.appendChild(pickRow);
+  // 上传本地图片
+  const upLabel = isBtn ? '上传本地图片（设为按钮图片）' : '上传本地图片替换';
+  const upRow = document.createElement('div'); upRow.className='prow';
+  upRow.innerHTML = '<label></label><label class="btn" style="flex:1;text-align:center;cursor:pointer;font-weight:normal">'+upLabel+'<input type="file" accept="image/*" style="display:none"></label>';
+  const fInp = upRow.querySelector('input');
+  fInp.addEventListener('change', ()=>{
+    const file = fInp.files && fInp.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = function(ev){ applyImg(el, ev.target.result, file.name.replace(/\.[^.]+$/,'') || '自定义图片'); };
+    reader.readAsDataURL(file);
+    fInp.value='';
+  });
+  g2.appendChild(upRow);
+  if(el.src){
+    g2.appendChild(textRow('素材路径','src'));
+    const b = document.createElement('div'); b.className='propBtns';
+    b.innerHTML = '<button class="btn" id="pNatSize">还原原始尺寸</button>'+
+      (isBtn ? '<button class="btn danger" id="pClearImg">清除图片（恢复色块）</button>' : '');
+    g2.appendChild(b);
+    b.querySelector('#pNatSize').addEventListener('click', ()=>{
+      pushHistory();
+      const img = new Image();
+      img.onload = function(){
+        const cx=el.x+el.w/2, cy=el.y+el.h/2;
+        el.w=r1(img.naturalWidth); el.h=r1(img.naturalHeight);
+        el.x=r1(cx-el.w/2); el.y=r1(cy-el.h/2);
+        renderAll();
+      };
+      img.src = (el.src && (el.src.startsWith('data:')||el.src.startsWith('http'))) ? el.src : asset(el.src);
+    });
+    const clr = b.querySelector('#pClearImg');
+    if(clr) clr.addEventListener('click', ()=>{ pushHistory(); el.src=''; renderAll(); });
+
+    // ---------- 九宫格（9-slice）编辑器 ----------
+    const sliceGroup = document.createElement('div'); sliceGroup.className='propGroup';
+    sliceGroup.innerHTML = '<div class="pgTitle">九宫格（锁定四角，拉伸中间）</div>';
+    const chkRow = document.createElement('div'); chkRow.className='prow';
+    chkRow.innerHTML = '<label></label><span class="chk"><input type="checkbox" id="chk_sliceEnabled"> 启用九宫格</span>';
+    sliceGroup.appendChild(chkRow);
+    const chkSlice = chkRow.querySelector('#chk_sliceEnabled');
+    chkSlice.checked = !!el.sliceEnabled;
+    chkSlice.addEventListener('change', ()=>{
+      pushHistory();
+      el.sliceEnabled = chkSlice.checked;
+      renderAll();
+    });
+
+    const sliceGrid = document.createElement('div'); sliceGrid.className='prow';
+    sliceGrid.style.flexWrap = 'wrap';
+    sliceGrid.innerHTML =
+      '<label>切片边距</label>'+
+      '<div style="flex:1;display:grid;grid-template-columns:1fr 1fr;gap:6px">'+
+        '<input type="number" id="sliceT" placeholder="上" title="上" min="0" step="1" style="width:100%;min-width:0;box-sizing:border-box">'+
+        '<input type="number" id="sliceR" placeholder="右" title="右" min="0" step="1" style="width:100%;min-width:0;box-sizing:border-box">'+
+        '<input type="number" id="sliceB" placeholder="下" title="下" min="0" step="1" style="width:100%;min-width:0;box-sizing:border-box">'+
+        '<input type="number" id="sliceL" placeholder="左" title="左" min="0" step="1" style="width:100%;min-width:0;box-sizing:border-box">'+
+      '</div>';
+    sliceGroup.appendChild(sliceGrid);
+    ['sliceT','sliceR','sliceB','sliceL'].forEach(key=>{
+      const inp = sliceGrid.querySelector('#'+key);
+      inp.value = el[key] != null ? el[key] : 20;
+      // 实时 input + 失焦 change 双保险；只有值真正变化时才 pushHistory
+      let lastVal = inp.value;
+      const apply = (isFinal)=>{
+        const v = Math.max(0, parseInt(inp.value,10) || 0);
+        if(el[key] === v) return;
+        el[key] = v;
+        syncElDom(el);
+        scheduleSave();
+        if(isFinal) pushHistory();
+      };
+      inp.addEventListener('input', ()=> apply(false));
+      inp.addEventListener('change', ()=>{
+        apply(true);
+        lastVal = inp.value;
+      });
+      inp.addEventListener('blur', ()=>{
+        if(inp.value !== lastVal){ apply(true); lastVal = inp.value; }
+      });
+      // 方向键微调
+      inp.addEventListener('keydown', (e)=>{
+        if(e.key==='ArrowUp' || e.key==='ArrowDown'){
+          e.preventDefault();
+          const step = e.shiftKey ? 10 : 1;
+          const delta = e.key==='ArrowUp' ? step : -step;
+          inp.value = Math.max(0, (parseInt(inp.value,10) || 0) + delta);
+          apply(true);
+          lastVal = inp.value;
+        }
+      });
+    });
+    g2.appendChild(sliceGroup);
+  }
+}
+/* 载入现有游戏界面预设：铺好该界面所有已绑定脚本的按钮（bind 为回写标识），高度按图片比例自动 */
+function loadPreset(key){
+  const p = UI_PRESETS[key];
+  if(!p) return;
+  pushHistory();
+  state.elements = [];
+  state.selId = null;
+  if(p.bg){ state.stage.bg = p.bg; state.stage.bgCustom = ''; }
+  p.items.forEach(it=>{
+    let el;
+    if(it.type==='text'){
+      // 文字元素（如 LOADING 标题 / 关卡名称）
+      el = makeEl('text', {name:it.name, bind:it.bind, x:it.x, y:it.y, w:it.w||300, h:it.h||60,
+        text:it.text||'文字', fontSize:it.fontSize||48, color:it.color||'#f5e6c8',
+        bold:it.bold!==false, align:it.align||'center', lineHeight:1.3,
+        strokeColor:it.strokeColor||'#000000', strokeWidth:it.strokeWidth||0,
+        gradEnabled:!!it.gradEnabled, gradFrom:it.gradFrom||'#ff6b6b', gradTo:it.gradTo||'#4ecdc4', gradAngle:it.gradAngle!=null?it.gradAngle:90,
+        shadowEnabled:!!it.shadowEnabled, shadowColor:it.shadowColor||'#000000', shadowOffsetX:it.shadowOffsetX||0, shadowOffsetY:it.shadowOffsetY!=null?it.shadowOffsetY:2, shadowBlur:it.shadowBlur||0});
+      if(it.visible===false) el.visible=false;
+      state.elements.push(el);
+    } else if(it.type==='rect'){
+      // 面板元素（如 LOADING 进度条底槽）
+      el = makeEl('rect', {name:it.name, bind:it.bind, x:it.x, y:it.y, w:it.w||200, h:it.h||20,
+        fill:it.fill||'#2a2218', stroke:it.stroke||'#3d3020', strokeW:it.strokeW!=null?it.strokeW:1, radius:it.radius!=null?it.radius:7});
+      if(it.visible===false) el.visible=false;
+      state.elements.push(el);
+    } else if(it.type==='button'){
+      // 按钮元素（如返回/帮助/左右翻页按钮）：无图时渲染色块+文字（用户可换图），有图则图片按钮
+      el = makeEl('button', {name:it.name, bind:it.bind, x:it.x, y:it.y, w:it.w||180, h:it.h||64,
+        src:it.src||'', label:it.text||'按钮', fill:it.fill||'#e8c87a', stroke:it.stroke||'#b8933f',
+        strokeW:it.strokeW!=null?it.strokeW:2, radius:it.radius!=null?it.radius:16,
+        fontSize:it.fontSize||26, textColor:it.color||'#4a3a20'});
+      if(it.visible===false) el.visible=false;
+      state.elements.push(el);
+    } else if(it.type==='hit'){
+      // 选中区域：虚线框，仅在 UI 编辑器可见（用于定位关卡点击热区），游戏内不显示
+      el = makeEl('hit', {name:it.name, bind:it.bind, x:it.x, y:it.y, w:it.w||74, h:it.h||74,
+        fill:it.fill||'rgba(56,189,248,0.10)', stroke:it.stroke||'#38bdf8', strokeW:it.strokeW!=null?it.strokeW:2, radius:it.radius||0, dashed:true});
+      if(it.visible===false) el.visible=false;
+      state.elements.push(el);
+    } else {
+      // 图片元素（默认）：有 src 则按图片比例定高；无 src（占位）用指定 h，无 h 时用 w
+      el = makeEl('image', {src:it.src||'', name:it.name, bind:it.bind, x:it.x, y:it.y, w:it.w, h:(it.h!=null?it.h:it.w)});
+      if(it.sliceEnabled){
+        el.sliceEnabled = true;
+        el.sliceT = it.sliceT != null ? it.sliceT : 20;
+        el.sliceR = it.sliceR != null ? it.sliceR : 20;
+        el.sliceB = it.sliceB != null ? it.sliceB : 20;
+        el.sliceL = it.sliceL != null ? it.sliceL : 20;
+      }
+      if(it.visible===false) el.visible = false;
+      state.elements.push(el);
+      if(it.src){
+        const img = new Image();
+        img.onload = function(){
+          // 已显式指定 h（如按钮）则保留精确高度，不按图片比例重算
+          if(it.h == null) el.h = r1(it.w * img.naturalHeight / img.naturalWidth);
+          el.natW = img.naturalWidth; el.natH = img.naturalHeight;
+          syncElDom(el);
+        };
+        img.src = asset(it.src);
+      }
+    }
+  });
+  renderAll();
+}
+function deleteSel(){
+  const el = selEl(); if(!el) return;
+  pushHistory();
+  state.elements = state.elements.filter(x=>x.id!==el.id);
+  state.selId = null;
+  renderAll();
+}
+function duplicateSel(){
+  const el = selEl(); if(!el) return;
+  pushHistory();
+  const copy = JSON.parse(JSON.stringify(el));
+  copy.id = 'el_'+(idSeq++);
+  copy.name = el.name+' 副本';
+  copy.x = r1(el.x+20); copy.y = r1(el.y+20);
+  const idx = state.elements.indexOf(el);
+  state.elements.splice(idx+1,0,copy);
+  state.selId = copy.id;
+  renderAll();
+}
+function moveLayer(delta){ // delta: +1 上移(更靠前) -1 下移
+  const el = selEl(); if(!el) return;
+  const i = state.elements.indexOf(el);
+  const j = i+delta;
+  if(j<0||j>=state.elements.length) return;
+  pushHistory();
+  state.elements.splice(i,1); state.elements.splice(j,0,el);
+  renderAll();
+}
+function moveLayerExtreme(top){
+  const el = selEl(); if(!el) return;
+  pushHistory();
+  const i = state.elements.indexOf(el);
+  state.elements.splice(i,1);
+  state.elements.splice(top?state.elements.length:0,0,el);
+  renderAll();
+}
+
+/* ---------- 素材库 ---------- */
+function renderLibrary(){
+  const grid = $('libGrid');
+  grid.innerHTML='';
+  LIB.forEach(group=>{
+    const cat = document.createElement('div');
+    cat.className='libCat'; cat.textContent = group.cat;
+    grid.appendChild(cat);
+    const g = document.createElement('div'); g.className='libGrid';
+    group.items.forEach(([src,name])=>{
+      const it = document.createElement('div');
+      it.className='libItem';
+      it.title = name;
+      const img = document.createElement('img');
+      img.src = asset(src);
+      img.alt = '';
+      img.onload = function(){ it.appendChild(img); it.insertAdjacentHTML('beforeend','<span class="lb">'+escapeHtml(name)+'</span>'); };
+      img.onerror = function(){ it.innerHTML='<div class="ph">缺图</div><span class="lb">'+escapeHtml(name)+'</span>'; };
+      it.addEventListener('click', ()=>addImage(src, name));
+      g.appendChild(it);
+    });
+    grid.appendChild(g);
+  });
+}
+$('fileUpload').addEventListener('change', function(){
+  const files = this.files;
+  if(!files || !files.length) return;
+  Array.from(files).forEach(f=>{
+    const file = f; // 冻结引用，避免闭包陷阱
+    const reader = new FileReader();
+    reader.onload = function(ev){
+      addImage(ev.target.result, file.name.replace(/\.[^.]+$/,'')||'自定义图片');
+    };
+    reader.readAsDataURL(file);
+  });
+  this.value='';
+});
+
+/* ---------- 工具栏 ---------- */
+$('btnAddText').addEventListener('click', ()=>addElement(makeEl('text', {x:160,y:200})));
+$('btnAddRect').addEventListener('click', ()=>addElement(makeEl('rect', {x:160,y:200})));
+$('btnAddButton').addEventListener('click', ()=>addElement(makeEl('button', {x:180,y:300})));
+$('btnAddHit').addEventListener('click', ()=>addElement(makeEl('hit', {x:160,y:300})));
+$('selPreset').addEventListener('change', function(){
+  const v = this.value;
+  if(!v || !UI_PRESETS[v]){ this.value=''; return; }
+  if(state.elements.length && !confirm('载入「'+UI_PRESETS[v].name+'」将替换当前画布内容（可用撤销恢复）。继续？')){
+    this.value=''; return;
+  }
+  loadPreset(v);
+  this.value='';
+});
+
+const selBg = $('selBg');
+// 特殊入口选项置顶
+[['__upload__','＋ 上传游戏界面截图…（作为底图）'],
+ ['__custom__','（自定义界面截图）'],
+ ['__removebg__','移除自定义底图']].forEach(([v,label])=>{
+  const o = document.createElement('option');
+  o.value=v; o.textContent=label;
+  selBg.appendChild(o);
+});
+BACKGROUNDS.forEach(([v,label])=>{
+  const o = document.createElement('option');
+  o.value=v; o.textContent=label;
+  selBg.appendChild(o);
+});
+selBg.addEventListener('change', ()=>{
+  const v = selBg.value;
+  if(v==='__upload__'){ $('bgFile').click(); renderStageShell(); return; }
+  if(v==='__removebg__'){ pushHistory(); state.stage.bgCustom=''; state.stage.bg=''; renderAll(); return; }
+  if(v==='__custom__'){ renderStageShell(); return; } // 仅展示当前态
+  pushHistory();
+  state.stage.bg = v;
+  state.stage.bgCustom = ''; // 选择内置背景时让出底图
+  renderAll();
+});
+/* 上传界面截图：压缩到 540 宽 JPEG 控制体积，作为底图铺在所有元素之下 */
+$('bgFile').addEventListener('change', function(){
+  const file = this.files && this.files[0]; // 冻结引用，避免闭包陷阱
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev){
+    const img = new Image();
+    img.onload = function(){
+      const W = 540;
+      const sc = Math.min(1, W/img.naturalWidth);
+      const w = Math.max(1, Math.round(img.naturalWidth*sc));
+      const h = Math.max(1, Math.round(img.naturalHeight*sc));
+      const c = document.createElement('canvas');
+      c.width=w; c.height=h;
+      c.getContext('2d').drawImage(img,0,0,w,h);
+      pushHistory();
+      state.stage.bgCustom = c.toDataURL('image/jpeg',0.85);
+      state.stage.bgOpacity = 1;
+      // 按截图比例设定画布高度（底图 1:1 不裁切）
+      const nh = Math.round(state.stage.w * h / w);
+      if(nh>=600 && nh<=1400) state.stage.h = nh;
+      $('selHeight').value = (nh===800||nh===960||nh===1080)?String(nh):'custom';
+      renderAll();
+    };
+    img.onerror = function(){ alert('图片读取失败，请换一张截图试试。'); };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+  this.value='';
+});
+$('bgOpacity').addEventListener('input', function(){
+  state.stage.bgOpacity = parseFloat(this.value);
+  $('bgOv').style.opacity = state.stage.bgOpacity;
+  scheduleSave();
+});
+$('bgOpacity').addEventListener('change', pushHistory);
+/* 下载当前自定义底图为图片文件（供游戏用作背景资源） */
+$('btnDownloadBg').addEventListener('click', function(){
+  const du = state.stage.bgCustom;
+  if(!du){ alert('当前没有自定义底图截图。\n请先在「底图」下拉选择「＋ 上传游戏界面截图…」上传你要用的背景图。'); return; }
+  const a = document.createElement('a');
+  a.href = du;
+  a.download = 'menu_bg.jpg';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+});
+
+$('selHeight').addEventListener('change', function(){
+  if(this.value==='custom'){
+    const v = parseInt(prompt('输入画布高度（px，建议 800~1200）', String(state.stage.h)),10);
+    if(!isNaN(v) && v>200){ pushHistory(); state.stage.h=v; renderAll(); }
+    this.value='';
+  } else {
+    pushHistory(); state.stage.h=parseInt(this.value,10); renderAll();
+  }
+});
+function setZoom(z){ state.stage.zoom=Math.max(0.3,Math.min(2,z)); renderStageShell(); scheduleSave(); }
+$('btnZoomIn').addEventListener('click', ()=>setZoom(state.stage.zoom+0.1));
+$('btnZoomOut').addEventListener('click', ()=>setZoom(state.stage.zoom-0.1));
+$('btnZoomFit').addEventListener('click', ()=>{
+  const sc = $('stageScroll').clientWidth - 60;
+  const sh = $('stageScroll').clientHeight - 60;
+  setZoom(Math.min(sc/state.stage.w, sh/state.stage.h, 1));
+});
+$('btnGrid').addEventListener('click', ()=>{ state.stage.grid=!state.stage.grid; renderStageShell(); scheduleSave(); });
+$('btnSnap').addEventListener('click', ()=>{ state.stage.snap=!state.stage.snap; renderStageShell(); scheduleSave(); });
+$('btnSafe').addEventListener('click', ()=>{ state.stage.safe=!state.stage.safe; renderStageShell(); scheduleSave(); });
+$('btnNarrow').addEventListener('click', ()=>{ state.stage.narrow=!state.stage.narrow; renderStageShell(); scheduleSave(); });
+$('btnUndo').addEventListener('click', undo);
+$('btnRedo').addEventListener('click', redo);
+
+$('btnTop').addEventListener('click', ()=>moveLayerExtreme(true));
+$('btnUp').addEventListener('click', ()=>moveLayer(1));
+$('btnDown').addEventListener('click', ()=>moveLayer(-1));
+$('btnBottom').addEventListener('click', ()=>moveLayerExtreme(false));
+$('btnLayerDel').addEventListener('click', deleteSel);
+
+/* 点击舞台空白处取消选择 */
+stage.addEventListener('pointerdown', e=>{
+  if(e.target===stage || e.target.id==='gridOv' || e.target.id==='safeOv' || e.target.id==='narrowOv'){ select(null); }
+});
+
+/* ---------- 清空 / 导出 / 导入 ---------- */
+$('btnClear').addEventListener('click', ()=>{
+  if(!state.elements.length) return;
+  if(confirm('确定清空全部图层？此操作可撤销。')){
+    pushHistory(); state.elements=[]; state.selId=null; renderAll();
+  }
+});
+function exportJSON(){
+  return JSON.stringify({
+    app:'fire-roach-killer-ui',
+    version:1,
+    // 自定义底图为本地截图 dataURL，不随 JSON 导出（体积过大），仅标记
+    stage:{width:state.stage.w, height:state.stage.h,
+      background: state.stage.bgCustom ? '__custom_bg__' : (state.stage.bg||null)},
+    elements: state.elements.map(e=>{
+      const base = {id:e.id, type:e.type, name:e.name, x:r1(e.x), y:r1(e.y), w:r1(e.w), h:r1(e.h),
+        rotation:r1(e.rotation), opacity:r1(e.opacity), visible:e.visible, locked:e.locked};
+      if(e.type==='image'){
+        base.src=e.src;
+        if(e.bind) base.bind=e.bind;
+        if(e.sliceEnabled){
+          base.sliceEnabled=true;
+          base.sliceT=e.sliceT; base.sliceR=e.sliceR; base.sliceB=e.sliceB; base.sliceL=e.sliceL;
+        }
+      }
+      if(e.type==='text') Object.assign(base,{text:e.text,fontSize:e.fontSize,color:e.color,bold:e.bold,align:e.align,lineHeight:e.lineHeight,strokeColor:e.strokeColor,strokeWidth:e.strokeWidth,gradEnabled:e.gradEnabled,gradFrom:e.gradFrom,gradTo:e.gradTo,gradAngle:e.gradAngle,shadowEnabled:e.shadowEnabled,shadowColor:e.shadowColor,shadowOffsetX:e.shadowOffsetX,shadowOffsetY:e.shadowOffsetY,shadowBlur:e.shadowBlur});
+      if(e.type==='rect') Object.assign(base,{fill:e.fill,stroke:e.stroke,strokeW:e.strokeW,radius:e.radius});
+      if(e.type==='button'){ Object.assign(base,{fill:e.fill,stroke:e.stroke,strokeW:e.strokeW,radius:e.radius,label:e.label,fontSize:e.fontSize,textColor:e.textColor,src:e.src||''}); if(e.bind) base.bind=e.bind; }
+      if(e.type==='hit'){ Object.assign(base,{fill:e.fill,stroke:e.stroke,strokeW:e.strokeW,radius:e.radius,dashed:true}); if(e.bind) base.bind=e.bind; }
+      return base;
+    })
+  }, null, 2);
+}
+$('btnExport').addEventListener('click', ()=>{
+  $('ioText').value = exportJSON();
+  $('modal').classList.add('open');
+});
+$('btnClose').addEventListener('click', ()=>$('modal').classList.remove('open'));
+$('modal').addEventListener('click', e=>{ if(e.target===$('modal')) $('modal').classList.remove('open'); });
+$('btnCopy').addEventListener('click', ()=>{
+  const t = $('ioText');
+  t.select();
+  navigator.clipboard && navigator.clipboard.writeText(t.value).then(
+    ()=>{ $('btnCopy').textContent='已复制'; setTimeout(()=>$('btnCopy').textContent='复制 JSON',1500); },
+    ()=>{ document.execCommand('copy'); }
+  );
+});
+$('btnDownload').addEventListener('click', ()=>{
+  const blob = new Blob([$('ioText').value], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'ui-layout.json';
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
+});
+$('btnImport').addEventListener('click', ()=>{
+  try{
+    const d = JSON.parse($('ioText').value);
+    if(!d || !Array.isArray(d.elements)) throw new Error('缺少 elements 数组');
+    pushHistory();
+    if(d.stage){
+      if(d.stage.width) state.stage.w=d.stage.width;
+      if(d.stage.height) state.stage.h=d.stage.height;
+      if(d.stage.background!==undefined){
+        const b = d.stage.background;
+        state.stage.bg = (b && b!=='__custom_bg__') ? b : ''; // 自定义截图底图不随 JSON 迁移
+      }
+    }
+    state.elements = d.elements.map(e=>{
+      const base = makeEl(e.type||'rect', {});
+      return Object.assign(base, e, {id: e.id||base.id});
+    });
+    state.elements.forEach(e=>{ const n=parseInt(String(e.id).replace(/\D/g,''),10); if(!isNaN(n)&&n>=idSeq) idSeq=n+1; });
+    state.selId=null;
+    $('modal').classList.remove('open');
+    renderAll();
+    alert('导入成功，共 '+state.elements.length+' 个元素。');
+  }catch(err){
+    alert('导入失败：JSON 格式有误（'+err.message+'）');
+  }
+});
+
+/* ---------- 键盘 ---------- */
+window.addEventListener('keydown', e=>{
+  const tag = (e.target.tagName||'').toLowerCase();
+  const typing = tag==='input'||tag==='textarea'||tag==='select';
+  if(typing){
+    if(e.key==='Escape') e.target.blur();
+    return;
+  }
+  if($('modal').classList.contains('open')){ if(e.key==='Escape') $('modal').classList.remove('open'); return; }
+  const el = selEl();
+  if((e.key==='Delete'||e.key==='Backspace') && el){ e.preventDefault(); deleteSel(); }
+  else if(e.key==='d' && (e.ctrlKey||e.metaKey) && el){ e.preventDefault(); duplicateSel(); }
+  else if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='z'){ e.preventDefault(); e.shiftKey?redo():undo(); }
+  else if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='y'){ e.preventDefault(); redo(); }
+  else if(e.key.startsWith('Arrow') && el && !el.locked){
+    e.preventDefault();
+    const step = e.shiftKey?10:1;
+    pushHistory();
+    if(e.key==='ArrowLeft') el.x-=step;
+    if(e.key==='ArrowRight') el.x+=step;
+    if(e.key==='ArrowUp') el.y-=step;
+    if(e.key==='ArrowDown') el.y+=step;
+    renderAll();
+  } else if(e.key==='Escape'){ select(null); }
+});
+
+/* ---------- 工具 ---------- */
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+/* ---------- 初始化 ---------- */
+(function init(){
+  loadStore();
+  selBg.value = state.stage.bg;
+  if(state.stage.zoom) $('zoomVal').textContent = Math.round(state.stage.zoom*100)+'%';
+  renderLibrary();
+  // 初始示例（仅首次）
+  if(!state.elements.length && !localStorage.getItem(STORE_KEY)){
+    const demo = [
+      makeEl('rect', {name:'标题底板', x:70,y:120,w:400,h:90, fill:'#fdfaf3', stroke:'#c9b896', radius:18}),
+      makeEl('text', {name:'标题文字', x:70,y:145,w:400,h:44, text:'火焰蟑螂杀手', fontSize:34, color:'#6b4f2e', bold:true}),
+      makeEl('button', {name:'开始按钮', x:180,y:700})
+    ];
+    demo.forEach(e=>state.elements.push(e));
+  }
+  hist = [snapshot()]; hidx = 0;
+  renderAll();
+  setTimeout(()=>$('btnZoomFit').click(), 60);
+})();
+</script>
+</body>
+</html>
